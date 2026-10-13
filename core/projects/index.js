@@ -13,6 +13,7 @@ import { ownerDevice } from "../modules/index.js";
 import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
 import { backupSources } from "./backup.js";
+import { readDocs, writeDocs, listContext, addContextFile, addNote, addLink, removeContext } from "../../lib/folder-docs.js";
 import { grantReach, revokeReach, reachGrants, mayReach, asPerson } from "../../lib/project-reach.js";
 
 const str = { type: "string" };
@@ -280,6 +281,68 @@ export default {
       input: { type: "object", properties: { project: str, cwd: { type: "string", description: "as a SessionStart hook sees it" }, session: { type: "string", description: "as a SessionStart hook sees it" } } },
       run: async input => P.context(input),
     });
+
+    // A project's Instructions (AGENTS.md at its root, CLAUDE.md kept the same) and Context (context/ at its root: files, notes and references to Vyre Files): the same editors and the same
+    // folder code as an agent's (lib/folder-docs.js). Who may: Can use = anyone on the project's seat list at any level and the owner and admins (read); Can edit = the project's owner, a lead or
+    // contributor, the Space's owner and the admins (write). A viewer reads and cannot write. The seat is the work module's (work.project.seat), judged for the person on the call.
+    /** @param {any} meta @param {string} ref @returns {Promise<{ p: any, use: boolean, edit: boolean }>} */
+    const may = async (meta, ref) => {
+      const p = P.resolve(ref);
+      const KK = ctx.kernel;
+      const chain = KK && typeof KK.chain === "function" ? await KK.chain(meta).catch(() => "unreadable") : null;
+      const hop = chain && chain !== "unreadable" && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
+      if (chain === "unreadable") return { p, use: false, edit: false };
+      if (!hop) return { p, use: true, edit: true };   // the owner's own surfaces, a call with no person: as before
+      const me = String(hop.actor.id);
+      const okRead = await ctx.call("work.project.may-read", { project: p.slug, person: me }).then((/** @type {any} */ r) => Boolean(r && !r.error && r.data && r.data.ok === true), () => false);
+      if (!okRead) return { p, use: false, edit: false };
+      const seat = await ctx.call("work.project.seat", { project: p.slug, person: me }).then((/** @type {any} */ r) => (r && !r.error ? r.data : null), () => null);
+      const onTeam = Boolean(seat && (seat.owner || seat.team));
+      // not on the team but allowed to read: the Space's owner or an admin
+      const edit = !onTeam || Boolean(seat.owner) || seat.level === "lead" || seat.level === "contributor";
+      return { p, use: true, edit };
+    };
+    const needUse = async (/** @type {any} */ meta, /** @type {string} */ ref) => { noModel(meta); const r = await may(meta, ref); if (!r.use) throw refuse("you are not on this project, so you cannot read its instructions or context. Ask its owner to add you", "denied"); return r; };
+    const needEdit = async (/** @type {any} */ meta, /** @type {string} */ ref) => { const r = await needUse(meta, ref); if (!r.edit) throw refuse("you have read-only access to this project (viewer): ask its owner or a lead for contributor to change its instructions or context", "denied"); return r; };
+    const noModel = (/** @type {any} */ meta) => { if ((meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(String((meta && meta.caller) || ""))) throw refuse("only a person reads or changes a project's instructions and context; an agent gets them in its brief when its chat starts", "denied"); };
+    const proj = { type: "object", required: ["project"], properties: { project: str } };
+    ctx.tool("projects.docs.get", {
+      description: "A project's instructions: AGENTS.md and CLAUDE.md at its root (kept the same).",
+      input: proj, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); return { files: readDocs(p.home), kept_same: true }; },
+    });
+    ctx.tool("projects.docs.set", {
+      description: "Write the project's instructions. AGENTS.md and CLAUDE.md are kept the same, whichever is written. Every chat in the project gets them from its next start.",
+      input: { type: "object", required: ["project", "file", "text"], properties: { project: str, file: { type: "string", enum: ["AGENTS.md", "CLAUDE.md"] }, text: str } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      run: async ({ project, file, text }, meta = {}) => { noModel(meta); const { p } = await needEdit(meta, project); try { writeDocs(p.home, file, text, { sync: true }); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "bad_input"); } P.emit("project.changed", { project: p.slug, instructions: true }, { project: p.slug }); return { ok: true, file }; },
+    });
+    ctx.tool("projects.refs.list", {
+      description: "A project's context: the files, notes and references to Vyre Files kept in context/ at its root.",
+      input: proj, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); return { items: listContext(p.home) }; },
+    });
+    ctx.tool("projects.refs.add", {
+      description: "Add to a project's context: a file (name, base64), a note (name, text) or a reference to something in Vyre Files (name, files: its path in Files).",
+      input: { type: "object", required: ["project", "name"], properties: { project: str, name: str, base64: str, text: str, files: str } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      run: async (i, meta = {}) => {
+        noModel(meta);
+        const { p } = await needEdit(meta, i.project);
+        try {
+          if (typeof i.files === "string") return { ok: true, ...addLink(p.home, i.name, i.files) };
+          if (typeof i.text === "string") return { ok: true, ...addNote(p.home, i.name, i.text) };
+          if (typeof i.base64 === "string") { if (i.base64.length > Math.ceil(10 * 1024 * 1024 * 4 / 3) + 8) throw refuse("a context file is up to 10 MB", "bad_input"); return { ok: true, ...addContextFile(p.home, i.name, Buffer.from(i.base64, "base64")) }; }
+        } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "bad_input"); }
+        throw refuse("give a file (base64), a note (text) or a reference (files)", "bad_input");
+      },
+    });
+    ctx.tool("projects.refs.remove", {
+      description: "Take an item out of a project's context.",
+      input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      run: async ({ project, name }, meta = {}) => { noModel(meta); const { p } = await needEdit(meta, project); try { removeContext(p.home, name); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "not_found"); } return { ok: true }; },
+    });
     // The work module tells this computer about a Project record it made (and about one made on another computer): a local row and a home folder, nothing else. Only the work module may.
     ctx.tool("projects.adopt", {
       description: "This computer learns of a Project record: a local row and a home folder for it. Only the work module calls it.",
@@ -457,6 +520,14 @@ export default {
       ? !claim && /^mcp(?:$|[\s:])/.test(String(c || "")) && (c === "mcp" || Boolean(thread))
       : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
     const reachAgentOf = (c, claim) => claim !== undefined ? (claim ? String(claim) : null) : /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    // A team server keeps one project's folder from another's session with a group per project (core/spawner/project-groups.js). The first launch in a project hands its folder to its group; this does every
+    // project at once, for the owner on a quiet box, so a large volume is walked once and not at someone's first launch. Run it again and nothing changes.
+    ctx.tool("projects.sync", {
+      description: "On a team server, give every project's folder under /work to the project's own group now (otherwise each is done at its first launch). Safe to run again. Answers each project: its folders and how many were changed, or why one could not be.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async () => { const r = await ctx.call("threads.projects.sync", {}); if (r.error) throw refuse(r.error.message, r.error.code || "unavailable"); return r.data; },   // the Switchboard holds the spawner's door
+    });
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
       input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },

@@ -15,8 +15,17 @@ export function useAttachments(chat: string | undefined) {
   const set = useCallback((next: Chip[]) => { live.current = next; setChips(next); }, []);
 
   const add = useCallback(async (files: Picked[]) => {
-    if (!chat) { setProblem("Start the chat with a message before adding files."); return; }
     setProblem(null);
+    // No thread yet (the sample world, or a chat still being made): the file is held as a ready chip and goes with the first message.
+    if (!chat) {
+      for (const f of files) {
+        const why = whyNot(live.current, f);
+        if (why) { setProblem(why); continue; }
+        const key = `a${++n.current}`;
+        set([...live.current, { ...uploading(key, f), state: "ready", attachment: { id: key, name: f.name, mime: f.mime, bytes: f.bytes } } as Chip]);
+      }
+      return;
+    }
     for (const f of files) {
       const why = whyNot(live.current, f);
       if (why) { setProblem(why); continue; }
@@ -34,7 +43,12 @@ export function useAttachments(chat: string | undefined) {
     }
   }, [chat, set]);
   const choose = useCallback(async (photo: boolean) => { try { await add(await pickFiles(photo)); } catch (e) { setProblem(e instanceof Error ? e.message : "The files could not be read."); } }, [add]);
+  /** A file that is already in Vyre and needs no upload (the sample world's "From Vyre Files"): a ready chip. */
+  const addReady = useCallback((f: { name: string; mime: string; bytes: number }) => {
+    const key = `a${++n.current}`;
+    set([...live.current, { ...uploading(key, { ...f }), state: "ready", attachment: { id: key, name: f.name, mime: f.mime, bytes: f.bytes } } as Chip]);
+  }, [set]);
   const remove = useCallback((key: string) => { set(without(live.current, key)); setProblem(null); }, [set]);
   const clear = useCallback(() => { set([]); setProblem(null); }, [set]);
-  return { chips, problem, add, choose, remove, clear, take: () => toSend(live.current) };
+  return { chips, problem, add, addReady, choose, remove, clear, take: () => toSend(live.current) };
 }

@@ -123,13 +123,12 @@ export async function walkLive(w) {
   /** The Add a server walk for one store choice, from the app's install line to a tool call. */
   const server = async (/** @type {"records" | "plain"} */ store, /** @type {(n: string) => string} */ S, /** @type {string[]} */ needs) => {
     /** @type {any} */ let flow = null, installed = null;
-    const pick = store === "records" ? "records" : "plain";
     await run.step(S("add a server: the app shows the install line"), async () => {
       flow = mac.addServer();
-      await flow.begin(pick);
+      await flow.begin();
       const line = flow.state.installLine;
       assert.ok(line.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
-      assert.ok(line.includes(`VYRE_STORE=${store === "records" ? "auto" : "sqlite"}`), "the line carries the store choice");
+      assert.ok(line.includes("VYRE_STORE=auto"), "the app's line always carries Records");
       assert.match(line, /^curl -fsSL vyre\.run\/i \| /, "the line is the published installer");
       return line.replace(flow.state.code, "<code>");
     }, { needs });
@@ -292,7 +291,7 @@ export async function walkLive(w) {
           assert.equal(r.code, 0, `vyre update as a normal user failed (exit ${r.code}): ${r.out.slice(-400)}`);
           return "vyre update as a normal user: exit 0";
         }
-        const r = await mac.callTool("update.apply", {});
+        const r = await mac.callTool("update.apply", { yes: true });
         assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
         return "requested";
       }, { needs: [U("the notice names the release under test")] });

@@ -30,14 +30,12 @@ const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setu
 // The token is handed to the session launcher through the vault's credentials port (vault.launcherOnly), never through a module grant.
 
 // Never a linked-device caller, which a model on the owner's Mac is too.
-// relay.join is not shippable on a Mac yet: vyre.db is a same-uid store, so a Mac chosen as
-// Solo/Server has nowhere safe to hold a paired device's keys until vyre-core (ADR 0040) owns
-// its own root-only store -- reviewer/team-lead, 28 Sep ("gated on vyre-core, same as Mac GA").
-// launch reads this to hide the code-pairing card rather than offer a path that would fail.
-const RELAY_JOIN_DARWIN_REASON = "relay pairing needs vyre-core to hold its keys, which is not built on a Mac yet";
-/** Pure, for tests: what onboard.status reports under `can`, for a given `os.platform()` value. */
-export function canRelayJoin(platform) {
-  return platform === "darwin" ? { relayJoin: false, reason: RELAY_JOIN_DARWIN_REASON } : { relayJoin: true, reason: null };
+// "Pair with a code" is gone on every platform (13 Oct 2026): the classic bearer code made devices nobody confirmed. A device joins by signing in with the person's name and being approved on another
+// device, or with a space code and the same words. launch reads `can.relayJoin` to hide the code-pairing card, so it is false everywhere and says why.
+const RELAY_JOIN_GONE_REASON = "pairing with a code is gone; sign in with your name and approve it from another device, or use a space code";
+/** Pure, for tests: what onboard.status reports under `can`. The platform no longer matters. */
+export function canRelayJoin(_platform) {
+  return { relayJoin: false, reason: RELAY_JOIN_GONE_REASON };
 }
 /**
  * Pure, for tests: the loopback's default port when network.onboardPort is unset. 7300 (ADR
@@ -268,8 +266,8 @@ export default {
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
       const mode = caller === "onboard" ? "loopback" : onTailnet({ caller }) ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
-      // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
-      // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
+      // guess from role/machine. relayJoin is false everywhere now (see
+      // RELAY_JOIN_GONE_REASON above).
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
@@ -437,10 +435,9 @@ export default {
      */
     ctx.tool("onboard.join", {
       effect: "write",
-      description: "Adding a second device or a server: status says whether the relay is ready to pair with and where the pair step stands; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
+      description: "Adding a second device or a server: status says whether the relay is ready to pair with and where the pair step stands; relay is gone (the classic pairing code; it answers with how a device joins now); verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry.",
       input: obj({ action: { type: "string", enum: ["status", "relay", "verify"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
       callers: ["cli", "local", "deck", "capsule"],
-      presence: { when: i => i && i.action === "relay", summary: async () => "Pair a new device with this box" },
       run: async ({ action = "status", node, becomeDevice = false }, meta) => {
         const { caller } = meta;
         joinOwnerOnly(caller, meta, "adding a device or a server");

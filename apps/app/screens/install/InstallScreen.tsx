@@ -3,7 +3,8 @@ import { spaceName as spaceNameOf } from "../../src/state/space-name.js";
 import { Linking, Platform, ScrollView, Share, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
+import { useSpaces } from "../shell/state";
+import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile, LogoPicker } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { MyCloudCard } from "../settings/MyCloudCard";
@@ -31,7 +32,8 @@ import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
 import { acceptInvite, checkName, claimSetup, createIdentity, reservedName, createSpace, kitChoices, makeServerSpace, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
-import { serversOf } from "../settings/my-cloud.js";
+import { listServers, type Choice } from "../../src/real/servers-list";
+import { pickLine } from "./pick-server.js";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -98,6 +100,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [spaceName, setSpaceName] = useState(DATA.defaultSpaceName);
   const [addr, setAddr] = useState<string | null>(null);
   const [look, setLook] = useState("amber");
+  const [logo, setLogo] = useState<string | null>(null);
   const where = "server" as const;
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
@@ -123,6 +126,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // Real box only: what the directory said about each name, the space being made, the recovery code (shown once, never kept), another device's setup, the invite.
   const [taken, setTaken] = useState<Record<string, "free" | "taken" | "unknown">>({});
   const [spaceId, setSpaceId] = useState<string | null>(null);
+  useEffect(() => { if (spaceId && logo) useSpaces.getState().setLook(spaceId, { logo }); }, [spaceId, logo]);
   const [recovery, setRecovery] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [owned, setOwned] = useState(0);
@@ -165,12 +169,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     setStep(AFTER_HOME);
   };
   // The real box makes the space first (spaces.create), then setup carries on. A failure stays on the step with the box's words.
-  const makeReal = async (w: "server") => {
+  const makeReal = async (w: "server", on?: Choice) => {
     setBusy(true); setWrong("");
     try {
       // On a server this device is paired to, the device makes the space itself and the directory claim follows (claimServerSpace); a browser says "Make this space in Vyre on your phone".
       if (w === "server" && (await readIdentity().catch(() => null))) {
-        const id = await makeServerSpace(spaceSt.slug, sn);
+        const id = await makeServerSpace(spaceSt.slug, sn, on ? { key: on.key, route: on.route } : undefined);
         setSpaceId(id);
         make(w);
         return;
@@ -182,7 +186,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       make(w);
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
-  const doMake = (w: "server") => (MOCK ? make(w) : void makeReal(w));
+  const doMake = (w: "server", on?: Choice) => (MOCK ? make(w) : void makeReal(w, on));
+  // With several servers paired the person picks which one this Space is for; the server follows that pick everywhere after.
+  const [choices, setChoices] = useState<Choice[]>([]);
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
   useEffect(() => {
     if (MOCK || !codeLooksRight(reserveCode)) { setReservedAddress(""); return; }
@@ -464,7 +470,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           // Every space runs on a server: one already paired takes it; if there is none, the add-a-server step runs first, then the space is made on it.
           if (MOCK) return setStep("cmd");
           setBusy(true); setWrong("");
-          void tool("spaces.servers").then((r) => { if (serversOf(r).length) doMake("server"); else setStep("cmd"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+          void listServers().then((list) => { setChoices(list); if (list.length > 1) setStep("pick"); else if (list.length) doMake("server"); else setStep("cmd"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
         }} />
       </Page>
     );
@@ -480,19 +486,34 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <Button kind="ghost" label={ADD_PHONE.skip} onPress={done} />
       </Page>
     ) : <RealAdd kind="phone" first={{ title: ADD_PHONE.title, sub: ADD_PHONE.line, skipLabel: ADD_PHONE.skip, onSkip: done }} onBack={done} onDone={done} />;
+  } else if (step === "pick") {
+    body = (
+      <Page title="Which server is this for?" sub="A server holds one Space. Pick the one that will run this team's.">
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        <Card flush>
+          {choices.map((c, i) => <View key={c.key}>{i ? <Divider /> : null}<Row title={c.name} sub={pickLine(c)} onPress={() => doMake("server", c)} /></View>)}
+          <Divider />
+          <Row title="A new server" sub="Add another computer that stays on." onPress={() => setStep("cmd")} />
+        </Card>
+      </Page>
+    );
   } else if (step === "cmd") {
     // The one add-a-server piece (screens/settings/AddServerCard.tsx), then the space is made on the server it paired.
     body = (
       <Page title="Add a server" sub="Your team space is made on it.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <AddServerCard onDone={() => doMake("server")} />
+        <AddServerCard onDone={() => {
+          // The server just added is the one the Space is for: the one in the list now that was not there before.
+          const before = new Set(choices.map((c) => c.key));
+          void listServers().then((list) => { setChoices(list); doMake("server", list.length > 1 ? list.find((c) => !before.has(c.key)) : undefined); }).catch((e) => setWrong(said(e)));
+        }} />
       </Page>
     );
   } else if (step === "look") {
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
         {MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
-        <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
+        <LogoPicker space={{ id: spaceId || sn, name: sn, logo }} onChange={(l) => { setLogo(l); if (spaceId) useSpaces.getState().setLook(spaceId, { logo: l ?? undefined }); }} />
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />
       </Page>

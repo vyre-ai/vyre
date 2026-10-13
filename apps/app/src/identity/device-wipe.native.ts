@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { viewCache } from "../state/cache";
 import { forgetPersonSlots } from "../auth/person.native";
 import { boxName } from "../api/box.native";
-import { loadPairing, savePairing, forgetRelayKey } from "../api/relay.native";
+import { listPairings, removePairingFor, forgetRelayKey } from "../api/relay.native";
 import { forgetIdentity } from "./store.native";
 import { closePeer, usePeer } from "../real/peer";
 import { disconnect } from "../api/box";
@@ -29,11 +29,12 @@ export const deviceSteps = (): WipeStep[] => [
   { name: "outbox", run: async () => { disconnect(); } },
   { name: "cached app files", run: async () => { /* a phone build carries its files in the app, not in a cache */ } },
   { name: "unlock session", run: async () => {
-    const p = await loadPairing().catch(() => null);
-    await forgetPersonSlots([...new Set([boxName(), ...(p?.route ? [p.route] : [])])]);
+    const all = await listPairings().catch(() => []);
+    await forgetPersonSlots([...new Set([boxName(), ...all.map((p) => p.route).filter(Boolean)])]);
   } },
   { name: "pairing", run: async () => {
-    await savePairing(null);
+    // every server this device is paired to, not only the active one
+    for (const p of await listPairings().catch(() => [])) await removePairingFor(p.box);
     usePeer(false);
     closePeer();
   } },

@@ -1,0 +1,183 @@
+// @ts-check
+// An agent's sharing: anyone creates one and owns it; Can use and Can edit are given to a person or a role; a link is judged against the person adding it. Real daemon, real kernel, temp home.
+import "../../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { boot } from "../team/team-fixture.js";
+import * as config from "../config/index.js";
+import { open as openStore } from "../store/index.js";
+
+const BEN = "per_" + "c".repeat(26);
+const ADA = "per_" + "d".repeat(26);
+
+async function world(/** @type {any} */ t) {
+  const { tool, d, project, launches, root } = await boot(t);
+  const OWNER = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  /** @param {string} p @param {string} role @param {number} n */
+  const add = async (p, role, n) => {
+    await d.kernel.gateway.grants.setRole(ownerChain, { person: p, role }, { presence: { op: "x", fields: {}, n } });
+    const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s-" + p.slice(4, 8) });
+    return { token: (await d.kernel.surfaces.open(chain, {})).token };
+  };
+  const ben = await add(BEN, "member", 2);
+  const ada = await add(ADA, "admin", 3);
+  const as = (/** @type {any} */ who) => (/** @type {string} */ name, /** @type {any} */ input = {}) => d.registry.call(name, input, "deck", who);
+  return { tool, d, project, launches, root, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}, /** @type {string} */ as = "cli") => d.registry.call(n, i, as) };
+}
+
+test("a member makes an agent and owns it; a member with no access sees nothing of another's agent", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  const made = await ben("agents.create", { name: "mine", kind: "agent", projects: [] });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  assert.equal((await ben("agents.docs.set", { agent: "mine", file: "CLAUDE.md", text: "hi" })).error, undefined, "the creator edits her own");
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "secret words" });
+  for (const [n, i] of [["agents.docs.get", { agent: "intake" }], ["agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x" }], ["agents.context.list", { agent: "intake" }], ["agents.used", { agent: "intake" }], ["agents.access.get", { agent: "intake" }]]) {
+    const r = await ben(/** @type {string} */ (n), i);
+    assert.equal(r.error && r.error.code, "denied", `${n}: ${JSON.stringify(r).slice(0, 140)}`);
+  }
+});
+
+test("Can use sees where an agent is used and nothing more; Can edit changes its files; neither shares it", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "words" });
+  assert.equal((await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" })).error, undefined);
+  assert.equal((await ben("agents.used", { agent: "intake" })).error, undefined, "Can use sees where it is used");
+  assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied", "but not its instructions");
+  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x" })).error.code, "denied");
+  assert.equal((await ben("agents.vault.assign", { agent: "intake", item: "mail" })).error.code, "denied");
+  assert.equal((await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" })).error, undefined);
+  assert.equal((await ben("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], "words");
+  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "kind" })).error, undefined, "Can edit changes it");
+  assert.equal((await ben("agents.context.add", { agent: "intake", name: "a.txt", base64: "QQ==" })).error, undefined);
+  assert.equal((await ben("agents.access.set", { agent: "intake", kind: "person", subject: ADA, level: "edit" })).error.code, "denied", "an editor does not share it further");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: null });
+  assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied", "taking it away takes it away");
+});
+
+test("sharing is a kernel grant on the agent: it shows in the list with who gave it, a role is refused for now, and removing the agent removes it", { timeout: 120_000 }, async t => {
+  const { ben, ada } = await world(t);
+  assert.equal((await ada("agents.create", { name: "intake", kind: "agent", projects: [] })).error, undefined);
+  assert.equal((await ada("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" })).error, undefined);
+  const got = (await ada("agents.access.get", { agent: "intake" })).data.access;
+  assert.deepEqual(got.map((/** @type {any} */ g) => [g.kind, g.subject, g.level]), [["person", BEN, "edit"]]);
+  assert.equal(got[0].by, ADA, "who gave it is stamped by the server");
+  assert.equal((await ada("agents.access.set", { agent: "intake", kind: "role", subject: "member", level: "use" })).error.code, "bad_input");
+  assert.equal((await ada("agents.delete", { agent: "intake" })).error, undefined);
+  assert.equal((await ada("agents.create", { name: "intake", kind: "agent", projects: [] })).error, undefined);
+  assert.deepEqual((await ada("agents.access.get", { agent: "intake" })).data.access, [], "a new agent of the same name inherits nothing");
+  assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied");
+});
+
+test("a link is judged against the person adding it: a member cannot link a folder she cannot reach; the admin who made it links his own", { timeout: 120_000 }, async t => {
+  const { ben, ada, owner, project } = await world(t);
+  const home = project.home;
+  fs.mkdirSync(`${home}/forms`, { recursive: true });
+  const mk = await ada("agents.create", { name: "intake", kind: "agent", projects: [project.slug] });
+  assert.equal(mk.error, undefined, JSON.stringify(mk.error));
+  await ada("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" });
+  const refused = await ben("agents.context.link", { agent: "intake", path: `${home}/forms` });
+  assert.equal(refused.error && refused.error.code, "denied", JSON.stringify(refused));
+  assert.match(String(refused.error.message), /cannot read the project|cannot see that folder/);
+  const ok = await ada("agents.context.link", { agent: "intake", path: `${home}/forms` });
+  assert.equal(ok.error, undefined, JSON.stringify(ok));
+  assert.deepEqual((await owner("agents.context.list", { agent: "intake" })).data.links.length, 1);
+});
+
+test("a member's agent never exceeds her: not every project, not a project she is not on, no computer, no credentials, no personal memory; an admin may", { timeout: 120_000 }, async t => {
+  const { ben, ada, project } = await world(t);
+  for (const [what, extra] of [["every project", { projects: "*" }], ["a project she is not on", { projects: [project.slug] }], ["a computer", { projects: [], computer: true }], ["credentials", { projects: [], auth: { vault: "claude-setup-token" } }], ["personal memory", { projects: [], personal: true }]]) {
+    const r = await ben("agents.create", { name: "mine", kind: "agent", ...extra });
+    assert.equal(r.error && r.error.code, "denied", `${what}: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  assert.equal((await ben("agents.create", { name: "mine", kind: "agent", projects: [] })).error, undefined, "a plain agent is hers");
+  assert.equal((await ben("agents.update", { name: "mine", computer: true })).error.code, "denied", "and she cannot raise it later");
+  assert.equal((await ada("agents.create", { name: "adas", kind: "agent", projects: [project.slug], computer: true })).error, undefined, "an admin may");
+});
+
+test("in a chat an agent runs on the chatter's own AI sign-in, never on the agent's; a person it is not shared with cannot talk to it", { timeout: 180_000 }, async t => {
+  const { ben, owner, launches, root } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "words" });
+  const refused = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.equal(refused.error && refused.error.code, "denied", "not shared: no talk");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" });
+  const none = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.match(String(none.error && none.error.message), /no AI sign-in picked/, "no sign-in of her own: the owner's is never used for her: " + JSON.stringify(none.error));
+  const added = await ben("sessions.accounts.add", { provider: "claude", label: "Ben's Claude", kind: "login" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  const r = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.ok, true, JSON.stringify(r.data));
+  const db = openStore(config.paths(root).db);
+  /** @type {any} */ let run;
+  try { run = db.prepare("SELECT account, agent FROM threads_runs WHERE id = ?").get(r.data.thread); } finally { db.close(); }
+  assert.equal(run.agent, "intake");
+  assert.equal(run.account, added.data.id, "the turn runs on her account");
+  const ran = launches();
+  assert.equal(ran.length, 1, "one launch");
+});
+
+test("the instructions say who made the agent and who last changed them, and whether the author is staff", { timeout: 120_000 }, async t => {
+  const { ben, ada, owner } = await world(t);
+  await ben("agents.create", { name: "mine", kind: "agent", projects: [] });
+  await ben("agents.docs.set", { agent: "mine", file: "AGENTS.md", text: "Be kind." });
+  const g = (await ben("agents.docs.get", { agent: "mine" })).data;
+  assert.deepEqual(g.made_by, { id: BEN, staff: false }, "a member's agent is marked as not staff-made");
+  assert.equal(g.edited_by, BEN);
+  await ada("agents.create", { name: "adas", kind: "agent", projects: [] });
+  assert.deepEqual((await ada("agents.docs.get", { agent: "adas" })).data.made_by, { id: ADA, staff: true });
+  void owner;
+});
+
+test("a member cannot ask the assistant (it sees every project) unless it is shared with her", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  const made = await owner("agents.create", { name: "juno", kind: "assistant" });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  const r = await ben("agents.ask", { agent: "juno", text: "list every project", wait: false });
+  assert.equal(r.error && r.error.code, "denied", JSON.stringify(r));
+  assert.match(String(r.error.message), /not shared with you/);
+});
+
+test("agents.list says who made each agent and who it is shared with; a member sees only her own share of another's agent, never who else has it", { timeout: 120_000 }, async t => {
+  const { ben, ada, owner } = await world(t);
+  await ada("agents.create", { name: "one", kind: "agent", projects: [] });
+  await ada("agents.create", { name: "two", kind: "agent", projects: [] });
+  await ada("agents.access.set", { agent: "one", kind: "person", subject: BEN, level: "use" });
+  await ada("agents.access.set", { agent: "one", kind: "person", subject: "per_" + "e".repeat(26), level: "edit" });
+  await ada("agents.access.set", { agent: "two", kind: "person", subject: "per_" + "e".repeat(26), level: "use" });
+  const row = (/** @type {any} */ list, /** @type {string} */ n) => list.data.find((/** @type {any} */ x) => x.name === n);
+  const mine = await ben("agents.list", {});
+  assert.deepEqual(row(mine, "one").shares, [{ person: BEN, level: "use" }], "her own share only");
+  assert.deepEqual(row(mine, "two").shares, [], "nothing of an agent she was not given");
+  assert.equal(row(mine, "one").made_by, ADA);
+  const adas = await ada("agents.list", {});
+  assert.deepEqual(row(adas, "one").shares.map((/** @type {any} */ s) => s.level).sort(), ["edit", "use"], "the maker sees every share");
+  const owners = await owner("agents.list", {});
+  assert.equal(row(owners, "two").shares.length, 1);
+  await ada("agents.access.set", { agent: "one", kind: "person", subject: BEN, level: "edit" });
+  assert.equal(row(await ben("agents.list", {}), "one").shares.length, 2, "Can edit sees who else has it");
+});
+
+test("an agent, a model or a guest caller is refused on every agent configuration tool: person surfaces only", { timeout: 120_000 }, async t => {
+  const { owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const tools = [["agents.docs.get", {}], ["agents.docs.set", { file: "CLAUDE.md", text: "x" }], ["agents.context.list", {}], ["agents.context.add", { name: "a.txt", base64: "QQ==" }], ["agents.context.remove", { name: "a.txt" }],
+    ["agents.context.link", { path: "/tmp" }], ["agents.context.unlink", { path: "/tmp" }], ["agents.vault.list", {}], ["agents.vault.assign", { item: "mail" }], ["agents.vault.unassign", { item: "mail" }],
+    ["agents.used", {}], ["agents.access.get", {}], ["agents.access.set", { kind: "person", subject: BEN, level: "use" }]];
+  for (const as of ["mcp:agent:kit", "cli:agent:kit", "harness", "tailnet-guest"]) {
+    for (const [name, input] of /** @type {[string, any][]} */ (tools)) {
+      const r = await owner(name, { agent: "intake", ...input }, as);
+      assert.ok(r.error, `${as} on ${name} ran: ${JSON.stringify(r).slice(0, 120)}`);
+    }
+  }
+  assert.equal((await owner("agents.docs.get", { agent: "intake" })).error, undefined, "the person's own surface still works");
+});
+
+test("the people an editor can pick come from the kernel's member list on her own chain", { timeout: 120_000 }, async t => {
+  const { ada } = await world(t);
+  await ada("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const got = (await ada("agents.access.get", { agent: "intake" })).data;
+  assert.ok(got.people.some((/** @type {any} */ p) => p.id === BEN), JSON.stringify(got.people));
+  assert.deepEqual(got.roles, []);
+});

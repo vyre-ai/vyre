@@ -14,7 +14,8 @@ export function settingsSource(call: Call) {
   return {
     updateStatus: () => ask<UpdateStatus>("update.status"),
     updateCheck: () => ask<UpdateStatus>("update.check"),
-    updateApply: () => ask<{ requested?: boolean; reason?: string }>("update.apply"),
+    // the owner has said yes by the time this is called (the screens ask first); the server refuses an apply without it
+    updateApply: () => ask<{ requested?: boolean; reason?: string }>("update.apply", { yes: true }),
     pushSettings: () => ask<PushSettings>("push.settings"),
     /** Change only what is given: kinds merge, quiet is replaced (null for none). */
     pushSet: (patch: { quiet?: PushSettings["quiet"]; kinds?: Record<string, boolean> }) => ask<PushSettings>("push.settings", patch as Record<string, unknown>),
@@ -23,6 +24,8 @@ export function settingsSource(call: Call) {
     /** Pause: stop every running thread (its record and notes stay). Resume: start its latest thread again. */
     agentStop: (agent: string) => ask<{ stopped: string[] }>("agents.stop", { agent }),
     agentResume: (agent: string) => ask<{ running?: boolean }>("agents.resume", { agent }),
+    /** The maker, an owner or an admin; the box refuses while a thread runs (stop it first), and for the assistant and the built-in agents. */
+    agentDelete: (agent: string) => ask<unknown>("agents.delete", { agent }),
     providers: async () => { const r = await ask<Provider[]>("providers.list"); return Array.isArray(r) ? r : []; },
     identity: () => ask<Identity>("spaces.identity.status"),
     entries: async () => (await ask<{ entries?: Entry[] }>("spaces.identity.entries")).entries ?? [],

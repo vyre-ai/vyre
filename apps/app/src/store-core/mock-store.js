@@ -18,7 +18,9 @@ import { advanceStage, approve, evidenceOf, isProof, makeStuck, move as moveTask
 import { SPACE, WHO, aliasUrn, digest, minted, parseUrn, seeded, urnOf } from "./mock-ids.js";
 import { actorValue, addr, file, money, ref } from "./mock-values.js";
 import { MATTER_STAGES, types as sampleTypes } from "./types.js";
+import { crmTypes, crmTypeSpace, seedCrm } from "./sample-crm.js";
 import { viewDefOf } from "./view-defs.js";
+import { isoDay } from "../../ui/fields/logic.js";
 import { REVEAL_MS as REVEAL, aid, signerWords, spaceOfUrn, stageFieldOf, stageNames } from "./kernel-view.js";
 
 /** @typedef {import("./contracts.js").Store} Store */
@@ -81,7 +83,7 @@ const refuse = (code, message) => Object.assign(new Error(message), { code });
 const validFormat = (cls, v) => (cls === "us-ssn" ? /^\d{3}-?\d{2}-?\d{4}$/.test(v) : true);
 
 /**
- * @param {{ world?: "morning"|"payday"|"empty", now?: () => number, me?: string }} [opts]
+ * @param {{ world?: "morning"|"payday"|"empty", now?: () => number, me?: string, crm?: boolean }} [opts]
  * @returns {Store & { kit: typeof ESTATE_KIT, world: string, transitions(): { task: string, from: string, to: string, by: string }[], snapshot(): any }}
  */
 export function createMockStore(opts = {}) {
@@ -103,6 +105,8 @@ export function createMockStore(opts = {}) {
   let nTask = 0, nRec = 0, nSeal = 0, prevHash = "genesis", seeding = true;
   /** @type {TypeDefinition[]} */
   const types = clone(sampleTypes);
+  // The made-up CRM (Organizations, Leads, Deals, Appointments), only where a build asks for it.
+  if (opts.crm) types.push(...clone(crmTypes));
   for (const t of types) for (const f of EXTRAS[t.name] || []) if (!t.fields.some(x => x.name === f.name)) /** @type {FieldDefinition[]} */ (/** @type {any} */ (t.fields)).push(f);
 
   const typeOf = (/** @type {string} */ name) => types.find(t => t.name === name);
@@ -215,7 +219,7 @@ export function createMockStore(opts = {}) {
     kit: ESTATE_KIT, world,
     async spaces() { return clone(SPACES); },
     async actors() { return clone(ACTORS); },
-    async types(space) { return clone(space ? types.filter(t => TYPE_SPACE[t.name] === space) : types); },
+    async types(space) { const where = { ...TYPE_SPACE, ...(opts.crm ? crmTypeSpace(SPACE.juniper) : {}) }; return clone(space ? types.filter(t => where[t.name] === space) : types); },
     async list(type, q = {}) {
       let rows = [...records.entries()].filter(([urn, r]) => r.type === type && (!q.space || spaceOfUrn(urn) === q.space));
       const flt = q.filter;
@@ -488,10 +492,10 @@ export function createMockStore(opts = {}) {
     m("m4", { title: "Doe trust, Marcus", client: "c3", plan: "Trust", fee: 3900, owner: WHO.chris, closing: "2026-10-09" }, "Signing");
     m("m5", { title: "Ortiz power of attorney", client: "c5", plan: "Will", fee: 800, owner: WHO.alex, closing: "2026-10-05" }, "Funding");
     const p = (/** @type {string} */ alias, /** @type {string} */ space, /** @type {any} */ v) => { const { owner, brief, ...rest } = v; put("project", space, { ...rest, owner: own(owner, space), brief: file(brief) }, alias); };
-    p("p1", H, { title: "Site rebuild", owner: WHO.kit, due: "2026-10-30", brief: "Site rebuild brief.docx" });
-    p("p2", H, { title: "Northwind Bakery bookkeeping", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
-    p("p3", M, { title: "Vyre site", owner: WHO.juno, due: "2026-11-05", brief: "Wink page outline.md" });
-    p("p4", M, { title: "Passport renewal", owner: WHO.juno, due: "2026-10-20", brief: "Renewal checklist.pdf" });
+    p("p1", H, { title: "Site rebuild", template: "tpl_ad-campaign", owner: WHO.kit, due: "2026-10-30", brief: "Site rebuild brief.docx" });
+    p("p2", H, { title: "Northwind Bakery bookkeeping", template: "tpl_estate-plan", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
+    p("p3", M, { title: "Vyre site", template: "tpl_ad-campaign", owner: WHO.juno, due: "2026-11-05", brief: "Wink page outline.md" });
+    p("p4", M, { title: "Passport renewal", template: "tpl_estate-plan", owner: WHO.juno, due: "2026-10-20", brief: "Renewal checklist.pdf" });
     put("trip", M, { title: "Lisbon in November", where: addr("", "Lisbon", "", "", "Portugal"), leaves: "2026-11-14", budget: money(2400), stage: "Booked" }, "t1");
     put("trip", M, { title: "Hike weekend", where: addr("", "Point Reyes", "CA"), leaves: "2026-10-10", budget: money(200), stage: "Dreaming" }, "t2");
 
@@ -561,6 +565,10 @@ export function createMockStore(opts = {}) {
     log({ type: "record.updated", subject: urn("p1"), actor: WHO.kit, what: "fixed the intake form label", at: today(12, 6), data: { changed: ["title"] } });
   }
   seed();
+  if (opts.crm && world !== "empty") {
+    const day = new Date(clock()); day.setHours(0, 0, 0, 0);
+    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => `${isoDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + d))}T${String(h).padStart(2, "0")}:00`);
+  }
   seeding = false;
   void MATTER_STAGES; void parseUrn;
   return store;

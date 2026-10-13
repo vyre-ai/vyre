@@ -41,6 +41,8 @@ function box(t, opts = {}) {
     VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
     // the stub box answers the check words at once or never (the sudo retry starts at the third ask): the installer waits for them up to 180 tries, about 3 minutes, otherwise
     VYRE_WORDS_TRIES: "4",
+    // the space code is asked for once, not retried for the 15 tries a real first start can need
+    VYRE_SPACE_TRIES: "1",
     // Never the machine's own units: on a host that runs a real Vyre the uninstall sees them and keeps the wrapper.
     VYRE_SYSTEMD_DIR: path.join(base, "systemd"),
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
@@ -117,6 +119,7 @@ test("install-box.sh v2: with a code the terminal ends on the plain line", t => 
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Go back to the Vyre app to finish\./);
+  assert.match(r.stdout, /Records is still setting up and can take several minutes; the app shows when it is ready\./);
 });
 
 test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
@@ -529,15 +532,43 @@ test("install-box.sh v2: IR-2 with a setup code the terminal shows the check wor
   assert.ok(!b.calls().includes("wink.server.code"), "the pairing was not even asked for");
 });
 
-test("install-box.sh v2: without a setup code the terminal asks nothing and pairs nothing: it says to use the app's line, and the start is quiet", t => {
+test("install-box.sh v2: without a setup code the terminal asks nothing and pairs nothing: it names `vyre space up` for the code, and the start is quiet", t => {
   const b = box(t, { docker: PAIRING_BOX });
   const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Open the Vyre app, choose "Add a server", and run the line it shows on this server\./);
+  assert.match(r.stdout, /Get your space code on the server: vyre space up/, "piped output names the command and does not print a code");
   for (const gone of [/Long code/, /WINKLONGCODE/, /type this code/i, /Pair this server from your Vyre app/, /wink\.server\.code/]) assert.doesNotMatch(r.stdout, gone);
   assert.ok(!b.calls().includes("wink.server.code") && !b.calls().includes("wink.server.pairing"), "the pairing was not asked for");
   assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
   assert.doesNotMatch(r.stdout, /already running|not paired yet/);
+});
+
+test("install-box.sh v2: without a setup code the last lines are the space code from `vyre space up`, then how to get it again, and nothing after", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)'; echo '  Your four words: amber lake moss pine' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_NO_UP: "0", VYRE_SPACE_CODE_PIPED: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const lines = r.stdout.split("\n").filter(l => l.trim());
+  assert.match(lines[lines.length - 1], /Get it again any time: vyre space up/);
+  assert.match(lines[lines.length - 3], /Your space code: WINK-ABCD-EFGH \(good for 10 minutes, one use\)/);
+  assert.doesNotMatch(r.stdout, /choose "Add a server", and run the line/, "the code replaces the older line");
+  assert.match(b.calls(), /vyre space up/, "it is the same command a person runs later");
+});
+
+test("install-box.sh v2: with stdout piped (cloud-init, CI, a log collector) the space code is not printed, the older line is, and `vyre space up` is never asked", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout + r.stderr, /WINK-ABCD-EFGH/);
+  assert.match(r.stdout, /Get your space code on the server: vyre space up/);
+  assert.doesNotMatch(b.calls(), /space up/, "the command is named, never run");
+});
+
+test("install-box.sh v2: with a setup code the app is driving, so no space code is made", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH' ;; *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /Your space code/);
+  assert.doesNotMatch(b.calls(), /space up/);
 });
 
 /** A server with no Docker: the get.docker.com script (a curl stub) prints a flood, and either installs a Docker stub or fails. */
@@ -605,16 +636,22 @@ test("install-box.sh v2: a root run on Ubuntu with no Docker installs it from Do
   assert.equal(fs.existsSync(calls), false, "apt was not used on a system that is not Ubuntu or Debian");
 });
 
-test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE: auto (the default) or sqlite, written once into vyre.env; anything else stops the install", t => {
+test("install-box.sh v2: Records is always on: VYRE_STORE is auto or nothing, written once into vyre.env; sqlite is refused for a person and anything else stops the install", t => {
   const b = box(t);
   let r = run({ ...b.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, "without Records is not a choice");
+  assert.match(r.stderr, /Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more\. Run the install line again without VYRE_STORE/);
+  assert.ok(!fs.existsSync(b.dir), "nothing was installed");
+  // the CI install proof alone may still use the built-in store
+  const p = box(t);
+  r = run({ ...p.env, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "without Records: the small built-in store");
+  assert.match(fs.readFileSync(path.join(p.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the proof's built-in store");
   const d = box(t);
   r = run(d.env, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(fs.readFileSync(path.join(d.dir, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m, "with Records is the default");
-  // a person's choice already in vyre.env stays when the line is run again
+  assert.match(fs.readFileSync(path.join(d.dir, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m, "Records is the default");
+  // an older install's own VYRE_STORE already in vyre.env stays when the line is run again
   const e = box(t);
   fs.mkdirSync(e.dir, { recursive: true });
   fs.writeFileSync(path.join(e.dir, "vyre.env"), "VYRE_STORE=sqlite\n", { mode: 0o600 });
@@ -624,8 +661,26 @@ test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE
   const f = box(t);
   r = run({ ...f.env, VYRE_STORE: "twenty" }, ["--yes", "--from", REPO]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /VYRE_STORE is auto \(Records\) or sqlite/);
+  assert.match(r.stderr, /VYRE_STORE is auto \(Records\), not twenty/);
   assert.ok(!fs.existsSync(f.dir), "nothing was installed");
+});
+
+test("install-box.sh v2: a server with under 4 GB of memory is turned away before anything is laid out, in the words Vyre needs; a dry run says it and changes nothing; 4 GB or more passes", t => {
+  const meminfo = (mb, avail = mb) => { const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-mem-")), "meminfo"); fs.writeFileSync(f, `MemTotal: ${mb * 1024} kB\nMemAvailable: ${avail * 1024} kB\n`); t.after(() => fs.rmSync(path.dirname(f), { recursive: true, force: true })); return f; };
+  const small = box(t);
+  let r = run({ ...small.env, VYRE_MEMINFO: meminfo(2048) }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  assert.match(r.stderr, /Use a larger server, then run this again/);
+  assert.ok(!fs.existsSync(small.dir), "nothing was laid out");
+  const dry = box(t);
+  r = run({ ...dry.env, VYRE_MEMINFO: meminfo(2048) }, ["--yes", "--dry-run", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  const ok = box(t);
+  r = run({ ...ok.env, VYRE_MEMINFO: meminfo(4096, 3000) }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!/built-in store/.test(r.stdout + r.stderr), "no without-Records path is mentioned");
 });
 
 test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {
@@ -765,10 +820,59 @@ const SEES_ENV_WRAPPER = `#!/bin/sh\nprintf '%s|%s\\n' "$VYRE_STORE" "$VYRE_CODE
 test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command's environment, and the store choice still reaches vyre.env", t => {
   const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const saw = path.join(b.base, "saw.log");
-  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_NO_UP: "0" }, ["--yes"]);
+  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1", VYRE_NO_UP: "0" }, ["--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const seen = fs.existsSync(saw) ? fs.readFileSync(saw, "utf8").trim().split("\n") : [];
   assert.ok(seen.length > 0, "the installer ran the vyre command at least once");
   assert.deepEqual([...new Set(seen)], ["|"], "no run of the vyre command inherited VYRE_STORE or VYRE_CODE");
   assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the choice the line carried is in vyre.env");
+});
+
+test("install-box.sh rc.3: a kept .env from a source-build install stops a release install in words, before anything is started, and leaves the .env alone", t => {
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  const stale = `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${b.dir}/src\n`;
+  fs.writeFileSync(path.join(b.dir, ".env"), stale, { mode: 0o600 });
+  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base), VYRE_NO_UP: "0" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /earlier install that built Vyre from source/);
+  assert.match(r.stderr, /sudo mv .*\.env .*\.env\.old/, "it names the next step");
+  assert.equal(fs.readFileSync(path.join(b.dir, ".env"), "utf8"), stale, "the person's .env is not rewritten");
+  assert.ok(!/\bup\b -d|compose .* up/.test(b.calls()), "nothing was started:\n" + b.calls());
+});
+
+test("install-box.sh rc.3: a stack that fails to start ends the install in words and a nonzero exit, with the next step", t => {
+  const b = box(t, { docker: 'case "$*" in *" up -d"*) echo "unable to prepare context: path \\"/srv/vyre/src\\" not found" >&2; exit 1 ;; esac; case "$1 $2" in "compose version") echo 2.29.1 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stderr, /unable to prepare context/, "docker's own message is kept");
+  assert.match(r.stderr, /Vyre did not start/);
+  assert.match(r.stderr, /then run: vyre up/);
+  assert.doesNotMatch(r.stdout, /Vyre is running on this server/);
+});
+
+test("vyre uninstall stops and removes every Space's record store stack (project vyre-spc-<id>-twenty) and its networks, and leaves other people's containers alone; the data follows the choice", t => {
+  const mk = () => {
+    const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "volume ls") printf '%s\\n' vyre_vyre-home vyre-spc-abc-twenty_db-data ;; "ps -a") printf '%s\\n' 's1 vyre-spc-abc-twenty' 's2 vyre-spc-abc-twenty' 's3 vyre-spc-def-twenty' 'x9 someones-app' 'v1 vyre' ;; "network ls") printf '%s\\n' vyre-spc-abc-twenty_store bridge someones_default ;; esac; exit 0` });
+    fs.mkdirSync(b.dir, { recursive: true });
+    fs.writeFileSync(path.join(b.dir, "compose.yml"), "name: vyre\n");
+    fs.mkdirSync(path.dirname(b.env.VYRE_WRAPPER), { recursive: true });
+    fs.copyFileSync(BOXVYRE, b.env.VYRE_WRAPPER);
+    return b;
+  };
+  const keep = mk();
+  const k = uninstall(keep, ["--keep-data"]);
+  assert.equal(k.status, 0, k.stderr);
+  const kc = keep.calls();
+  assert.ok(kc.includes("rm -f s1 s2 s3"), "the Spaces' containers go: " + kc);
+  assert.ok(!/rm -f .*x9|rm -f .*v1/.test(kc), "nobody else's container, and not Vyre's own project's");
+  assert.ok(kc.includes("network rm vyre-spc-abc-twenty_store"), "and the Space's network, nothing else: " + kc);
+  assert.ok(!/network rm .*(bridge|someones_default)/.test(kc));
+  assert.ok(!kc.includes("volume rm"), "the data is kept when asked to keep it");
+  const del = mk();
+  const d = uninstall(del, ["--delete-data"]);
+  assert.equal(d.status, 0, d.stderr);
+  const dc = del.calls();
+  assert.ok(dc.includes("rm -f s1 s2 s3"));
+  assert.ok(dc.indexOf("rm -f s1 s2 s3") < dc.indexOf("volume rm"), "containers first, then their volumes");
 });

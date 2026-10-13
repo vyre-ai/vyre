@@ -25,6 +25,7 @@ const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code
  *   admit: (devicePub: Buffer, hello: any) => Promise<any>,
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
+ *   onsignin?: (msg: { loc: string, s: string }) => void,
  *   oncode?: (msg: { q: string, rv: string, s: string, n: number, m: string }) => void,
  *   ontunnel?: (stream: any, visitor: { host: string, ip: string, port: number }) => void,
  *   log?: (m: string) => void, WebSocket?: any, pingMs?: number }} o
@@ -79,6 +80,11 @@ export function relayLink(o) {
   });
   /** Waiters for the relay's answer to a typed-code allocation (spec 6.5). @type {Array<(a: { rv: string, exp: number } | null) => void>} */
   let codeWaiters = [];
+  /** The names this box serves sign-in requests for. @type {Set<string>} */
+  const watched = new Set();
+  const sendWatches = () => { if (!control || !connected) return; for (const loc of watched) { try { control.send(JSON.stringify({ t: "signin.watch", loc })); } catch {} } };
+  const watchTimer = setInterval(sendWatches, 4 * 60_000);
+  watchTimer.unref?.();
   const flushRegs = () => {
     if (!control) return;
     for (const r of pendingRegs.splice(0)) { try { control.send(JSON.stringify({ t: "ticket", ...r })); } catch {} }
@@ -124,6 +130,7 @@ export function relayLink(o) {
         upSince = Date.now();
         state("connected");
         flushRegs();
+        sendWatches();
         clearInterval(pinger);
         pinger = setInterval(() => {
           if (++missed > 2) { log("relay: no answer to two pings; reconnecting"); try { ws.close(4000, "stale"); } catch {} return; }
@@ -135,6 +142,7 @@ export function relayLink(o) {
       else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
       else if (m.t === "code.allocated") { const a = m.error ? null : { rv: String(m.rv), exp: Number(m.exp) }; for (const f of codeWaiters.splice(0)) f(a); }
       else if (m.t === "code.msg") { try { o.oncode?.({ q: String(m.q), rv: String(m.rv), s: String(m.s), n: Number(m.n), m: String(m.m) }); } catch (err) { log(`relay: code handler failed: ${/** @type {Error} */ (err).message}`); } }
+      else if (m.t === "signin.ask") { try { o.onsignin?.({ loc: String(m.loc), s: String(m.s) }); } catch (err) { log(`relay: sign-in handler failed: ${/** @type {Error} */ (err).message}`); } }
       else if (m.t === "open") openData(String(m.c));
       else if (m.t === "tunnel") openTunnel(m);
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
@@ -238,6 +246,12 @@ export function relayLink(o) {
       try { control.send(JSON.stringify({ t: "revoke", loc })); } catch {}
       return a;
     },
+    /** Whether the relay this link is on answers a new device that asks to sign in by name. */
+    signins() { return relayFeatures.includes("signin"); },
+    /** Serve a name's sign-in requests (the locator is derived from the name): sent now and again after every reconnect and every few minutes, so the relay forgets a box that goes away. */
+    signinWatch(loc) { watched.add(String(loc)); if (watched.size > 4) watched.delete(watched.values().next().value); sendWatches(); },
+    /** Stop serving a name. */
+    signinUnwatch(loc) { watched.delete(String(loc)); },
     /** Whether the relay this link is on has the typed-code rendezvous. */
     codes() { return relayFeatures.includes("code"); },
     /** Ask the relay for a free typed-code rendezvous (5 minutes; this box holds at most one, a new ask replaces it).
@@ -271,7 +285,7 @@ export function relayLink(o) {
     /** @param {string} loc */
     dropSetup(loc) { standing.delete(loc); },
     stop() {
-      stopped = true;
+      stopped = true; clearInterval(watchTimer);
       clearTimeout(retry);
       clearInterval(pinger);
       for (const ws of data.values()) { try { ws.close(1000, "box stopping"); } catch {} }

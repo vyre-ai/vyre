@@ -13,7 +13,7 @@ export const PROBE = path.join(path.dirname(fileURLToPath(import.meta.url)), "co
 
 /**
  * @typedef {{ name: string, path: string, list?: boolean }} Out a thing the session must not reach (the name is what a refusal says); `list` ones may be entered, only read or listed counts
- * @param {{ account?: number | null, shared?: boolean, cwd?: string, workdirs?: string[], vyreUid: number, out: Out[], allowListen?: number[], allowAbstract?: string[], refuseListen?: boolean, signal?: AbortSignal, timeoutMs?: number, spawn?: typeof spawnAsAgent, probe?: string, socket?: string }} o
+ * @param {{ account?: number | null, shared?: boolean, projects?: string[], cwd?: string, workdirs?: string[], vyreUid: number, out: Out[], allowListen?: number[], allowAbstract?: string[], refuseListen?: boolean, signal?: AbortSignal, timeoutMs?: number, spawn?: typeof spawnAsAgent, probe?: string, socket?: string }} o
  * @returns {Promise<{ ok: boolean, failures: string[], confined_by: "uid", results: { uid: number | null, project: string[], reached: string[], listening: number[] } }>}
  */
 export async function confineSelfTest(o) {
@@ -27,7 +27,7 @@ export async function confineSelfTest(o) {
   const results = { uid: /** @type {number | null} */ (null), project: /** @type {string[]} */ ([]), reached: /** @type {string[]} */ ([]), listening: /** @type {number[]} */ ([]), udp: /** @type {number[]} */ ([]), abstract: /** @type {string[]} */ ([]) };
   /** @type {any} */ let child = null;
   try {
-    child = await spawn([o.probe || PROBE, "allow", ...dirs, "deny", ...denyPaths, "list", ...listPaths], { cwd: dirs[0], env: { PATH: "/usr/bin:/bin" }, ...(o.account != null ? { account: o.account, shared: Boolean(o.shared) } : {}), ...(o.socket ? { socket: o.socket } : {}) });
+    child = await spawn([o.probe || PROBE, "allow", ...dirs, "deny", ...denyPaths, "list", ...listPaths], { cwd: dirs[0], env: { PATH: "/usr/bin:/bin" }, ...(o.account != null ? { account: o.account, shared: Boolean(o.shared), ...(o.projects ? { projects: o.projects } : {}) } : {}), ...(o.socket ? { socket: o.socket } : {}) });
   } catch (e) { return { ok: false, failures: [...failures, `the confinement check could not start: ${String(/** @type {Error} */ (e).message || e).slice(0, 160)}`], confined_by: "uid", results }; }
   let text = "";
   child.stdout.on("data", (/** @type {any} */ d) => { text += d; });

@@ -1,6 +1,6 @@
 // The template studio's visual editor, pure (no React, no calls): every change a person makes to a template is a function from one body to the next, so the screen only binds fields to these and a test
 // can say what each one does. Nothing here talks to the box; the box checks the saved draft again (work.template.define).
-import type { Body, Stage, Task } from "./model.ts";
+import { whoWords, type Body, type Group, type Noun, type Stage, type Task } from "./model.ts";
 
 export const PAGES: [string, string][] = [["", "The usual (stages)"], ["stages", "Stages"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["timeline", "Timeline"], ["team", "Team"]];
 export const OUTPUTS: [string, string][] = [["note", "A note"], ["decision", "A yes or no"], ["file", "A file"], ["record", "A record"]];
@@ -19,6 +19,17 @@ const dropEmpty = <T extends object>(o: T): T => Object.fromEntries(Object.entri
 export const blank = (): Body => ({ name: "", stages: [{ name: "Start", tasks: [{ title: "", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] });
 
 export const setName = (b: Body, name: string): Body => ({ ...b, name });
+/** The plural of a word a person names their projects: "Matter" to "Matters", "Policy" to "Policies", "Branch" to "Branches". */
+export const pluralOf = (one: string): string => (/[^aeiou]y$/i.test(one) ? `${one.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/i.test(one) ? `${one}es` : `${one}s`);
+/** What this template's projects are called ("Matter", "Matters"). The plural follows the singular unless it was given by hand; an empty singular takes the name away. */
+export const setNoun = (b: Body, one: string, many?: string): Body => {
+  const { noun: old, ...rest } = b;
+  if (!one.trim()) return rest as Body;
+  const kept = old && old.many !== pluralOf(old.one) ? old.many : undefined; // a plural set by hand stays
+  return { ...rest, noun: { one: one.trim(), many: (many ?? kept ?? pluralOf(one.trim())).trim() } } as Body;
+};
+/** The words a screen uses for one of this template's projects; "Project" when the template does not say. */
+export const nounOf = (b: Body | null | undefined): Noun => b?.noun?.one ? b.noun : { one: "Project", many: "Projects" };
 export const setDescription = (b: Body, description: string): Body => dropEmpty({ ...b, description });
 /** The page a project of this template opens on; "" is the usual one. */
 export const setOpensOn = (b: Body, page: string): Body => { const { opens_on: _o, ...rest } = b as Body & { opens_on?: string }; return (page ? { ...rest, opens_on: page } : rest) as Body; };
@@ -31,12 +42,76 @@ export const removeStage = (b: Body, i: number): Body => tidyAutomations({ ...b,
 export const setStageOwner = (b: Body, i: number, owner: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { owner: _o, ...rest } = s; return (owner ? { ...rest, owner } : rest) as Stage; }) });
 export const setMovesOn = (b: Body, i: number, text: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { moves_on_when: _m, ...rest } = s; return (text.trim() ? { ...rest, moves_on_when: text.trim() } : rest) as Stage; }) });
 
+/** A stage's task groups, in order. */
+export const groupsOf = (s: Stage): Group[] => s.groups || [];
+/** What GroupedList hands back after an add, rename, move or delete: the stage's groups and its tasks (a rename or a delete has already moved the tasks). A task never names a group the stage does not have. */
+export function setStageGroups(b: Body, si: number, next: { groups: Group[]; items: Task[] }): Body {
+  const have = new Set(next.groups.map((g) => g.name));
+  return { ...b, stages: at(b.stages, si, (s) => {
+    const { groups: _g, tasks: _t, ...rest } = s;
+    const tasks = next.items.map((t) => { if (!t.group || have.has(t.group)) return t; const { group: _x, ...r } = t; return r as Task; });
+    return { ...rest, ...(next.groups.length ? { groups: next.groups } : {}), ...(tasks.length ? { tasks } : {}) } as Stage;
+  }) };
+}
+/** A task dropped at a place (the index it takes in the stage it lands in), in its own stage or another. A task that changes stage leaves its group behind, since groups belong to a stage. */
+export function moveTaskTo(b: Body, from: { si: number; ti: number }, to: { si: number; ti: number }): Body {
+  const task = (b.stages[from.si]?.tasks || [])[from.ti];
+  if (!task || !b.stages[to.si]) return b;
+  if (from.si === to.si && from.ti === to.ti) return b;
+  const moved: Task = from.si === to.si ? task : (({ group: _g, ...rest }) => rest as Task)(task);
+  const withTasks = (s: Stage, tasks: Task[]): Stage => { const { tasks: _t, ...rest } = s; return (tasks.length ? { ...rest, tasks } : rest) as Stage; };
+  const stages = b.stages.map((s, i) => {
+    if (i !== from.si && i !== to.si) return s;
+    let list = (s.tasks || []);
+    if (i === from.si) list = list.filter((_, n) => n !== from.ti);
+    if (i === to.si) { const at0 = Math.min(Math.max(to.ti, 0), list.length); list = [...list.slice(0, at0), moved, ...list.slice(at0)]; }
+    return withTasks(s, list);
+  });
+  return { ...b, stages };
+}
+/** A stage dropped at a place (the index it takes). */
+export function moveStageTo(b: Body, from: number, to: number): Body {
+  if (from === to || !b.stages[from]) return b;
+  const rest = b.stages.filter((_, i) => i !== from);
+  const at0 = Math.min(Math.max(to, 0), rest.length);
+  return { ...b, stages: [...rest.slice(0, at0), b.stages[from], ...rest.slice(at0)] };
+}
+export const STAGE_MODES: [string, string][] = [["ordered", "Stages in order"], ["any", "Stages in any order"], ["none", "No stages"]];
+export const stageModeOf = (b: Body): "ordered" | "any" | "none" => b.stage_mode || "ordered";
+/** How projects move; in order is the default and is not written. */
+export const setStageMode = (b: Body, mode: string): Body => { const { stage_mode: _m, ...rest } = b; return (mode === "any" || mode === "none" ? { ...rest, stage_mode: mode } : rest) as Body; };
+export const DONE_WHEN: [string, string][] = [["all", "All tasks are done"], ["needed", "The tasks marked \"needed to finish\" are done"], ["sign_off", "Someone signs it off"]];
+export const doneWhenOf = (s: Stage): "all" | "needed" | "sign_off" => s.done_when || "needed";
+/** When a stage counts as done; "needed" is the default and is not written, and leaving sign-off forgets who signed. */
+export const setDoneWhen = (b: Body, si: number, v: string): Body => ({ ...b, stages: at(b.stages, si, (s) => { const { done_when: _d, sign_off: _s, ...rest } = s; return (v === "all" || v === "sign_off" ? { ...rest, done_when: v, ...(v === "sign_off" && s.sign_off ? { sign_off: s.sign_off } : {}) } : rest) as Stage; }) });
+export const setSignOff = (b: Body, si: number, who: string): Body => ({ ...b, stages: at(b.stages, si, (s) => { const { sign_off: _s, ...rest } = s; return (who ? { ...rest, sign_off: who } : rest) as Stage; }) });
+/** The muted line under a stage: what happens when it is done. */
+export function nextLine(b: Body, si: number): string {
+  const s = b.stages[si], next = b.stages[si + 1];
+  if (!next) return "The last stage: the project ends here.";
+  if (doneWhenOf(s) === "sign_off") return `Then it waits for ${s.sign_off ? whoWords(s.sign_off) : "someone"} to sign it off, and moves to ${next.name || `stage ${si + 2}`}.`;
+  if (stageModeOf(b) !== "ordered") return "Then a person moves the project on.";
+  return `Then the project moves to ${next.name || `stage ${si + 2}`}.`;
+}
+const setOn = (b: Body, si: number, ti: number, f: (t: Task) => Task): Body => ({ ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, f) })) });
+/** Followers (who is kept in the loop on a task), each once. */
+export const addFollower = (b: Body, si: number, ti: number, who: string): Body => setOn(b, si, ti, (t) => ((t.followers || []).includes(who) ? t : { ...t, followers: [...(t.followers || []), who] }));
+export const removeFollower = (b: Body, si: number, ti: number, who: string): Body => setOn(b, si, ti, (t) => { const { followers: _f, ...rest } = t; const left = (t.followers || []).filter((x) => x !== who); return (left.length ? { ...rest, followers: left } : rest) as Task; });
+/** What the approver or the followers are told, as the person typed it (tags in it stay as written). */
+export const setNote = (b: Body, si: number, ti: number, who: "approver" | "followers", text: string): Body => setOn(b, si, ti, (t) => {
+  const { notes: _n, ...rest } = t;
+  const notes = { ...(t.notes || {}), [who]: text };
+  const kept = Object.fromEntries(Object.entries(notes).filter(([, v]) => String(v).trim() !== ""));
+  return (Object.keys(kept).length ? { ...rest, notes: kept } : rest) as Task;
+});
+export const noteOf = (t: Task, who: "approver" | "followers"): string => t.notes?.[who] || "";
 export const addTask = (b: Body, si: number): Body => ({ ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: [...(s.tasks || []), { title: "", doer: firstDoer(b), output: { kind: "note" } }] })) });
 export const setTask = (b: Body, si: number, ti: number, patch: Partial<Task> & { output_kind?: string }): Body => ({
   ...b,
   stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (t) => {
     const { output_kind, ...rest } = patch;
     const next: Task = { ...t, ...rest, ...(output_kind ? { output: { ...t.output, kind: output_kind } } : {}) };
+    if (rest.doer !== undefined && !String(rest.doer).startsWith("teammate:")) delete next.needs_yes; // a yes is asked of an assistant's work, not a person's
     return dropEmpty(next) as Task;
   }) })),
 });
@@ -60,6 +135,36 @@ export function removeRole(b: Body, role: string): Body {
 
 /** The doers a task can be given: this template's roles, then "a person" for work only a person does. */
 export const doerChoices = (b: Body): [string, string][] => [...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]), ["role:owner", "The owner"]];
+/** Who a task can be given to, in the order a person looks: this template's roles, the project's lead, the people of the Space, then its assistants. */
+export const assigneeChoices = (b: Body, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): [string, string][] => [
+  ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]),
+  ["lead", "The project lead"],
+  ...people.map((p): [string, string] => [`person:${p.id}`, p.name]),
+  ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (assistant)`]),
+];
+export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
+/** The doer in words, even when the person or assistant is not in the lists. */
+export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
+  const hit = assigneeChoices({ name: "", stages: [] }, people, agents).find(([v]) => v === d);
+  if (hit) return hit[1];
+  return d === "lead" ? "The project lead" : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (assistant)` : d;
+}
+const DAY = 86_400_000;
+/** A task's due, in whole days after the project enters the stage; "" for none. */
+export const dueDays = (t: Task & { due_offset_ms?: number }): string => (t.due_offset_ms ? String(Math.round(t.due_offset_ms / DAY)) : "");
+/** Set it from what a person typed: a number of days, or nothing/0 to take it away; anything else changes nothing. */
+export function setDueDays(b: Body, si: number, ti: number, text: string): Body {
+  const t = text.trim();
+  if (t !== "" && !/^\d{1,4}$/.test(t)) return b;
+  const n = t === "" ? 0 : Number(t);
+  return { ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (k) => { const { due_offset_ms: _d, ...rest } = k as Task & { due_offset_ms?: number }; return (n > 0 ? { ...rest, due_offset_ms: n * DAY } : rest) as Task; }) })) };
+}
+/** What waits for a person's yes before an assistant does this task (one line), or "". */
+export const approvalOf = (t: Task): string => (t.needs_yes || [])[0] || "";
+export function setApproval(b: Body, si: number, ti: number, text: string): Body {
+  const v = text.trim();
+  return { ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (k) => { const { needs_yes: _n, ...rest } = k; return (v ? { ...rest, needs_yes: [v] } : rest) as Task; }) })) };
+}
 export const firstDoer = (b: Body): string => doerChoices(b)[0][0];
 export const ownerChoices = (b: Body): [string, string][] => [["", "No one in particular"], ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`])];
 
@@ -67,6 +172,8 @@ export const ownerChoices = (b: Body): [string, string][] => [["", "No one in pa
 export function missing(b: Body): string[] {
   const out: string[] = [];
   if (!b.name.trim()) out.push("Give the template a name.");
+  if (b.noun && !b.noun.many.trim()) out.push(`Say what several ${b.noun.one.toLowerCase()} projects are called, such as "${pluralOf(b.noun.one)}".`);
+  b.stages.forEach((s) => { if (doneWhenOf(s) === "sign_off" && !s.sign_off) out.push(`Choose who signs off ${s.name || "this stage"}.`); });
   if (b.stages.length < 2) out.push("A template has at least two stages: where it starts and where it ends.");
   b.stages.forEach((s, i) => {
     if (!s.name.trim()) out.push(`Stage ${i + 1} needs a name.`);

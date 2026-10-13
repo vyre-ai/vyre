@@ -50,11 +50,12 @@ export async function listTeamInvites(d) {
 }
 const tries = triesCounter();
 /**
- * The inviter confirms the words the invitee reads to them (an admin or owner invite waits for this). The words are THIS Space's (from its record and root key, the four the join card shows): wrong, empty or another
- * Space's words are refused and nothing is confirmed. They show the invitee is looking at this Space, not who the invitee is; the expected words are never shown to the inviter.
+ * The Space's own four words are what the invitee reads out: check what the inviter typed against them, from the Space's record and root key (the four the join card shows). Wrong, empty or another Space's words
+ * are refused in words and count against the invite (five spend it). Every path that confirms an invite goes through here first: the team's wire, the home's spaces tool and the phone's approval route. They show the
+ * invitee is looking at this Space, not who the invitee is; the expected words are never shown to the inviter.
  * @param {InviteDeps & { words?: string[], resolveSpace?: typeof resolveSpace }} d @param {string} id @param {string} words @param {string} name the Space's label, to read its record
  */
-export async function confirmTeamInvite(d, id, words, name) {
+export async function checkInviteWords(d, id, words, name) {
   if (tries.spent(String(id))) throw refuse("too_many_tries", TOO_MANY);
   const label = String(name || "").replace(/\.vyre\.run$/, "");
   const space = await (d.resolveSpace || resolveSpace)({ fetch: d.fetch, base: d.base, ...(d.now ? { now: d.now } : {}) }, label, null);
@@ -62,8 +63,17 @@ export async function confirmTeamInvite(d, id, words, name) {
   const expected = rootPublic ? fingerprintWords(d.words, spaceFingerprint(space.id, rootPublic)) : null;
   if (!expected) throw refuse("unavailable", "This Space's words cannot be checked from here yet. Try again in a minute.");
   if (!sameWords(words, expected)) { tries.miss(String(id)); throw refuse("words_mismatch", WORDS_REFUSED); }
+}
+/** The invite was confirmed: its wrong-try count is cleared. @param {string} id */
+export const inviteConfirmed = (id) => tries.clear(String(id));
+/**
+ * The inviter confirms the words the invitee reads to them (an admin or owner invite waits for this), on the team's own wire, after the words check out.
+ * @param {InviteDeps & { words?: string[], resolveSpace?: typeof resolveSpace }} d @param {string} id @param {string} words @param {string} name
+ */
+export async function confirmTeamInvite(d, id, words, name) {
+  await checkInviteWords(d, id, words, name);
   const done = await d.wire.call("grants.invites.confirm", [String(id), { words: String(words) }]);
-  tries.clear(String(id));
+  inviteConfirmed(id);
   return done;
 }
 /** Cancel an invite so its link stops working. @param {InviteDeps} d @param {string} id */

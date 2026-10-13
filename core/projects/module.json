@@ -122,6 +122,12 @@
         "reach": "modules"
       },
       {
+        "name": "projects.sync",
+        "summary": "hand every project's folders under /work to the project's own group on a team server, once (the owner, on a quiet box)",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "projects.adopt",
         "summary": "learn of a Project record: a local row and a home folder (the work module only)",
         "reach": "modules",
@@ -138,6 +144,36 @@
         "summary": "the Project record's address for a short name (the agents module only)",
         "reach": "modules",
         "effect": "read"
+      },
+      {
+        "name": "projects.docs.get",
+        "reach": "person",
+        "effect": "read",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.docs.set",
+        "reach": "person",
+        "effect": "write",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.list",
+        "reach": "person",
+        "effect": "read",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.add",
+        "reach": "person",
+        "effect": "write",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.remove",
+        "reach": "person",
+        "effect": "write",
+        "projectArg": "project"
       }
     ]
   },

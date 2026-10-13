@@ -123,8 +123,7 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 .stage-in { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; }
 .stage-row { position: relative; width: min(100%, 880px); }
 .stage-row .lumen { width: 100%; }
-.stage-row .phone { position: absolute; right: -4%; bottom: -36px; width: min(30%, 236px); z-index: 3; }
-@media (max-width: 760px) { .stage-row .phone { position: relative; right: auto; bottom: auto; width: 62%; margin: -28px 0 0 auto; } }
+.stage-row .phone { position: relative; width: min(62%, 260px); margin: 0 auto; z-index: 3; }
 
 /* Product windows built in markup. Everything here is sample data. */
 .win { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; text-align: left; }

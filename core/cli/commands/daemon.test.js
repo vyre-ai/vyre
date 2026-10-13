@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { memoryLine } from "./daemon.js";
+import { memoryLine, downLine } from "./daemon.js";
 import { tempHome } from "../../../test/helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
@@ -104,4 +104,16 @@ test("vyre status does not wait for search or memory: slow ones print 'starting'
   assert.match(r.stdout, /search index: starting/);
   assert.match(r.stdout, /memory: starting/);
   assert.match(r.stdout, /3 modules running/);
+});
+
+test("vyre status: a vyred that did not answer in time is busy, not \"not running\"; only a refused connection says to start it", () => {
+  const busy = downLine({ code: "timeout" });
+  assert.match(busy, /busy/);
+  assert.match(busy, /try again in a minute/);
+  assert.doesNotMatch(busy, /not running|vyre up/);
+  for (const e of [{ code: "unreachable" }, undefined, null]) {
+    const l = downLine(/** @type {any} */ (e));
+    assert.match(l, /not running/);
+    assert.match(l, /vyre up/);
+  }
 });

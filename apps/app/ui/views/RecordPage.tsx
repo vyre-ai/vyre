@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Card, Divider } from "../components/Card";
+import { GroupedList } from "../components/GroupedList";
+import { RelatedSection } from "../records/RelatedSection";
+import { groupRelated, viaOf } from "../records/logic.js";
 import { Row } from "../components/Row";
 import { Chip } from "../components/Chip";
 import { Banner } from "../components/Banner";
@@ -33,7 +36,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -124,7 +127,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
               {shown}
               <View className="flex-row flex-wrap items-center gap-s2">
                 <Button size="sm" kind="ghost" icon="key" label={isEmpty(val(rec, f.name)) ? "Fill" : "Replace"} onPress={() => { setEditing(f.name); setDraft(undefined); }} />
-                <Text size="caption" tone="label">Hidden from AI; your assistant sees a placeholder</Text>
+                <Text size="caption" tone="label">Hidden from AI; your agent sees a placeholder</Text>
               </View>
             </View>
           ) : shown}
@@ -139,11 +142,14 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
   const main = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
       {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
+      {def.groups?.length ? (
+        <GroupedList groups={def.groups} items={filled} itemNoun="fields" renderItems={(items) => <Card flush>{items.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}</Card>} />
+      ) : null}
       <Card flush>
-        {filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
+        {def.groups?.length ? null : filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
         {empty.length ? (
           <View>
-            {filled.length ? <Divider /> : null}
+            {filled.length && !def.groups?.length ? <Divider /> : null}
             <Pressable accessibilityRole="button" accessibilityState={{ expanded: showEmpty }} onPress={() => setShowEmpty(!showEmpty)} className="min-h-control flex-row items-center justify-between px-s4 py-s3">
               <Text tone="label">{`${empty.length} empty ${empty.length === 1 ? "field" : "fields"}`}</Text>
               <Icon name={showEmpty ? "chevron-up" : "chevron-down"} size={16} tone="label" />
@@ -163,14 +169,10 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
   );
   const side = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-1")}>
-      <Card title="Linked records" flush>
-        {related.length ? related.map((l, i) => (
-          <View key={l.urn}>
-            {i > 0 ? <Divider /> : null}
-            <Row lead={<Avatar of={{ kind: l.type === "contact" ? "person" : "project", id: l.urn, name: l.title }} />} title={l.title} sub={l.type[0].toUpperCase() + l.type.slice(1)} onPress={() => onOpen(l.urn)} />
-          </View>
-        )) : <View className="px-s4 pb-s4"><Text tone="label">Nothing linked.</Text></View>}
-      </Card>
+      {related.length ? groupRelated(related, Object.fromEntries(world.types.map((t: any) => [t.name, { label: t.label, plural: viewDefOf(t).plural }]))).map((g) => (
+        <RelatedSection key={g.type} title={g.plural} noun={g.label.toLowerCase()} rows={g.rows.map((l) => ({ id: l.urn, title: l.title, sub: g.label }))} onOpen={onOpen}
+          {...(onNew && viaOf(world.types, g.type, def.name) ? { onAdd: () => onNew(g.type, viaOf(world.types, g.type, def.name) as string) } : {})} />
+      )) : <Card title="Linked records"><Text tone="label">Nothing linked.</Text></Card>}
       <Card title="Files" flush>
         {files.length ? files.map((x: any, i: number) => (
           <View key={x.field}>
@@ -186,13 +188,13 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
     <View className="gap-s4">
       {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => change(sf, s)} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
-        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your assistant sees"]]} />
+        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} />
         <View className="flex-1" />
         {ai ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
       </View>
       {ai ? (
         <Banner tone="warn">
-          <Text strong>This is what an assistant sees.</Text>
+          <Text strong>This is what an agent sees.</Text>
           <Text size="caption" tone="muted">{assistantNote(sealedNow)}</Text>
         </Banner>
       ) : null}

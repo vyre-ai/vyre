@@ -2,15 +2,17 @@
 // in this screen's state only); Seeing is agents.list; Privacy lists the sealed fields from records.types; About reads the running version from update.status.
 // The sample's PIN switch, defaults and retention have no tool on the box, so they are not here.
 import { useCallback, useEffect, useState } from "react";
+import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { Linking, View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
+import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
 import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
 import { useUpdate } from "../../src/state/update";
-import { aboutButton, aboutLine, appliedLine } from "./update-model.js";
+import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
@@ -39,6 +41,7 @@ export function RealAccount() {
               {ways.length ? ways.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={e.self ? <Chip tone="ok">This device</Chip> : removable(e) ? <Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} /> : undefined} /></View>) : <EmptyState title="No devices on your list" body="Pair a device and it appears here." />}
             </Card>
           </Group>
+          <GithubCard />
           <Group title="Recovery">
             <Card className="gap-s3">
               <Text strong>Recovery code</Text>
@@ -103,20 +106,26 @@ export function RealPrivacy() {
 
 /** About: the version the box is running, and the open-source credits. */
 export function RealAbout() {
-  const { status, busy, check, apply } = useUpdate();
+  const { status, busy, asking, ask, cancel, check, apply } = useUpdate();
   const v = status ? status.current : null;
   const button = aboutButton(status);
   const run = () => {
     if (!button) return;
-    const job = button.action === "apply" ? apply().then((r) => showToast(appliedLine(r))) : check().then(() => undefined);
-    job.catch((e) => showToast(say(e)));
+    if (button.action === "apply") { ask(); return; }
+    check().catch((e) => showToast(say(e)));
+  };
+  const yes = () => {
+    apply().then((r) => showToast(appliedLine(r))).catch((e) => showToast(say(e)));
   };
   return (
     <Page title="About Vyre" sub={v ? `Version ${v}.` : undefined} back="/u/settings">
       {status ? (
         <Card className="gap-s2">
+          <ServerLine />
           <Text tone="muted">{aboutLine(status)}</Text>
-          {button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
+          {asking && status.available ? <Text>{askLine(status)}</Text> : null}
+          {asking && status.available ? <View className="flex-row gap-s2"><Button label={busy ? "Working" : "Yes, update"} disabled={busy} onPress={yes} /><Button label="Not now" disabled={busy} onPress={cancel} /></View>
+            : button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
         </Card>
       ) : null}
       <Group title="Open-source credits">

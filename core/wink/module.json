@@ -357,6 +357,7 @@
       "wink.pair-waiting",
       "wink.pair-done",
       "wink.pair-asked",
+      "wink.signin-asked",
       "wink.pair-confirm",
       "wink.pair-answered",
       "wink.enrol-asked",
@@ -377,6 +378,9 @@
     ],
     "on": [
       "relay.code-asked",
+      "relay.signin-asked",
+      "relay.connected",
+      "name.claimed",
       "relay.invite-redeemed",
       "device.paired",
       "device.removed"

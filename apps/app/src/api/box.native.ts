@@ -20,6 +20,9 @@ import { connection } from "../state/connection";
 import { relayBase, type Pairing } from "./pairing";
 import { about, directFetch, loadPairing, relayCrypto, relayKeyStore, visibility } from "./relay";
 import { makeBox } from "./wire";
+import { peerCall, peerWanted } from "../real/peer";
+import { peerInput } from "../real/peer-input.js";
+import { multiServers, primeServers } from "../real/space-servers";
 
 let base = "";
 let paths: string[] | undefined;
@@ -123,9 +126,17 @@ const b = makeBox(async () => {
       };
     },
   };
+}, {
+  // Paired to more than one server, every call goes over the peer wire and is routed by its Space, chat or approval (a direct call would reach only the active server). With one server nothing changes.
+  wanted: () => peerWanted() && multiServers(),
+  call: (tool, input, o) => peerCall(tool, peerInput(input, o)),
 });
 
-export const { connect, listen, call, send, prove, disconnect, socket } = b;
+/** The pairings are read before the first call, so the rule above knows whether there are several. */
+const primed = primeServers();
+export const { connect, listen, prove, disconnect, socket } = b;
+export const call: typeof b.call = async (...a) => { await primed; return b.call(...a); };
+export const send: typeof b.send = async (...a) => { await primed; return b.send(...a); };
 
 /** The phone proves presence with its biometric key inside call(); it has no route of its own to post. */
 export async function post(_path: string, _input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {

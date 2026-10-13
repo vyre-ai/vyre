@@ -3,7 +3,7 @@
 // member's assistant or a named agent of theirs) is refused, whatever the tool and whatever presence says. The owner is read from the kernel, never from the input.
 //
 // THE RULE (team lead's, final):
-//  1. Nobody to keep out: when the Space's kernel has no member but the owner (asked of the kernel on every call, nothing cached; every non-owner person with any role counts, and doubt or an error answers "others exist"), the gate passes. A single-person install is untouched.
+//  1. Nobody to keep out: when the Space's kernel has no member but the owner (asked of the kernel on every call, nothing cached; every non-owner person with any role counts, and doubt or an error answers "others exist"), the gate passes for a caller with a claim, the owner's own socket and a module; a claimless device, browser, tailnet, deck or phone caller still falls to rule 3. A single-person install is untouched.
 //  2. A CLAIM is a session token or the daemon's proven kernelFacts. A claim must prove: the chain readable, at least one person hop, every person hop the owner. Otherwise refused.
 //     (The unclaimed pass for those labels rests on the main socket being reachable only by the daemon's own Linux user: chmod 0600, core/daemon/index.js. A session under another user cannot open it.)
 //  3. A call that claims nothing passes only for the owner's local socket labels (cli, local, capsule, mcp, harness: a socket only the owner's Linux user can open) and for module:/ext: callers. Every other
@@ -17,11 +17,13 @@
 //  5. Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module); a tool added later is refused for members unless its name is in MEMBER_ALLOWED; and a
 //     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
+import { ME_TOOLS } from "./tools/me.js";
+
 /**
- * The vault tool names a non-owner person may call. Empty: a member reaches nothing of the owner's vault. A name is added here deliberately, one at a time (a member's own key tools do that when they land).
+ * The vault tool names a non-owner person may call. Only vault.me.* (tools/me.js): a member's own vault, whose tools take the person from the kernel chain and refuse the owner and anyone but one member. A member reaches nothing of the owner's vault. A name is added here deliberately, one at a time.
  * @type {Set<string>}
  */
-export const MEMBER_ALLOWED = new Set([]);
+export const MEMBER_ALLOWED = new Set(ME_TOOLS);
 
 /** The names of the tools that were registered through the gate (so a test can tell one that slipped past). */
 export const GATED = new Set();
@@ -39,6 +41,9 @@ async function ids(k, meta) {
   const c = await k.chain(meta || {});
   return (c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id));
 }
+
+/** The labels only a remote listener sets (core/daemon/index.js FORBIDDEN_LABEL keeps a socket client from claiming them): a claimless one is a stranger even in a home with no other member. */
+const REMOTE_LABEL = /^(?:device|web|setup|space|invitee|tailnet-guest):/;
 
 /** The callers that carry no person by their own kind: a module's call, and an outside agent holding a pass the owner made (vault.mcp.*). */
 const NO_PERSON = (/** @type {string} */ caller) => caller.startsWith("module:") || /^ext:/.test(caller);
@@ -58,13 +63,16 @@ export function gateTools(ctx) {
     const k = ctx.kernel;
     if (!k || typeof k.chain !== "function") { if (kernelRuns) throw refuse(); return; }
     // 1. nobody to keep out: asked every call, never remembered across a join. Unknown (the handle cannot say, or it throws) means there may be someone, so the rule applies.
+    const caller = String((meta && meta.caller) || "");
+    const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (typeof k.hasOtherMembers === "function") {
       let others = true;
       try { others = (await k.hasOtherMembers()) === true; } catch { others = true; }
-      if (!others) return;
+      // Alone, there is no member to keep out, but a caller that a REMOTE listener named and that claims nothing (a device, a browser, a setup page, a visiting person, an invitee, a tailnet guest) is a stranger to the
+      // vault all the same: it falls to rule 3. Every other label arrives on the owner's own 0600 socket or from the tailnet's verified owner (who carries the daemon's facts), so it passes as before; a caller with a
+      // claim cannot be a member of a home with none.
+      if (!others && (claims || !REMOTE_LABEL.test(caller))) return;
     }
-    const caller = String((meta && meta.caller) || "");
-    const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (!claims) {
       if (NO_PERSON(caller) || SOCKET_LABEL.test(caller)) return;
       throw refuse();

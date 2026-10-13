@@ -55,6 +55,9 @@ export const GRANT_ACTIONS = Object.freeze([
   // projects module's own access table: one permission system, the kernel's.
   { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
+  // Sharing one agent (Can use, Can edit): a person's own grant on that agent, made by the agents module through its mint handle (core/agents/config.js). Authorize is the one place access is decided.
+  { action: "agents.use", resource_type: "agent", risk: "write", label: "use an agent", gloss: "Chat with an agent someone shared, pick it in a flow, see where it is used (Can use)." },
+  { action: "agents.edit", resource_type: "agent", risk: "write", label: "change an agent", gloss: "Change an agent someone shared: its instructions, context, models and links (Can edit). The person who made it always may." },
   { action: "flows.act-standing", resource_type: "flow-act", risk: "write", label: "send as a turned-on Flow", gloss: "What a Flow the person turned on may send by itself, within the limits they approved. Only a Flow run asks for it." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
@@ -325,6 +328,7 @@ export function createGrantsStore(cfg) {
     return { op: role === "owner" ? "add" : "remove", person, by, role_was: was, role_is: role, space: cfg.space, ...(decision ? { decision: decision.decision || decision } : {}) };
   };
 
+  const checkCustom = (/** @type {string} */ role, /** @type {any} */ cu) => { const badGrant = (/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS.member.includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || (x.resource.fields !== undefined && !(Array.isArray(x.resource.fields) && x.resource.fields.every((/** @type {any} */ f) => typeof f === "string" && f))) || (x.resource.where !== undefined && !(Array.isArray(x.resource.where) && x.resource.where.every((/** @type {any} */ w) => w && ["project", "created_by", "owner", "sensitivity"].includes(w.attr) && ["eq", "ne", "in"].includes(w.op) && w.value !== undefined))) || Object.keys(x.conditions || {}).some(k => k !== "when") || (x.conditions?.when !== undefined && !(Number.isFinite(x.conditions.when.expires) && x.conditions.when.expires > clock() && Object.keys(x.conditions.when).length === 1)); if (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || role !== "member" || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some(badGrant)) throw new KernelError("not_allowed", "a custom role starts from Member and holds only what Member holds, inside this Space") };
   /** Apply a role to a person (the shared step of `setRole` and an accepted invite): checks the issuer's CURRENT authority over both roles, replaces the role's grants, records the membership. */
   async function applyRole(/** @type {any} */ chain, /** @type {any} */ issuer, /** @type {any} */ m, /** @type {any} */ decision) {
     const d = { decision };
@@ -333,6 +337,7 @@ export function createGrantsStore(cfg) {
     const prior = memberships.get(m.person);
     if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
     if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
+    const cu = m.custom; if (cu) checkCustom(m.role, cu);
     const actor = { kind: "person", id: m.person, space: cfg.space };
     // The last owner stays: the Space is never left without one.
     if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
@@ -340,7 +345,7 @@ export function createGrantsStore(cfg) {
       const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "role changed" }); grants.set(n.id, n);
       await note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "role changed" }, d.decision);
     }
-    const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
+    const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(cu ? { custom: cu.id } : {}), ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
     memberships.set(m.person, membership);
     // An owner change is also a fact for the Space's identity chain: the spaces module reads `owner_change` and appends the owner op, signed by the owner's devices.
     const ownerChange = ownerOp(prior, m.role, m.person, issuer.id, d.decision);
@@ -350,8 +355,8 @@ export function createGrantsStore(cfg) {
     const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
     const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
     const made = [];
-    for (const prefix of prefixes) {
-      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...ROLE_ACTIONS[/** @type {"owner"} */ (m.role)]], action_set_version: version, resource: { prefix }, conditions: { delegate: deleg, ...(m.role === "temp" ? { when: { expires: m.expires } } : {}) }, issuer: { ...issuer }, source: `role:${m.role}`, status: "active", created_at: clock() });
+    for (const sp of cu ? JSON.parse(JSON.stringify(cu.grants).replaceAll("person:$me", `person:${m.person}`)) : prefixes.map(prefix => ({ actions: ROLE_ACTIONS[/** @type {"owner"} */ (m.role)], resource: { prefix }, conditions: m.role === "temp" ? { when: { expires: m.expires } } : {} }))) {
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...sp.actions], action_set_version: version, resource: sp.resource, conditions: { delegate: deleg, ...(sp.conditions || {}) }, issuer: { ...issuer }, source: `role:${cu ? cu.id : m.role}`, status: "active", created_at: clock() });
       grants.set(g.id, g); made.push(g);
       await note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
     }
@@ -492,7 +497,7 @@ export function createGrantsStore(cfg) {
       const sees = inv && ((memberOk(me) && (sameActor(inv.issuer, me) || (bound && await bound.allowed(chain, "grants.list", urn("invite", id))))) || (!inv.invitee || inv.invitee === me.id));
       if (!inv || !sees) throw new KernelError("not_found", "no such invite");
       const status = inv.status === "pending" && !(inv.valid_until > clock()) ? "expired" : inv.status;
-      return freeze({ id: inv.id, role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
+      return freeze({ id: inv.id, role: inv.role, ...(inv.custom ? { custom: inv.custom.id } : {}), ...(inv.seats ? { seats: inv.seats } : {}), scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
     },
 
     /**
@@ -721,13 +726,15 @@ export function createGrantsStore(cfg) {
     async inviteCreate(chain, i, o = {}) {
       const issuer = person(chain);
       if (!i || !ROLE_IDS.includes(i.role)) throw new KernelError("bad_input", "an invite names one of the five roles");
+      if (i.custom) checkCustom(i.role, i.custom);
+      if (i.seats !== undefined && !(Array.isArray(i.seats) && i.seats.length <= 64 && i.seats.every((/** @type {any} */ x) => x && typeof x.project === "string" && x.project && x.project.length <= 120 && (x.level === undefined || ["lead", "contributor", "viewer"].includes(x.level))))) throw new KernelError("bad_input", "seats is a list of up to 64 { project, level: lead, contributor or viewer }");
       if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
       if (i.invitee !== undefined && (typeof i.invitee !== "string" || !i.invitee)) throw new KernelError("bad_input", "invitee is a person id");
       const d = await gate(chain, "grants.invite", urn("invite"), i, o.presence);
       const mine = roleOf(issuer);
       if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(i.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot invite someone as ${i.role}`);
       const contents = { role: i.role, scope: i.scope || null, expires: i.expires ?? null, invitee: i.invitee ?? null };
-      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
+      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, ...(i.custom ? { custom: structuredClone(i.custom) } : {}), ...(i.seats?.length ? { seats: i.seats.map((/** @type {any} */ x) => ({ project: x.project, level: x.level || "contributor" })) } : {}), hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
       invites.set(rec.id, rec);
       await note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
       return rec;
@@ -759,7 +766,7 @@ export function createGrantsStore(cfg) {
       const mine = roleOf(me), all = mine === "owner" || mine === "admin" || mine === "manager";
       return [...invites.values()].filter(v => all || sameActor(v.issuer, me)).map(v => {
         const status = v.status === "pending" && !(v.valid_until > clock()) ? "expired" : v.status;
-        return freeze({ id: v.id, role: v.role, scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
+        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), ...(v.seats ? { seats: v.seats } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
       });
     },
     /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */
@@ -794,8 +801,8 @@ export function createGrantsStore(cfg) {
       // Single use: taken before the membership is applied, so a second accept (concurrent or later) finds it used.
       invites.set(id, freeze({ ...inv, status: "used", used_by: me.id, used_at: clock() }));
       try {
-        const r = await applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
-        await note(chain, "invite.used", urn("invite", id), { id, by: me.id });
+        const r = await applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.custom ? { custom: inv.custom } : {}), ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
+        await note(chain, "invite.used", urn("invite", id), { id, by: me.id, ...(inv.seats ? { seats: inv.seats, issuer: inv.issuer.id } : {}) });
         return r;
       } catch (e) { invites.set(id, inv); throw e; }
     },

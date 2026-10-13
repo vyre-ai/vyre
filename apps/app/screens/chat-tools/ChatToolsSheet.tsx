@@ -162,7 +162,7 @@ function MentionPage({ onPick }: { onPick: (m: Mention) => void }) {
   );
 }
 
-function TasksPage({ thread }: { thread: string }) {
+export function TasksPage({ thread }: { thread: string }) {
   const { data, err, load } = useRead<Task[]>(() => chatTools.tasks(thread), [thread]);
   const [problem, setProblem] = useState("");
   if (err) return <Banner tone="warn">{err}</Banner>;
@@ -181,7 +181,7 @@ function TasksPage({ thread }: { thread: string }) {
   );
 }
 
-function ContextPage({ thread, project, cwd }: { thread: string; project?: string | null; cwd?: string | null }) {
+export function ContextPage({ thread, project, cwd }: { thread: string; project?: string | null; cwd?: string | null }) {
   const { data, err } = useRead(() => chatTools.context(thread, project, cwd), [thread, project, cwd]);
   if (err) return <Banner tone="warn">{err}</Banner>;
   if (!data) return <LoadingState rows={3} />;
@@ -190,7 +190,7 @@ function ContextPage({ thread, project, cwd }: { thread: string; project?: strin
   return <View>{lines.map((l, i) => <View key={l.label}>{i ? <Divider /> : null}<Row dense title={l.label} sub={l.value} /></View>)}</View>;
 }
 
-function TranscriptPage({ thread }: { thread: string }) {
+export function TranscriptPage({ thread }: { thread: string }) {
   const { data, err } = useRead<Line[]>(() => chatTools.transcript(thread), [thread]);
   if (err) return <Banner tone="warn">{err}</Banner>;
   if (!data) return <LoadingState rows={4} />;
@@ -199,7 +199,7 @@ function TranscriptPage({ thread }: { thread: string }) {
   return <View>{data.map((l, i) => <View key={i}>{i ? <Divider /> : null}<Row dense title={l.text} sub={who(l.who)} /></View>)}</View>;
 }
 
-function BackPage({ project, session }: { project: string; session: string }) {
+export function BackPage({ project, session }: { project: string; session: string }) {
   const { data, err, load } = useRead(() => chatTools.history(project, session), [project, session]);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);

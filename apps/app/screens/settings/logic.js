@@ -47,7 +47,7 @@ export const PRIVACY_ROWS = [
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
-const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
+const ADMIN_ROWS = ["/u/settings/roles", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
 
@@ -70,6 +70,7 @@ function all(/** @type {string} */ space) {
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "spark"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
+      ["Your AI keys", "Name a key for each AI that acts as you", "/u/settings/mcp", "terminal"],
       ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "agents"],
       ["Spending limits", "A daily cap per provider", "/u/settings/spend", "budget"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
@@ -78,12 +79,14 @@ function all(/** @type {string} */ space) {
     ] },
     { title: "Devices", rows: [
       ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
+      ["Servers", "Your servers and the Space on each", "/u/settings/servers", "server"],
       ["Backups", "Which Spaces are backed up", "/u/settings/backups", "storage"],
       ["Access", "People, assistants, Kits and Flows", "/u/access", "access"],
     ] },
     { title: space, rows: [
       ["Customize", "Types, fields, stages", "/u/settings/customize", "records"],
       ["Spaces and members", "Who is in them", "/u/spaces", "space"],
+      ["Roles", "What each person can do, see and use", "/u/settings/roles", "users"],
       ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "hand"],
       ["Privacy and sealing", "Admins only", "/u/settings/privacy", "sealed"],
       ["Kits", "Installed and available", "/u/kits", "kits"],

@@ -58,7 +58,7 @@ export function tableFromRecords(def, rows, o = {}) {
   const columns = [{ id: "_title", title: def.label, sortLabel: titleField ? titleField.label : def.label, kind: "title", role: "title", sort: true, initials: Boolean(vd.initials) }];
   for (const f of cols) {
     const k = normalizeKind(f.kind);
-    columns.push({ id: f.name, title: f.label, kind: k, role: f === money ? "end" : !sealedOn(f, undefined) && LINE_KINDS.includes(k) ? "line" : "col", sort: !sealedOn(f, undefined), ...((k === "choice" || k === "stage") ? { filter: true, options: optionsOf(f) } : {}), f: defOf(f) });
+    columns.push({ id: f.name, title: f.label, kind: k, role: f === money ? "end" : !sealedOn(f, undefined) && LINE_KINDS.includes(k) ? "line" : "col", sort: !sealedOn(f, undefined), ...((k === "choice" || k === "stage") ? { options: optionsOf(f) } : {}), f: defOf(f) });
   }
   // The phone row's date, and a field the view sorts by that is not a column, are carried as columns a wide table does not show.
   if (dateField && !columns.some(c => c.id === dateField.name)) columns.push({ id: dateField.name, title: dateField.label, kind: normalizeKind(dateField.kind), role: "endDate", f: defOf(dateField) });

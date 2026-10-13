@@ -62,3 +62,21 @@ test("the inviter's confirmation checks the Space's own four words: right words 
   await assert.rejects(() => confirmTeamInvite(d, "inv_2", right, "harlow"), (e) => e.code === "too_many_tries");
   assert.equal(sent.length, 1);
 });
+
+test("the shipped invite screen checks the Space's words before EVERY confirm path (the team wire, the home's spaces tool, the phone's approval), and a wrong word is refused with nothing sent", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../../screens/devices/RealInvite.tsx", import.meta.url), "utf8");
+  const at = (/** @type {string} */ s) => { const i = src.indexOf(s); assert.ok(i >= 0, `missing: ${s}`); return i; };
+  assert.ok(at("checkInviteWordsFor(card.id, made.id, words.trim(), card.name)") < at("confirmTeamInviteWords(card.id"), "the check comes before the team wire");
+  assert.ok(at("checkInviteWordsFor(card.id") < at('tool("spaces.invites.confirm"'), "and before the home's tool (whose presence refusal the phone route answers)");
+  assert.equal((src.match(/spaces\.invites\.confirm/g) || []).length, 2, "the screen has no other confirm call (one in the comment, one in the call)");
+  const { checkInviteWords } = await import("./team-invite.js");
+  const { fingerprintWords, spaceFingerprint } = await import("./join-team.js");
+  const letters = "abcdefghij";
+  const words = Array.from({ length: 2048 }, (_, i) => "w" + String(i).padStart(4, "0").replace(/\d/g, (c) => letters[Number(c)]));
+  const space = { id: "spc_aaaaaaaaaaaa", payload: { rootPublic: "ROOTKEY" } };
+  const right = /** @type {string} */ (fingerprintWords(words, spaceFingerprint(space.id, "ROOTKEY")));
+  const d = /** @type {any} */ ({ fetch: async () => ({}), base: "http://x", wire: { call: async () => { throw new Error("nothing may be sent"); } }, words, resolveSpace: async () => space });
+  await assert.rejects(() => checkInviteWords(d, "inv_9", "apple apple apple apple", "harlow"), (e) => e.code === "words_mismatch");
+  await checkInviteWords(d, "inv_9", right, "harlow");
+});

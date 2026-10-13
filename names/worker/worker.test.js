@@ -208,6 +208,7 @@ test("request checks: a foreign Origin, cross-site, content type, size, methods,
   assert.equal((await worker.fetch(new Request(BASE + "/v1/names/point", { method: "PUT" }), w.env)).status, 405);
   assert.equal((await worker.fetch(new Request(BASE + "/nope"), w.env)).status, 404);
   assert.equal((await worker.fetch(new Request(BASE + "/health"), w.env)).status, 200);
+  assert.deepEqual((await (await worker.fetch(new Request(BASE + "/health"), w.env)).json()).chain, { relayKey: true }, "the directory says it knows the relay's key");
   // no cookies, in or out; no CORS; no caching; JSON only
   const res = await a.get("/v1/names/mine", { headers: { cookie: "session=abc" } });
   for (const h of ["set-cookie", "access-control-allow-origin", "access-control-allow-credentials"]) assert.equal(res.headers.get(h), null, h);

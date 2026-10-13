@@ -17,8 +17,9 @@ import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
+import { useVyreFiles } from "./useVyreFiles";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
-import { ChatRow, SkeletonThread } from "./ChatRows";
+import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
 import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
 import { groupToolRuns } from "./tool-runs.js";
 import type { BlockCtx } from "./Blocks";
@@ -26,13 +27,15 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
-import { AboutSheet, type AboutInfo } from "./AboutSheet";
+import { type AboutInfo } from "./AboutSheet";
+import { ChatPanel, type PanelPage } from "./ChatPanel";
+import { useChatProject } from "./useChatProject";
+import { chatPrefs, useChatPrefs } from "../state/chat-prefs";
 import { SelectionAsk } from "./SelectionAsk";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
-import { ChatToolsSheet } from "../../screens/chat-tools";
 import { LinkSuggestion } from "../../screens/chat-tools/LinkSuggestion";
 import { FilesPane } from "../../screens/chat-tools/FilesPane";
 import { readDraft, writeDraft } from "./drafts";
@@ -122,6 +125,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
+  const vyre = useVyreFiles(att.add, att.addReady);
   useAttachDrop(att.add);
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
@@ -129,8 +133,10 @@ export function ChatScreen(p: ChatScreenProps) {
   const [note, setNote] = useState<string | null>(null);
   // A key in the message is on its way into the Vault: the label of the one being secured now.
   const [securing, setSecuring] = useState<string | null>(null);
-  const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
+  const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
+  const toolsOpen = panel !== null;
+  const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
   const [filesOpen, setFilesOpen] = useState(false);
   // the person's latest message, for "Link this chat to Northwind?"
@@ -145,8 +151,11 @@ export function ChatScreen(p: ChatScreenProps) {
     tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
     return () => { live = false; };
   }, [toolsOpen, p.sessionId, here.thread]);
-  const [muted, setMuted] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const prefs = useChatPrefs();
+  const muted = prefs.muted.includes(p.sessionId);
+  const pinned = prefs.pinned.includes(p.sessionId);
+  const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
+  const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
   const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
   // Tapping a quote goes to the original and lights it up for a moment.
@@ -182,12 +191,14 @@ export function ChatScreen(p: ChatScreenProps) {
   const chatId = here.thread ?? p.sessionId;
   // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
   // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.
-  const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p });
-  keyRef.current = { findOpen, busy: meta.busy, rows, store, actions, p };
+  const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null });
+  keyRef.current = { findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null };
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const onKey = (e: KeyboardEvent) => {
       const k = keyRef.current;
+      // The chat panel owns the keyboard while it is open (Esc goes back or closes it; it must not stop the running turn).
+      if (k.panel) return;
       const el = document.activeElement as (HTMLElement & { value?: string }) | null;
       const typing = !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT");
       const last = k.actions ? lastOwnMessage(k.rows, (key) => k.store.item(key), (key) => k.store.group.isMine(key)) : null;
@@ -203,6 +214,7 @@ export function ChatScreen(p: ChatScreenProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
   const ctx = useMemo<BlockCtx>(
     () => ({
@@ -283,7 +295,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
-  const head = headerParts({ title: p.title, project: p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
+  const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
   const line = head.line + (muted ? (head.line ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // Who is in the chat, for the composer's @ list and the model chips: the stream's participants once it has said, else the chat's members from the box (work.chat.get), never the viewer.
@@ -293,31 +305,29 @@ export function ChatScreen(p: ChatScreenProps) {
   const slots = found.length
     ? found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }))
     : allowsMock() ? [] : here.slots.map((x) => ({ id: x.id, label: x.name, provider: null as string | null }));
+  // The AIs that can answer: the stream's, else the chat's slots, else the chat's assistants (juno), and in the sample world the person's accounts as well (Claude, Codex, Grok).
+  const answerSlots = slots.length ? slots : [
+    ...faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => ({ id: f.id, label: f.name, provider: null as string | null })),
+    ...(allowsMock() ? [{ id: "slot:claude", label: "Claude", provider: "claude" }, { id: "slot:codex", label: "Codex", provider: "codex" }, { id: "slot:grok", label: "Grok", provider: "grok" }] : []),
+  ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   const paneOpen = usePreviewPane();
   const body = (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} shared={Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1} replyMode={store.group.replyMode()} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
-        onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
-      <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
-      <AboutSheet
-        open={aboutOpen}
-        onClose={() => setAboutOpen(false)}
-        title={p.title ?? "Chat"}
-        participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
-        viewer={viewerId}
-        info={info}
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <ChatPanel
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
+        participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
+        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
-        muted={muted}
-        pinned={pinned}
-        onMute={setMuted}
-        onPin={setPinned}
-        onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
-        onOpenTerminal={p.onOpenTerminal}
+        project={chatProject}
+        onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
+        shared={Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1} replyMode={store.group.replyMode()}
+        thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
+        onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
-
+      <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
 
       <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
@@ -440,14 +450,16 @@ export function ChatScreen(p: ChatScreenProps) {
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this Mac", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
-          slots={slots}
+          slots={answerSlots}
+          onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}
           onAttachFile={() => void att.choose(false)}
-          onAttachPhoto={() => void att.choose(true)}
+          vyreFiles={vyre.files}
+          onAttachVyreFile={(id) => void vyre.pick(id)}
           {...p.composer}
         />
       </View>

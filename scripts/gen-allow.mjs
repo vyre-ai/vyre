@@ -63,6 +63,10 @@ export const OPEN_NOTES = Object.freeze({
   "records.forget.propose": "asks the person to forget a record: it reads the record under the caller's own chain and makes a task for the person, who decides with their presence; nothing is forgotten here",
   "records.sees-as": "shows what a person or an assistant would see of a record; reads only",
   "records.events": "reads events the caller may see; the kernel decides",
+  "roles.catalogue": "lists what a role is made of: the built-in roles, the switches and the tools",
+  "roles.list": "lists the Space's roles, with how many people hold each when the caller is an owner or admin",
+  "roles.get": "reads one role in full",
+  "roles.tools": "says which tools a person has at the door through their role",
   "rules.list": "lists the Space's standing rules the caller may see",
   "rules.get": "reads one standing rule in plain words",
   "rules.test": "tries a rule against an act, without changing anything",
@@ -525,7 +529,8 @@ export const SURFACE_RULINGS = Object.freeze({
   "vault.members.invite": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
   "vault.members.remove": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
   "vault.members.role": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
-  "vault.vaults.create": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.vaults.create": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device", "mobile"]), note: "a person on a paired device or the phone now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.account.create": Object.freeze({ ruling: "team/ROADMAP.md rc.4 install flow, 13 Oct 2026, the user: the app sets up the personal vault with the master password", commit: "work/wire-identity/vault", was: "denied", callers: Object.freeze(["device", "mobile"]), note: "the person's phone or paired device sets the master password too; the answer carries the recovery secret and never the Secret Key, and the person's yes is asked" }),
   "vault.vaults.rotate": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
 });
 

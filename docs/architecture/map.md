@@ -217,6 +217,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
 | `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
+| `escrow/` | The Worker that keeps each identity's sealed Secret Key for GitHub sign-in; never the recovery code. |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
 | `kernel/` | The trusted core: identity, grants, the event log, records, tasks, the sealing process. See the next section. |
@@ -306,6 +307,7 @@ Projects, records, tasks, rules, Flows, files.
 | `previews` | `core/previews/` | box | A page or app an agent starts, opened in a pane beside the chat on its own address, kept running and shared on purpose. |
 | `projects` | `core/projects/` | box and local | Projects: the folders, repositories and sessions that belong together. |
 | `records` | `core/records-tools/` | box and local | The app's way into a Space's records: one tool per store call, under the caller's chain. |
+| `roles` | `core/roles/` | box and local | A Space's roles: the built-in ones and custom roles built from Member or Admin. |
 | `rules` | `core/rules-tools/` | box and local | The app's way into a Space's standing rules. |
 | `tasks` | `core/tasks-tools/` | box and local | The app's way into a Space's tasks. |
 | `watchers` | `core/watchers/` | box and local | The watcher runtime: small standing rules that react to events. |

@@ -45,7 +45,7 @@ export function createGateway(cfg) {
   const roomed = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   // A chat's folders are its participants' only, and a project's files its members' (kernel/core/folders.js).
   /** @type {Map<string, { n: number }>} */ const reachSeen = new Map();
-  const projectMembers = projectOracle({ space: cfg.space, chains: cfg.chains, records: () => records, tasks: cfg.tasks });
+  const projectMembers = projectOracle({ space: cfg.space, chains: cfg.chains, records: () => records, tasks: cfg.tasks, staff: (/** @type {string} */ p) => { const m = wiring.members || cfg.members; return Boolean(m && typeof m.membership === "function" && ["owner", "admin"].includes(String((m.membership({ kind: "person", id: p, space: cfg.space }) || {}).role))); } });
   const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
@@ -59,6 +59,7 @@ export function createGateway(cfg) {
     },
     projectOf: (/** @type {string} */ u) => { const p = (attrs(u) || {}).project; return typeof p === "string" ? p : null; },
     projectHas: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.member(p, project),
+    projectViewer: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.viewer(p, project),
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });

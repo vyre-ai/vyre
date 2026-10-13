@@ -70,7 +70,7 @@ export async function bringUp(o) {
   const NAME = S("reserve a name and become yourself in the app");
   await run.step(S("add a server: the app shows the install line"), async () => {
     flow = mac.addServer();
-    await flow.begin(o.store);
+    await flow.begin();
     assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
   }, { needs: [NAME] });
   await run.step(S(`the server installs from that line (${o.kind})`), async () => {

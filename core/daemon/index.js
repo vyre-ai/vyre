@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -21,6 +22,7 @@ import { assertDaemonHost, assertNotWindowsHome } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, ownerOverTailnet, currentCall } from "../modules/index.js";
+import { markViaMcp, isViaMcp, viaMcpId } from "../modules/via-mcp.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { devAllowedPorts } from "./dev-ports.js";
 import { build, htmlWithBuild } from "./build.js";
@@ -47,6 +49,9 @@ import { lentRequest } from "./threadsock.js";
 import { available as spawnerThere } from "../spawner/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
+import { createDoorGate } from "../modules/door-gate.js";
+import { readRoles } from "../../lib/roles/store.js";
+import { TOOL_IDS } from "../../lib/roles/catalogue.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -76,14 +81,15 @@ function kernelProof(req) {
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
 /**
- * Is this device row the OWNER's? There are exactly three ways, and this is the one place that names them; add a fourth here and nowhere else:
+ * Is this device row the OWNER's? There are exactly four ways, and this is the one place that names them; add a fourth here and nowhere else:
  *   1. `homeOwner`: Wink's record of who confirmed the device says it is this home's owner (the typed-code app, a window phone).
  *   2. `ownerPaired`: the relay wrote the fact because the owner was present at the pairing (the first device, a window he confirmed, a phone or ring ticket he confirmed with the words), or he marked it later (`relay.devices.mark`).
  *   3. a named row: the row's `person` is exactly the home's owner id.
+ *   4. `viaChain`: the person's identity chain lists this device (core/relay/chain-admit.js) and the chain names the home's owner. Never owner_paired: the chain's limits (a newcomer, a relay-held device) still keep the chain-class acts from it.
  * A bearer code (the classic QR) and a ticket a module minted prove none of these. One statement for the caller's facts and the event bus.
  * @param {any} device @param {string} [owner] the home's owner id
  */
-export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
+export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && (device.person === owner || (device.viaChain && device.viaChain.identity === owner))));
 
 /**
  * Does a `tailnet:<login>` label hold? The label is the tailnet listener's claim, so it is the owner's own only when the peer that listener verified (whois) is that very login and that login is the one the home
@@ -106,6 +112,9 @@ export function tailnetLabelHolds(label, peer, network) {
  */
 export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
   if (!k || !k.id) return null;
+  // The person's own connected client (core/mcpconn): the daemon vouched its key (via.viaMcp) on the plain `mcp` label, and the call is the owner's, on the chain a person's own terminal here carries (the linkBoxFacts shape), its session the connection the person made with presence. It is
+  // still labelled `mcp`, so the registry holds an outward act for it like a model's, and agent-reach.mcpPersonMay names what stays out of its reach.
+  if (!policy.caller && caller === "mcp" && isViaMcp(via) && !via.thread && !via.agent) return { kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false, session: `mcp:${viaMcpId(via)}` };
   // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
@@ -124,7 +133,14 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (policy.caller && ownerDevice(policy.caller)) {
     // A paired device is the owner's only by `deviceIsOwner`: Wink's own record says its person IS this home's owner, or the owner's own present act paired it. Anything else gives no person facts, before an owner's identity is
     // claimed as after (a confirmed device of another member is a paired device, not the owner's).
-    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device, k.id.owner)) return null;
+    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device, k.id.owner)) {
+      // A member's device that came in on HER identity chain (design B) acts as her: the person is the identity stored when the device was admitted, and only while she is a member right now (`memberRole`, read live by the
+      // caller of this function). The kernel then reads her role itself on every call. It is never the owner's, and `limited` rides along for the registry's device-admin gate.
+      if (device && device.viaChain && typeof device.viaChain.identity === "string" && device.viaChain.identity !== k.id.owner && typeof device.memberRole === "string" && device.memberRole !== "") {
+        return { kind: "device", device_key_id: String(policy.caller).slice(7), person: device.viaChain.identity, path: "relay", limited: device.viaChain.limited === true };
+      }
+      return null;
+    }
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
     return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
@@ -495,7 +511,7 @@ async function startLocked(opts, root, p, release) {
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
     // A module that failed at start only because the store was still starting (a first install makes the Space's database) starts again when the store joins.
-    { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
+    { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function") registry.deps.storeAttached = () => ks.attached(); if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
@@ -610,6 +626,12 @@ async function startLocked(opts, root, p, release) {
         if (e && (e.type === "chat.created" || e.type === "chat.changed")) setImmediate(() => { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } });
       }, { batch: true });   // the work module's mirror of who is in a chat: a repeat writes the same ids
     } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
+    // An accepted invite that named projects: the work module seats the joiner (core/work onInviteUsed). Only the ids the event carries.
+    try {
+      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-invite-seats", { type: "invite.used" }, (/** @type {any} */ e) => {
+        if (e && e.data && Array.isArray(e.data.seats)) setImmediate(() => { try { events.emit("kernel", "invite.used", { data: e.data }); } catch { /* a notice, never a stop */ } });
+      }, { batch: true });
+    } catch (e) { log(`kernel: invite events are not passed on (${/** @type {Error} */ (e).message})`); }
     // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
     const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
@@ -704,7 +726,7 @@ async function startLocked(opts, root, p, release) {
       const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
       const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
       registry.deps.sandbox = { platform: process.platform, home: os.homedir(), vyreHome: root, temp: os.tmpdir(), uid: { confinedBy: "uid",
-        selfTest: (/** @type {{ account?: number | null, shared?: boolean, workdirs: string[], signal?: AbortSignal }} */ o) => {
+        selfTest: (/** @type {{ account?: number | null, shared?: boolean, projects?: string[], workdirs: string[], signal?: AbortSignal }} */ o) => {
           // Another agent's home: the box's one agent for an account's session, and the first other account's for the agent itself.
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
@@ -806,9 +828,39 @@ async function startLocked(opts, root, p, release) {
         try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
       };
     }
+    // One gate for a member's own session at the registry's entry (core/modules/door-gate.js): the person is the kernel's verified chain's first person hop, never the caller's label.
+    if (kernel.grants && typeof kernel.kernelFor === "function") {
+      const doorKernel = kernel.kernelFor({ name: "door-gate" });
+      // the grants of the Space a chain is for: this home's own, or a hosted team Space's (a session's call relayed into it carries that Space's chain)
+      const spaceOf = (/** @type {string | undefined} */ space) => { if (!space || space === kernel.id.space) return kernel; try { const h = kernel.spaces && kernel.spaces.for(space); return h && h.hosted === true && h.kernel ? h.kernel : null; } catch { return null; } };
+      /** @type {Map<string, { seq: number, roles: Map<string, any> }>} */ const roleDefs = new Map();
+      registry.deps.doorGate = createDoorGate({
+        ...(Array.isArray(opts.doorScopedGroups) ? { scopedGroups: opts.doorScopedGroups } : {}), // a test seam: which role groups open at the door (default none, core/modules/door-lists.js SCOPED_GROUPS)
+        chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
+        // the role from the person's membership: the same source the gateway's staff statement reads, so the swap to it is a rename
+        roleOf: (/** @type {any} */ a) => { const k = spaceOf(a && a.space); const m = k ? k.grants.members.membership(a) : null; return m ? m.role : null; },
+        othersExist: async (/** @type {string | undefined} */ space) => { const k = spaceOf(space); return k ? k.grants.hasOtherMembers(k.id.owner) : true; },
+        // the person's base role and the tool groups a custom role turns on (core/roles): read from the role's own definition record, never from anything a caller says. The definitions are cached per Space
+        // against the kernel log's latest sequence, so any change (a role edited, a member set or removed) is read at the next call, never from a stale copy; a person with no custom role never reads them.
+        roleTools: async (/** @type {any} */ actor) => {
+          const k = spaceOf(actor && actor.space); const m = k && actor ? k.grants.members.membership(actor) : null;
+          if (!k || !m) return null;
+          if (!m.custom) return { base: String(m.role), groups: [] };
+          const seq = k.gateway.events.latestSeq(), key = String(actor.space || "");
+          let hit = roleDefs.get(key);
+          if (!hit || hit.seq !== seq) { hit = { seq, roles: await readRoles(k.gateway, k.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: k.id.owner, path: "direct" })) }; roleDefs.set(key, hit); }
+          const def = hit.roles.get(String(m.custom));
+          const role = def && def.role;
+          if (!role || role.base !== "member" || (role.ends && Number(role.ends) <= Date.now())) return { base: String(m.role), groups: [] };
+          return { base: String(m.role), groups: (Array.isArray(role.tools) ? role.tools : []).filter((/** @type {string} */ t) => TOOL_IDS.includes(t)) };
+        },
+      });
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
+    // A device that came in on the identity chain and is limited right now (a newcomer, a relay-held key, an unconfirmed GitHub device) is refused the device-admin tools at the registry's entry (core/modules/device-admin.js).
+    registry.deps.limitedGate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => { const r = /** @type {any} */ (await registry.call("relay.device.info", { id }, "module:vyred")); return Boolean(r && r.data && r.data.viaChain && r.data.viaChain.limited === true); } });
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
@@ -1358,6 +1410,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
   /** @type {string | null} */ let pluginAgent = null;
+  /** @type {string | null} */ let mcpConn = null;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
   } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
@@ -1373,6 +1426,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       // Not a thread's agent: its calls are a model's own (`mcp`), and what it is comes from the kernel token vyred stamps, never from the label.
       pluginAgent = said[1];
     }
+  } else if (req.headers["x-vyre-mcp-key"]) {
+    // The person's own connected client (core/mcpconn): `vyre mcp` sends the connection's id and key. A vouched connection is the person: the call runs on their own chain (the kernel token vyred stamps below)
+    // and the registry lets it use the person's own tools; the label stays `mcp`, so an outward act is held like any model's. Never on a socket bound to a Vyre session, and never with an agent's name.
+    const id = String(req.headers["x-vyre-mcp-id"] || ""), key = String(req.headers["x-vyre-mcp-key"] || "");
+    const v = id && key && caller === "mcp" ? await registry.call("mcpconn.vouch", { id, key }, "module:vyred").catch(() => null) : null;
+    if (!(v && v.data && v.data.ok === true)) return send(res, 403, { error: { code: "denied", message: "this connection is not one the person made, or it was revoked: connect again with vyre mcp connect" } });
+    mcpConn = id;
+    markViaMcp(via, id, v.data.hosted === true);
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.
@@ -1428,15 +1489,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
-      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
+      modules: { running: mods.filter(m => m.state === "running").length, waiting: mods.filter(m => m.waiting).length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
       // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
-      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatusWithin(cfg.healthStoreMs ?? 1500, { root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
   // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
   if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
   if (req.method === "GET" && url.pathname === "/v1/tools") {
     let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
+    // A member's own session is shown the tools it may call and no others (core/modules/door-gate.js).
+    if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null) { const show = await registry.deps.doorGate.visible(String(caller), typeof tok === "string" ? { token: tok } : {}); if (show) data = data.filter(t => show(t.name)); } }
     // The plugin agent is offered only what its grant names.
     if (pluginAgent) {
       const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
@@ -1580,6 +1643,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
+    // A person's connected client carries no kernel session of its own: callerFacts gives it the person's chain, built from vyred's own key. Whatever session header it sent is dropped.
+    if (mcpConn) delete req.headers["x-vyre-kernel-session"];
     // The plugin agent's token is vyred's, set here and never the client's: its session is opened by the daemon for that agent and renewed before it runs out.
     if (pluginAgent) {
       delete req.headers["x-vyre-kernel-session"];
@@ -1597,6 +1662,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let deviceRow = null;
     if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
       try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
+      // a member's chain device: is she a member of this home's Space right now? (the role itself is the kernel's, read on every call)
+      if (deviceRow && deviceRow.viaChain && kernelOf() && deviceRow.viaChain.identity !== kernelOf().id.owner) { try { const m = await registry.call("spaces.membership", { person: deviceRow.viaChain.identity, space: kernelOf().id.space }, "module:vyred"); deviceRow = { ...deviceRow, memberRole: m && m.data && typeof m.data.role === "string" ? m.data.role : null }; } catch { deviceRow = { ...deviceRow, memberRole: null }; } }
       if (deviceRow) { try { const w = await registry.call("wink.device.record", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = { ...deviceRow, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null, homeOwner: Boolean(w && w.data && w.data.homeOwner) }; } catch { deviceRow = { ...deviceRow, person: null }; } }
     }
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
@@ -1627,6 +1694,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     let result = teamResult || await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+    // What a person's connected client changed is noted in Activity as done via their Claude Code: the tool's name and whether it worked, never its input.
+    if (mcpConn) { const d0 = registry.tools.get(name); if (d0 && d0.effect !== "read") registry.call("mcpconn.note", { conn: mcpConn, tool: name, ok: !(result && result.error) }, "module:vyred").catch(() => null); }
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

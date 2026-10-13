@@ -154,7 +154,6 @@ test("the words step after a long code uses the session's own kind: a real (watc
 test("a phone's long code adds this device to the name (a browser too); a server's long code pairs this device to that server", () => {
   assert.equal(codeRoute({ kind: "ticket", for: "phone" }), "add-device");
   assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
-  assert.equal(codeRoute({ kind: "offer" }), "pair-server");
   assert.equal(codeRoute(null), "pair-server");
 });
 
@@ -165,7 +164,7 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
   assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
   assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
-  assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
+  assert.match(src, /<AddServerCard onDone=\{\(\) => \{[\s\S]*doMake\("server"/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
 
 test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
@@ -187,7 +186,7 @@ test("the paste check accepts every character the directory can put in a code", 
 test("a Mac server's line runs the Mac installer with the same code and Records choice; the others are unchanged", () => {
   const code = "A".repeat(43);
   assert.equal(installLine("0.3.0", { code, store: "auto", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=auto sh`);
-  assert.equal(installLine("0.3.0", { code, store: "sqlite", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=sqlite sh`);
+  assert.equal(installLine("0.3.0", { code, store: "sqlite", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=auto sh`, "the app never asks for the small built-in store");
   const base = "https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/";
   assert.equal(installLine("0.3.0-rc.1", { code, store: "auto", os: "mac" }), `curl -fsSL ${base}install-mac-server.sh | VYRE_BOX_URL=${base} VYRE_CODE=${code} VYRE_STORE=auto sh`);
   assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);

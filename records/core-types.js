@@ -52,6 +52,7 @@ export const TEAM_MEMBER = {
     f("actor", "actor", "Person or assistant", { required: true }),
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
+    choice("level", "Level on this project (lead manages it, contributor works in it, viewer only reads; none means contributor)", ["lead", "contributor", "viewer"]),
     text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
     f("link", "project", "Project"), // any record that holds work (a Kit's matter or trip too), so no target type and no inverse
     f("rich_text", "instructions", "Role instructions (assistants)"),
@@ -81,7 +82,8 @@ export const EVENT = {
     f("url", "url", "Link (the event on its calendar)"),
     text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
     TAGS,
-  ],
+  ],  // A new Space opens Events as a calendar, Contacts and Organizations as lists; a person adds their own views next to these (the app's New view).
+  views: [{ name: "events_calendar", type: "calendar", label: "Calendar", dateField: "starts_at", columns: ["title", "place"] }],
 };
 
 /**
@@ -106,6 +108,7 @@ export const CONTACT = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
+  views: [{ name: "contacts_list", type: "list", label: "All contacts", columns: ["name", "email", "phone", "organization"], sort: { field: "name", dir: "asc" } }],
 };
 
 /** A firm or company, once. `domain` is unique so a message from anyone at that domain can be tied to it. */
@@ -120,6 +123,7 @@ export const ORGANIZATION = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
+  views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
 export const POINT_KINDS = ["email", "phone"];

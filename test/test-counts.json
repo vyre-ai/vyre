@@ -882,7 +882,6 @@
  "test/link-guard.test.js": 2,
  "test/link-person.test.js": 1,
  "test/lock-changes.test.js": 1,
- "test/mac-app-sudo.test.js": 3,
  "test/mcp-server-tools.test.js": 2,
  "test/mobile-tailnet.test.js": 1,
  "test/module-api-compat.test.js": 7,
@@ -1055,5 +1054,6 @@
  "test/journey-assistant-access.test.js": 6,
  "apps/app/screens/assistants/access-model.test.js": 2,
  "core/work/member-projects.test.js": 11,
- "core/work/member-files.test.js": 8
+ "core/work/member-files.test.js": 8,
+ "apps/app/src/real/place-tag.test.js": 5
 }

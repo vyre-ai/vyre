@@ -15,7 +15,7 @@ final class VyreAppExtension: CapsuleExtension {
                         keywords: ["vyre", "app", "window", "now", "chat", "projects", "open"], icon: .symbol("macwindow", .stone),
                         subtitle: "Now, chat, projects and everything else, in a window",
                         actions: [ResultAction(id: "open", title: "Open Vyre", symbol: "return", shortcut: KeyShortcut("return")) { _, _ in
-                            await MainActor.run { VyreAppWindow.shared.show() }
+                            await MainActor.run { VyreAppWindow.shared.showShell() }
                             return .close("Opened Vyre.")
                         }])]
     }

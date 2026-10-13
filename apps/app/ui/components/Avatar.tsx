@@ -7,6 +7,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { motion } from "../motion/tokens";
 import { useMark, type MarkRef } from "../marks/useMark";
 import { Text } from "./Text";
+import { SpaceTile } from "./SpaceTile";
 import { useCardFill } from "../lib/cardFill";
 
 /** What a mark stands for. Person, assistant, teammate and agent are faces and characters; project (matter, trip) and space are emblems; device a line drawing. */
@@ -18,6 +19,8 @@ export type { MarkRef };
 /** The space badge: 16 at 40 and above, scaled below so it never covers the face. The ring is 2 in the card colour. */
 export const badgePx = (size: number) => (size >= 40 ? 16 : size >= 28 ? 14 : 12);
 const RING = 2;
+/** How far the badge sits outside the mark's corner, so it never covers a monogram's letters. */
+const OUT = 6;
 
 /** The same kind and id as a Row or card names them; the family a screen's actor record carries ("service" is an agent). */
 export function kindOf(family?: string): AvatarKind {
@@ -25,6 +28,9 @@ export function kindOf(family?: string): AvatarKind {
 }
 
 function Mark({ of, size }: { of: AvatarRef; size: number }) {
+  // A space is its logo or a monogram on a calm tile, and a project a monogram on one: never the generated pattern.
+  if (of.kind === "project") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
+  if (of.kind === "space") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
   const ast = useMark(of, size);
   if (!ast) return <View style={{ width: size, height: size }} />;
   return <SvgAst ast={ast} override={{ width: size, height: size }} />;
@@ -39,7 +45,7 @@ function Badge({ space, size, ring }: { space: AvatarRef; size: number; ring?: s
   const fill = useCardFill();
   const b = badgePx(size);
   return (
-    <View pointerEvents="none" style={{ position: "absolute", right: -RING, bottom: -RING, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color[fill], alignItems: "center", justifyContent: "center" }}>
+    <View pointerEvents="none" style={{ position: "absolute", right: -RING - OUT, bottom: -RING - OUT, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color[fill], alignItems: "center", justifyContent: "center" }}>
       <Mark of={{ ...space, kind: "space" }} size={b} />
     </View>
   );

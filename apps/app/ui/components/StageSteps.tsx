@@ -6,6 +6,7 @@ import { Text } from "./Text";
 import { motion } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { useUiTheme } from "../theme";
+import { px } from "../lib/measure";
 
 type BarState = "done" | "current" | "next";
 
@@ -15,7 +16,7 @@ type BarState = "done" | "current" | "next";
  * motion: the colours swap in a 160 ms crossfade, no fill and no pulse.
  */
 function Bar({ state }: { state: BarState }) {
-  const { color } = useUiTheme();
+  const { color, map } = useUiTheme();
   const reduced = useReducedMotion();
   const was = useRef<BarState>(state);
   const fill = useSharedValue(state === "next" ? 0 : 1);
@@ -38,10 +39,11 @@ function Bar({ state }: { state: BarState }) {
       fill.value = withTiming(0, { duration: motion.duration.state }); ok.value = 0;
     }
   }, [state]);
-  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%`, backgroundColor: interpolateColor(ok.value, [0, 1], [color.accent, color.ok]) }));
+  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%`, backgroundColor: interpolateColor(ok.value, [0, 1], [color["text-2"], color["text-2"]]) }));
   const barStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: lift.value }] }));
   return (
-    <Animated.View className="h-s1 overflow-hidden rounded-full bg-edge-strong" style={barStyle}>
+    // Plain style, not classes: NativeWind drops class names on an Animated.View on the web, and the bar had no height (the track was invisible).
+    <Animated.View style={[{ height: px(map, "--s-1"), borderRadius: px(map, "--s-12"), overflow: "hidden", backgroundColor: color["edge-strong"] }, barStyle]}>
       <Animated.View style={[{ height: "100%" }, fillStyle]} />
     </Animated.View>
   );
@@ -89,7 +91,7 @@ export function StageMini({ stages, current, name = true }: { stages: string[]; 
   return (
     <View accessible accessibilityLabel={`Stage ${stages[current]}, ${current + 1} of ${stages.length}`} className="flex-row items-center gap-s2">
       <View className="flex-row items-center" style={{ gap: 3 }}>
-        {stages.map((s, i) => <View key={s} style={{ width: 6, height: 3, borderRadius: 2 }} className={cn(i < current ? "bg-text-2 opacity-50" : i === current ? "bg-accent" : "bg-edge-strong")} />)}
+        {stages.map((s, i) => <View key={s} style={{ width: 6, height: 3, borderRadius: 2 }} className={cn(i < current ? "bg-text-2 opacity-50" : i === current ? "bg-text" : "bg-edge-strong")} />)}
       </View>
       {name ? <Text size="caption" tone="muted" numberOfLines={1} className="min-w-0 flex-shrink">{stages[current]}</Text> : null}
     </View>

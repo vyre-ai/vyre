@@ -35,7 +35,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
 }));
 
 /** The Space's set-up: a member reads these and never writes them. */
-const SETUP_TYPES = new Set(["agent", "template", "playbook"]);
+const SETUP_TYPES = new Set(["agent", "template", "playbook", "def-role"]);
 
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
@@ -411,6 +411,8 @@ export function createRecords(cfg) {
    * Conditional fields (visible_if, required_if), stage entry conditions (enter_if), stage sets and stored views: the expressions parse, they read this type's own stored
    * fields (never a sealed one), and a stage set is picked by the record's other fields, never by its stage.
    */
+  /** A group name is UI text: a string of 1 to 60 characters, trimmed, no control characters or line breaks. @param {unknown} n */
+  const groupName = (n) => typeof n === "string" && n.length > 0 && n.length <= 60 && n === n.trim() && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(n);
   async function checkShape(/** @type {any} */ diff) {
     // a field the kernel owns stays the kernel's: a change to a type cannot take `owned_by` off it, or an owner could then set a task's status by hand
     if ((diff.change_types || []).length) {
@@ -435,7 +437,20 @@ export function createRecords(cfg) {
           if (not.includes(n)) throw bad(`${what} cannot name ${n}`);
         }
       };
+      // groups are presentation: the sections of the type in order, and each field's section. Never a permission.
+      if (t.groups !== undefined) {
+        if (!Array.isArray(t.groups) || t.groups.length > 20) throw bad("groups is a list of at most 20 sections");
+        const names = new Set();
+        for (const g of t.groups) {
+          if (!g || typeof g !== "object" || Object.keys(g).some((/** @type {string} */ x) => x !== "name" && x !== "collapsed")) throw bad("a group is { name, collapsed? } and nothing else");
+          if (!groupName(g.name)) throw bad("a group has a name of 1 to 60 characters with no spaces at the ends, no line breaks and no control characters");
+          if (g.collapsed !== undefined && typeof g.collapsed !== "boolean") throw bad(`${g.name}.collapsed is true or false`);
+          if (names.has(g.name.toLowerCase())) throw bad(`two groups are called ${g.name}`);
+          names.add(g.name.toLowerCase());
+        }
+      }
       for (const f of fields) {
+        if (f.group !== undefined && (!groupName(f.group) || !(t.groups || []).some((/** @type {any} */ g) => g.name === f.group))) throw bad(`${f.name}.group is one of the type's groups`);
         if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
         if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
@@ -707,7 +722,7 @@ export function createRecords(cfg) {
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
       const { trusted, actingFor } = judgeWriter(chain, doer, roleFor, space);
       if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
-        op, trusted, actingFor, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
+        op, trusted, actingFor, role: roleOfChain(chain), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }

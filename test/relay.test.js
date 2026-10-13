@@ -28,7 +28,7 @@ import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
-import { tempHome, nameAsOwner } from "./helpers.js";
+import { tempHome, nameAsOwner, offerUrl } from "./helpers.js";
 import { fakeCoreKeys, macCore } from "./fake-core-keys.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
@@ -116,10 +116,15 @@ async function phone(scanned, { keys = keyPair(), pair = true, name = "alex's ph
   return { ws, channel, reply, request, call, keys, closed: () => closed, offer, signIn };
 }
 
-const firstPairing = async d => {
-  const r = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
-  assert.ok(r.data, JSON.stringify(r.error));
-  return r.data.url;
+// The classic bearer code is gone: a ring ticket minted by the box stands in for every pairing URL below.
+const firstPairing = d => offerUrl(d);
+/** A pairing URL minted from a paired device (it signed in and proves presence), the way the old relay.pair.start was. */
+const urlFrom = async (d, p) => {
+  const minted = await p.call("relay.pair.ticket", {}, P);
+  assert.ok(minted.data, JSON.stringify(minted));
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const r = await resolveTicket(fromBase64url(minted.data.ticket), { relay: status.url, crypto: nodeCrypto() });
+  return pairUrl({ relay: r.offer.relay, route: r.offer.route, box: Buffer.from(r.offer.box), secret: r.offer.secret, name: r.name });
 };
 
 shardTest("relay: the first device pairs during onboarding and reaches the box's router as device:<id>", async t => {
@@ -151,20 +156,19 @@ shardTest("relay: a pairing that asks for it is handed the one-time enrolment gr
   assert.equal(bare.reply.enroll, undefined);
   bare.ws.close();
   d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://alex.vyre.run:8443" };
-  const minted = await d.registry.call("relay.pair.start", {}, "cli", PROOF);
-  const asked = await phone(minted.data.url, { hello: { enroll: true }, presence: false });
+  const asked = await phone(await offerUrl(d), { hello: { enroll: true }, presence: false });
   const e = asked.reply.enroll;
   assert.equal(e.rpId, "alex.vyre.run", "the host of the address, no port");
   assert.match(e.grant, /^[A-Za-z0-9_-]{40,}$/);
   assert.ok(e.expires > Date.now() && e.expires <= Date.now() + 5 * 60_000 + 1000);
-  const plain = await phone((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { presence: false });
+  const plain = await phone((await offerUrl(d)), { presence: false });
   assert.equal(plain.reply.enroll, undefined, "a pairing that did not ask gets none");
   asked.ws.close(); plain.ws.close();
   // The shared client library asks and validates the same way.
-  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await offerUrl(d)))), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
   assert.equal(viaClient.enroll?.rpId, "alex.vyre.run");
   assert.match(String(viaClient.enroll?.grant), /^[A-Za-z0-9_-]{40,}$/);
-  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
+  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await offerUrl(d)))), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
   assert.equal(noAsk.enroll, null);
 });
 
@@ -172,18 +176,18 @@ shardTest("relay: a relayed device is a device; a person's action needs its pers
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   // ADR 0032: without a person session, even a presence proof is not enough.
-  const device = await p.call("relay.pair.start", {}, P);
+  const device = await p.call("relay.pair.ticket", {}, P);
   assert.equal(device.status, 401, JSON.stringify(device));
   assert.equal(device.error.code, "person_session_required");
   assert.equal((await p.call("relay.devices.list")).status, 401, "the device list is the person's own, so it too needs the session (reach person)");
   // Signed in with its own presence key, the device is the person, and presence still decides.
   await p.signIn(d);
-  const bare = await p.call("relay.pair.start");
+  const bare = await p.call("relay.pair.ticket");
   assert.equal(bare.status, 403);
   assert.equal(bare.error.code, "presence_required");
-  const proved = await p.call("relay.pair.start", {}, P);
+  const proved = await p.call("relay.pair.ticket", {}, P);
   assert.equal(proved.status, 200, JSON.stringify(proved));
-  assert.ok(parsePairUrl(proved.data.url));
+  assert.match(proved.data.ticket, /\S/, "a ring ticket, not a bearer URL");
 });
 
 shardTest("relay: the QR code works once; a stranger's key and a reused code are refused", async t => {
@@ -196,15 +200,6 @@ shardTest("relay: the QR code works once; a stranger's key and a reused code are
   const again = await phone(url, { keys: p.keys, pair: false });
   assert.equal(again.reply.device, p.reply.device);
   assert.equal(again.reply.paired, undefined);
-});
-
-shardTest("relay: the first-device path closes once a person exists", async t => {
-  const { d } = await world(t);
-  await phone(await firstPairing(d));
-  const r = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
-  assert.equal(r.error?.code, "denied");
-  // Only the onboarding page may ask for it at all.
-  assert.equal((await d.registry.call("relay.pair.first", {}, "cli", PROOF)).error?.code, "denied");
 });
 
 shardTest("relay: removing a device closes its connection at once with 4401 'device removed', and it is refused on the same code when it comes back", async t => {
@@ -273,7 +268,7 @@ shardTest("relay: a socket client cannot claim to be a device", async t => {
 shardTest("relay: an event stream stays open and delivers events through the channel", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
-  nameAsOwner(d, p.reply.device);   // alex's phone stands for the owner's first device after adoption (relay.pair.first), which Wink names
+  nameAsOwner(d, p.reply.device);   // alex's phone stands for the owner's first device after adoption (adoption), which Wink names
   const s = p.channel.open({ method: "GET", path: "/v1/events/stream", headers: { accept: "text/event-stream" } });
   s.end();
   const head = await new Promise(res => { s.onhead = res; });
@@ -281,7 +276,7 @@ shardTest("relay: an event stream stays open and delivers events through the cha
   assert.match(String(head.headers["content-type"]), /text\/event-stream/);
   const chunk = new Promise(res => { s.ondata = c => { if (String(c).includes("device.paired")) res(String(c)); }; });
   // Pair another device from the box: its event reaches alex's phone live.
-  const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
+  const url = (await offerUrl(d));
   await phone(url, { name: "alex's laptop" });
   assert.match(await chunk, /device\.paired/);
   s.reset("done");
@@ -293,7 +288,7 @@ shardTest("relay: an untrusted browser asks to be trusted once, about itself onl
   d.events.on("device.trust-asked", e => asked.push(e.payload || e.data || e));
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await urlFrom(d, p));
   const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
   // The limited browser can reach it (the web deny list does not hold it back) and no presence is needed to ask.
   const first = await web.call("relay.devices.ask-trust");
@@ -337,7 +332,7 @@ shardTest("relay: a browser from the web app is a web device, limited until trus
   d.events.on("device.paired", e => seen.push(e));
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await urlFrom(d, p));
   const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
   const list = (await p.call("relay.devices.list")).data.devices;
@@ -351,7 +346,7 @@ shardTest("relay: a browser from the web app is a web device, limited until trus
 
   // The web device reads freely but cannot mint devices or lift its own limits, even with presence.
   assert.equal((await web.call("relay.devices.list")).status, 200);
-  const mint = await web.call("relay.pair.start", {}, P);
+  const mint = await web.call("relay.pair.ticket", {}, P);
   assert.equal(mint.status, 404, JSON.stringify(mint));
   assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404);
   assert.equal((await web.call("vault.reveal", { id: "x" }, P)).status, 404);
@@ -361,7 +356,7 @@ shardTest("relay: a browser from the web app is a web device, limited until trus
   const trust = await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P);
   assert.equal(trust.status, 200, JSON.stringify(trust));
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
-  const lifted = await again.call("relay.pair.start", {}, P);
+  const lifted = await again.call("relay.pair.ticket", {}, P);
   // BR-2 (4 Oct 2026): a browser is web:<id>, never an owner's device, so even trusted it reaches no person tool; its relay limits are lifted and nothing more.
   assert.equal(lifted.error && lifted.error.code, "no_such_tool", JSON.stringify(lifted));
 });
@@ -370,7 +365,7 @@ shardTest("relay: a web device unused past relay.web_expiry_days is removed at i
   const { d } = await world(t, { web_expiry_days: 1e-8 });
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await urlFrom(d, p));
   const web = await phone(url, { name: "kiosk", hello: { kind: "web" } });
   web.ws.close();
   await new Promise(r => setTimeout(r, 20));
@@ -388,7 +383,7 @@ shardTest("relay: the web app's loader asks the box which build to load, and the
   t.after(() => useReleasesFile());
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
-  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const url = (await urlFrom(d, p));
   const web = await phone(url, { name: "Northwind Bakery laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
   const newest = await web.call("relay.web.release");
@@ -426,7 +421,7 @@ shardTest("relay: relay.device.presence names the key a device enrolled, for mod
   const id = p.reply.device;
   assert.equal((await d.registry.call("relay.device.presence", { id }, "cli")).error.code, "no_such_tool", "not a surface's tool");
   assert.match((await d.registry.call("relay.device.presence", { id }, "module:presence")).data.key, /\S/, "the key enrolled at pairing");
-  const url = await (async () => { await p.signIn(d); return (await p.call("relay.pair.start", {}, P)).data.url; })();
+  const url = await (async () => { await p.signIn(d); return (await urlFrom(d, p)); })();
   const bare = await phone(url, { name: "kit's tablet", presence: false });
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: bare.reply.device }, "module:presence")).data, { key: null }, "paired without a presence key");
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
@@ -480,146 +475,6 @@ shardTest("relay: loads on a Solo Mac (role local) but opens no connection until
   assert.deepEqual({ enabled: s.data.enabled, connected: s.data.connected }, { enabled: false, connected: false });
   await new Promise(r => setTimeout(r, 300));
   assert.deepEqual(events, [], "no connection attempt just from loading, disabled by default");
-});
-
-shardTest("relay: relay.join redeems a code minted on another box, and this device shows up there", async t => {
-  // Two real vyred instances, one real local relay/node/server between them (the same fixture
-  // relay every other test in this file uses) -- the box mints a code (relay.pair.first, as
-  // onboarding does for the very first device), the device (role local, relay's own module
-  // widened there) redeems it with relay.join. No phone, no Expo app: this is the CLI/Node path,
-  // Node's own crypto provider (relay/client/nodecrypto.js), a real Noise handshake over a real
-  // WebSocket, same protocol a phone would run.
-  const relay = createRelay();
-  const url = await relay.listen();
-  t.after(() => relay.close());
-  const boxRoot = tempHome(t);
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
-    network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const box = await start({ presence: lenient, root: boxRoot, log: () => {}, coreKeys: macCore() });
-  t.after(() => box.stop());
-  const pairUrl = (await box.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url;
-
-  const deviceRoot = tempHome(t);
-  fs.writeFileSync(path.join(deviceRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [],
-    modules: { disable: ["names", "onboard"] } }));
-  const device = await start({ presence: lenient, root: deviceRoot, log: () => {}, coreKeys: macCore() });
-  t.after(() => device.stop());
-  const r = await device.registry.call("relay.join", { url: pairUrl, name: "kit's laptop" }, "cli", PROOF);
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.equal(r.data.name, "alex", "the box's own name, as configured");
-  assert.match(r.data.device, /^[a-z2-7]{16}$/);
-
-  const devices = (await box.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices;
-  assert.deepEqual(devices.map(x => x.name), ["kit's laptop"]);
-  assert.equal(devices[0].id, r.data.device);
-
-  // Redeeming a second code from the same device root reuses the same persisted key, so the box
-  // sees the same device id again rather than minting a fresh identity every time.
-  const secondUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
-  const again = await device.registry.call("relay.join", { url: secondUrl, name: "kit's laptop" }, "cli", PROOF);
-  assert.equal(again.data.device, r.data.device, "the same file-backed key, the same device id");
-
-  // becomeDevice degrades cleanly when onboard.machine is not even running (not merged to this
-  // branch yet) -- it must still return the pairing result, not throw.
-  const thirdUrl = (await box.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
-  const flip = await device.registry.call("relay.join", { url: thirdUrl, becomeDevice: true }, "cli", PROOF);
-  assert.equal(flip.error, undefined, JSON.stringify(flip.error));
-  assert.equal(flip.data.device, r.data.device);
-});
-
-shardTest("relay: relay.join refuses a guest, an agent's own claim, and a bad code, before any handshake", async t => {
-  const relay = createRelay();
-  const url = await relay.listen();
-  t.after(() => relay.close());
-  const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
-  t.after(() => d.stop());
-  const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: url, i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
-  const bad = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
-  assert.equal(bad.error.code, "bad_input");
-  for (const caller of ["tailnet-guest:sam@example.com", "mcp:agent:kit", "anonymous"]) {
-    const r = await d.registry.call("relay.join", { url: bogus }, caller, PROOF);
-    assert.equal(r.error.code, "denied", caller);
-  }
-  // "hook" is refused even earlier, before caller-kind matching reaches relay.join at all: hooks
-  // reach only tools declared hook: true, and relay.join is not one.
-  assert.equal((await d.registry.call("relay.join", { url: bogus }, "hook", PROOF)).error.code, "no_such_tool");
-});
-
-shardTest("relay: relay.join's presence prompt names the box, its relay host and a key fingerprint; a garbage url refuses before any prompt at all", async t => {
-  const { d } = await world(t);
-  const def = d.registry.tools.get("relay.join");
-  const goodUrl = pairUrl({ relay: "wss://relay.example.com", route: "a".repeat(26), box: Buffer.alloc(32, 7), secret: "s", name: "Northwind Bakery" });
-  const summary = await def.presence.summary({ url: goodUrl });
-  assert.match(summary, /^Pair this device with "Northwind Bakery" on relay\.example\.com \(key [a-z2-7]{4} [a-z2-7]{4}\)$/);
-
-  // A well-formed vyre.run/pair# link whose fragment does not decode to a real offer: the prompt
-  // says so plainly rather than falling back to a generic "relay.join {...}" line.
-  const nonsense = "https://vyre.run/pair#bm90LWEtcmVhbC1vZmZlcg";
-  assert.match(await def.presence.summary({ url: nonsense }), /does not look like a real Vyre pairing code/);
-
-  // A url that is not even shaped like a pairing link: the schema refuses it before presence or
-  // run() ever see it, so no prompt of any kind is possible.
-  const r = await d.registry.call("relay.join", { url: "https://evil.example/steal-me" }, "cli", PROOF);
-  assert.equal(r.error.code, "bad_input");
-  const r2 = await d.registry.call("relay.join", { url: nonsense }, "cli", PROOF);
-  assert.equal(r2.error.code, "bad_input", "passes the schema pattern but fails parsePairUrl, still refused in run()");
-
-  // The box's own name is text IT chose, landing straight in a Touch ID prompt: a hostile box
-  // could try to write its own fake "(key ...)" text after its name, or a long run of junk, to
-  // confuse the reader (reviewer, 28 Sep). Stripped, capped at 40, and always followed by this
-  // tool's own computed fingerprint, never anything from the name itself.
-  const box9 = Buffer.alloc(32, 9);
-  const hostileUrl = pairUrl({ relay: "wss://relay.example.com", route: "b".repeat(26), box: box9, secret: "s",
-    name: `Real Bakery\u0007 fake trailer: ${"x".repeat(80)}` });
-  const hostile = await def.presence.summary({ url: hostileUrl });
-  assert.ok(hostile.length < 140, hostile);
-  assert.doesNotMatch(hostile, /\u0007/, "the control character is gone");
-  const trueFingerprint = (await def.presence.summary({ url: pairUrl({ relay: "wss://relay.example.com", route: "c".repeat(26), box: box9, secret: "s", name: "x" }) }))
-    .match(/\(key .+\)$/)[0];
-  assert.ok(hostile.endsWith(trueFingerprint), "the trailing fingerprint is always this box's real one, computed here, not anything from the name");
-  // The name itself, quoted, is capped well short of the 80-character junk run.
-  const quoted = hostile.match(/"([^"]*)"/)[1];
-  assert.ok(quoted.length <= 40, quoted);
-
-  // The relay host is the OTHER box's own text too (parsePairUrl only bars whitespace and a
-  // slash, so control characters, a right-to-left override and a long junk run all pass its own
-  // check): the prompt must strip and cap it exactly like the name.
-  const hostileHost = `wss://relay.example.com\u0007\u061c\u180e\u202e${"y".repeat(120)}`;
-  const hostileHostUrl = pairUrl({ relay: hostileHost, route: "d".repeat(26), box: box9, secret: "s", name: "Real Bakery" });
-  const hostileHostPrompt = await def.presence.summary({ url: hostileHostUrl });
-  assert.ok(hostileHostPrompt.length < 200, hostileHostPrompt);
-  assert.doesNotMatch(hostileHostPrompt, /[\u0007\u061c\u180e\u202e]/, "the control character, the Arabic letter mark, the Mongolian vowel separator and the RTL override are gone from the host too");
-  assert.ok(hostileHostPrompt.endsWith(trueFingerprint), "the fingerprint is still this box's own, unaffected by the host");
-  const hostPart = hostileHostPrompt.match(/ on (.+) \(key /)[1];
-  assert.ok(hostPart.length <= 64, hostPart);
-});
-
-shardTest("relay: relay.join is not available on a Mac without vyre-core to hold its device key", async t => {
-  // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
-  // does not depend on the OS running the suite: darwin always refuses, every other platform
-  // (this test box's own linux included) never does.
-  const refusal = macCoreRefusal("darwin");
-  assert.equal(refusal.code, "not_available_here");
-  assert.match(refusal.message, /vyre-core/);
-  assert.equal(macCoreRefusal("linux"), null);
-  assert.equal(macCoreRefusal("win32"), null);
-
-  // End to end, as if this box were a Mac: relay/index.js resolves platform once when its
-  // start() runs (seam.platform || process.platform), so flip process.platform before starting
-  // a fresh daemon, not after. Refused in run(), and before that: no Touch ID prompt at all
-  // (presence.when turns off), a caller the lenient test harness would otherwise pass straight
-  // through to run().
-  const real = Object.getOwnPropertyDescriptor(process, "platform");
-  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-  t.after(() => Object.defineProperty(process, "platform", real));
-  const { d } = await world(t, {}, { coreKeys: null });
-  const def = d.registry.tools.get("relay.join");
-  assert.equal(await def.presence.when({ url: "https://vyre.run/pair#anything" }), false, "no prompt on darwin: the call can only refuse");
-  const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: "wss://relay.example.com", i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
-  const r = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
-  assert.equal(r.error.code, "not_available_here");
 });
 
 shardTest("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and redeems it, and only device.paired + relay.paired fire", async t => {
@@ -864,7 +719,7 @@ shardTest("relay: the relay never learns the pairing secret or reads the record,
     /does not check out/);
 });
 
-shardTest("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, the same as relay.join", async t => {
+shardTest("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt", async t => {
   const refusal = macCoreRefusal("darwin");
   assert.equal(refusal.code, "not_available_here");
   const real = Object.getOwnPropertyDescriptor(process, "platform");
@@ -895,9 +750,6 @@ shardTest("relay: on a Mac with vyre-core holding the keys, the box pairs a phon
   assert.equal(fs.existsSync(path.join(root, "relay", "keys.json")), false, "no key file at the login uid");
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   assert.equal(status.connected, true);
-  // relay.join is offered too: its device key is core's as well, so a garbage code is refused as garbage, not as "not on a Mac"
-  const j = await d.registry.call("relay.join", { url: "vyre://x" }, "cli", PROOF);
-  assert.equal(j.error.code, "bad_input");
 });
 
 shardTest("relay: /v1/pair is rate-limited per IP", async t => {

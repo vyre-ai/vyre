@@ -15,7 +15,7 @@ import { parsePairUrl } from "../core/relay/pairing.js";
 import { pairTicket, pairOffer } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, offerUrl } from "./helpers.js";
 import { macCore } from "./fake-core-keys.js";
 
 const lenient = {
@@ -36,7 +36,10 @@ async function world(/** @type {any} */ t) {
   const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore(), kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const keys = () => fileKeyStore(path.join(tempHome(t), `k-${Math.random().toString(36).slice(2)}.json`));
-  return { d, url, keys };
+  const ringed = async () => pairOffer(/** @type {any} */ (parsePairUrl(await offerUrl(d))), { crypto: nodeCrypto(), keyStore: keys() });
+  // a device nobody was present for: a ticket a module minted (the classic bearer code that used to stand here is gone)
+  const unmarked = async () => pairTicket(fromBase64url((await d.registry.call("relay.ticket.mint", {}, "module:wink")).data.ticket), { relay: (await d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Handed-out phone", crypto: nodeCrypto(), keyStore: keys(), timeout: 20_000 });
+  return { d, url, keys, ringed, unmarked };
 }
 const info = async (/** @type {any} */ d, /** @type {string} */ id) => (await d.registry.call("relay.device.info", { id }, "module:vyred")).data;
 /** What the daemon builds for a relayed app device: owner facts or none. */
@@ -62,13 +65,11 @@ const check = async (/** @type {any} */ w, /** @type {string} */ id, /** @type {
   assert.equal(s.body.includes(`SECRET-${path}`), owner, `${path}: the whole stream for the owner's device, the cut stream for the other`);
 };
 
-test("pairing paths: the first device, a confirmed window and a gated ring leave the owner's device the owner's; the classic QR (a bearer ticket: any holder redeems it) and an ungated ticket a module minted do not", { timeout: 150_000 }, async t => {
+test("pairing paths: the first device, a confirmed window and a gated ring leave the owner's device the owner's; an ungated ticket a module minted do not", { timeout: 150_000 }, async t => {
   const w = await world(t);
-  // the first device (onboarding: nobody is on the box yet) and the classic QR, which is a bearer ticket: redeeming it confirms nothing about which device holds it, so it names no owner
-  const first = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  // a ring ticket the owner minted with presence (one step in a test)
+  const first = await w.ringed();
   await check(w, first.device, true, "first");
-  const start1 = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
-  await check(w, start1.device, false, "start");
   // the window: the redeemer is enrolled only after the screen confirms this exact phone
   const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" } };
   const events = []; w.d.events.on("pairing.*", (/** @type {any} */ e) => events.push([e.type, e.payload]));
@@ -83,10 +84,10 @@ test("pairing paths: the first device, a confirmed window and a gated ring leave
   await check(w, viaModule.device, false, "module");
 });
 
-test("marking: a device that came in by a bearer code is the owner's only after the owner marks it, with presence; nobody else can mark", { timeout: 150_000 }, async t => {
+test("marking: a device nobody confirmed (an ungated module ticket) is the owner's only after the owner marks it, with presence; nobody else can mark", { timeout: 150_000 }, async t => {
   const w = await world(t);
-  const bearer = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
-  await check(w, bearer.device, false, "bearer");
+  const bearer = await w.unmarked();
+  await check(w, bearer.device, false, "unmarked");
   const tokenFor = async (/** @type {string} */ person) => (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person, path: "direct", session: "s" }), {})).token;
   const mark = (/** @type {any} */ meta, /** @type {string} */ id = bearer.device) => w.d.registry.call("relay.devices.mark", { id }, "cli", meta);
   // the card the owner approves names the device, its kind, the day it paired and how the box holds it
@@ -108,11 +109,11 @@ test("marking: a device that came in by a bearer code is the owner's only after 
   await check(w, bearer.device, true, "marked");
 });
 
-test("a home with a member: the owner's own device reaches the owner's vault, a device that redeemed a bearer code does not", { timeout: 150_000 }, async t => {
+test("a home with a member: the owner's own device reaches the owner's vault, a device nobody confirmed does not", { timeout: 150_000 }, async t => {
   const w = await world(t);
   const K = w.d.kernel;
-  const first = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
-  const bearer = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  const first = await w.ringed();
+  const bearer = await w.unmarked();
   // somebody besides the owner is in the home: the vault now keeps a stranger out (with the owner alone it has nobody to keep out and answers anyone)
   const oc = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: K.id.owner, path: "direct", session: "s" });
   await K.gateway.grants.setRole(oc, { person: "per_" + "c".repeat(26), role: "member" }, { presence: { op: "stand-in", fields: {}, n: Math.random() } });
@@ -124,5 +125,24 @@ test("a home with a member: the owner's own device reaches the owner's vault, a 
     });
   });
   assert.equal(await vaultList(first.device), 200, "the owner's first device");
-  assert.equal(await vaultList(bearer.device), 403, "a device that redeemed the classic code is not the owner's");
+  assert.equal(await vaultList(bearer.device), 403, "a device nobody confirmed is not the owner's");
+});
+
+test("a home with only the owner: the owner's own device reaches the vault, a device nobody confirmed is refused all the same", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const first = await w.ringed();
+  const bearer = await w.unmarked();
+  const vaultList = (/** @type {string} */ id) => new Promise(resolve => {
+    const srv = http.createServer((req, res) => w.d.registry.deps.handler({})(req, res, `device:${id}`, { kind: "device", stableId: id }));
+    srv.listen(0, "127.0.0.1", () => {
+      const rq = http.request({ port: /** @type {any} */ (srv.address()).port, host: "127.0.0.1", path: "/v1/tools/vault.list", method: "POST", headers: { "content-type": "application/json" } }, x => { x.resume(); x.on("end", () => { srv.close(); resolve(x.statusCode); }); });
+      rq.end("{}");
+    });
+  });
+  // the first device by the ring path: Wink keeps no record of it here (the unproven-adoption shape), so it is the owner's only by the relay's owner-paired fact
+  assert.equal(await vaultList(first.device), 200, "the owner's first device reaches his own vault with nobody else in the home");
+  assert.equal(await vaultList(bearer.device), 403, "a device nobody confirmed is refused all the same");
+  // the box's own terminal never depends on a device: recovery (listing, marking) is always possible from it
+  assert.ok(!(await w.d.registry.call("vault.list", {}, "cli", PROOF)).error, "the owner at the box reaches the vault");
+  assert.ok(!(await w.d.registry.call("vault.list", {}, "local", PROOF)).error);
 });

@@ -11,7 +11,7 @@ import { serverSay } from "../install/flow.js";
 import { pairSayHere } from "../../src/real/pair-say";
 
 /** A scanned code as the text the parser reads. */
-const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.kind === "typed" ? c.code : c.text);
+const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "typed" ? c.code : c.text);
 
 export type LongCode = Exclude<Extract<WinkCode, { ok: true }>, { kind: "typed" }>;
 

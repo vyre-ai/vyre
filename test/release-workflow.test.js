@@ -68,14 +68,14 @@ test("release.yml: the Windows installer is built in this run, required by the r
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
 
-test("release.yml: the Lumen Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {
+test("release.yml: the Vyre Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {
   assert.match(yml, /\n  mac:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
   assert.match(yml, /sign: \$\{\{ needs\.prepare\.outputs\.publish == 'true' \}\}/, "the Apple environment is used on a publish only");
   assert.match(yml, /\(needs\.mac\.result == 'success' \|\| needs\.mac\.result == 'skipped'\)/, "a beta or rc run skips the Mac job and still releases");
   const add = yml.indexOf("Add the Lumen Mac files to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the dmgs are in dist before the signed list is made");
   const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
-  for (const f of ["Vyre-Lumen-$arch.dmg", "Vyre-Lumen-$arch.zip"]) assert.ok(step.includes(f), `${f} is copied into dist`);
+  for (const f of ["Vyre-$arch.dmg", "Vyre-$arch.zip"]) assert.ok(step.includes(f), `${f} is copied into dist`);
   for (const k of ["signed=developer-id", "notarized=yes", "gatekeeper=accepted"]) assert.ok(step.includes(k), `a dmg needs ${k}`);
   assert.ok(step.includes("signed=adhoc"), "an ad hoc build is released too");
   assert.match(step, /sideload/, "and the notes say it is sideloaded");

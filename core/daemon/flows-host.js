@@ -10,6 +10,7 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
+import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
@@ -53,10 +54,10 @@ export async function defineWithRetry(o) {
       if (n >= tries) {
         o.log(n === tries ? `${o.label} could not be defined after ${n} tries (${why}); still trying every ${Math.round(slow / 60_000)} min, or restart Vyre once Records are up` : `${o.label} are still not defined (${why}); trying again in ${Math.round(slow / 60_000)} min`);
         if (n === tries) { if (o.onExhausted) o.onExhausted(); if (o.onDone) o.onDone(false); }
-        const ts = setTimeout(() => { if (o.timers) o.timers.delete(ts); void attempt(n + 1); }, slow); ts.unref?.(); if (o.timers) o.timers.add(ts);
+        const ts = setTimeout(() => { if (o.timers) o.timers.delete(ts); void attempt(n + 1); }, retryAfter(n, { tries, slow })); ts.unref?.(); if (o.timers) o.timers.add(ts);
         return false;
       }
-      const wait = Math.min(base * 2 ** (n - 1), max);
+      const wait = retryAfter(n - 1, { base, max });
       o.log(`${o.label} are not defined yet (${why}); trying again in ${Math.round(wait / 1000)} s`);
       const t = setTimeout(() => { if (o.timers) o.timers.delete(t); void attempt(n + 1); }, wait); t.unref?.(); if (o.timers) o.timers.add(t);
       return false;
@@ -221,6 +222,11 @@ export function createFlowsHost(o) {
           await gw.records.define(owner(), { add_types: base.filter((/** @type {any} */ t) => !now.has(t.name)), change_types: base.filter((/** @type {any} */ t) => now.has(t.name)) });
         } catch (/** @type {any} */ e) { log(`flows: could not define the base Kit's types for ${space}: ${e && e.message}`); }
       }
+      // A Space made before seat levels has the old team-member type: it gains `level` (the core definition is additive; a row with none is a contributor).
+      try {
+        const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");
+        if (seat && wantSeat && wantSeat.fields.some((/** @type {any} */ f) => !seat.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantSeat] });
+      } catch (e) { log(`flows: the team-member type for ${space} did not gain its level field: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
       // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
       try {

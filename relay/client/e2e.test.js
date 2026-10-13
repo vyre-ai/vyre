@@ -15,7 +15,7 @@ import { createRelay } from "../node/server.js";
 import { keyPair } from "../../core/relay/noise.js";
 import { newRouteKey, routeId } from "../../core/relay/wire.js";
 import { relayLink } from "../../core/relay/link.js";
-import { tempHome, nameAsOwner } from "../../test/helpers.js";
+import { tempHome, nameAsOwner, offerUrl } from "../../test/helpers.js";
 import { pair, connect } from "./client.js";
 import { webCrypto, memoryKeyStore } from "./webcrypto.js";
 import { serveWith, reply } from "./testing.js";
@@ -49,13 +49,13 @@ test("client e2e: pair from the QR URL, call the router as device:<id>, follow e
     network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ presence: lenient, root, log: () => {} });
   t.after(() => d.stop());
-  const offer = (await d.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url;
+  const offer = await offerUrl(d);
 
   const keyStore = memoryKeyStore();
   const crypto = webCrypto();
   const paired = await pair(offer, { name: "kit", keyStore, crypto });
   assert.match(paired.device, /^[a-z2-7]{16}$/);
-  nameAsOwner(d, paired.device);   // stands for the owner's first device after adoption (relay.pair.first), which Wink names
+  nameAsOwner(d, paired.device);   // stands for the owner's first device after adoption, which Wink names
   assert.equal(paired.name, "alex");
   assert.equal((await keyStore.get())?.privateKey.extractable, false);
 
