@@ -87,8 +87,6 @@ export function guardUntilReady(tools, ready, stuck = () => false) {
  * }} o
  */
 export function createFlowsHost(o) {
-  /** @type {null | { list: (f: string) => any[], set: (f: string, g: any, by: string | null) => void, level: (f: string, chain: any) => Promise<string> | string }} who a Flow is shared with, from the Flows module's store */
-  let accessImpl = null;
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
   /** @type {Map<string, any>} */ const spaces = new Map();
@@ -104,7 +102,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"], mints: [{ prefix: "flow-act", actions: ["flows.act-standing"] }] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"], mints: [{ prefix: "flow-act", actions: ["flows.act-standing"] }, { prefix: "flow", actions: ["flows.run", "flows.define"] }] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
@@ -305,8 +303,18 @@ export function createFlowsHost(o) {
       const rows = await gw.ask.list(flowsChain(), { state: ["stuck"] }).catch(() => []);
       return (Array.isArray(rows) ? rows : []).slice(0, 50).map((/** @type {any} */ t) => ({ task: t.id, label: String(t.title || "").slice(0, 120), reason: String((t.stuck && t.stuck.reason) || "").slice(0, 200), since: (t.stuck && t.stuck.since) || t.updated_at || 0, ...(t.record ? { record: t.record } : {}) }));
     };
-    // Sharing one Flow (Can use, Can edit) is kept by the Flows module in its own store (lib/access.js, the one shape agents use too); the module hands its implementation to the host when it starts.
-    const access = { list: (/** @type {string} */ f) => (accessImpl ? accessImpl.list(f) : []), set: (/** @type {string} */ f, /** @type {any} */ g, /** @type {string | null} */ by) => { if (!accessImpl) throw Object.assign(new Error("sharing a Flow needs the Flows store"), { code: "unavailable" }); return accessImpl.set(f, g, by); }, level: (/** @type {string} */ f, /** @type {any} */ chain) => (accessImpl ? accessImpl.level(f, chain) : "none") };
+    // Sharing one Flow (Can use, Can edit): a person's own kernel grant on that Flow, made through the module's mint handle, so the kernel's authorize is the only place access is decided.
+    const accessSource = (/** @type {string} */ flow, /** @type {string} */ person) => `flows:access:${flow}:${person}`;
+    const access = {
+      list: async (/** @type {string} */ flow) => ((await sh.mint?.list({ source: `flows:access:${flow}:` })) || []).filter((/** @type {any} */ g) => g.subject && g.subject.actor)
+        .map((/** @type {any} */ g) => ({ kind: "person", subject: g.subject.actor.id, level: g.actions.includes("flows.define") ? "edit" : "use", by: null })),
+      set: async (/** @type {string} */ flow, /** @type {string} */ person, /** @type {string | null} */ level) => {
+        if (!sh.mint) throw Object.assign(new Error("sharing a Flow needs the kernel"), { code: "unavailable" });
+        await sh.mint.end({ source: accessSource(flow, person), reason: "the sharing of this Flow changed" });
+        if (level) await sh.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: person, space } }, actions: level === "edit" ? ["flows.run", "flows.define"] : ["flows.run"], resource: { prefix: `vyre://${space}/flow/${flow}` }, source: accessSource(flow, person), reason: `shared with ${person}: ${level === "edit" ? "Can edit" : "Can use"}` });
+        return { ok: true };
+      },
+    };
     const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings, stuckTasks, access });
     // The standing approval (kernel/flows/standing.js): the person's yes at turn-on is a kernel grant for exactly that approved version, made through the module's mint handle and ended when the
     // version stops being the one that runs. A send is covered only when the kernel, asked with the run's own chain, allows it: the budget and rate on the grant are the kernel's to count.
@@ -420,8 +428,6 @@ export function createFlowsHost(o) {
 
   return Object.freeze({
     attach,
-    /** The Flows module gives the host its store of who each Flow is shared with (lib/access.js). @param {typeof accessImpl} impl */
-    useAccess: (impl) => { accessImpl = impl; },
     get: (/** @type {string} */ space) => spaces.get(space) || null,
     spaces: () => [...spaces.keys()],
     stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); if (o.calendarSync) o.calendarSync.stop(); },

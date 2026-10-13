@@ -72,7 +72,7 @@ function personOf(chain) {
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
  *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, kinds?: Record<string, import("./proposals.js").ProposalKind>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
 
- *   access?: { list: (flow: string) => any, set: (flow: string, g: { kind: string, subject: string, level: string | null }, by: string | null) => any, level: (flow: string, chain: any) => Promise<string> | string },  who a Flow is shared with (the Flows module keeps the rows, lib/access.js)
+ *   access?: { list: (flow: string) => Promise<any[]>, set: (flow: string, person: string, level: string | null) => Promise<any> },  who a Flow is shared with (the host makes one grant per person on that Flow)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -104,21 +104,14 @@ export function createFlows(o) {
    * made (one a Kit installed) has no creator, and then the grant decides.
    * @param {any} chain @param {string} id
    */
-  const isMaker = async (chain, id) => {
+  const mayEdit = async (chain, id) => {
     const row = await store.flowRow?.(id);
-    if (!row) return { gone: true, ok: true };
+    if (!row) return;
     const who = chain.hops[chain.hops.length - 1].actor;
     const first = row.versions[0] && row.versions[0].by;
-    if (first && who && first.id === who.id) return { ok: true };
+    if (first && who && first.id === who.id) return;
     const d = await o.kernel.authorize({ chain, action: "flows.define", resource: `vyre://${row.space}/flow/${id}` }).catch(() => null);
-    return { ok: Boolean(d && d.effect === "allow") };
-  };
-  /** The creator, an owner or an admin shares a Flow. @param {any} chain @param {string} id */
-  const mayShare = async (chain, id) => { if (!(await isMaker(chain, id)).ok) throw Object.assign(new Error("only its creator, the owner or an admin shares a Flow"), { code: "denied" }); };
-  const mayEdit = async (chain, id) => {
-    if ((await isMaker(chain, id)).ok) return;
-    if (o.access && (await o.access.level(id, chain)) === "edit") return;
-    throw Object.assign(new Error("you can use this Flow but not change it: ask its owner for Can edit"), { code: "denied" });
+    if (!d || d.effect !== "allow") throw Object.assign(new Error("you can use this Flow but not change it: ask its owner for Can edit"), { code: "denied" });
   };
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
   const tools = {
@@ -279,22 +272,21 @@ export function createFlows(o) {
       const d = await runner.define(id, flow, by);
       return d.ok ? { ...d, changes: flowChanges(cur.flow, flow, c) } : d;
     },
-    // Share one Flow with a person or a role: Can use (run it, see it) or Can edit (change it too). Only its creator, an owner or an admin shares it. The module keeps the rows (lib/access.js).
+    // Share one Flow with a person: Can use (run it, see it) or Can edit (change it too). Only its creator, an owner or an admin shares it. The kernel's grant on that Flow is the one source of truth.
     "flows.access.get": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
-      await mayShare(chain, id);
+      await mayEdit(chain, id);
       return { access: o.access ? await o.access.list(id) : [] };
     },
     "flows.access.set": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
-      await mayShare(chain, id);
+      await mayEdit(chain, id);
       const kind = i.kind === undefined ? "person" : i.kind, level = i.level ?? null;
-      if (!["person", "role"].includes(kind)) throw Object.assign(new Error("share with a person or a role"), { code: "bad_input" });
-      if (typeof i.subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(i.subject)) throw Object.assign(new Error("name the person or role to share with"), { code: "bad_input" });
+      if (kind !== "person") throw Object.assign(new Error("a Flow can be shared with a person for now; a team or role comes later"), { code: "bad_input" });
+      if (typeof i.subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(i.subject)) throw Object.assign(new Error("name the person to share with"), { code: "bad_input" });
       if (level !== null && !["use", "edit"].includes(level)) throw Object.assign(new Error("level is use, edit or null"), { code: "bad_input" });
-      if (!o.access) throw Object.assign(new Error("sharing a Flow needs the Flows store"), { code: "unavailable" });
-      await o.access.set(id, { kind, subject: i.subject, level }, chain.hops[0] && chain.hops[0].actor ? chain.hops[0].actor.id : null);
-      return { ok: true };
+      if (!o.access) throw Object.assign(new Error("sharing a Flow needs the kernel"), { code: "unavailable" });
+      return o.access.set(id, i.subject, level);
     },
     "flows.cheatsheet": async () => ({ text: cheatsheet() }),
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),

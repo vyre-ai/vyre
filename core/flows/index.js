@@ -4,7 +4,6 @@
 // assistant) or the chain the daemon proved for a person's own surface. A call with neither gets the module's own service chain from the kernel, which is not a caller, and is refused. This module never
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
-import { Access, accessMigration } from "../../lib/access.js";
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { serveMember, CALLS as MEMBER_CALLS } from "./member.js";
@@ -76,21 +75,6 @@ const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    // Who each Flow is shared with (Can use, Can edit): the one shape agents use too (lib/access.js), kept in this module's own store. The host asks it when someone changes a Flow they did not make.
-    if (ctx.store && typeof ctx.store.migrate === "function" && ctx.flowsHost && typeof ctx.flowsHost.useAccess === "function") {
-      ctx.store.migrate([accessMigration("flows_access")]);
-      const shared = new Access(ctx.store.db, "flows_access");
-      const K = ctx.kernel;
-      ctx.flowsHost.useAccess({
-        list: (/** @type {string} */ id) => shared.list(id),
-        set: (/** @type {string} */ id, /** @type {any} */ g, /** @type {string | null} */ by) => shared.set(id, g, by),
-        level: async (/** @type {string} */ id, /** @type {any} */ chain) => {
-          const person = chain && chain.hops && chain.hops[0] && chain.hops[0].actor ? String(chain.hops[0].actor.id) : null;
-          const m = person && K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
-          return shared.level(id, { person, role: m && m.role ? String(m.role) : null });
-        },
-      });
-    }
     const hostOf = (/** @type {any} */ input) => {
       const h = ctx.flowsHost;
       if (!h) throw refuse("Flows run only where the kernel is on", "unavailable");
