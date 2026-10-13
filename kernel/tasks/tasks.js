@@ -295,6 +295,18 @@ export function createTasks(cfg) {
   };
 
   /**
+   * May this agent check work: only while the person who made it is an owner or an admin, read live each time (a demoted maker's agent stops approving), and never when that cannot be told:
+   * no way to ask, no maker, or no role. rc1-d term 6, until "made by" is everywhere.
+   * @param {string} agentId
+   */
+  const agentMakerIsStaff = async (agentId) => {
+    if (typeof cfg.agentMaker !== "function") return false;
+    const maker = await Promise.resolve(cfg.agentMaker(agentId)).catch(() => null);
+    if (typeof maker !== "string" || !maker) return false;
+    const role = await Promise.resolve(cfg.members.roleOf({ kind: "person", id: maker, space: cfg.space })).catch(() => null);
+    return role === "owner" || role === "admin";
+  };
+  /**
    * An agent checks another agent's work, under its own chain and reach (rc1-d, 13 Oct): only when the task names it as its checker, never the doer or anything running under the doer, only an
    * internal output (nothing outward, no payload, no stage), and only a record it can read. The audit says an agent approved. No presence proof: nothing an agent approves leaves.
    */
@@ -308,6 +320,7 @@ export function createTasks(cfg) {
     if (t.state !== "needs_check") throw new KernelError("bad_state", "that task is not waiting for a check");
     if (same(agent, t.doer) || chain.hops.some((/** @type {any} */ h) => same(h.actor, t.doer))) throw new KernelError("not_allowed", "an agent cannot check its own work");
     if (outward(t) || t.stage) throw new KernelError("not_allowed", "an agent's approval is for the internal check only: a person says yes to anything that leaves or holds a stage");
+    if (!(await agentMakerIsStaff(agent.id))) throw new KernelError("not_allowed", "this agent may not check work: the person who made it is not an owner or an admin");
     if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(t)))) throw new KernelError("not_found", "no such task");
     if (a.outcome === "rejected") {
       if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
@@ -354,6 +367,7 @@ export function createTasks(cfg) {
       if (!checker && out) checker = cfg.approver ? cfg.approver(chain) : undefined;
       if (out && !checker) throw new KernelError("no_checker", "a send needs a checker and none could be assigned");
       // An agent may check another agent's internal work, and nothing that leaves or holds a stage: a send, a presence-gated act and a stage hold always wait for a person's yes.
+      if (checker && checker.kind === "agent" && !(await agentMakerIsStaff(checker.id))) throw new KernelError("not_allowed", "this agent may not check work: the person who made it is not an owner or an admin");
       if (checker && checker.kind === "agent" && (out || spec.stage || spec.required)) throw new KernelError("not_allowed", "an agent cannot be the checker of a send or of a stage's task: a person says yes to those");
       const probe = { doer, checker };
       const persons = checkersOf(/** @type {any} */ probe);

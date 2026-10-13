@@ -52,7 +52,7 @@ function rig(over = {}) {
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
   const tasks = createTasks({
-    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}),
+    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}),
     members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
@@ -823,10 +823,13 @@ test("who reads a task: only the chain's PERSON counts, never a later hop; an as
 
 
 // ---- an agent as checker (rc1-d, 13 Oct) ----
+// research was made by alice, who is an admin; roles are read live
+const roles = { per_alice: "admin" };
+const staffRig = () => { roles.per_alice = "admin"; return rig({ agentDecide: ["research"], agentMaker: () => ALICE, roleOf: a => roles[a.id] ?? null }); };
 const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, ...over });
 
 test("agent checker: it passes the internal check under its own chain, and the card says an agent approved", async () => {
-  const r = rig({ agentDecide: ["research"] });
+  const r = staffRig();
   const t = await r.tasks.request(owner(), internal());
   await r.tasks.start(asIntake(), t.id);
   const w = await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
@@ -837,7 +840,7 @@ test("agent checker: it passes the internal check under its own chain, and the c
 });
 
 test("agent checker: it is never its own doer, nor a send's checker, nor a stage's, and a person checker still works", async () => {
-  const r = rig({ agentDecide: ["research"] });
+  const r = staffRig();
   await assert.rejects(() => r.tasks.request(owner(), internal({ checker: actor("agent", "intake") })), { code: "same_actor" }, "not the doer");
   await assert.rejects(() => r.tasks.request(owner(), draftTask({ checker: actor("agent", "research") })), { code: "not_allowed" }, "not a send");
   await assert.rejects(() => r.tasks.request(owner(), internal({ stage: "Drafting" })), { code: "not_allowed" }, "not a stage hold");
@@ -853,4 +856,21 @@ test("agent checker: it is never its own doer, nor a send's checker, nor a stage
   const w = await r.tasks.complete(alice(), mine.id, { answer: "yes", reason: "ok" });
   const ok = await r.tasks.decide(bob(), mine.id, { outcome: "approved", proof: r.proof(bob(), BOB, w) });
   assert.equal(ok.state, "done");
+});
+
+test("agent checker: only while the person who made it is an owner or an admin, read live, and never when that cannot be told", async () => {
+  const r = staffRig();
+  const t = await r.tasks.request(owner(), internal());
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
+  roles.per_alice = "member"; // the maker is demoted: the agent stops approving, though the task already names it
+  await assert.rejects(() => r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" }), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.request(owner(), internal()), { code: "not_allowed" }, "and cannot be named as a checker either");
+  roles.per_alice = "admin";
+  assert.equal((await r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" })).state, "done", "promoted again, it approves");
+  // no way to ask who made it, or no maker: refused
+  const none = rig({ agentDecide: ["research"] });
+  await assert.rejects(() => none.tasks.request(owner(), internal()), { code: "not_allowed" });
+  const nomaker = rig({ agentDecide: ["research"], agentMaker: () => null, roleOf: () => "admin" });
+  await assert.rejects(() => nomaker.tasks.request(owner(), internal()), { code: "not_allowed" });
 });

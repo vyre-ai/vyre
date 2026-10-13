@@ -125,6 +125,12 @@
         "effect": "write"
       },
       {
+        "name": "agents.maker",
+        "summary": "who made an agent (the kernel's check of an agent approver)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.docs.get",
         "reach": "anyone",
         "effect": "read"

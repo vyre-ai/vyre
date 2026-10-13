@@ -98,6 +98,8 @@ export function createFlowsHost(o) {
     const ownerOf = () => (typeof ownerArg === "function" ? ownerArg() : ownerArg);
     if (spaces.has(space)) return spaces.get(space);
     const gw = k.gateway;
+    // An agent may approve another agent's work only while the person who made it is an owner or an admin: the kernel asks the agents module, live, who made the agent.
+    if (typeof k.setAgentMaker === "function" && typeof o.callModule === "function") k.setAgentMaker(async (/** @type {string} */ id) => { const r = await o.callModule("agents.maker", { agent: id }, space); return r && typeof r.made_by === "string" ? r.made_by : null; });
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space });
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
