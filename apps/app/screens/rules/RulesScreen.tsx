@@ -101,7 +101,7 @@ export default function RulesScreen() {
             <Segmented label="Kind" value={draft.kind} onChange={(k) => set({ kind: k })} options={KINDS.map((k) => [k.kind, k.title] as [Draft["kind"], string])} />
             <Text size="caption" tone="label">{kind?.help}</Text>
             <View className="flex-row flex-wrap gap-s2">
-              <Chip selected={draft.binds.includes("assistants")} onPress={() => toggle("assistants")}>Assistants</Chip>
+              <Chip selected={draft.binds.includes("assistants")} onPress={() => toggle("assistants")}>Agents</Chip>
               <Chip selected={draft.binds.includes("members")} onPress={() => toggle("members")}>Members</Chip>
             </View>
             <Field label="Actions" placeholder="mail.send, calendar.write" value={draft.actions} onChangeText={(actions) => set({ actions })} />
