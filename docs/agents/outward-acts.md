@@ -4,7 +4,7 @@ summary: What counts as an outward act, how to ask for one, and what a person se
 audience: agents
 owner: docs
 status: stable
-tokens: 650
+tokens: 720
 when: You want to send an email or message, pay, post, publish, share, or delete something, or a call came back held.
 ---
 
@@ -29,14 +29,11 @@ A connection's operation is outward when its kind is `change`, `send`, `spend`, 
 
 ## Put a site live
 
-You do every step; the person gives one yes. In this order:
-
-1. `publish.create` with a name, a source and how it builds. Then `publish.preview`. The preview address is private.
-2. `publish.secret.grant` only for a Vault item you may use. A real secret is held for the person, so ask for it before step 5, not after.
-3. `publish.domain.add` with the host, and `canonical` (`apex` or `www`) when it matters. Read the exact DNS record with `publish.domain.status` (type, name, value), tell the person where to set it, then recheck with `publish.domain.verify` until it says verified. A site that is already live keeps its domains: connecting one is the person's.
-4. `publish.plan` to read what goes public, at which address, with which secrets, replacing which version.
-5. `publish.go`. It returns `held` with a task and the same plan. Nothing is live.
-6. Tell the person: "It is on Now and in this chat. Approve it to put the site live." You cannot approve, and `publish.decide` refuses you. Look at `publish.holds` or `publish.status` to see when it went through. Never call `publish.go` again to nudge it.
+1. `publish.create`, then `publish.preview` (private address).
+2. `publish.secret.grant` for Vault items you may use (a real secret is held).
+3. `publish.domain.add` (`canonical` apex or www). `publish.domain.status` gives the DNS record to tell the person; recheck with `publish.domain.verify`. Live sites: the person's.
+4. `publish.go` returns `held` with the plan and a task. Nothing is live.
+5. Ask the person to approve it on Now or in this chat. You cannot approve. Do not call `publish.go` again.
 
 ## What the system guarantees
 
