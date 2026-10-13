@@ -55,7 +55,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
   if (loading && !world) return frame("Records", <LoadingState rows={5} />);
   const def = world?.types.find((t) => t.name === type);
-  if (!world || !def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
+  if (!world || !def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
   // The person's own views of this type are laid over the type's own; they decide how the screen is drawn only when one of them is open, so they never change what the type opens as.
   const mineViews = personalViewsOf(type, entries);
   const full = withPersonalViews(def, mineViews);
