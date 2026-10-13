@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Field, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { useRouter } from "expo-router";
+import { Banner, Button, Card, Chip, Field, Row, Segmented, Select, Sheet, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
+import { signingLabel, useSigningTemplates } from "../documents/useSigningTemplates";
 import { aliasesFor, unfilled, waitingFor, whenWords } from "./documents-model.js";
 
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -11,12 +13,14 @@ const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work
  * record has an address), and what is still waiting for this person's signature, with a reminder. Each is the tool the Flow steps already call; nothing is shown that the box cannot do.
  */
 export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; rec: any; related: { urn: string; type: string }[]; email: string; canSend: boolean }) {
+  const router = useRouter();
   const [templates, setTemplates] = useState<string[]>([]);
   const [waiting, setWaiting] = useState<any[]>([]);
   const [make, setMake] = useState<null | { name: string; asks: string[]; format: "docx" | "pdf"; busy: boolean; problem: string; made: string }>(null);
   const [send, setSend] = useState<null | { id: string; signer: string; note: string; busy: boolean; problem: string }>(null);
   const aliases = useMemo(() => aliasesFor(def, rec, related), [def, rec, related]);
   useEffect(() => { let live = true; tool<{ templates?: { name: string }[] }>("documents.template.list").then((r) => { if (live) setTemplates((r?.templates ?? []).map((t) => t.name)); }).catch(() => { if (live) setTemplates([]); }); return () => { live = false; }; }, []);
+  const { signing } = useSigningTemplates(canSend);
   const loadWaiting = useCallback(() => {
     if (!email) { setWaiting([]); return; }
     tool<{ requests?: any[] }>("documents.signing.waiting").then((r) => setWaiting(waitingFor(r?.requests, email))).catch(() => setWaiting([]));
@@ -38,7 +42,7 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
   const sendIt = () => {
     if (!send) return;
     const id = Number(send.id);
-    if (!Number.isInteger(id) || id < 1) { setSend({ ...send, problem: "Give the template's number in Documents." }); return; }
+    if (!Number.isInteger(id) || id < 1) { setSend({ ...send, problem: "Pick a signing template." }); return; }
     setSend({ ...send, busy: true, problem: "" });
     tool("documents.send", { template_id: id, ...(def.name === "contact" ? { contact: rec.urn } : { email }), ...(send.signer.trim() ? { signer: send.signer.trim() } : {}), ...(send.note.trim() ? { note: send.note.trim() } : {}) })
       .then(() => { showToast("Sent for signature."); setSend(null); loadWaiting(); })
@@ -78,11 +82,13 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
         {send ? (
           <View className="gap-s3">
             <Text tone="muted">{`The signing link goes to ${email}. You approve the send.`}</Text>
-            <Field label="Template number in Documents" kind="number" value={send.id} onChangeText={(id) => setSend({ ...send, id })} />
+            {signing.length ? <Select label="Signing template" value={send.id} options={[["", "Pick one"], ...signing.map((x) => [String(x.id), signingLabel(x)] as [string, string])]} onChange={(id) => setSend({ ...send, id })} /> : (
+              <Banner><Text strong>No signing templates yet</Text><Text size="caption" tone="muted">Make one in the Documents app, then it shows here.</Text><View className="flex-row"><Button kind="secondary" size="sm" label="Open Documents" onPress={() => { setSend(null); router.push("/u/documents" as never); }} /></View></Banner>
+            )}
             <Field label="Signer's name (optional)" value={send.signer} onChangeText={(signer) => setSend({ ...send, signer })} />
             <Field label="Note (optional)" value={send.note} onChangeText={(note) => setSend({ ...send, note })} multiline lines={2} />
             {send.problem ? <Banner tone="warn">{send.problem}</Banner> : null}
-            <View className="flex-row gap-s2"><Button kind="primary" label="Send" loading={send.busy} disabled={send.busy} onPress={sendIt} /><Button kind="ghost" label="Cancel" onPress={() => setSend(null)} /></View>
+            <View className="flex-row gap-s2"><Button kind="primary" label="Send" loading={send.busy} disabled={send.busy || !signing.length || !send.id} onPress={sendIt} /><Button kind="ghost" label="Cancel" onPress={() => setSend(null)} /></View>
           </View>
         ) : null}
       </Sheet>
