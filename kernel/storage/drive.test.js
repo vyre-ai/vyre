@@ -77,3 +77,34 @@ test("a version that cannot be recorded leaves nothing behind: no new version an
   assert.deepEqual(drive.history("a.txt").map(v => v.ver), [1], "the refused version is not in the history"); assert.equal(objects(), before, "and its bytes were removed from the pool");
   pool.reclass = realReclass; assert.equal((await drive.put("a.txt", rand(2000), { base: 1 })).version, 2, "the next write is version 2");
 });
+
+test("changes: every version gets the next sequence number, and a mount asks for what moved since its anchor, deletes included", async t => {
+  const { drive } = world(t);
+  assert.deepEqual(drive.changes("", null), { anchor: 0, items: [] }, "an empty drive has anchor 0");
+  await drive.put("a.txt", rand(10), { by: "per_alex" });
+  await drive.put("dir/b.txt", rand(10), { by: "per_alex" });
+  const first = drive.changes("", null);
+  assert.deepEqual(first.items.map(i => [i.path, i.deleted]), [["a.txt", false], ["dir/b.txt", false]]);
+  assert.equal(first.anchor, 2);
+  assert.deepEqual(drive.changes("", first.anchor), { anchor: 2, items: [] }, "nothing moved since the anchor");
+  await drive.put("a.txt", rand(20), { by: "per_alex", base: 1 });
+  await drive.delete("dir/b.txt", { by: "per_alex" });
+  const next = drive.changes("", first.anchor);
+  assert.equal(next.anchor, 4);
+  assert.deepEqual(next.items.map(i => [i.path, i.version, i.deleted, i.size]), [["a.txt", 2, false, 20], ["dir/b.txt", 2, true, 0]], "a delete shows as deleted, in the order it happened");
+  await drive.restore("dir/b.txt", 1, { by: "per_alex" });
+  assert.deepEqual(drive.changes("", 4).items.map(i => [i.path, i.deleted]), [["dir/b.txt", false]], "a restore is a change");
+  assert.deepEqual(drive.changes("dir/", null).items.map(i => i.path), ["dir/b.txt"], "a prefix narrows it");
+  assert.deepEqual(drive.changes("", null).items.map(i => i.path), ["a.txt", "dir/b.txt"], "the full listing leaves deleted files out");
+});
+
+test("changes: a drive written before sequence numbers still lists, and new changes count from the old high mark", async t => {
+  const { drive } = world(t);
+  await drive.put("old.txt", rand(5), { by: "per_alex" });
+  for (const f of Object.values(drive.ix.files)) for (const v of f.versions) delete v.seq;
+  delete drive.ix.seq;
+  assert.deepEqual(drive.changes("", null).items.map(i => i.path), ["old.txt"]);
+  assert.equal(drive.changes("", null).anchor, 0);
+  await drive.put("new.txt", rand(5), { by: "per_alex" });
+  assert.deepEqual(drive.changes("", 0).items.map(i => i.path), ["new.txt"], "only what changed after the anchor, not the old file");
+});

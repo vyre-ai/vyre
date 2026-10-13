@@ -116,3 +116,87 @@ test("DR-2: a listing is one authorization of the folder and a bounded page with
   assert.equal(new Set(seen).size, 5000);
   assert.equal((await D.list(owner, "many/")).length, 5000, "list still returns everything, a page at a time inside");
 });
+
+/** A kernel over the REAL Drive's file shape, for the mount calls. */
+async function mountWorld() {
+  const files = new Map(), clock = { n: 0 };
+  let seq = 0;
+  const head = f => f.at(-1);
+  const drive = {
+    async put(p, bytes, { by }) { const f = files.get(p) || []; f.push({ ver: f.length + 1, bytes, by, seq: ++seq, deleted: false }); files.set(p, f); return { version: f.length, conflict: false }; },
+    async get(p) { const f = files.get(p); if (!f || head(f).deleted) throw Object.assign(new Error("nf"), { code: "not_found" }); return head(f).bytes; },
+    stat(p) { const f = files.get(p); if (!f || head(f).deleted) throw Object.assign(new Error("nf"), { code: "not_found" }); return { version: head(f).ver, size: head(f).bytes.length, sha256: null }; },
+    stream(p) { return (async function* () { yield Buffer.from(await drive.get(p)); })(); },
+    async putStream(p, source, { by }) { const parts = []; for await (const c of source) parts.push(c); const bytes = new Uint8Array(Buffer.concat(parts)); const r = await drive.put(p, bytes, { by }); return { ...r, size: bytes.length, sha256: null }; },
+    list(prefix) { return [...files].filter(([k, f]) => k.startsWith(prefix) && !head(f).deleted).map(([path, f]) => ({ path, size: head(f).bytes.length, version: head(f).ver })); },
+    changes(prefix, since) { const items = [...files].filter(([k, f]) => k.startsWith(prefix) && (since === null ? !head(f).deleted : head(f).seq > since)).sort((a, b) => head(a[1]).seq - head(b[1]).seq).map(([path, f]) => ({ path, size: head(f).deleted ? 0 : head(f).bytes.length, version: head(f).ver, seq: head(f).seq, deleted: Boolean(head(f).deleted) })); return { anchor: seq, items }; },
+    async delete(p, { by }) { const f = files.get(p); f.push({ ver: f.length + 1, bytes: new Uint8Array(), by, seq: ++seq, deleted: true }); return { version: f.length }; },
+    history(p) { return (files.get(p) || []).map(v => ({ ver: v.ver })); },
+    async restore() { return {}; }, async prune() { return {}; }, async backup() { return {}; }, backups() { return []; }, async restoreBackup() { return {}; }, async pruneBackups() { return {}; },
+  };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const g = k.gateway.grants;
+  const role = { person: BOB, role: "member" };
+  await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["drive.read", "drive.write"], resource: { prefix: `vyre://${SPACE}/file/proj/*` }, conditions: {}, source: "test" };
+  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  return { k, D: k.gateway.drive, owner, bob, files };
+}
+const enc = s => new TextEncoder().encode(s), dec = b => new TextDecoder().decode(b);
+
+test("drive.changes: the caller sees only what they may read, with the anchor to ask again from, and a delete of a hidden file stays hidden", async () => {
+  const { D, owner, bob } = await mountWorld();
+  await D.put(owner, "secret/s.txt", enc("s"));
+  await D.put(bob, "proj/a.txt", enc("a"));
+  const first = await D.changes(bob, "", { since: null });
+  assert.deepEqual(first.items.map(i => i.path), ["proj/a.txt"]);
+  assert.equal(first.more, false);
+  await D.put(bob, "proj/b.txt", enc("b"));
+  await D.delete(owner, "secret/s.txt");
+  const next = await D.changes(bob, "", { since: first.anchor });
+  assert.deepEqual(next.items.map(i => [i.path, i.deleted]), [["proj/b.txt", false]]);
+  const again = await D.changes(bob, "", { since: next.anchor });
+  assert.deepEqual(again, { anchor: next.anchor, items: [], more: false });
+});
+
+test("drive.changes: a page stops at the limit and the anchor is the last change it covered, so the next page starts there", async () => {
+  const { D, bob } = await mountWorld();
+  for (const n of ["a", "b", "c"]) await D.put(bob, `proj/${n}.txt`, enc(n));
+  const p1 = await D.changes(bob, "proj/", { since: null, limit: 2 });
+  assert.deepEqual(p1.items.map(i => i.path), ["proj/a.txt", "proj/b.txt"]);
+  assert.equal(p1.more, true);
+  const p2 = await D.changes(bob, "proj/", { since: p1.anchor, limit: 2 });
+  assert.deepEqual(p2.items.map(i => i.path), ["proj/c.txt"]);
+  assert.equal(p2.more, false);
+});
+
+test("drive.move: one file to a new path under the caller's grants, the old path is gone, an existing target is refused", async () => {
+  const { D, owner, bob } = await mountWorld();
+  await D.put(bob, "proj/a.txt", enc("hello"));
+  const r = await D.move(bob, "proj/a.txt", "proj/sub/a2.txt");
+  assert.equal(r.path, "proj/sub/a2.txt");
+  assert.equal(dec(await D.get(bob, "proj/sub/a2.txt")), "hello");
+  await assert.rejects(() => D.get(bob, "proj/a.txt"), { code: "not_found" });
+  await D.put(bob, "proj/x.txt", enc("x"));
+  await assert.rejects(() => D.move(bob, "proj/x.txt", "proj/sub/a2.txt"), { code: "exists" });
+  await assert.rejects(() => D.move(bob, "proj/x.txt", "other/x.txt"), { code: "not_found" }, "no write grant at the target looks like absence");
+  await D.put(owner, "other/o.txt", enc("o"));
+  await assert.rejects(() => D.move(bob, "other/o.txt", "proj/o.txt"), { code: "not_found" }, "no read grant at the source looks like absence");
+  await assert.rejects(() => D.move(bob, "proj/x.txt", "../x"), { code: "bad_input" });
+  await assert.rejects(() => D.move(bob, "proj/x.txt", "proj/x.txt"), { code: "bad_input" });
+});
+
+test("drive.trash: a delete from a mount is a move into .trash/ (drive.write only), and a second one of the same path does not overwrite the first", async () => {
+  const { D, bob } = await mountWorld();
+  await D.put(bob, "proj/a.txt", enc("one"));
+  const t1 = await D.trash(bob, "proj/a.txt");
+  assert.equal(t1.path, ".trash/proj/a.txt");
+  await assert.rejects(() => D.get(bob, "proj/a.txt"), { code: "not_found" });
+  await D.put(bob, "proj/a.txt", enc("two"));
+  const t2 = await D.trash(bob, "proj/a.txt");
+  assert.notEqual(t2.path, t1.path);
+  assert.match(t2.path, /^\.trash\/.+\/proj\/a\.txt$/);
+  assert.equal(dec(await D.get(bob, t1.path)), "one", "the first one is still there");
+});
