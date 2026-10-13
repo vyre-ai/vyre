@@ -717,10 +717,10 @@ export default {
         // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
         // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
         // A thread on the chatter's own account is the agents module's: her words go in as this module (the thread's account is hers already), not as a chat she was never put in.
-        let ownThread = false;
+        let herAccountThread = false;
         const sendWords = async thread => {
           await capNotice(thread);
-          if (!byPerson || ownThread) return use("threads.send", { thread, text: i.text, surface });
+          if (!byPerson || herAccountThread) return use("threads.send", { thread, text: i.text, surface });
           const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
@@ -745,7 +745,7 @@ export default {
         try {
           // a person with her own AI sign-in talks to the agent on a thread of her own, on her own account
           const own = a.kind === "agent" ? await ownAccount(a, forPerson) : null;
-          ownThread = Boolean(own);
+          herAccountThread = Boolean(own);
           const mineRow = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(forPerson))) : null;
           const curId = own ? (mineRow ? String(mineRow.thread) : null) : a.thread;
           const cur = curId ? (await ctx.call("threads.get", { thread: curId, limit: 1 })).data?.thread : null;

@@ -22,6 +22,8 @@ async function rig(/** @type {any} */ t, /** @type {{ limited?: boolean }} */ o 
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
   await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: proof() });
+  // the box enrols only a device it knows as paired (spaces.devices.enrolled, da2645475): without a relay row the kernel gives this device no person chain and the door gate has no member to judge
+  d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(DEVICE.slice("device:".length));
   d.registry.deps.limitedGate = createLimitedGate({ isLimited: async () => o.limited === true });
   /** The facts of a chain device of `identity`, built the way the daemon builds them from the relay's row. */
   const facts = (/** @type {string} */ identity, memberRole = "member") => callerFacts(DEVICE, { caller: DEVICE }, null, d.kernel, false,
