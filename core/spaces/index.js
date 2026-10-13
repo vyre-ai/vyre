@@ -37,6 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
+import { entryView } from "./entry-view.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch } from "../../lib/release-build.js";
@@ -2356,7 +2357,7 @@ export default {
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
       // the same fields spaces.identity.lookup returns: the door that admits a device reads this list (identityEntry), and a passkey's alg and rp and a held key's `held` decide whether its hello is taken at all
-      return { id, seq: r.pin.seq, head: r.pin.head, entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, since: e.since, founder: e.founder === true, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
+      return { id, seq: r.pin.seq, head: r.pin.head, entries: r.state.entries.map(entryView) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
@@ -2381,7 +2382,7 @@ export default {
       // The guarded client may refuse the directory address itself (plain http, not public) before any request: the refusal names that cause.
       try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { const w = String(/** @type {any} */ (e)?.why || ""); throw refuse(`The names directory could not be reached; wait a minute and try again.${w === "not_https" ? " The directory address was refused: it is plain http." : /^(not_public|bad_url|credentials_in_url)$/.test(w) ? ` The directory address was refused (${w}).` : ""}`, "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, since: e.since, founder: e.founder === true, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
+      return { entries: r.state.entries.map(entryView) };
     }, { internal: true });
     // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
     tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
