@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
-import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources, askChoices } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -91,7 +91,8 @@ test("braces take a value from what started the Flow and come back as braces", (
   const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "{email}", subject: "Hello", body: "Hi {name}" }] };
   const def = toDefinition(d);
   assert.deepEqual(def.steps[0].input.to, { expr: "trigger.email" });
-  assert.equal(def.steps[0].input.body, "Hi {name}");
+  assert.deepEqual(def.steps[0].input.body, { expr: '"Hi " + text(trigger.name)' }, "braces inside text are filled in when the step runs");
+  assert.equal(fromDefinition(def).steps[0].body, "Hi {name}");
   assert.equal(fromDefinition(def).steps[0].to, "{email}");
 });
 
@@ -165,6 +166,34 @@ test("every other step kind the engine has stores, checks and comes back", () =>
   assert.deepEqual(checkFlow(def), []);
   assert.deepEqual(toDefinition(fromDefinition(def)), def);
   assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
+});
+
+test("Find or create a record: match, create-only fields and optional update compile to an upsert and come back", () => {
+  const step = { id: "upsert1", kind: "upsert", type: "client", matchFields: [{ field: "email", value: "{email}" }], fields: [{ field: "name", value: "{name}" }], updateFields: [{ field: "plan", value: "Gold" }] };
+  const d = { name: "Find", trigger: { kind: "form", path: "intake" }, steps: [step, { id: "email2", kind: "email", to: "{steps.upsert1.record.data.email}", subject: "Hi", body: "Hello" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0], { id: "upsert1", kind: "upsert", type: "client", match: { email: { expr: "trigger.email" } }, set: { name: { expr: "trigger.name" } }, update: { plan: "Gold" } });
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(fromDefinition(def).steps[0], step);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+});
+
+test("Find or create with no update fields leaves a found record alone; an older upsert keeps changing it", () => {
+  const mk = (extra) => toDefinition({ name: "F", trigger: { kind: "manual" }, steps: [{ id: "upsert1", kind: "upsert", type: "client", matchFields: [{ field: "Email", value: "a@b.co" }], fields: [{ field: "Name", value: "Ann" }], ...extra }] }).steps[0];
+  assert.deepEqual(mk({ updateFields: [] }).update, {}, "an empty update is stored, so a found record is not touched");
+  assert.equal("update" in mk({}), false, "no update key is the older meaning: set applies to a found record too");
+  const back = fromDefinition({ format: 1, name: "f", trigger: { on: "manual" }, steps: [mk({ updateFields: [] })] }).steps[0];
+  assert.deepEqual(back.updateFields, []);
+  assert.equal(fromDefinition({ format: 1, name: "f", trigger: { on: "manual" }, steps: [mk({})] }).steps[0].updateFields, undefined);
+  assert.equal(stepProblem({ id: "u", kind: "upsert", type: "client", matchFields: [{ field: "", value: "" }], fields: [], updateFields: [] }, { types: [] }), "Say which field finds an existing record.");
+});
+
+test("Find or create is in the palette and later steps can read what it found or made", () => {
+  assert.equal(choiceOf("upsert").label, "Find or create a record");
+  const o = { types: [{ name: "client", label: "Client", fields: [{ name: "email", label: "Email" }] }], agents: [], templates: [], roles: [], people: [] };
+  const d = { name: "F", trigger: { kind: "manual" }, steps: [{ id: "upsert1", kind: "upsert", type: "client", matchFields: [], fields: [] }, { id: "email2", kind: "email", to: "", subject: "", body: "" }] };
+  const tokens = valueSources(d, "email2", o).map(([t]) => t);
+  assert.ok(tokens.includes("{steps.upsert1.record.id}") && tokens.includes("{steps.upsert1.created}") && tokens.includes("{steps.upsert1.record.data.email}"));
 });
 
 test("the formula step is a Code step with a fixed source whose hash is the engine's", () => {
@@ -243,4 +272,34 @@ test("A record is created or updated: stored as two events with the field filter
 test("the Appointment reminder starter starts on created or updated, only when the time changes, and starts over", () => {
   assert.deepEqual(REMINDER_DRAFT.trigger, { kind: "changed", type: "appointment", field: "starts_at", again: "replace" });
   assert.equal(toDefinition(REMINDER_DRAFT).trigger.when_record_changes, "replace");
+});
+
+test("text with tokens becomes one joined expression and reads back as the same text", async () => {
+  const { val } = await import("./logic.js");
+  assert.deepEqual(val("Hello {after.client}, call {steps.find1.rows}."), { expr: '"Hello " + text(trigger.after.client) + ", call " + text(steps.find1.rows) + "."' });
+  assert.equal(val("no tokens"), "no tokens");
+  assert.equal(val('say "hi" {name}\nbye').expr, '"say \\"hi\\" " + text(trigger.name) + "\\nbye"');
+  assert.equal(val("a\r\nb {x}\u0001c").expr, '"a\\nb " + text(trigger.x) + "c"', "CRLF becomes one newline and control characters are dropped");
+  for (const t of ["Hello {name}, ok", "{name} is here", 'a "quoted" {x} line\nbreak {steps.a.created}']) {
+    const def = toDefinition({ name: "T", trigger: { kind: "form", path: "f" }, steps: [{ id: "sms1", kind: "sms", to: "+15550100", body: t }] });
+    assert.deepEqual(checkFlow(def), []);
+    assert.equal(fromDefinition(def).steps[0].body, t);
+  }
+});
+
+test("Update takes a value from the Flow like any other step", () => {
+  const d = { name: "U", trigger: { kind: "created", type: "client" }, steps: [{ id: "update1", kind: "update", type: "client", record: "trigger", field: "Note", value: "Hi {after.name}" }, { id: "update2", kind: "update", type: "client", record: "trigger", field: "Email", value: "{after.email}" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0].set, { note: { expr: '"Hi " + text(trigger.after.name)' } });
+  assert.deepEqual(def.steps[1].set, { email: { expr: "trigger.after.email" } });
+  assert.deepEqual(checkFlow(def), []);
+  const back = fromDefinition(def);
+  assert.equal(back.steps[0].value, "Hi {after.name}");
+  assert.equal(back.steps[1].value, "{after.email}");
+});
+
+test("a question goes to a person or a role, never an agent", () => {
+  assert.ok(askChoices(O).length > 0 && askChoices(O).every(([v]) => !v.startsWith("agent:")));
+  assert.match(stepProblem({ id: "ask1", kind: "ask", to: "agent:refunds", title: "Ok?" }, O), /person or a team or role/);
+  assert.equal(stepProblem({ id: "ask1", kind: "ask", to: "role:manager", title: "Ok?" }, O), null);
 });

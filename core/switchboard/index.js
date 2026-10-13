@@ -1080,11 +1080,13 @@ export class Switchboard {
     try {
       // A driver with no SessionStart hook (Codex, Grok over ACP) gets the project's own context as the third layer of its first prompt; Claude's hook adds it itself.
       let context = "";
+      // may the person this thread is for use the project? Its context and its AGENTS.md go into the prompt only if so, as its memory, brief and skills do
+      const may = await projectMay(this, rec, o);
       if (rec.provider && rec.provider !== "claude") {
-        const c = (await projectMay(this, rec, o)) ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
+        const c = may ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
         context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
       }
-      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone }).filter(([, v]) => v));
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone, no_project_docs: !may }).filter(([, v]) => v));
       const r = await this.deps.call("sessions.prompt.compose", input);
       if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };

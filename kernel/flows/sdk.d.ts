@@ -28,7 +28,7 @@ export const step: Policy & {
   filter(id: string, p: Policy & { from: string; where: string; label?: string }): Step;
   create(id: string, p: Policy & { type: string; set: { readonly [field: string]: Value }; label?: string }): Step;
   update(id: string, p: Policy & { type: string; record: Value; set: { readonly [field: string]: Value }; label?: string }): Step;
-  upsert(id: string, p: Policy & { type: string; match: { readonly [field: string]: Value }; set: { readonly [field: string]: Value }; label?: string }): Step;
+  upsert(id: string, p: Policy & { type: string; match: { readonly [field: string]: Value }; set: { readonly [field: string]: Value }; update?: { readonly [field: string]: Value }; label?: string }): Step;
   remove(id: string, p: Policy & { type: string; record: Value; label?: string }): Step;
   decide(id: string, p: Policy & { if: string; then: readonly Step[]; else?: readonly Step[]; label?: string }): Step;
   repeat(id: string, p: Policy & { over: string; as: string; steps: readonly Step[]; max?: number; label?: string }): Step;

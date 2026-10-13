@@ -47,7 +47,7 @@ test("an agent with no project runs in its own folder: AGENTS.md and CLAUDE.md a
   assert.ok(!/project "/.test(text.split("Vyre orientation")[1] || ""), "no project lines for an agent with no project");
 });
 
-test("an agent working in a project runs in the project's folder and is told both: its own instructions for how it works, the project's for the work", { timeout: 120_000 }, async t => {
+test("an agent working in a project runs in the project's folder and is told both by path; only the agent's own AGENTS.md is in the prompt for a person with no seat on the project", { timeout: 120_000 }, async t => {
   const { d, ada, ben, launches, project } = await world(t);
   /** @type {any[]} */ const seen = [];
   const tl = /** @type {any} */ (d.registry).tools.get("threads.launch"), realRun = tl.run;
@@ -71,5 +71,13 @@ test("an agent working in a project runs in the project's folder and is told bot
   assert.ok(seen[0].read_only[0].endsWith(`/agents/${own[1]}`), "and it is its own agent folder: " + seen[0].read_only[0]);
   assert.match(text, /your own instructions for how you work, then the project's instructions for the work itself/);
   assert.match(text, /Instructions for you, the agent "intake" \(its AGENTS\.md\):\n\nDraft replies\./, "the prompt carries the agent's AGENTS.md");
-  assert.match(text, /Instructions for the project "[^"]+" \(its AGENTS\.md\):\n\nAlways cite the file number\./, "and the project's");
+  assert.ok(!text.includes("Always cite the file number."), "Ben has no seat on the project, so its AGENTS.md is not put in his prompt (the path is still named)");
+});
+
+test("a project the person may not use puts none of its AGENTS.md in the prompt (no_project_docs), one they may use does", { timeout: 120_000 }, async t => {
+  const { d, project } = await world(t);
+  fs.writeFileSync(path.join(project.home, "AGENTS.md"), "Always cite the file number.\n");
+  const compose = async (/** @type {any} */ i) => (await d.registry.call("sessions.prompt.compose", { project: project.slug, ...i }, "module:vyre")).data.text;
+  assert.match(await compose({}), /Instructions for the project "[^"]+" \(its AGENTS\.md\):\n\nAlways cite the file number\./);
+  assert.ok(!(await compose({ no_project_docs: true })).includes("Always cite the file number."), "a project she cannot use injects nothing");
 });
