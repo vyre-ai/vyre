@@ -223,6 +223,22 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  // 13 Oct 2026, vault ruling: the Vault tools an agent may call within its person's reach
+  "vault.item": "77868b367@26 Sep 2026",
+  "vault.search": "00484fa80@4 Oct 2026",
+  "vault.list": "00484fa80@4 Oct 2026",
+  "vault.history": "00484fa80@4 Oct 2026",
+  "vault.identity": "381a6fbf6@26 Sep 2026",
+  "vault.generate": "381a6fbf6@26 Sep 2026",
+  "vault.request": "237c3ca60@30 Sep 2026",
+  "vault.ssh.keys": "77868b367@26 Sep 2026",
+  "vault.rotation": "b526f928e@27 Sep 2026",
+  "vault.grants.status": "10bfd00c2@27 Sep 2026",
+  "vault.fingerprint": "4abf43b58@26 Sep 2026",
+  "vault.caps": "f45911fd9@26 Sep 2026",
+  "vault.session.status": "c8d66bc29@26 Sep 2026",
+  "vault.connections.list": "4a8e15400@27 Sep 2026",
+  "vault.connections.revoke": "4a8e15400@27 Sep 2026",
   "assistant.access.get": "d2629ff6a@11 Oct 2026",
   "publish.job.attention": "2ca8c7e66@11 Oct 2026",
   "publish.job.runs": "2ca8c7e66@11 Oct 2026",
