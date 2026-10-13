@@ -685,7 +685,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, tz: r.tz || null, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, flow_origin: optsOf(r).flow_origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, confined_by: this.confinedBy.get(id) || null, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -955,7 +955,7 @@ export class Switchboard {
       // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
-      if (o.surface) kept.origin = String(o.surface).slice(0, 80);
+      if (o.surface) kept.origin = String(o.surface).slice(0, 80);   if (typeof o.run_as === "string" && o.run_as && o.purpose === "job") kept.runas = o.run_as; if (o.flow_origin && typeof o.flow_origin === "object") kept.flow_origin = o.flow_origin;
       // A session carried on here from a paired Mac (threads.continue-here): which machine and thread it came from.
       if (o.continuedFrom) kept.continued_from = { machine: String(o.continuedFrom.machine).slice(0, 80), thread: String(o.continuedFrom.thread).slice(0, 80) };
       // What the provider could do when the thread started, kept for drawing its old items: never edited
@@ -1185,7 +1185,7 @@ export class Switchboard {
     const t0 = Date.now();
     if (!this.renewSeq) this.renewSeq = new Map();
     const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
-    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(optsOf(rec).runas ? { runas: optsOf(rec).runas } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
     // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.

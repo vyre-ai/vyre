@@ -695,7 +695,7 @@ async function startLocked(opts, root, p, release) {
       }
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
-      const person = await personChainFor(q.asker || kernel.id.owner);
+      const person = await personChainFor(q.asker || (typeof q.runas === "string" && q.runas) || kernel.id.owner);   // a Flow job acts as its approver (kept as runas by the switchboard), never as the owner
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
