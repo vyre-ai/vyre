@@ -85,21 +85,48 @@ export function pngSize(file) {
 }
 
 /**
- * @param {{ root: string, out: string, log?: (msg: string) => void, palette?: import("./markdown.js").Palette | null }} opts
+ * `base` mounts the whole site under a path of another site ("/docs" on vyre.run): every link, asset and sitemap entry carries it, `origin`
+ * replaces the docs URL's origin, `extras` adds files from outside docs/ (see loadDocs) and `topLinks` puts that site's pages in the header
+ * and at the top of the sidebar. A mounted build writes no robots.txt or 404.html (the parent site has them), and its _headers has no `/*` rule.
+ * @param {{ root: string, out: string, log?: (msg: string) => void, palette?: import("./markdown.js").Palette | null, base?: string, origin?: string,
+ *   extras?: Parameters<typeof loadDocs>[1] extends infer O ? (O extends { extras?: infer E } ? E : never) : never, topLinks?: [string, string][] }} opts
  * @returns {{ pages: number, redirects: number, missing: string[], files: string[] }}
  */
-export function build({ root, out, log = () => {}, palette }) {
+export function build({ root, out, log = () => {}, palette, base = "", origin = "", extras = [], topLinks = [] }) {
   const pal = palette === undefined ? loadPalette(root, log) : palette;
-  const docs = loadDocs(root);
+  base = base.replace(/\/$/, "");
+  /** A site path, under the mount. @param {string} p */
+  const B = p => base + p;
+  const docs = loadDocs(root, { extras });
   const site = {
     title: docs.site.title || "Vyre docs",
-    url: (docs.site.url || "https://docs.vyre.run").replace(/\/$/, ""),
+    base,
+    topLinks,
+    url: (origin || docs.site.url || "https://docs.vyre.run").replace(/\/$/, ""),
     repo: (docs.site.repo || "https://github.com/vyre-ai/vyre").replace(/\/$/, ""),
     summary: docs.site.summary || packageDescription(root),
   };
   const docsDir = docs.docsDir;
   const byPath = new Map(docs.map(p => [p.path, p]));
   const redirectTo = new Map(docs.redirects.map(r => [r.from, r.to]));
+  const ROOT_FILES = new Set(["/llms.txt", "/llms-full.txt", "/index.json", "/search-index.json", "/sitemap.xml"]);
+  /**
+   * A link written as a site path (`/llms.txt`, `/using/capsule`) meant this docs site's root. Mounted, it points under the mount; a path
+   * that is not one of this site's files stays, since it is the parent site's.
+   * @param {string} href @param {string} p
+   */
+  const mountAbsolute = (href, p) => {
+    if (!base || p === base || p.startsWith(base + "/")) return href;
+    const clean = p.replace(/\.md$/, "");
+    const ours = p === "/" || ROOT_FILES.has(p) || docs.some(d => d.url === clean || d.url === clean + "/" || d.mdUrl === p) || copiesExist(p);
+    return ours ? B(href) : href;
+  };
+  const copiesExist = (/** @type {string} */ p) => {
+    const abs = path.join(docsDir, decodeURI(p));
+    return fs.existsSync(abs) && fs.statSync(abs).isFile() && !isUnpublished(decodeURI(p).slice(1), docs.unpublished);
+  };
+  /** Extra pages by the repo path they come from. */
+  const byRepoPath = new Map(docs.filter(p => p.repoPath).map(p => [p.repoPath, p]));
 
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
@@ -113,7 +140,7 @@ export function build({ root, out, log = () => {}, palette }) {
     const bytes = fs.readFileSync(path.join(FONT_DIR, file));
     const name = `assets/fonts/${file.replace(/\.woff2$/, "")}.${hash(bytes)}.woff2`;
     put(name, bytes);
-    fontCss += `@font-face { font-family: '${family}'; font-style: normal; font-weight: ${weight}; font-display: swap; src: url(/${name}) format('woff2'); }\n`;
+    fontCss += `@font-face { font-family: '${family}'; font-style: normal; font-weight: ${weight}; font-display: swap; src: url(${B('/' + name)}) format('woff2'); }\n`;
   }
   const css = fontCss + fs.readFileSync(path.join(ASSETS, "docs.css"), "utf8");
   const js = fs.readFileSync(path.join(ASSETS, "docs.js"), "utf8");
@@ -127,34 +154,39 @@ export function build({ root, out, log = () => {}, palette }) {
   const demoJsName = `assets/demos.${hash(demoJs)}.js`;
   let demosUsed = false;
   const favicon = path.join(root, "site", "favicon.svg");
-  if (fs.existsSync(favicon)) put("favicon.svg", fs.readFileSync(favicon));
-  const assets = { css: "/" + cssName, js: "/" + jsName, demoCss: "/" + demoCssName, demoJs: "/" + demoJsName };
+  if (fs.existsSync(favicon) && !base) put("favicon.svg", fs.readFileSync(favicon));
+  const assets = { css: B("/" + cssName), js: B("/" + jsName), demoCss: B("/" + demoCssName), demoJs: B("/" + demoJsName) };
 
   /** Files under docs/ that pages link to or show (images), copied as they are. */
   const copies = new Set();
 
-  /** @param {string} href @param {string} base */
-  const resolveLink = (href, base) => {
+  /** @param {string} href @param {string} base @param {boolean} [md] the page's .md, for the published Markdown */
+  const resolveLink = (href, base, md = false) => {
     const r = resolveDocLink(href, base);
     const frag = r.hash ? "#" + r.hash : "";
-    if (r.kind === "external" || r.kind === "anchor" || r.kind === "absolute") return href;
-    if (r.kind === "repo") return `${site.repo}/blob/main/${encodePath(r.path)}${frag}`;
+    if (r.kind === "absolute") return mountAbsolute(href, r.path);
+    if (r.kind === "external" || r.kind === "anchor") return href;
+    const at = (/** @type {any} */ pg) => B(encodePath(md ? pg.mdUrl : pg.url));
+    if (r.kind === "repo") {
+      const extra = byRepoPath.get(r.path);
+      return extra ? at(extra) + frag : `${site.repo}/blob/main/${encodePath(r.path)}${frag}`;
+    }
     const p = r.path;
     if (p === "" || p.endsWith("/")) return `${site.repo}/tree/main/docs/${encodePath(p)}`;
     if (p.endsWith(".md")) {
       const page = byPath.get(p);
-      if (page) return encodePath(page.url) + frag;
+      if (page) return at(page) + frag;
       const to = redirectTo.get(p);
       if (to) {
         const [tp, th] = to.split("#");
-        return encodePath(pageUrl(tp)) + (frag || (th ? "#" + th : ""));
+        return (md ? B("/" + encodePath(tp)) : B(encodePath(pageUrl(tp)))) + (frag || (th ? "#" + th : ""));
       }
       return `${site.repo}/blob/main/docs/${encodePath(p)}${frag}`;
     }
     const abs = path.join(docsDir, p);
     if (!isUnpublished(p, docs.unpublished) && fs.existsSync(abs) && fs.statSync(abs).isFile()) {
       copies.add(p);
-      return "/" + encodePath(p) + frag;
+      return B("/" + encodePath(p)) + frag;
     }
     return `${site.repo}/blob/main/docs/${encodePath(p)}${frag}`;
   };
@@ -193,6 +225,30 @@ export function build({ root, out, log = () => {}, palette }) {
     return { text, base: path.posix.normalize(path.relative(docsDir, path.dirname(file)).split(path.sep).join("/")).replace(/^\.$/, "") };
   };
 
+  /**
+   * The published Markdown keeps its links, except those that would break: from an extra page (its folder is not the docs folder), a link into
+   * a file the site publishes or to one it does not (the repo on GitHub); from a docs page, a link to an extra page or to a file outside the docs.
+   * They become full URLs. Links in code fences are left as they are.
+   * @param {string} text @param {string} base @param {boolean} fromExtra
+   */
+  const mountLinks = (text, base, fromExtra) => {
+    let fence = "";
+    return text.split("\n").map(line => {
+      const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence[0].length && !line.trim().slice(f[1].length).trim()) fence = ""; return line; }
+      if (f) { fence = f[1]; return line; }
+      return line.replace(/\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g, (all, href, title) => {
+        const r = resolveDocLink(href, base);
+        if (r.kind === "absolute") { const to = mountAbsolute(href, r.path); return to === href ? all : `](${site.url}${to}${title})`; }
+        if (r.kind === "external" || r.kind === "anchor") return all;
+        const keep = !fromExtra && r.kind === "doc" && r.path.endsWith(".md") && !r.path.endsWith("/") && byPath.has(r.path);
+        if (keep) return all;
+        const to = resolveLink(href, base, true);
+        return `](${/^https?:/.test(to) ? to : site.url + to}${title})`;
+      });
+    }).join("\n");
+  };
+
   const order = docs.slice();
   const nav = docs.sections.filter(s => s.pages.length);
   /** @type {any[]} */
@@ -203,19 +259,19 @@ export function build({ root, out, log = () => {}, palette }) {
 
   for (let k = 0; k < order.length; k++) {
     const page = order[k];
-    const base = path.posix.dirname(page.path).replace(/^\.$/, "");
+    const base = page.srcBase ?? path.posix.dirname(page.path).replace(/^\.$/, "");
     const r = renderMarkdown(page.body, { resolveLink, include: readInclude, base, image, palette: pal });
     if (r.demos.length) demosUsed = true;
     const html = renderPage({ site, page, nav, prev: order[k - 1], next: order[k + 1], body: r.html, headings: r.headings, assets, demos: r.demos.length > 0 });
     put(page.htmlFile, html);
 
-    const md = spliceIncludes(page.source, base, readInclude, pal);
+    const md = mountLinks(spliceIncludes(page.source, base, readInclude, pal), base, !!page.repoPath);
     put(page.path, md);
 
-    index.push({ t: page.title, u: page.url, s: page.section, d: page.summary });
+    index.push({ t: page.title, u: B(page.url), s: page.section, d: page.summary });
     for (const it of searchItems(r)) items.push({ p: k, ...it });
     // The terms index is a lookup table, not reading: llms-full.txt points at index.json instead.
-    if (page.path !== "reference/index.md") fullParts.push(`---\ntitle: ${page.title}\nurl: ${site.url}${page.mdUrl}\n---\n\n${parseFrontMatter(md).body.trim()}\n`);
+    if (page.path !== "reference/index.md") fullParts.push(`---\ntitle: ${page.title}\nurl: ${site.url}${B(page.mdUrl)}\n---\n\n${parseFrontMatter(md).body.trim()}\n`);
   }
 
   for (const p of [...copies].sort()) put(p, fs.readFileSync(path.join(docsDir, p)));
@@ -225,24 +281,26 @@ export function build({ root, out, log = () => {}, palette }) {
   // The terms index as data (scripts/gen-docs-reference writes it beside the pages).
   const terms = path.join(docsDir, "index.json");
   if (fs.existsSync(terms)) put("index.json", fs.readFileSync(terms));
-  put("llms.txt", llmsTxt(site, nav));
+  put("llms.txt", llmsTxt(site, nav, B));
   put("llms-full.txt", `# ${site.title}\n\n> ${site.summary}\n\n${fullParts.join("\n")}`);
-  put("sitemap.xml", sitemap(site, order));
-  put("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${site.url}/sitemap.xml\n`);
-  put("404.html", renderPage({
-    site, page: null, nav, prev: undefined, next: undefined, assets, headings: [],
-    body: `<h1>Not here</h1>\n<p>This page is not in the docs. It may have moved. Search above, press <kbd class="kbd">/</kbd>, or start from <a href="/">the docs home</a>.</p>`,
-  }));
+  put("sitemap.xml", sitemap(site, order, B));
+  if (!base) {
+    put("robots.txt", `User-agent: *\nAllow: /\n\nSitemap: ${site.url}/sitemap.xml\n`);
+    put("404.html", renderPage({
+      site, page: null, nav, prev: undefined, next: undefined, assets, headings: [],
+      body: `<h1>Not here</h1>\n<p>This page is not in the docs. It may have moved. Search above, press <kbd class="kbd">/</kbd>, or start from <a href="/">the docs home</a>.</p>`,
+    }));
+  }
 
   const redirectLines = [];
   for (const rd of docs.redirects) {
     const [toPath, toHash] = rd.to.split("#");
     const frag = toHash ? "#" + toHash : "";
-    redirectLines.push(`${encodePath(pageUrl(rd.from))} ${encodePath(pageUrl(toPath))}${frag} 301`);
-    redirectLines.push(`/${encodePath(rd.from)} /${encodePath(toPath)} 301`);
+    redirectLines.push(`${B(encodePath(pageUrl(rd.from)))} ${B(encodePath(pageUrl(toPath)))}${frag} 301`);
+    redirectLines.push(`${B("/" + encodePath(rd.from))} ${B("/" + encodePath(toPath))} 301`);
   }
   put("_redirects", redirectLines.length ? redirectLines.join("\n") + "\n" : "");
-  put("_headers", headers(order));
+  put("_headers", headers(order, B, !!base));
 
   const written = [...files.keys()].sort();
   for (const rel of written) {
@@ -317,22 +375,22 @@ function searchItems(r) {
 /** Rendered HTML to searchable text. @param {string} html */
 const plainText = htmlToText;
 
-/** @param {any} site @param {{ title: string, pages: any[] }[]} nav */
-function llmsTxt(site, nav) {
+/** @param {any} site @param {{ title: string, pages: any[] }[]} nav @param {(p: string) => string} B */
+function llmsTxt(site, nav, B) {
   const out = [`# ${site.title}`, "", `> ${site.summary}`, ""];
-  out.push(`Every page is Markdown at the URL below. Everything in one file: ${site.url}/llms-full.txt`, "");
-  out.push(`Every command, tool, event, config key, variable, screen and concept, with the page that explains it and every mention: ${site.url}/index.json`, "");
+  out.push(`Every page is Markdown at the URL below. Everything in one file: ${site.url}${B("/llms-full.txt")}`, "");
+  out.push(`Every command, tool, event, config key, variable, screen and concept, with the page that explains it and every mention: ${site.url}${B("/index.json")}`, "");
   for (const s of nav) {
     out.push(`## ${s.title}`, "");
-    for (const p of s.pages) out.push(`- [${p.title}](${site.url}${p.mdUrl})${p.summary ? ": " + p.summary : ""}`);
+    for (const p of s.pages) out.push(`- [${p.title}](${site.url}${B(p.mdUrl)})${p.summary ? ": " + p.summary : ""}`);
     out.push("");
   }
   return out.join("\n");
 }
 
-/** @param {any} site @param {any[]} pages */
-function sitemap(site, pages) {
-  const urls = pages.map(p => `  <url><loc>${escapeHtml(site.url + encodePath(p.url))}</loc></url>`);
+/** @param {any} site @param {any[]} pages @param {(p: string) => string} B */
+function sitemap(site, pages, B) {
+  const urls = pages.map(p => `  <url><loc>${escapeHtml(site.url + B(encodePath(p.url)))}</loc></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 
@@ -340,34 +398,32 @@ function sitemap(site, pages) {
  * Cloudflare Pages headers. Each .md is listed by name rather than with a `/*.md` pattern, so the
  * type is right whatever Pages' pattern rules allow; the rule count stays far under Pages' 100.
  * Only one rule sets Cache-Control for any path: Pages joins repeated headers with commas.
- * @param {any[]} pages
+ * @param {any[]} pages @param {(p: string) => string} [B] @param {boolean} [mounted]
  */
-function headers(pages) {
+function headers(pages, B = p => p, mounted = false) {
   const out = [
     "# Written by scripts/build-docs.",
-    "/*",
-    "  X-Content-Type-Options: nosniff",
-    "  Referrer-Policy: strict-origin-when-cross-origin",
-    "",
-    "/assets/*",
+    ...(mounted ? [] : ["/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin", ""]),
+    `${B("/assets/*")}`,
     "  Cache-Control: public, max-age=31536000, immutable",
     "",
-    "/search-index.json",
+    B("/search-index.json"),
     "  Cache-Control: public, max-age=300",
     "",
-    "/index.json",
+    B("/index.json"),
     "  Cache-Control: public, max-age=300",
     "",
-    "/llms.txt",
+    B("/llms.txt"),
     "  Content-Type: text/plain; charset=utf-8",
     "  Cache-Control: public, max-age=300",
     "",
-    "/llms-full.txt",
+    B("/llms-full.txt"),
     "  Content-Type: text/plain; charset=utf-8",
     "  Cache-Control: public, max-age=300",
     "",
   ];
-  for (const p of pages) out.push(encodePath(p.mdUrl), "  Content-Type: text/markdown; charset=utf-8", "  Cache-Control: public, max-age=300", "");
+  // Pages allows 100 header rules in all; a mounted build is one of several in a site's _headers, and takes the host's content type for .md.
+  if (!mounted) for (const p of pages) out.push(encodePath(p.mdUrl), "  Content-Type: text/markdown; charset=utf-8", "  Cache-Control: public, max-age=300", "");
   return out.join("\n");
 }
 
@@ -385,17 +441,22 @@ function headers(pages) {
  */
 function renderPage({ site, page, nav, prev, next, body, headings, assets, demos = false }) {
   const e = escapeHtml;
+  const base = site.base || "";
+  /** @type {[string, string][]} */
+  const topLinks = site.topLinks || [];
   const title = page ? `${page.title} · ${site.title}` : `Not found · ${site.title}`;
   const desc = page?.summary || site.summary;
-  const canonical = page ? site.url + encodePath(page.url) : "";
+  const canonical = page ? site.url + base + encodePath(page.url) : "";
   const status = page ? String(page.data.status || "").toLowerCase() : "";
   const badge = status === "draft" || status === "planned"
     ? `<span class="badge badge-${status}">${status === "draft" ? "Draft" : "Planned"}</span>` : "";
 
-  const side = nav.map(s => {
+  const home = topLinks.length
+    ? `<div class="side-sec side-site"><p class="lbl">vyre.run</p><ul>${topLinks.map(([t, h]) => `<li><a href="${e(h)}">${e(t)}</a></li>`).join("")}</ul></div>\n` : "";
+  const side = home + nav.map(s => {
     const items = s.pages.map(p => {
       const cur = page && p.path === page.path;
-      return `<li><a href="${e(encodePath(p.url))}"${cur ? ` aria-current="page"` : ""}>${e(p.title)}</a></li>`;
+      return `<li><a href="${e(base + encodePath(p.url))}"${cur ? ` aria-current="page"` : ""}>${e(p.title)}</a></li>`;
     }).join("");
     return `<div class="side-sec"><p class="lbl">${e(s.title)}</p><ul>${items}</ul></div>`;
   }).join("\n");
@@ -416,23 +477,23 @@ function renderPage({ site, page, nav, prev, next, body, headings, assets, demos
     const audience = aud.length ? `<span>For <b>${e(aud.join(", "))}</b></span>` : "";
     const st = status ? `<span>Status <b>${e(status)}</b></span>` : "";
     const pn = (/** @type {any} */ p, /** @type {string} */ dir) => p
-      ? `<a class="pn pn-${dir}" href="${e(encodePath(p.url))}" rel="${dir}"><span class="lbl">${dir === "prev" ? "Previous" : "Next"}</span><span class="pn-t">${e(p.title)}</span></a>`
+      ? `<a class="pn pn-${dir}" href="${e(base + encodePath(p.url))}" rel="${dir}"><span class="lbl">${dir === "prev" ? "Previous" : "Next"}</span><span class="pn-t">${e(p.title)}</span></a>`
       : `<span class="pn pn-${dir} pn-none"></span>`;
     foot = `<footer class="doc-foot">
-<div class="doc-links"><a href="${e(site.repo)}/blob/main/docs/${e(encodePath(page.path))}">Edit this page</a><a href="${e(encodePath(page.mdUrl))}" type="text/markdown">View as markdown</a></div>
+<div class="doc-links"><a href="${e(site.repo)}/blob/main/${e(encodePath(page.repoPath || "docs/" + page.path))}">Edit this page</a><a href="${e(base + encodePath(page.mdUrl))}" type="text/markdown">View as markdown</a></div>
 <div class="doc-meta">${owner}${audience}${st}</div>
 <nav class="pn-row" aria-label="Previous and next">${pn(prev, "prev")}${pn(next, "next")}</nav>
 </footer>`;
   }
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-base="${e(base)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)}</title>
 <meta name="description" content="${e(desc)}">
-${page ? `<link rel="canonical" href="${e(canonical)}">\n<link rel="alternate" type="text/markdown" href="${e(encodePath(page.mdUrl))}">` : `<meta name="robots" content="noindex">`}
+${page ? `<link rel="canonical" href="${e(canonical)}">\n<link rel="alternate" type="text/markdown" href="${e(base + encodePath(page.mdUrl))}">` : `<meta name="robots" content="noindex">`}
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#0E0D0C">
 <script>${THEME_BOOT}</script>
@@ -450,8 +511,8 @@ ${page ? `<meta property="og:url" content="${e(canonical)}">\n` : ""}</head>
 <header class="top">
 <div class="top-in">
 <button class="icon-btn menu" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation">${ICON_MENU}</button>
-<a class="brand" href="/" aria-label="Vyre docs home">${MARK}${WORDMARK}<span class="brand-rule" aria-hidden="true"></span><span class="brand-docs">docs</span></a>
-<div class="search" role="search">
+<a class="brand" href="${e(base + "/")}" aria-label="Vyre docs home">${MARK}${WORDMARK}<span class="brand-rule" aria-hidden="true"></span><span class="brand-docs">docs</span></a>
+${topLinks.length ? `<nav class="top-nav" aria-label="vyre.run">${topLinks.map(([t, h]) => `<a href="${e(h)}">${e(t)}</a>`).join("")}</nav>\n` : ""}<div class="search" role="search">
 <label class="sr-only" for="q">Search the docs</label>
 ${ICON_SEARCH}<input id="q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="q-results"><kbd class="kbd search-key" aria-hidden="true">/</kbd>
 <div class="results" id="q-results" role="listbox" aria-label="Search results" hidden></div>

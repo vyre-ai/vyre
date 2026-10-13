@@ -111,6 +111,10 @@ svg { display: block; flex-shrink: 0; }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
 .menu { display: none; }
 :root[data-theme="light"] .i-sun, :root:not([data-theme="light"]) .i-moon { display: none; }
+.top-nav { display: flex; gap: 2px; margin-left: 10px; }
+.top-nav a { font-size: 13px; line-height: 18px; color: var(--text-2); text-decoration: none; padding: 8px 8px; border-radius: var(--r-2); }
+.top-nav a:hover { color: var(--text); background: var(--hover); }
+.side-site { display: none; }
 .top-link { font-size: 13px; line-height: 18px; color: var(--text-2); text-decoration: none; margin-left: auto; padding: 8px 4px; }
 .top-link:hover { color: var(--text); }
 
@@ -284,6 +288,8 @@ svg { display: block; flex-shrink: 0; }
   .menu { display: inline-flex; }
   .search { margin-left: 6px; }
   .search-key, .top-link { display: none; }
+  .top-nav { display: none; }
+  .side-site { display: block; }
   .side { position: fixed; z-index: 35; top: calc(var(--top) + 1px); left: 0; bottom: 0; height: auto; width: min(304px, 86vw); background: var(--bg); padding: 20px 12px 48px 16px; transform: translateX(-100%); visibility: hidden; transition: transform 0.18s ease, visibility 0s linear 0.18s; }
   body.nav-open .side { transform: none; visibility: visible; transition: transform 0.18s ease; }
   body.nav-open { overflow: hidden; }

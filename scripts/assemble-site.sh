@@ -14,6 +14,7 @@
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
 #   box/*                          the release's box files, checked against its SHA256SUMS
 #   box/install-mac-server.sh      the Mac server installer; install-box.sh fetches it from the same site on a Mac (not in the release assets)
+#   docs/                          the docs (scripts/build-docs --mount-site): HTML pages and each page's .md, with their redirects and headers merged into the site's
 #   setup/fonts, tokens.css   the files the reserve page loads, copied from the tag
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -38,7 +39,7 @@ say "pages"
 VYRE_SITE_VERSION=${tag#v} node scripts/gen-site.mjs >/dev/null
 rm -rf "$out"; mkdir -p "$out"
 cp -R site/. "$out/"
-for f in w i i.sh install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
+for f in w i i.sh install.sh box docs _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done
 
 say "release assets $tag"
 mkdir -p "$out/box"
@@ -76,6 +77,14 @@ if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
   ipath=/i.sh
 else ipath=/install.sh; fi
 printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
+
+# The docs, at /docs: docs/ plus ARCHITECTURE.md, DEVELOPMENT-RULES.md and roadmap/, from main's checkout (they follow main like the pages do), each page as HTML
+# and as its own Markdown. The build writes its redirects and header rules for the whole site's files, so they join the site's and its own copies go.
+say "docs"
+node scripts/build-docs --mount-site --out "$out/docs" >/dev/null
+cat "$out/docs/_redirects" >>"$out/_redirects"
+{ echo; cat "$out/docs/_headers"; } >>"$out/_headers"
+rm -f "$out/docs/_redirects" "$out/docs/_headers"
 mkdir -p "$out/setup/fonts"
 # A release made before the Deck moved to web/ keeps these files under deck/: take whichever the tag has.
 pick() { if git cat-file -e "$tag:web/$1" 2>/dev/null; then echo "web/$1"; else echo "deck/$1"; fi; }
@@ -91,12 +100,13 @@ say "checks"
 cmp -s "$out/install.sh" "$out/box/install-box.sh" || { echo "assemble-site: install.sh is not install-box.sh" >&2; exit 1; }
 [ "$(cat "$out/box/VERSION")" = "${tag#v}" ] || echo "assemble-site: note: box/VERSION is $(cat "$out/box/VERSION"), the tag is $tag" >&2
 for f in site/setup/index.html site/setup/page.js site/setup/reserve.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
+[ -f "$out/docs/index.html" ] && [ -f "$out/docs/project/ARCHITECTURE.md" ] && [ -f "$out/docs/for-agents/MAP-YOUR-BUSINESS.md" ] || { echo "assemble-site: the docs build is missing pages" >&2; exit 1; }
 echo "ok: $(find "$out" -type f | wc -l | tr -d ' ') files in $out; box version $(cat "$out/box/VERSION")"
 
 if [ -n "$check" ]; then
   say "served at $check"
   bad=0
-  for p in install.sh w box/VERSION box/SHA256SUMS box/SHA256SUMS.sig box/manifest.json box/release.json box/vyre box/vyre.tgz box/compose.yml box/install-box.sh box/install-mac-server.sh setup/tokens.css; do
+  for p in install.sh w box/VERSION box/SHA256SUMS box/SHA256SUMS.sig box/manifest.json box/release.json box/vyre box/vyre.tgz box/compose.yml box/install-box.sh box/install-mac-server.sh setup/tokens.css docs/index.html docs/llms.txt docs/project/ARCHITECTURE.md docs/for-agents/MAP-YOUR-BUSINESS.md; do
     f=$(mktemp); curl -fsSL "$check/$p" -o "$f" || { echo "MISSING $p"; bad=1; rm -f "$f"; continue; }
     if cmp -s "$f" "$out/$p"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
   done

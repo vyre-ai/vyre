@@ -268,7 +268,7 @@
   function load() {
     if (index) return Promise.resolve(index);
     if (!loading) {
-      loading = fetch("/search-index.json").then(function (r) {
+      loading = fetch((document.documentElement.getAttribute("data-base") || "") + "/search-index.json").then(function (r) {
         if (!r.ok) throw new Error("search index " + r.status);
         return r.json();
       }).then(function (data) {

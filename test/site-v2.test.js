@@ -27,6 +27,7 @@ function exists(href) {
 // Served by the build (scripts/build-site.sh) or a redirect, not committed: the install lines and the box files.
 const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|agenthome|setup\/tokens\.css)$/;
 const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|setup\/tokens\.css|map\/?)$/;
+const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|docs(\/.*)?|download\/mac|setup\/tokens\.css)$/;
 
 for (const slug of PAGES) {
   test(`site v2: /${slug} metadata, structured data, links and words`, () => {
@@ -58,7 +59,8 @@ for (const slug of PAGES) {
 
 test("site v2: sitemap lists every page and nothing else; robots points at it", () => {
   const sm = read("sitemap.xml");
-  const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).sort();
+  // /docs is built by scripts/build-docs at assembly (test/site-docs.test.js lists it); the pages here are the ones in site/
+  const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).filter((u) => !u.startsWith("https://vyre.run/docs/")).sort();
   assert.deepEqual(locs, PAGES.map((s) => `https://vyre.run/${s ? s + "/" : ""}`).sort());
   assert.match(read("robots.txt"), /Sitemap: https:\/\/vyre\.run\/sitemap\.xml/);
 });

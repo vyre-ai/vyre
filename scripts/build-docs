@@ -6,6 +6,9 @@
 //
 //   --out DIR   where to write the site (default: docs-site/ at the repo root, gitignored). The
 //               folder is emptied first.
+//   --mount-site  build the docs to be served at https://vyre.run/docs/ instead (scripts/site/docs.mjs): every link carries /docs,
+//               ARCHITECTURE.md, DEVELOPMENT-RULES.md and roadmap/ join the pages, the header links to the rest of vyre.run, and no
+//               robots.txt or 404.html is written. scripts/assemble-site.sh does this into <site>/docs.
 //
 // Publishes the pages docs/nav.json lists, in its order, and nothing else: docs/proposals/ and docs/design/boards/
 // never go out. Each page is written twice, as HTML at
@@ -31,14 +34,17 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = process.argv.slice(2);
 let out = path.join(REPO, "docs-site");
+let mount = false;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === "--out") {
     const v = args[++i];
     if (!v) { console.error("build-docs: --out needs a folder"); process.exit(1); }
     out = path.resolve(v);
+  } else if (a === "--mount-site") {
+    mount = true;
   } else if (a === "-h" || a === "--help") {
-    console.log("usage: scripts/build-docs [--out DIR]\n\nBuilds docs.vyre.run from docs/ into DIR (default docs-site/).");
+    console.log("usage: scripts/build-docs [--out DIR] [--mount-site]\n\nBuilds docs.vyre.run from docs/ into DIR (default docs-site/).");
     process.exit(0);
   } else {
     console.error(`build-docs: unknown option ${a}`);
@@ -57,6 +63,7 @@ if (fs.existsSync(themeFile)) {
   const m = await import(pathToFileURL(themeFile).href);
   if (m.THEME_COLORS) palette = { colors: m.THEME_COLORS, use: m.THEME_USE || {} };
 }
-const result = build({ root: REPO, out, log: msg => console.error(msg), palette });
+const opts = mount ? (await import("./site/docs.mjs")).mountOptions(REPO) : {};
+const result = build({ root: REPO, out, log: msg => console.error(msg), palette, ...opts });
 const ms = Number((process.hrtime.bigint() - started) / 1_000_000n);
 console.log(`build-docs: ${result.pages} pages, ${result.redirects} redirects, ${result.files.length} files in ${path.relative(process.cwd(), out) || "."} (${ms} ms)`);

@@ -31,6 +31,8 @@ import { parseFrontMatter } from "./frontmatter.js";
  * @property {string} section  nav section title
  * @property {string} title    front matter title, else the first heading, else the file name
  * @property {string} summary
+ * @property {string} [srcBase]  extra pages only: docs-relative folder of the source file (".." is the repo root)
+ * @property {string} [repoPath] extra pages only: the source file's path in the repo
  */
 /** @typedef {{ from: string, to: string, file: string }} Redirect */
 /**
@@ -108,9 +110,11 @@ const str = v => (Array.isArray(v) ? v.join(", ") : v || "");
 /**
  * Read docs/nav.json and every page it lists, plus the redirect stubs.
  * @param {string} root the repo root (the folder with docs/ in it)
+ * @param {{ extras?: { src: string, path: string, section: string, title?: string, summary?: string }[] }} [opts] extras are files outside
+ *   docs/ (ARCHITECTURE.md, roadmap/) published at `path`, in their own sections; they are not in nav.json and docs-check never sees them
  * @returns {Docs}
  */
-export function loadDocs(root) {
+export function loadDocs(root, { extras = [] } = {}) {
   const docsDir = path.join(root, "docs");
   const nav = JSON.parse(fs.readFileSync(path.join(docsDir, "nav.json"), "utf8"));
   const unpublished = Array.isArray(nav.unpublished) ? nav.unpublished : DEFAULT_UNPUBLISHED;
@@ -139,6 +143,27 @@ export function loadDocs(root) {
       list.push(page);
     }
     sections.push({ title: section.title, pages: list });
+  }
+
+  for (const section of [...new Set(extras.map(x => x.section))]) {
+    const list = [];
+    for (const x of extras.filter(y => y.section === section)) {
+      const file = path.join(root, x.src);
+      let source;
+      try { source = fs.readFileSync(file, "utf8"); } catch { missing.push({ path: x.src, section }); continue; }
+      const { data, body } = parseFrontMatter(source);
+      const page = {
+        path: x.path, url: pageUrl(x.path), mdUrl: mdUrl(x.path), htmlFile: htmlFile(x.path), file,
+        source: source.replace(/\r\n?/g, "\n"), data, body, section,
+        title: x.title || str(data.title) || firstHeading(body) || path.posix.basename(x.path, ".md"),
+        summary: x.summary || str(data.summary),
+        repoPath: x.src, srcBase: path.posix.relative("docs", path.posix.dirname(x.src)).replace(/^$/, ""),
+      };
+      seen.add(x.path);
+      pages.push(page);
+      list.push(page);
+    }
+    sections.push({ title: section, pages: list });
   }
 
   /** @type {Redirect[]} */
