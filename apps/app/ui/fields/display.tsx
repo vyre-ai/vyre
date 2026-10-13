@@ -79,7 +79,7 @@ export function RatingView({ p }: ViewProps) {
   if (!n) return <Empty />;
   return (
     <View accessibilityRole="image" accessibilityLabel={`${n} of 5`} className="flex-row">
-      {[1, 2, 3, 4, 5].map((i) => <Text key={i} tone={i <= n ? "accent" : "faint"}>{"★"}</Text>)}
+      {[1, 2, 3, 4, 5].map((i) => <Text key={i} tone={i <= n ? "default" : "faint"}>{"★"}</Text>)}
     </View>
   );
 }
