@@ -4,4 +4,5 @@ export { DashboardView } from "./DashboardView";
 export { RecordPage } from "./RecordPage";
 export type { RecordsWorld } from "./shared";
 export { useRecordsWorld, useRecordEvents, useFieldEnv } from "./data";
-export { viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, sealSpec } from "./logic.js";
+export { viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, sealSpec, weekDays, stepWeek, rowsInDays, weekTitle } from "./logic.js";
+export { LAYOUTS, OPS, MINE, layoutsFor, fieldChoices, filterExpr, buildView, slugify, personalEntry, personalViewsOf, withPersonalViews, canShare, pinnedViews, pinList, unpinList, renameView, deleteView, reorderPinned, sharedEntry } from "./saved-views.js";

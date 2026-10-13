@@ -24,7 +24,7 @@ export function allowsMock() { return mockOk || !(/** @type {any} */ (globalThis
 function makeStore() {
   const inApp = Boolean(/** @type {any} */ (globalThis).__VYRE_APP__);
   if (inApp && !mockOk) throw Object.assign(new Error("Not connected to your Vyre yet."), { code: "offline" });
-  return createMockStore({ world: "morning" });
+  return createMockStore({ world: "morning", crm: true });
 }
 
 /** The Store every screen reads. @returns {Store} */
