@@ -107,7 +107,7 @@ export function AgentsHome() {
           {agents && agents.length ? (
             <>
               <ListHeader title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
-                actions={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
+                actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
               {shown.length ? (
                 <GroupedList groups={groups} items={shown} itemNoun="agents"
                   onChange={({ groups: g, items: it }) => { const p = { ...placed, ...Object.fromEntries(it.map((i) => [i.name, i.group as string])) }; setGroups(g); setPlaced(p); persist(g, p); }}
