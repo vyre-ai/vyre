@@ -44,7 +44,7 @@ function TaskBar({ done, total, width = 40 }: { done: number; total: number; wid
   return (
     <View className="flex-row items-center gap-s2" accessible accessibilityLabel={`${done} of ${total} tasks done`}>
       <Text size="secondary" tone="muted" style={TABULAR}>{`${done} of ${total}`}</Text>
-      <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width, height: 3 }}><View className="h-full rounded-full bg-accent" style={{ width: `${(done / total) * 100}%` }} /></View>
+      <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width, height: 3 }}><View className="h-full rounded-full bg-primary" style={{ width: `${(done / total) * 100}%` }} /></View>
     </View>
   );
 }
@@ -114,7 +114,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
         className="py-s3"
         lead={emblem(i, 44, false)}
         title={recordTitle(world, i.row)}
-        sub={<View className="gap-s2"><Text size="secondary" tone="label" numberOfLines={1}>{line}</Text>{t.total ? <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 120, height: 3 }}><View className="h-full rounded-full bg-accent" style={{ width: `${(t.done / t.total) * 100}%` }} /></View> : null}</View>}
+        sub={<View className="gap-s2"><Text size="secondary" tone="label" numberOfLines={1}>{line}</Text>{t.total ? <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 120, height: 3 }}><View className="h-full rounded-full bg-primary" style={{ width: `${(t.done / t.total) * 100}%` }} /></View> : null}</View>}
         end={<>{tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}{a ? <ActorMark who={a} size={28} /> : null}</>}
         onPress={() => onOpen(i.row.id)}
       />

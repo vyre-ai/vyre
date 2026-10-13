@@ -95,7 +95,7 @@ export function PickerList({ id, label, items, active, onActive, onPick, header,
                   </View>
                   {it.trailing}
                   {it.hint ? <Text size="caption" tone="label">{it.hint}</Text> : null}
-                  {it.checked != null ? <View style={{ width: 20, alignItems: "center" }}>{it.checked ? <Icon name="check" size={16} tone="accent" /> : null}</View> : null}
+                  {it.checked != null ? <View style={{ width: 20, alignItems: "center" }}>{it.checked ? <Icon name="check" size={16} tone="text" /> : null}</View> : null}
                 </Pressable>
               </View>
             );
