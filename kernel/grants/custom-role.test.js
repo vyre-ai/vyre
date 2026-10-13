@@ -11,6 +11,11 @@ const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p
 const all = `vyre://${SPACE}/*/*`;
 const bobActor = { kind: "person", id: BOB, space: SPACE };
 
+async function rig2() {
+  const r = await rig();
+  const give = (chain, person, role) => { const m = { person, role }; return r.g.setRole(chain, m, { presence: proof("grants.role", m, `vyre://${SPACE}/member/${person}`) }); };
+  return { ...r, give };
+}
 async function rig() {
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
@@ -18,7 +23,7 @@ async function rig() {
   const set = async (m) => g.setRole(owner, m, { presence: proof("grants.role", m, `vyre://${SPACE}/member/${m.person}`) });
   const active = async () => (await g.list(owner, { subject: { kind: "actor", actor: bobActor }, status: "active" }));
   const mine = async () => (await g.members.list(owner)).find(m => m.person === BOB);
-  return { set, active, mine };
+  return { k, g, owner, set, active, mine };
 }
 const custom = (id, actions, extra = {}) => ({ id, grants: [{ actions, resource: { prefix: all }, ...extra }] });
 
@@ -70,4 +75,30 @@ test("an end date on a custom role is a condition on its grants", async () => {
   const at = Date.now() + 3600_000;
   await set({ person: BOB, role: "member", custom: custom("temp-help", ["records.read"], { conditions: { when: { expires: at } } }) });
   assert.equal((await active())[0].conditions.when.expires, at);
+});
+
+test("an invite into a custom role: the joiner lands the base role plus the custom id, with the role's grants and their own id where it says 'only what they made'", async () => {
+  const { k, g, owner, active, mine } = await rig();
+  const i = { role: "member", custom: custom("para", ["records.read"], { resource: { prefix: all, where: [{ attr: "created_by", op: "eq", value: "person:$me" }] } }) };
+  const inv = await g.invites.create(owner, i, { presence: proof("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  assert.equal(inv.custom.id, "para");
+  const guest = k.chains.fromFacts({ kind: "invitee", person: BOB, vouched: true });
+  await g.invites.accept(guest, inv.id, { seen: { role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee }, proof: { op: "grant.accept", fields: { invite: inv.id, hash: inv.hash, person: BOB }, n: Math.random() } });
+  const gs = await active();
+  assert.ok(gs.length > 0 && gs.every(x => x.source === "role:para"));
+  assert.deepEqual(gs[0].resource.where, [{ attr: "created_by", op: "eq", value: `person:${BOB}` }]);
+  const m = await mine();
+  assert.equal(m.role, "member");
+  assert.equal(m.custom, "para");
+});
+
+test("an invite cannot carry a custom role wider than Member, and an admin cannot invite above their own rank", async () => {
+  const { k, g, owner, give } = await rig2();
+  const ada = k.chains.fromFacts({ kind: "device", device_key_id: "d-a", person: "per_ada", path: "direct", session: "s" });
+  const mk = (chain, i) => g.invites.create(chain, i, { presence: proof("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  await assert.rejects(() => mk(owner, { role: "member", custom: custom("wide", ["records.read", "records.define"]) }), { code: "not_allowed" });
+  await assert.rejects(() => mk(owner, { role: "admin", custom: custom("boss", ["records.read"]) }), { code: "not_allowed" });
+  await give(owner, "per_ada", "admin");
+  await assert.rejects(() => mk(ada, { role: "admin" }), { code: "not_allowed" }, "an admin cannot invite an admin");
+  assert.equal((await mk(ada, { role: "member", custom: custom("okay", ["records.read"]) })).custom.id, "okay", "an admin invites into a Member-based role");
 });

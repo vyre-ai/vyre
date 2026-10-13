@@ -10,6 +10,7 @@ import { bootKernel } from "../../kernel/boot.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { start } from "../daemon/index.js";
 import { checkRole, expandRole } from "./definition.js";
+import { customForInvite } from "./invite.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", ADA = "per_ada";
 const sealer = { presenceCheck: async ({ proof, op, fields }) => (proof && proof.op === op && canonical(proof.fields) === canonical(fields) ? null : "wrong_payload") };
@@ -122,4 +123,9 @@ test("roles.*: create, list with holders, assign, remove refused while held, the
   await ok("roles.assign", { person: BOB, role: "member" });
   assert.equal((await ok("roles.remove", { id: "intake" })).removed, true);
   assert.equal((await refused("roles.get", { id: "intake" })).code, "not_found");
+});
+
+test("an invite into a role that does not exist or was removed is refused in words", async () => {
+  const { k, o } = await rig();
+  await assert.rejects(() => customForInvite(k.gateway, o, SPACE, "ghost"), { code: "not_found", message: /no role "ghost".*roles\.list/ });
 });

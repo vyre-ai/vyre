@@ -325,6 +325,12 @@ export function createGrantsStore(cfg) {
     return { op: role === "owner" ? "add" : "remove", person, by, role_was: was, role_is: role, space: cfg.space, ...(decision ? { decision: decision.decision || decision } : {}) };
   };
 
+  /** A custom role (core/roles) is Member narrowed: only Member as base, only actions Member holds, only a prefix inside this Space, only an expiry as a condition. */
+  const checkCustom = (/** @type {string} */ role, /** @type {any} */ cu) => {
+    // A custom role (core/roles) is the base role's grants narrowed: only Admin or Member as base, only actions that base holds, only a prefix inside this Space, only an expiry as a condition.
+    const badGrant = (/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS.member.includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || (x.resource.fields !== undefined && !(Array.isArray(x.resource.fields) && x.resource.fields.every((/** @type {any} */ f) => typeof f === "string" && f))) || (x.resource.where !== undefined && !(Array.isArray(x.resource.where) && x.resource.where.every((/** @type {any} */ w) => w && ["project", "created_by", "owner", "sensitivity"].includes(w.attr) && ["eq", "ne", "in"].includes(w.op) && w.value !== undefined))) || Object.keys(x.conditions || {}).some(k => k !== "when") || (x.conditions?.when !== undefined && !(Number.isFinite(x.conditions.when.expires) && x.conditions.when.expires > clock() && Object.keys(x.conditions.when).length === 1));
+    if (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || role !== "member" || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some(badGrant)) throw new KernelError("not_allowed", "a custom role starts from Member and holds only what Member holds, inside this Space")
+  };
   /** Apply a role to a person (the shared step of `setRole` and an accepted invite): checks the issuer's CURRENT authority over both roles, replaces the role's grants, records the membership. */
   async function applyRole(/** @type {any} */ chain, /** @type {any} */ issuer, /** @type {any} */ m, /** @type {any} */ decision) {
     const d = { decision };
@@ -333,10 +339,8 @@ export function createGrantsStore(cfg) {
     const prior = memberships.get(m.person);
     if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
     if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
-    // A custom role (core/roles) is the base role's grants narrowed: only Admin or Member as base, only actions that base holds, only a prefix inside this Space, only an expiry as a condition.
     const cu = m.custom;
-    const badGrant = (/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS.member.includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || (x.resource.fields !== undefined && !(Array.isArray(x.resource.fields) && x.resource.fields.every((/** @type {any} */ f) => typeof f === "string" && f))) || (x.resource.where !== undefined && !(Array.isArray(x.resource.where) && x.resource.where.every((/** @type {any} */ w) => w && ["project", "created_by", "owner", "sensitivity"].includes(w.attr) && ["eq", "ne", "in"].includes(w.op) && w.value !== undefined))) || Object.keys(x.conditions || {}).some(k => k !== "when") || (x.conditions?.when !== undefined && !(Number.isFinite(x.conditions.when.expires) && x.conditions.when.expires > clock() && Object.keys(x.conditions.when).length === 1));
-    if (cu && (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || m.role !== "member" || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some(badGrant))) throw new KernelError("not_allowed", "a custom role starts from Member and holds only what Member holds, inside this Space")
+    if (cu) checkCustom(m.role, cu);
     const actor = { kind: "person", id: m.person, space: cfg.space };
     // The last owner stays: the Space is never left without one.
     if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
@@ -354,7 +358,7 @@ export function createGrantsStore(cfg) {
     const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
     const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
     const made = [];
-    for (const sp of cu ? structuredClone(cu.grants) : prefixes.map(prefix => ({ actions: ROLE_ACTIONS[/** @type {"owner"} */ (m.role)], resource: { prefix }, conditions: m.role === "temp" ? { when: { expires: m.expires } } : {} }))) {
+    for (const sp of cu ? JSON.parse(JSON.stringify(cu.grants).replaceAll("person:$me", `person:${m.person}`)) : prefixes.map(prefix => ({ actions: ROLE_ACTIONS[/** @type {"owner"} */ (m.role)], resource: { prefix }, conditions: m.role === "temp" ? { when: { expires: m.expires } } : {} }))) {
       const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...sp.actions], action_set_version: version, resource: sp.resource, conditions: { delegate: deleg, ...(sp.conditions || {}) }, issuer: { ...issuer }, source: `role:${cu ? cu.id : m.role}`, status: "active", created_at: clock() });
       grants.set(g.id, g); made.push(g);
       await note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
@@ -496,7 +500,7 @@ export function createGrantsStore(cfg) {
       const sees = inv && ((memberOk(me) && (sameActor(inv.issuer, me) || (bound && await bound.allowed(chain, "grants.list", urn("invite", id))))) || (!inv.invitee || inv.invitee === me.id));
       if (!inv || !sees) throw new KernelError("not_found", "no such invite");
       const status = inv.status === "pending" && !(inv.valid_until > clock()) ? "expired" : inv.status;
-      return freeze({ id: inv.id, role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
+      return freeze({ id: inv.id, role: inv.role, ...(inv.custom ? { custom: inv.custom.id } : {}), scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
     },
 
     /**
@@ -726,12 +730,13 @@ export function createGrantsStore(cfg) {
       const issuer = person(chain);
       if (!i || !ROLE_IDS.includes(i.role)) throw new KernelError("bad_input", "an invite names one of the five roles");
       if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
+      if (i.custom) checkCustom(i.role, i.custom);
       if (i.invitee !== undefined && (typeof i.invitee !== "string" || !i.invitee)) throw new KernelError("bad_input", "invitee is a person id");
       const d = await gate(chain, "grants.invite", urn("invite"), i, o.presence);
       const mine = roleOf(issuer);
       if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(i.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot invite someone as ${i.role}`);
       const contents = { role: i.role, scope: i.scope || null, expires: i.expires ?? null, invitee: i.invitee ?? null };
-      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
+      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, ...(i.custom ? { custom: structuredClone(i.custom) } : {}), hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
       invites.set(rec.id, rec);
       await note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
       return rec;
@@ -763,7 +768,7 @@ export function createGrantsStore(cfg) {
       const mine = roleOf(me), all = mine === "owner" || mine === "admin" || mine === "manager";
       return [...invites.values()].filter(v => all || sameActor(v.issuer, me)).map(v => {
         const status = v.status === "pending" && !(v.valid_until > clock()) ? "expired" : v.status;
-        return freeze({ id: v.id, role: v.role, scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
+        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
       });
     },
     /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */
@@ -798,7 +803,7 @@ export function createGrantsStore(cfg) {
       // Single use: taken before the membership is applied, so a second accept (concurrent or later) finds it used.
       invites.set(id, freeze({ ...inv, status: "used", used_by: me.id, used_at: clock() }));
       try {
-        const r = await applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
+        const r = await applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.custom ? { custom: inv.custom } : {}), ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
         await note(chain, "invite.used", urn("invite", id), { id, by: me.id });
         return r;
       } catch (e) { invites.set(id, inv); throw e; }
