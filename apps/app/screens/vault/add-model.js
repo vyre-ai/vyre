@@ -102,12 +102,13 @@ export function formOf(id) {
 /** Fields a provider's own console shows first, in its order, even where the catalog marks one optional (Twilio: account number, auth token, the number texts come from). The rest follow, required before optional. @type {Record<string, string[]>} */
 const FIRST = { twilio: ["account", "value", "from"] };
 
-/** @param {string} id @param {{ name: string, optional?: boolean }[]} fields */
+/** @typedef {{ name: string, label: string, secret?: boolean, optional?: boolean }} OrderField */
+/** @param {string} id @param {OrderField[]} fields @returns {OrderField[]} */
 const orderFields = (id, fields) => {
   const first = FIRST[id] ?? [];
-  const lead = first.map((n) => fields.find((f) => f.name === n)).filter(Boolean);
+  const lead = first.map((n) => fields.find((f) => f.name === n)).filter((/** @type {OrderField | undefined} */ f) => f !== undefined);
   const rest = fields.filter((f) => !first.includes(f.name));
-  return [...lead, ...rest.filter((f) => !f.optional), ...rest.filter((f) => f.optional)];
+  return [.../** @type {OrderField[]} */ (lead), ...rest.filter((f) => !f.optional), ...rest.filter((f) => f.optional)];
 };
 
 /** "API key id (only if ...)" becomes "API key id (optional, only if ...)"; a label with no aside gets " (optional)". @param {string} l */

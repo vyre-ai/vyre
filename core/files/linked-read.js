@@ -49,7 +49,7 @@ export function registerLinkedIO({ t, linkOf, asLink, index, providers }) {
     return { path: full(r, dir), entries: ix.children(r.id, who, dir).map((/** @type {any} */ e) => ({ name: e.name, path: full(r, e.path), dir: e.dir, size: e.size, modified: e.modified, rev: e.rev })) };
   });
 
-  t("files.linked.read", `Open a file in a linked folder: { id, path }. Fetched from the source as you, up to ${MAX_BYTES / 1048576} MB. Keep rev to write it back.`,
+  t("files.linked.read", `Open a file in a linked folder: { id, path }. Fetched from the source as you, up to ${MAX_BYTES / 1048576} MB. Keep rev to write back.`,
     obj({ space: str, id: str, path: str }, ["id", "path"]), {}, async (/** @type {any} */ i, /** @type {any} */ d, /** @type {string} */ who) => {
       const p = pathOf(i.path), { r, link, provider, ix } = await open(i, d, who), e = entryAt(ix, r, who, p);
       if (e.dir) throw refuse("that is a folder; list it instead", "bad_input");
