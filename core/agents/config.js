@@ -110,6 +110,13 @@ export function register(ctx, h) {
     return { dir: home(a), instructions: Boolean(words), context: listFiles(a).length > 0 };
   };
 
+  // Who made an agent, for the kernel: an agent may check another agent's work only while the person who made it is an owner or an admin (kernel/tasks), so the kernel asks, live, each time.
+  ctx.tool("agents.maker", {
+    description: "The person who made an agent (its owner row), or null. For the kernel's check of an agent that approves another agent's work.",
+    internal: true, callers: ["module"],
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }) => { const a = h.must(agent); return { made_by: a.owner ? String(a.owner) : null }; },
+  });
   ctx.tool("agents.docs.get", {
     description: "An agent's two instruction files: AGENTS.md (its instructions) and CLAUDE.md (extra notes for Claude).",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },

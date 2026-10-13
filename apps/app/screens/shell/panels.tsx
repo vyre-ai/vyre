@@ -10,6 +10,8 @@ import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
 import { MOCK, tool } from "../../src/real/box";
+import { useFlowsState } from "../flows/store";
+import { flowsRepo } from "../flows/data";
 import { BUILD_SECTIONS } from "../build/sections.js";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
@@ -40,10 +42,17 @@ function ChatsLoader() {
 
 function FlowsLoader() {
   const put = useLoaded((s) => s.put);
+  // The sample build lists the same Flows as the Flows page (the ones made in the builder and the Kit's), in the same groups; a real box lists flows.list, whose rows carry the Flow's group.
+  const { made, applied, groupOf } = useFlowsState();
+  useEffect(() => {
+    if (!MOCK) return;
+    const kit = [...(applied ? [flowsRepo.engineerFlow()] : []), ...flowsRepo.flows()];
+    put("flows", [...made.map((m) => ({ id: m.id, label: m.draft.name, group: groupOf[m.id] })), ...kit.map((f) => ({ id: f.id, label: f.name, group: groupOf[f.id] }))].map((f) => ({ ...f, href: `/u/flows/${f.id}` })));
+  }, [made, applied, groupOf, put]);
   useEffect(() => {
     if (MOCK) return;
     let live = true;
-    tool<any[]>("flows.list", {}).then((rows) => { if (live && Array.isArray(rows)) put("flows", rows.map((f) => ({ id: String(f.id), label: String(f.name || f.label || f.id), href: `/u/flows/${f.id}` }))); }, () => {});
+    tool<any[]>("flows.list", {}).then((rows) => { if (live && Array.isArray(rows)) put("flows", rows.map((f) => ({ id: String(f.id), label: String(f.label || f.name || f.id), href: `/u/flows/${f.id}`, ...(f.group ? { group: String(f.group) } : {}) }))); }, () => {});
     return () => { live = false; };
   }, [put]);
   return null;
