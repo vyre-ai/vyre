@@ -767,7 +767,8 @@ test("publish: a job's runs and its failure card are the project's people's, not
 });
 
 test("publish: a model puts a site live end to end with one held yes, and cannot give it", async t => {
-  const b = await boxRegistry(t);
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "work"] });
+  b.pf.projectPeople = { bakery: { people: ["per_alex"], personal_of: null } };
   const juno = "mcp:agent:juno";
   for (const caller of [juno, "mcp:agent:kai"]) {
     const { deployment } = await b.ok("publish.create", { ...DRAFT, name: "site-" + caller.replace(/\W/g, "") }, caller);
