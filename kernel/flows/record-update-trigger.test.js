@@ -20,7 +20,7 @@ test("created or updated: a reschedule leaves exactly one live run, with the new
   const m = await w.kernel.records.create(chain, "matter", { client: "Old", stage: "Intake" });
   await settle(w);
   assert.equal((await live(w, id)).length, 1);
-  await w.kernel.records.update(chain, "matter", m.id, { client: "New" });
+  await w.kernel.records.update(chain, "matter", m.id, { client: "New" }, (await w.kernel.records.get(chain, "matter", m.id)).version);
   await settle(w);
   const runs = await w.runner.listRuns({ flow: id });
   assert.equal((await live(w, id)).length, 1, "one live run");
@@ -37,7 +37,7 @@ test("an edit to another field does not fire when the filter is set, and does no
   const chain = chainOf(w);
   const m = await w.kernel.records.create(chain, "matter", { client: "Pat", stage: "Intake" });
   await settle(w);
-  await w.kernel.records.update(chain, "matter", m.id, { email: "pat@example.com" });
+  await w.kernel.records.update(chain, "matter", m.id, { email: "pat@example.com" }, (await w.kernel.records.get(chain, "matter", m.id)).version);
   await settle(w);
   const runs = await w.runner.listRuns({ flow: id });
   assert.equal(runs.length, 1, "no second run");
@@ -51,7 +51,7 @@ test("a run held at the Gate for the same record is never cancelled", async () =
   const m = await w.kernel.records.create(chain, "matter", { client: "Pat", stage: "Intake" });
   await settle(w);
   const gate = await w.runner.gateOpen({ key: `matter/${m.id}#Intake`, urn: m.urn || `vyre://${w.cat.space}/matter/${m.id}`, type: "matter", id: m.id, stage: "Intake", next: null, tasks: [{ id: "t1", title: "Sign", required: true }] });
-  await w.kernel.records.update(chain, "matter", m.id, { client: "Pat Two" });
+  await w.kernel.records.update(chain, "matter", m.id, { client: "Pat Two" }, (await w.kernel.records.get(chain, "matter", m.id)).version);
   await settle(w);
   assert.equal((await w.runner.getRun(gate)).state, "waiting", "the gate keeps waiting");
   assert.equal((await live(w, id)).length, 1);
@@ -63,14 +63,14 @@ test("keep: both runs go on, as before; and an old single-event trigger behaves 
   const chain = chainOf(w);
   const m = await w.kernel.records.create(chain, "matter", { client: "A", stage: "Intake" });
   await settle(w);
-  await w.kernel.records.update(chain, "matter", m.id, { client: "B" });
+  await w.kernel.records.update(chain, "matter", m.id, { client: "B" }, (await w.kernel.records.get(chain, "matter", m.id)).version);
   await settle(w);
   assert.equal((await live(w, keep.id)).length, 2, "keep both");
   const w2 = await world();
   const old = await install(w2, { ...reminder({}), name: "old", trigger: { on: "event", event: "matter.*" } });
   const m2 = await w2.kernel.records.create(chainOf(w2), "matter", { client: "A", stage: "Intake" });
   await settle(w2);
-  await w2.kernel.records.update(chainOf(w2), "matter", m2.id, { client: "B" });
+  await w2.kernel.records.update(chainOf(w2), "matter", m2.id, { client: "B" }, (await w2.kernel.records.get(chainOf(w2), "matter", m2.id)).version);
   await settle(w2);
   assert.equal((await live(w2, old.id)).length, 2, "a flow that never said created-or-updated keeps today's behaviour");
 });
