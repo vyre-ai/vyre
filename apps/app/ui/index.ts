@@ -120,3 +120,7 @@ export { draftOf, applyDraft } from "./setup/logic.js";
 export { putField, moveField, regroup, parseRule } from "./setup/typeedit.js";
 export { SealEditor, SEAL_CLASSES } from "./setup/SealEditor";
 export type { Seal } from "./setup/logic.js";
+export { ListHeader } from "./records/ListHeader";
+export type { ListCtx } from "./records/ListHeader";
+export { listRows, chipWords, chipsToFilters, filterableFields } from "./records/listfilter.js";
+export type { Chip as FilterChip } from "./records/listfilter.js";
