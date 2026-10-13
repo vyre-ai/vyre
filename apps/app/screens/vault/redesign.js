@@ -83,7 +83,7 @@ export const PROVIDER_GROUP = {
   "imap-smtp": "Email and sending", "sending-service": "Email and sending",
   twilio: "Phone and texts",
   "google-oauth": "Google and Microsoft", "google-dwd": "Google and Microsoft", "google-apps-script": "Google and Microsoft",
-  github: "Code and hosting", "github-oauth": "Code and hosting", cloudflare: "Code and hosting", tailscale: "Code and hosting", "mcp-bearer": "Code and hosting",
+  github: "Code and hosting", "github-oauth": "Code and hosting", cloudflare: "Code and hosting", tailscale: "Code and hosting", "mcp-bearer": "Code and hosting", dropbox: "Code and hosting",
   telegram: "Messaging",
 };
 
