@@ -36,7 +36,7 @@ test("every step kind of the palette stores as a valid step", () => {
 
 test("problems say what is missing in words", () => {
   const d = { name: "", trigger: { kind: "created" }, steps: [{ id: "agent1", kind: "agent", agent: "refunds", record: "trigger", instructions: "" }] };
-  assert.deepEqual(draftProblems(d, O), ["Give the Flow a name.", "Choose the kind of record that starts it.", "Step 1: Tell the agent what to do with it."]);
+  assert.deepEqual(draftProblems(d, O), ["Give the Flow a name.", "Choose the object that starts it.", "Step 1: Tell the agent what to do with it."]);
 });
 
 test("removing a step repoints what used it, moving swaps neighbours", () => {
