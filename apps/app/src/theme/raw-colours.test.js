@@ -14,6 +14,7 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 /** Files that may hold literal colours, and why. Keep it short; a new entry needs a reviewer to agree the colour is not a role. */
 export const EXCEPTIONS = Object.freeze({
   "src/terminal/palettes.ts": "the terminal's ANSI colours: a terminal needs its reds and greens to carry meaning, they are not roles",
+  "ui/marks/vyre-art.js": "the approved Vyre marks (docs/design/brand/export/vyre), copied as given by scripts/gen-vyre-mark.mjs",
   "ui/marks/provider-art.js": "the AI providers' own published marks, drawn unmodified in their brand colours",
   "src/store-core/tokens-v3.js": "the token source: the one place the look's colours are defined, which every role is read from",
   "src/terminal/xterm/xterm.js": "xterm, third-party code copied in as it is",
