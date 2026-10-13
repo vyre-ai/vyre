@@ -44,6 +44,7 @@
     {"name": "files.linked.sync", "effect": "write", "reach": "person"},
     {"name": "files.linked.status", "effect": "read", "reach": "person"},
     {"name": "files.linked.search", "effect": "read", "reach": "person"},
+    {"name": "files.linked.tree", "effect": "read", "reach": "person"},
     {"name": "files.linked.mentions.search", "effect": "read", "reach": "person"},
     {"name": "files.linked.mentions.resolve", "reach": "modules"},
     {"name": "files.linked.ls", "effect": "read", "reach": "person"},

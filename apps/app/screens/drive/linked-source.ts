@@ -21,6 +21,8 @@ export function linkedSource(call: Call) {
     read: (id: string, path: string) => ask<LinkedFile>("files.linked.read", { id, path }),
     /** `baseRev` is the rev the person opened; without it the file is created (or replaced). */
     write: (id: string, path: string, base64: string, baseRev?: string) => ask<{ path: string; rev: string }>("files.linked.write", { id, path, base64, ...(baseRev ? { base_rev: baseRev } : {}) }),
+    /** Every file in this person's index of each linked folder, for the # picker. */
+    tree: async (): Promise<{ id: string; name: string; files: { path: string }[] }[]> => (await ask<{ folders?: { id: string; name: string; files: { path: string }[] }[] }>("files.linked.tree"))?.folders ?? [],
     versions: async (id: string, path: string): Promise<LinkedVersion[]> => (await ask<{ versions?: LinkedVersion[] }>("files.linked.versions", { id, path }))?.versions ?? [],
   };
 }

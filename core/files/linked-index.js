@@ -82,6 +82,10 @@ export function linkedIndex({ db, providers, now = () => Date.now() }) {
           WHERE files_linked_fts MATCH ? AND i.person = ?${o.link ? " AND i.link = ?" : ""} ORDER BY rank LIMIT ?`)
         .all(match, person, ...(o.link ? [o.link] : []), limit).map((/** @type {any} */ r) => ({ ...r }));
     },
+    /** The paths of the files (not folders) in one person's index of a link, up to `limit`. @param {string} link @param {string} person @param {number} [limit] */
+    paths(link, person, limit = 2000) {
+      return db.prepare("SELECT path FROM files_linked_index WHERE link = ? AND person = ? AND dir = 0 ORDER BY path LIMIT ?").all(link, person, Math.min(Math.max(Number(limit) || 2000, 1), 5000)).map((/** @type {any} */ r) => ({ path: String(r.path) }));
+    },
     /** The row at a path in one person's index, or null. @param {string} link @param {string} person @param {string} path */
     entryAt(link, person, path) {
       const r = db.prepare("SELECT entry, path, name, mime, size, modified, rev, dir FROM files_linked_index WHERE link = ? AND person = ? AND path = ?").get(link, person, path);

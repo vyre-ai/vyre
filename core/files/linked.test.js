@@ -270,3 +270,21 @@ test("# mentions: a tag whose chat has no person behind it still resolves, to a 
   assert.equal(res.context, undefined);
   assert.match(res.note, /files\.linked\.read/);
 });
+
+test("tree gives the picker every file the person's index holds, per linked folder, syncing a folder they have never synced", async () => {
+  const { r, l } = await opened();
+  const t = await r.run("files.linked.tree");
+  assert.deepEqual(t.folders.map(f => [f.id, f.name, f.files.map(x => x.path).sort()]), [[l.id, "Docs", ["a/deep/x.txt", "a/plan.md", "b.txt"]]]);
+  r.state.chain = person("per_bo");
+  const bo = await r.run("files.linked.tree");
+  assert.equal(bo.folders[0].files.length, 3, "their own sync, through their own identity");
+  assert.deepEqual(r.linked.providers.get("fake").calls.filter(c => c[0] === "list").map(c => c[1]), ["per_alex", "per_bo"]);
+});
+
+test("tree is capped per folder, and a failing source leaves that folder empty instead of failing the picker", async () => {
+  const { r, l, p } = await opened();
+  assert.equal((await r.run("files.linked.tree", { limit: 2 })).folders[0].files.length, 2);
+  p.list = async () => { throw Object.assign(new Error("no"), { code: "denied" }); };
+  r.state.chain = person("per_cy");
+  assert.deepEqual((await r.run("files.linked.tree")).folders[0].files, []);
+});

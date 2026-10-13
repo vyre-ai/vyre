@@ -52,7 +52,7 @@ export function registerLinked(ctx, o) {
   const view = (/** @type {any} */ r) => ({ id: r.id, name: r.name, path: linkedDir(r.name), provider: r.provider, source: JSON.parse(r.source), linked_by: r.linked_by, at: r.at });
 
   const t = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {any} */ extra, /** @type {(i: any, d: any, who: string) => Promise<any>} */ run) =>
-    ctx.tool(name, { description, input, callers: extra.readCallers || /^files\.linked\.(list|status|search|ls|read|versions|providers|pick)$/.test(name) ? READ_CALLERS : CALLERS, ...extra, readCallers: undefined, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
+    ctx.tool(name, { description, input, callers: extra.readCallers || /^files\.linked\.(list|status|search|ls|read|versions|providers|pick|tree)$/.test(name) ? READ_CALLERS : CALLERS, ...extra, readCallers: undefined, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
 
   t("files.linked.link", "Link a folder from a source (Google Drive first) so it appears live at Linked/<name> in this Space: { space?, name, provider, source }. `source` is what the provider needs to find the folder (Drive: { folder }). Nothing is copied; each person sees it through their own account.",
     obj({ space: str, name: str, provider: str, source: { type: "object" } }, ["name", "provider", "source"]),
@@ -107,6 +107,18 @@ export function registerLinked(ctx, o) {
 
   t("files.linked.status", "A linked folder and how your index of it stands: { space?, id }.", obj({ space: str, id: str }, ["id"]), {},
     async (i, d, who) => { const r = linkOf(i, d); return { link: view(r), sync: index().status(r.id, who) }; });
+
+  t("files.linked.tree", "Every file in your own index of each linked folder, for the # picker: { space?, limit? } -> { folders: [{ id, name, files: [{ path }] }] }. A folder you have not synced (or whose last sync failed) is synced first, as you; one the source refuses comes back empty.",
+    obj({ space: str, limit: { type: "integer" } }), {}, async (i, d, who) => {
+      const rows = db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space);
+      const folders = [];
+      for (const r of rows) {
+        const st = index().status(r.id, who);
+        if (!st || st.status === "error") await index().sync(asLink(r), who);
+        folders.push({ id: r.id, name: r.name, files: index().paths(r.id, who, i.limit) });
+      }
+      return { folders };
+    });
 
   t("files.linked.search", "Search the linked folders by name, path and text, among what your account sees: { space?, q, id?, limit? }.", obj({ space: str, q: str, id: str, limit: { type: "integer" } }, ["q"]), {},
     async (i, d, who) => {

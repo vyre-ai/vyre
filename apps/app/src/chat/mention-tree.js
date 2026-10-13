@@ -1,10 +1,10 @@
 // @ts-check
 // The trees the nested @ and # pickers walk (ui/lib/nest-model.js). Pure: the box's answers go in, nodes come out.
-//   #  Projects (a template, then its projects) · Records (an object, then its records) · Files (folders, then files) · Tags
+//   #  Projects (a template, then its projects) · Records (an object, then its records) · Files (folders, then files; Linked, then each linked folder, then its files) · Tags
 //   @  People · Teams and roles · Agents · AIs
 // A branch you can choose whole carries a `pick` of kind "collection": a reference to the whole object, template, folder; its id is
 // type/<object>, template/<id> or folder/<path>. The server treats it as a reference, never as text. A single item picks as
-// "record", "project", "file" or "tag" (id: its urn, file/<path>, tag/<name>).
+// "record", "project", "file", "linked" (a file in a linked folder; id <link id>:<path>, resolved by the files module's own # provider) or "tag" (id: its urn, file/<path>, tag/<name>).
 
 /** @typedef {import("../../ui/lib/nest-model.js").NestNode} NestNode */
 
@@ -26,8 +26,12 @@ function templateRows(d) {
 /** @param {string} name */
 const all = (name) => `${name} (all)`;
 
-/** The folders and files under the Drive's root, from a flat list of paths. @param {readonly { path: string }[]} files @param {Record<string, string>} names @returns {NestNode[]} */
-function fileTree(files, names) {
+/**
+ * The folders and files under a root, from a flat list of paths. The Space Drive's own tree picks a file as "file" and a folder as a whole "collection"; a linked folder's tree (`own`) picks a
+ * file as "linked" (id `<link id>:<path>`) and offers no whole-folder pick, since the server has no reference for one.
+ * @param {readonly { path: string }[]} files @param {Record<string, string>} names @param {{ file: (path: string, seg: string) => { sub?: string, pick: any }, folder?: (path: string, label: string) => any }} [own] @returns {NestNode[]}
+ */
+function fileTree(files, names, own) {
   /** @type {{ kids: Map<string, any>, file: boolean }} */ const root = { kids: new Map(), file: false };
   for (const f of files) {
     const parts = String(f.path || "").split("/").filter(Boolean);
@@ -42,19 +46,31 @@ function fileTree(files, names) {
     .sort(([a, x], [b, y]) => Number(x.file) - Number(y.file) || a.localeCompare(b))
     .map(([seg, n]) => {
       const path = base ? `${base}/${seg}` : seg;
-      if (n.file) return { key: seg, label: seg, sub: base.split("/").map((_, i, a) => names[a.slice(0, i + 1).join("/")] ?? a[i]).join(" / "), pick: { pick: seg, urn: `file/${path}`, kind: "file" } };
+      if (n.file) {
+        if (own) { const f = own.file(path, seg); return { key: seg, label: seg, ...(f.sub ? { sub: f.sub } : {}), pick: f.pick }; }
+        return { key: seg, label: seg, sub: base.split("/").map((_, i, a) => names[a.slice(0, i + 1).join("/")] ?? a[i]).join(" / "), pick: { pick: seg, urn: `file/${path}`, kind: "file" } };
+      }
       const label = names[path] ?? seg;
-      return { key: seg, label, pick: { pick: all(label), urn: `folder/${path}`, kind: "collection" }, kids: level(n, path) };
+      const pick = own ? (own.folder ? own.folder(path, label) : undefined) : { pick: all(label), urn: `folder/${path}`, kind: "collection" };
+      return { key: seg, label, ...(pick ? { pick } : {}), kids: level(n, path) };
     });
   return level(root, "");
 }
 
+/** Files > Linked: a branch per linked folder with something indexed in it, then its folders and files. @param {readonly { id: string, name: string, files: readonly { path: string }[] }[]} linked @returns {NestNode[]} */
+function linkedTree(linked) {
+  const folders = linked.filter((l) => l && l.files && l.files.length).map((l) => ({
+    key: String(l.id), label: String(l.name), kids: fileTree(l.files, {}, { file: (path, seg) => ({ pick: { pick: seg, urn: `${l.id}:${path}`, kind: "linked" } }) }),
+  }));
+  return folders.length ? [{ key: "linked:", label: "Linked", kids: folders }] : [];
+}
+
 /**
  * The # tree.
- * @param {{ world: { types: any[], byType: Record<string, any[]> } | null | undefined, titleOf: (def: any, rec: any) => string, templates: unknown, files: readonly { path: string }[], names: Record<string, string> }} o
+ * @param {{ world: { types: any[], byType: Record<string, any[]> } | null | undefined, titleOf: (def: any, rec: any) => string, templates: unknown, files: readonly { path: string }[], names: Record<string, string>, linked?: readonly { id: string, name: string, files: readonly { path: string }[] }[] }} o
  * @returns {NestNode[]}
  */
-export function hashTree({ world, titleOf, templates, files, names }) {
+export function hashTree({ world, titleOf, templates, files, names, linked = [] }) {
   const types = (world?.types ?? []).filter((/** @type {any} */ d) => !d.internal && !SKIP.test(String(d.name)));
   const projectDef = (world?.types ?? []).find((/** @type {any} */ d) => d.name === "project");
   const projects = (world?.byType?.project ?? []).map((/** @type {any} */ r) => ({ ...r, title: titleOf(projectDef, r) }));
@@ -89,7 +105,7 @@ export function hashTree({ world, titleOf, templates, files, names }) {
   return filled([
     { key: "projects", label: "Projects", kids: filled(byTemplate) },
     { key: "records", label: "Records", kids: filled(objects) },
-    { key: "files", label: "Files", kids: fileTree(files, names) },
+    { key: "files", label: "Files", kids: [...fileTree(files, names), ...linkedTree(linked)] },
     { key: "tags", label: "Tags", kids: tags },
   ]);
 }
