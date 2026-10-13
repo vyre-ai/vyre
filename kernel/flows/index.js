@@ -97,10 +97,25 @@ export function createFlows(o) {
 
   /** Every stored version of every Flow as { id, name, version, json }. */
   const allDefinitions = async () => (await store.allVersions()).map((/** @type {any} */ v) => ({ id: v.id, name: v.flow.label || v.flow.name || v.id, version: v.version, json: JSON.stringify(v.flow) }));
+  /**
+   * Changing a Flow takes Can edit: the person who made it, or anyone holding `flows.define` on it (an owner and an admin by their role, anyone else by a grant on that Flow). A Flow nobody
+   * made (one a Kit installed) has no creator, and then the grant decides.
+   * @param {any} chain @param {string} id
+   */
+  const mayEdit = async (chain, id) => {
+    const row = await store.flowRow?.(id);
+    if (!row) return;
+    const who = chain.hops[chain.hops.length - 1].actor;
+    const first = row.versions[0] && row.versions[0].by;
+    if (first && who && first.id === who.id) return;
+    const d = await o.kernel.authorize({ chain, action: "flows.define", resource: `vyre://${row.space}/flow/${id}` }).catch(() => null);
+    if (!d || d.effect !== "allow") throw Object.assign(new Error("you can use this Flow but not change it: ask its owner for Can edit"), { code: "denied" });
+  };
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
   const tools = {
     /** Compile and store a new version, from the stored form or from text. Nothing runs until `flows.approve`. */
     "flows.define": async (chain, i) => {
+      if (i.id) await mayEdit(chain, i.id);
       const c = await cat();
       let flow = i.flow;
       if (i.text !== undefined) {
@@ -244,6 +259,7 @@ export function createFlows(o) {
     // Edit by patch (e2): small named edits on the newest version, stored as a new draft. A patch made against an older version is refused, never merged.
     "flows.patch": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayEdit(chain, id);
       const cur = await latest(id);
       if (!cur) throw Object.assign(new Error("no such Flow"), { code: "not_found" });
       if (i.base !== undefined && i.base !== cur.version && i.base !== cur.hash) throw Object.assign(new Error(`this patch was made against ${typeof i.base === "number" ? "version " + i.base : "an older version"}, but the Flow is at version ${cur.version} (hash ${cur.hash.slice(0, 12)}); read it again with flows.code and redo the edit`), { code: "conflict" });

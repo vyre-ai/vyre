@@ -108,7 +108,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
     // (a decide or a repeat takes a failure path and a check, but no time limit or retry: a key the runner would ignore is refused, not accepted)
     // (a lane has no policy of its own: its steps do; a parallel step waits for its lanes, so a time limit or a retry on it would not mean one attempt)
     const policyKeys = s.kind === "branch" ? [] : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || s.kind === "subflow" ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
-    onlyKeys(s, ["id", "kind", "label", ...keys, ...policyKeys], p, out);
+    onlyKeys(s, ["id", "kind", "label", "added_by", ...keys, ...policyKeys], p, out);
+    if (s.added_by !== undefined && (typeof s.added_by !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(s.added_by))) out.push({ path: `${p}.added_by`, message: "added_by is the id of the person who added the step" });
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
     if (s.approve !== undefined && typeof s.approve !== "boolean") out.push({ path: `${p}.approve`, message: "approve is true when this send always asks a person, even in a turned-on Flow" });
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });

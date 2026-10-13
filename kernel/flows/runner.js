@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
+import { stampAdders } from "./adders.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
@@ -168,10 +169,33 @@ export class FlowRunner {
   /** Compile and store a new version. Nothing runs until a person approves it. @param {string|null} id @param {any} flow @param {ActorRef} by */
   async define(id, flow, by) {
     const cat = await this.catalogFn();
+    const before = id ? await this.#newest(id) : null;
+    flow = stampAdders(before && before.flow, flow, by);
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings, effects: compiled.effects };
+    // The person who adds a step must reach what it touches: a Flow is a way to use your own access, never someone else's.
+    if (by && by.kind === "person") {
+      const chain = this.chains.forFlow({ flow: id || "new", space: cat.space, approver: by, tainted: false, run: "define", source_spaces: [cat.space] });
+      const mine = new Set();
+      walkSteps(flow.steps || [], s => { if (s.added_by === by.id) mine.add(s.id); });
+      walkSteps(flow.on_failure || [], s => { if (s.added_by === by.id) mine.add(s.id); });
+      /** @type {{ path: string, message: string, step: string }[]} */ const refused = [];
+      for (const n of flowNeeds(flow, cat)) {
+        if (!mine.has(n.step)) continue;
+        const d = await this.k.authorize({ chain, action: n.action, resource: n.resource }).catch(() => null);
+        if (d && d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
+      }
+      if (refused.length) return { ok: false, errors: refused, warnings: compiled.warnings, effects: compiled.effects };
+    }
     const put = await this.store.putVersion(id, compiled.flow || flow, by, this.now(), cat.space);
     return { ok: true, id: put.id, version: put.version, hash: put.hash, same: put.same, warnings: compiled.warnings, effects: compiled.effects, caps: compiled.caps };
+  }
+
+  /** The newest stored version of a Flow, drafts too, or null. @param {string} id */
+  async #newest(id) {
+    const row = this.store.flowRow ? await this.store.flowRow(id) : null;
+    const last = row && row.versions[row.versions.length - 1];
+    return last ? this.store.getVersion(id, last.version) : null;
   }
 
   /**
@@ -1357,6 +1381,12 @@ export class FlowRunner {
     // with that approval, which the host spends once at the call (the task store's `useApproval`). Anything else asks the kernel.
     const isTool = Boolean((ctx.cat.actions[need.action] || {}).tool);
     const d = isTool ? { effect: risk === "read" ? "allow" : approvedTask ? "allow" : "ask", obligations: [], decision: null, reason: "ok" } : await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
+    // The person who added the step must still reach what it touches, as well as the approver: a Flow never gives anyone more than their own access.
+    if (!isTool && s.added_by && run.approver && s.added_by !== run.approver.id && d.effect !== "deny") {
+      const adder = this.chains.forFlow({ flow: run.flow, space: run.space, approver: { kind: "person", id: s.added_by, space: run.space }, tainted: run.tainted, run: run.id, source_spaces: run.source_spaces });
+      const da = await this.k.authorize({ chain: adder, action: need.action, resource: need.resource }).catch(() => null);
+      if (da && da.effect === "deny") { this.#note(ctx, s, `denied: the person who added it cannot reach this (${da.reason})`); throw new StepFail("adder_denied", `step ${s.id}: the person who added it can no longer reach what it touches (${da.reason}), so it does not run`); }
+    }
     let effect = d.effect;
     // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
     const obl = Array.isArray(d.obligations) ? d.obligations : [];

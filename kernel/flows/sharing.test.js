@@ -36,11 +36,12 @@ test("a step the adder cannot reach is refused when it is added", async () => {
 
 test("a step runs only if its adder can still reach what it touches, even when the approver can", async () => {
   const w = await world();
+  const OWNER = w.kernel.ownerActor();
   const d = await w.runner.define(null, base([make("one")]), BOB);
   assert.equal(d.ok, true, JSON.stringify(d.errors));
-  await w.runner.approve(d.id, d.version, ALEX, d.hash);
+  await w.runner.approve(d.id, d.version, OWNER, d.hash);
   w.kernel.rules.push({ match: i => i.action === "records.create" && i.resource.endsWith("/payment/*") && i.chain.hops.at(-1).actor.id === BOB.id, effect: "deny", reason: "no access" });
-  await w.runner.start(d.id, {}, chainOf(ALEX));
+  await w.runner.start(d.id, {}, chainOf(OWNER));
   await settle(w);
   const [run] = await w.runner.listRuns({ flow: d.id });
   assert.notEqual(run.state, "done", "the adder lost access to payments, so the step does not run");
