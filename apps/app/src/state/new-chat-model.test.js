@@ -37,3 +37,7 @@ test("the picker has your assistant, the people (never you) and the agents, each
 test("what was picked becomes the work.chat.create people and agents, once each", () => {
   assert.deepEqual(inputFor({ people: ["per_c", "per_c"], agents: ["kit"] }), { people: ["per_c"], agents: ["kit"] });
 });
+test("with a project, its team's agents are a group of their own, ahead of the rest", () => {
+  const g = pickerGroups({ agents: [{ name: "kit" }, { name: "rev" }], people: [], team: ["rev"] });
+  assert.deepEqual([g.team.map((a) => a.name), g.agents.map((a) => a.name)], [["rev"], ["kit"]]);
+});
