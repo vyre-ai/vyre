@@ -11,7 +11,7 @@ export const LEVEL_WORDS: Record<Level, string> = { use: "Can use", edit: "Can e
 
 /**
  * Who has something, and at which level: Can use or Can edit, the same two words as flows and agents. Each row changes its level or removes the person from a menu; "Add" lists the people
- * and assistants not yet on it. `of` turns an id into the mark to draw. Sharing is a grant on the item; nothing here shows the value. See docs/design/system/components/access-list.md.
+ * and agents not yet on it. `of` turns an id into the mark to draw. Sharing is a grant on the item; nothing here shows the value. See docs/design/system/components/access-list.md.
  */
 export function AccessList({ rows, candidates, of, onChange, onRemove, onAdd, empty = "Only you." }: {
   rows: { who: string; level: Level }[]; candidates: string[]; of: (who: string) => AvatarRef;
@@ -33,7 +33,7 @@ export function AccessList({ rows, candidates, of, onChange, onRemove, onAdd, em
       )) : <Text tone="muted">{empty}</Text>}
       {left.length ? (
         <View className="self-start">
-          <Menu trigger={<Button kind="ghost" size="sm" icon="plus" label="Add a person or assistant" />}
+          <Menu trigger={<Button kind="ghost" size="sm" icon="plus" label="Add a person or agent" />}
             items={left.flatMap((c) => (["use", "edit"] as Level[]).map((l) => ({ label: `${c}: ${LEVEL_WORDS[l]}`, onPress: () => onAdd(c, l) })))} />
         </View>
       ) : null}

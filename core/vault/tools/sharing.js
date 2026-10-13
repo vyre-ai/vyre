@@ -21,7 +21,7 @@ export const sourceOf = (/** @type {string} */ item, /** @type {string} */ perso
  */
 export function register({ ctx, vault, tool }) {
   const mint = () => { const m = ctx.kernel && ctx.kernel.mint; if (!m) throw Object.assign(new Error("sharing a vault item needs the kernel"), { code: "unavailable" }); return m; };
-  const item = (/** @type {any} */ name) => { const r = vault.row(String(name || "")); if (!r) throw Object.assign(new Error(`no item named ${String(name).slice(0, 80)}`), { code: "not_found" }); return r; };
+  const item = (/** @type {any} */ name) => { const r = vault.row(String(name || "")); if (!r) throw Object.assign(new Error(`no item named ${String(name).slice(0, 80)}: vault.list shows the items you can share`), { code: "not_found" }); return r; };
   const urnOf = async (/** @type {string} */ name) => /** @type {any} */ (vault).access.urn(name);
   /** @param {string} name */
   const sharedWith = async name => {
