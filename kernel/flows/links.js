@@ -5,7 +5,7 @@
 // The rules, for Flows:
 //   - a path may follow up to 3 links; a record the Flow cannot read stops the step with a plain error
 //   - a `many` link read without a number gives the values of every linked record joined as text, ", " between; `children[0].name` gives the first one's
-//   - in a value (a field to write, a message), a link with nothing in it stops the step and names the field; in a condition it reads as nothing, as an absent value always did
+//   - a field or a link with nothing in it reads as nothing (null, empty text), in a value and in a condition alike, as an absent value always did; only a linked record the Flow's chain may not read stops the step
 //   - a sealed value is its placeholder
 import { parse } from "./expr.js";
 import { isLink, isLinkList, resolvePath, LinkError } from "../../lib/link/path.js";
@@ -76,27 +76,24 @@ const joined = list => list.map(x => (x && typeof x === "object" ? "" : String(x
  */
 export async function linksFor(step, scope, reader) {
   /** @type {Map<string, { at: string[], base: any, over: any }>} */ const found = new Map();
-  for (const { src, value } of sourcesOf(step)) {
+  for (const { src } of sourcesOf(step)) {
     let node; try { node = parse(src); } catch { continue; }
     for (const chain of chains(node, [])) {
-      let cur = /** @type {any} */ (scope), i = 0, inData = false;
+      let cur = /** @type {any} */ (scope), i = 0;
       for (; i < chain.length; i++) {
         const part = chain[i];
         const list = isLinkList(cur) && !/^\d+$/.test(part);
         if ((isLink(cur) && part !== "urn") || list) break;
         if (cur === null || typeof cur !== "object" || !Object.hasOwn(cur, part)) {
-          // a path through a field a record has no value for: in a value that is said; in a condition it is nothing, as it always was
-          if (value && inData && i < chain.length - 1) throw new LinkError("not_found", `${chain.slice(0, i + 1).join(".")} has no value, so ${chain.join(".")} cannot be read. Fill in ${part} first.`);
           cur = undefined; break;
         }
-        if (part === "data" || part === "after" || part === "before") inData = true;     // the fields of a record: a record step's data, a trigger's after and before
         cur = cur[part];
       }
       if (i >= chain.length || cur === undefined) continue;
       const at = chain.slice(0, i), rest = chain.slice(i);
       const key = at.join("\u0000");
       const mine = found.get(key) || { at, base: cur, over: undefined };
-      const got = await resolvePath(cur, rest, { ...reader, strict: value }, at.slice(-1)[0] || "");
+      const got = await resolvePath(cur, rest, reader, at.slice(-1)[0] || "");
       const leaf = Array.isArray(got) ? joined(got) : got ?? null;
       mine.over = merge(mine.over, nest(rest, leaf));
       found.set(key, mine);

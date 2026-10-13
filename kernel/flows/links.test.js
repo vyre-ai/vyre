@@ -22,15 +22,15 @@ async function setup() {
 }
 const payments = async (/** @type {any} */ w, /** @type {any} */ chain) => (await w.kernel.records.query(chain, "payment", { page: { limit: 10 } })).rows.map((/** @type {any} */ r) => r.data.client);
 
-test("a second hop through a link that is empty stops the step, plainly", async () => {
+test("a second hop through an empty link reads as nothing, and the run goes on", async () => {
   const { w, chain, urn } = await setup();
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   await install(w, copyFlow("trigger.after.spouse.name + ' / ' + trigger.after.spouse.spouse.name"));
   await w.kernel.records.create(chain, "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
   const [run] = await w.runner.listRuns();
-  assert.equal(run.state, "failed", "Sam has no spouse yet: the second hop stops the step, plainly");
-  assert.match(String(run.error.message), /step put: .*has no value, so .* cannot be read/);
+  assert.equal(run.state, "done", "Sam has no spouse: that part is empty text");
+  assert.deepEqual(await payments(w, chain), ["Sam / "]);
 });
 
 test("a token through two links fills", async () => {
@@ -67,14 +67,14 @@ test("a linked record that is gone stops the step with a plain error", async () 
   assert.deepEqual(await payments(w, chain), []);
 });
 
-test("a link with nothing in it stops a value, and reads as nothing in a condition", async () => {
+test("a link with nothing in it reads as nothing in a value, and the run goes on", async () => {
   const { w, chain } = await setup();
   await install(w, copyFlow("trigger.after.spouse.name"));
   await w.kernel.records.create(chain, "kin", { name: "Main" });
   await settle(w);
   const [run] = await w.runner.listRuns();
-  assert.equal(run.state, "failed");
-  assert.match(String(run.error.message), /step put: /);
+  assert.equal(run.state, "done");
+  assert.deepEqual(await payments(w, chain), [null]);
 });
 
 // The pure half, with a stand-in reader: sealed through a link, and the caller who may not read.
