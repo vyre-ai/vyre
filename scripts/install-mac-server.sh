@@ -67,9 +67,15 @@ AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
 if [ -n "${VYRE_PROFILE:-}" ]; then PROFILE_FILES=$VYRE_PROFILE
 else
   PROFILE_FILES=$HOME/.zshenv
-  case "${SHELL:-}" in */bash) PROFILE_FILES="$PROFILE_FILES $HOME/.bash_profile" ;; *) [ ! -f "$HOME/.bash_profile" ] || PROFILE_FILES="$PROFILE_FILES $HOME/.bash_profile" ;; esac
+  case "${SHELL:-}" in */bash) PROFILE_FILES="$PROFILE_FILES
+$HOME/.bash_profile" ;; *) [ ! -f "$HOME/.bash_profile" ] || PROFILE_FILES="$PROFILE_FILES
+$HOME/.bash_profile" ;; esac
 fi
-PROFILE_FILE=${PROFILE_FILES%% *}
+# one file per line, so a home folder with a space in its path works
+NL='
+'
+PROFILE_FILE=${PROFILE_FILES%%"$NL"*}
+profile_names() { printf '%s' "$PROFILE_FILES" | tr '\n' ' '; }
 # folders already on a Mac's PATH where the vyre command is linked when the person can write there (Homebrew's); VYRE_LINK_DIRS overrides, for tests
 LINK_DIRS=${VYRE_LINK_DIRS-/opt/homebrew/bin /usr/local/bin}
 LABEL=run.vyre.server
@@ -174,7 +180,7 @@ report_left() {
     left="$left the system service (its LaunchDaemons and the _vyre account)"
     if [ -f "$0" ]; then cmd="$cmd""sh '$0' --uninstall --yes; "; else cmd="$cmd""curl -fsSL ${BASE}install-mac-server.sh | sh -s -- --uninstall --yes; "; fi
   fi
-  if [ "$PATH_ADDED" = 1 ]; then left="$left the vyre command (a line in $PROFILE_FILES)"; fi
+  if [ "$PATH_ADDED" = 1 ]; then left="$left the vyre command (a line in $(profile_names))"; fi
   printf '\nvyre: the install did not finish.\n' >&2
   if [ -z "$left" ]; then printf '  Nothing was left on this Mac.\n' >&2; return 0; fi
   printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
@@ -406,7 +412,8 @@ colima_fallback() {
   lu=${VYRE_LIMA_URL:-https://github.com/lima-vm/lima/releases/download/v$LIMA_VERSION/lima-$LIMA_VERSION-Darwin-$ca.tar.gz}
   du=${VYRE_DOCKER_URL:-https://download.docker.com/mac/static/stable/$da/docker-$DOCKER_VERSION.tgz}
   need_docker=1
-  ! command -v docker >/dev/null 2>&1 || need_docker=0
+  # The server install always uses its own pinned docker, whatever the person has (their Docker Desktop and Homebrew copies are never touched or used); the light --login-only install keeps theirs.
+  [ "$SYSTEM" = 1 ] || ! command -v docker >/dev/null 2>&1 || need_docker=0
   if [ -z "$cs" ] || [ -z "$ls" ] || { [ "$need_docker" = 1 ] && [ -z "$ds" ]; }; then
     say "  note  no pinned Colima for this release; agents get no computer until Colima is installed"
     return 1
@@ -545,12 +552,8 @@ EOF
 # your account). A launchd job has no PATH worth the name, so it goes through /usr/bin/env with the
 # pinned dirs (and the directories of the colima and docker found) in front.
 colima_system_args() {
-  cbin=$(command -v colima 2>/dev/null || true)
-  [ -n "$cbin" ] || cbin=$BIN/colima
-  dbin=$(command -v docker 2>/dev/null || true)
-  cpath=$BIN:$SERVER_DIR/lima/bin:$(dirname "$cbin")
-  [ -z "$dbin" ] || cpath=$cpath:$(dirname "$dbin")
-  cpath=$cpath:/usr/bin:/bin:/usr/sbin:/sbin
+  # Vyre's own folder only: the pinned colima, lima and docker, then the system's.
+  cpath=$BIN:$SERVER_DIR/lima/bin:/usr/bin:/bin:/usr/sbin:/sbin
   COLIMA_ARGS="/usr/bin/env
 PATH=$cpath
 HOME=$HOME
@@ -565,8 +568,14 @@ run"
 setup_colima() {
   if [ "$DRY" = 1 ]; then say "would install Colima (agents' computers) and $([ "$SYSTEM" = 1 ] && echo 'hand its start command to the root installer' || echo start it)"; return 0; fi
   write_runtime_helper
+  # The server install always uses Vyre's own pinned, checksummed Colima, Lima and docker in its own folder: never `brew install` (unpinned), never the person's copies. A piece that cannot be
+  # installed is a note with its fix (agents get no computer until it is), and the service still installs.
   # A VM Vyre will make is Vyre's to remove: noted now, while ~/.colima is known not to be the person's own. A reinstall keeps the note.
   if [ "$PRE_COLIMA" = 0 ] && [ "$PRE_LIMA" = 0 ]; then mkdir -p "$SERVER_DIR"; : >"$SERVER_DIR/colima-made"; fi
+  if [ "$SYSTEM" = 1 ]; then
+    colima_fallback || return 0
+    colima_system_args; step "Colima is installed; it starts at boot"; return 0
+  fi
   if ! command -v colima >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
       say "Installing Colima with Homebrew..."
@@ -787,7 +796,7 @@ finish() {
 
 # add_command: `vyre` typed in a Terminal. A link in a folder that is already on PATH and that this account can write (Homebrew's), else one marked line in the shell profile; both are removed by --uninstall.
 add_command() {
-  if [ "$DRY" = 1 ]; then say "would add the vyre command: a link in $LINK_DIRS if you can write there, else a line in $PROFILE_FILES"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would add the vyre command: a link in $LINK_DIRS if you can write there, else a line in $(profile_names)"; return 0; fi
   for d in $LINK_DIRS; do
     [ -d "$d" ] && [ -w "$d" ] || continue
     if [ -e "$d/vyre" ] && [ "$(readlink "$d/vyre" 2>/dev/null)" != "$BIN/vyre" ]; then continue; fi
@@ -796,12 +805,14 @@ add_command() {
   done
   # Only the command goes on PATH, from a folder of its own and after the person's own tools: $BIN also holds Vyre's pinned docker, gh and colima, which must never come ahead of theirs.
   mkdir -p "$CMD_DIR" && ln -sf "$BIN/vyre" "$CMD_DIR/vyre"
+  oldifs=$IFS; IFS=$NL
   for pf in $PROFILE_FILES; do
     grep -q '# vyre: command' "$pf" 2>/dev/null && continue
     printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="$PATH:%s"  # vyre: command\n' "$CMD_DIR" >>"$pf" || { say "  note  could not write $pf; the command is $BIN/vyre"; continue; }
     PATH_ADDED=1
   done
-  step "vyre is at $CMD_DIR/vyre (every new shell finds it by name: $PROFILE_FILES)"
+  IFS=$oldifs
+  step "vyre is at $CMD_DIR/vyre (every new shell finds it by name: $(profile_names))"
 }
 
 # remove_command: what add_command added, and nothing the person wrote.
@@ -809,7 +820,8 @@ remove_command() {
   for d in $LINK_DIRS; do
     [ "$(readlink "$d/vyre" 2>/dev/null)" = "$BIN/vyre" ] && rm -f "$d/vyre"
   done
-  for pf in $PROFILE_FILES $HOME/.zprofile; do
+  oldifs=$IFS; IFS=$NL
+  for pf in $PROFILE_FILES${NL}$HOME/.zprofile; do
     if [ -f "$pf" ] && grep -q '# vyre: command' "$pf"; then
       # only a clean grep (0 or 1: lines kept, or none left) rewrites the file; an unreadable one is left as it is
       g=0; grep -v '# vyre: command' "$pf" >"$pf.vyre-new" || g=$?
@@ -817,6 +829,7 @@ remove_command() {
       rm -f "$pf.vyre-new"
     fi
   done
+  IFS=$oldifs
   return 0
 }
 
@@ -881,6 +894,7 @@ check_dependencies() {
   v=$("$nb" -v 2>/dev/null || true); case "$v" in v22.*|v2[3-9].*) step "Node $v runs ($([ "$nb" = "$NODE_DIST/bin/node" ] && echo "the pinned one in $NODE_DIST" || echo "yours, $nb"))" ;; *) say "  note  Node did not run; Vyre needs Node 22.5 or newer" ;; esac
   c=$(command -v colima 2>/dev/null || true)
   if [ -n "$c" ]; then v=$("$c" version 2>/dev/null | head -n 1 || true); step "Colima runs${v:+ ($v)}"; else say "  note  Colima is not installed; agents get no computer until it is (see above)"; fi
+  case "$UNAME_M" in arm64|aarch64) step "Rosetta is not needed: every image Vyre runs (vyre, Twenty, Postgres, Redis, Gotenberg and the Debian base of agents' computers) has a native arm64 build" ;; esac
   l=$(command -v limactl 2>/dev/null || true)
   if [ -n "$l" ]; then v=$("$l" --version 2>/dev/null | head -n 1 || true); step "Lima runs${v:+ ($v)}"; elif [ -n "$c" ] && command -v brew >/dev/null 2>&1; then step "Lima comes with Homebrew's Colima"; else say "  note  Lima is not installed; Colima needs it"; fi
   d=$(command -v docker 2>/dev/null || true)

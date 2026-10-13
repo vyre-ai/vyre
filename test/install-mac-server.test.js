@@ -408,6 +408,9 @@ ${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
     VYRE_TEST_SCRIPT: patched, VYRE_ROOT_TMP: path.join(m.base, "roottmp"), VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
     VYRE_BOX_URL: `file://${site}/`, VYRE_NODE_URL: `file://${path.join(m.base, "node.tgz")}`, VYRE_NODE_SHA256: sha(fs.readFileSync(path.join(m.base, "node.tgz"))),
   };
+  // The server install always downloads its own pinned Colima, Lima and docker: the tests serve fakes from file:// (a hosted network is never touched).
+  const nb = noBrew(t);
+  for (const k of ["VYRE_COLIMA_URL", "VYRE_COLIMA_SHA256", "VYRE_LIMA_URL", "VYRE_LIMA_SHA256", "VYRE_DOCKER_URL", "VYRE_DOCKER_SHA256"]) env[k] = nb.env[k];
   const rootCalls = () => (fs.existsSync(path.join(m.base, "root.log")) ? fs.readFileSync(path.join(m.base, "root.log"), "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
   return { ...m, env, site, core, rootCalls };
 }
@@ -977,4 +980,29 @@ test("install-mac-server.sh: without the Command Line Tools it stops in step 1, 
   assert.match(r.stderr, /waiting for the Command Line Tools/);
   assert.match(m.calls(), /xcode-select --install/);
   assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was installed");
+});
+
+test("install-mac-server.sh: the server install always uses its own pinned Colima, Lima and docker, even with Homebrew and a docker already there, and never calls brew", t => {
+  const m = sys(t);
+  fs.writeFileSync(path.join(m.base, "bin", "docker"), "#!/bin/sh\necho theirs\n", { mode: 0o755 });
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const f of ["bin/colima", "bin/docker", "lima/bin/limactl"]) assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, f)), `${f} is Vyre's own`);
+  assert.ok(!/^brew /m.test(m.calls()), "no brew call");
+  assert.equal(fs.readFileSync(path.join(m.base, "bin", "docker"), "utf8"), "#!/bin/sh\necho theirs\n", "the person's docker is untouched");
+  const a = m.rootCalls()[0].argv;
+  const path1 = a.flatMap((x, i) => (x === "--colima-program" ? [a[i + 1]] : [])).find(x => x.startsWith("PATH="));
+  assert.ok(path1 && !path1.includes(path.join(m.base, "bin")), "the Colima job's PATH holds Vyre's folders and the system's, never the person's");
+  assert.match(r.stdout, /ok  Rosetta is not needed|ok  Colima runs/);
+});
+
+test("install-mac-server.sh: a home folder with a space in its path still gets the vyre command in its profile files, and uninstall removes them", t => {
+  const m = mac(t);
+  const home = path.join(m.base, "my home"); fs.mkdirSync(home);
+  const env = { ...m.env, HOME: home, VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LA"), SHELL: "/bin/bash" };
+  delete /** @type {any} */ (env).VYRE_PROFILE;
+  assert.equal(run(env, ["--yes", "--from", m.src]).status, 0);
+  for (const f of [".zshenv", ".bash_profile"]) assert.match(fs.readFileSync(path.join(home, f), "utf8"), /# vyre: command/);
+  assert.equal(run(env, ["--uninstall", "--yes"]).status, 0);
+  for (const f of [".zshenv", ".bash_profile"]) assert.ok(!/vyre: command/.test(fs.readFileSync(path.join(home, f), "utf8")));
 });
