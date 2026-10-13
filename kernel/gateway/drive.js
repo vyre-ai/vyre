@@ -48,6 +48,20 @@ export function createDriveGateway(cfg) {
     return true;
   };
 
+  const exists = async (/** @type {string} */ p) => { try { await run(async () => cfg.drive.stat(p, {})); return true; } catch (e) { if (e instanceof KernelError && e.code === "not_found") return false; throw e; } };
+  /** The move itself, after the caller's right to it was decided: the bytes a chunk at a time, then the old path is a delete version. */
+  const carry = async (/** @type {any} */ chain, /** @type {string} */ from, /** @type {string} */ to, /** @type {any} */ decision) => {
+    if (await exists(to)) throw new KernelError("exists", "something is already there");
+    const by = actor(chain);
+    const r = await run(async () => {
+      const w = await cfg.drive.putStream(to, cfg.drive.stream(from, {}), { by, maxBytes: cfg.maxBytes ?? 256 * 1024 * 1024 });
+      await cfg.drive.delete(from, { by });
+      return w;
+    });
+    note(chain, "file.moved", file(to), { from: shown(from), to: shown(to), bytes: r.size }, decision);
+    return { path: to, version: r.version };
+  };
+
   return Object.freeze({
     /**
      * The Drive as the vault's file seam for ONE chain (a lent member's request, `leases.forward`): the same `read(path, version)` and `write(path, source, { maxBytes })` the vault's
@@ -98,6 +112,56 @@ export function createDriveGateway(cfg) {
         if (await check(chain, "drive.read", file(path))) out.push(e);
       }
       return { entries: out, next: more ? last : null };
+    },
+    /**
+     * What changed under a folder after change number `since` (null: the first listing, every live file), for a mount that keeps a copy of the Drive on a person's computer. Only what the chain may read, entry by entry
+     * (a delete of a file it cannot read stays unseen), oldest change first, at most `limit` (default 500, at most 1,000) and a call looks at most 5,000. `anchor` is where to ask again from:
+     * the last change this page covered when `more` is true, the Drive's current number when the page reached the end.
+     * @param {any} chain @param {string} [prefix] @param {{ since?: number | null, limit?: number }} [o]
+     */
+    async changes(chain, prefix = "", o = {}) {
+      mustChain(chain);
+      if (typeof cfg.drive.changes !== "function") throw new KernelError("unavailable", "this Drive has no change list");
+      if (o.since != null && (!Number.isInteger(o.since) || o.since < 0)) throw new KernelError("bad_input", "since is a change number");
+      const limit = Math.min(Math.max(Number.isInteger(o.limit) ? /** @type {number} */ (o.limit) : 500, 1), 1000);
+      // No folder-level gate here, unlike listPage: a mount always starts at the root, and a person granted one folder must still see it there. Each entry is asked about on its own, and a call
+      // looks at most 5,000 entries, so the cost stays bounded; a person with no grant at all gets an empty page.
+      const all = await run(async () => cfg.drive.changes(prefix, o.since ?? null));
+      const out = []; let scanned = 0, last = o.since ?? 0, more = false;
+      for (const e of all.items) {
+        if (out.length >= limit || scanned >= 5000) { more = true; break; }
+        scanned++; last = e.seq;
+        if (await check(chain, "drive.read", file(e.path))) out.push(e);
+      }
+      return { anchor: more ? last : all.anchor, items: out, more };
+    },
+    /**
+     * One file to a new path, as the caller: `drive.read` and `drive.write` on the source, `drive.write` on the target (a refusal looks like absence), and an existing target is refused
+     * (`exists`), never overwritten. The bytes move a chunk at a time; the old path becomes a delete version, so nothing is lost. One event says what moved.
+     * @param {any} chain @param {string} from @param {string} to @returns {Promise<{ path: string, version: number }>}
+     */
+    async move(chain, from, to) {
+      mustChain(chain);
+      if (from === to) throw new KernelError("bad_input", "name two different paths");
+      const src = file(from), dst = file(to);
+      const d = await gate(chain, "drive.read", src);
+      await gate(chain, "drive.write", src);
+      await gate(chain, "drive.write", dst);
+      return carry(chain, from, to, d.decision);
+    },
+    /**
+     * A delete from a mount: the file moves under `.trash/` (a way to bring it back, not a delete), decided by the right to write the file itself. The trash is not a way to widen a grant: it is read
+     * by an owner or admin of the Space. A path already in the trash goes under `.trash/<time>/` so nothing in it is overwritten. The real delete (`delete`) stays an outward act that asks.
+     * @param {any} chain @param {string} p @returns {Promise<{ path: string, version: number }>}
+     */
+    async trash(chain, p) {
+      mustChain(chain);
+      const src = file(p);
+      const d = await gate(chain, "drive.read", src);
+      await gate(chain, "drive.write", src);
+      let to = `.trash/${p}`;
+      if (await exists(to)) to = `.trash/${new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15)}-${Math.random().toString(36).slice(2, 6)}/${p}`;
+      return carry(chain, p, to, d.decision);
     },
     async list(chain, /** @type {string} */ prefix = "") {
       const out = []; let after = null;

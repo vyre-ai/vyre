@@ -24,6 +24,8 @@ export class Drive {
   /** One change to a path at a time. */
   turn(k, fn) { const prev = this.chain.get(k) ?? Promise.resolve(), run = prev.then(fn, fn), tail = run.catch(() => {}); this.chain.set(k, tail); return run.finally(() => { if (this.chain.get(k) === tail) this.chain.delete(k); }); }
   head(f) { return f.versions.at(-1); }
+  /** The next change number: one counter for the whole Drive, so a mount can ask for "everything after n". A Drive written before this has none; it counts on from 0 and its old versions read as 0. */
+  nextSeq() { this.ix.seq = (this.ix.seq ?? 0) + 1; return this.ix.seq; }
 
   /** @returns {Promise<{ version: number, conflict: boolean, atRisk: boolean }>} `base` is the version the writer started from (omit for a new file). */
   async put(p, bytes, { by = null, base = null, meter = null } = {}) {
@@ -33,7 +35,7 @@ export class Drive {
   }
   /** Record a stored object as the next version of a path. If any step fails the version is taken back out and the stored object is removed: a refused or failed write leaves nothing behind. */
   async addVersion(k, r, { sha256, by, base }) {
-    const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1, entry = { ver, id: r.id, size: r.size, sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) };
+    const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1, entry = { ver, id: r.id, size: r.size, sha256, at: this.now(), seq: this.nextSeq(), by, base, ...(conflict ? { conflict: true } : {}) };
     f.versions.push(entry);
     try {
       // The version before is no longer the newest: it becomes cold. A conflicting write leaves the head's own class alone only until a person picks, so both stay working.
@@ -76,12 +78,29 @@ export class Drive {
     const pre = prefix ? this.path(prefix).replace(/\/?$/, "/") : "";
     return Object.entries(this.ix.files).filter(([k, f]) => k.startsWith(pre) && !this.head(f).deleted).map(([k, f]) => ({ path: k, size: this.head(f).size, version: this.head(f).ver, at: this.head(f).at, conflicts: f.versions.filter(v => v.conflict && !v.resolved).length })).sort((a, b) => (a.path < b.path ? -1 : 1));
   }
+  /**
+   * What changed under a prefix after change number `since`, oldest change first, deleted files included (`deleted: true`, size 0). `since: null` is the first listing of a mount: every live file, no deleted ones.
+   * `anchor` is the Drive's current change number: ask again from it. Names, sizes and versions only.
+   * @param {string} [prefix] @param {number | null} [since] @returns {{ anchor: number, items: { path: string, size: number, version: number, at: number, seq: number, deleted: boolean }[] }}
+   */
+  changes(prefix = "", since = null) {
+    const pre = prefix ? this.path(prefix).replace(/\/?$/, "/") : "";
+    const items = [];
+    for (const [k, f] of Object.entries(this.ix.files)) {
+      if (!k.startsWith(pre)) continue;
+      const h = this.head(f), seq = h.seq ?? 0, deleted = Boolean(h.deleted);
+      if (since === null ? deleted : seq <= since) continue;
+      items.push({ path: k, size: deleted ? 0 : h.size, version: h.ver, at: h.at, seq, deleted });
+    }
+    items.sort((a, b) => a.seq - b.seq || (a.path < b.path ? -1 : 1));
+    return { anchor: this.ix.seq ?? 0, items };
+  }
   history(p) { const f = this.ix.files[this.path(p)]; if (!f) throw err("not_found"); return f.versions.map(({ ver, size, at, by, base, deleted, conflict }) => ({ ver, size, at, by, base, deleted: !!deleted, conflict: !!conflict })); }
   delete(p, { by = null } = {}) {
     const k = this.path(p);
     return this.turn(k, async () => {
       const f = this.ix.files[k]; if (!f || this.head(f).deleted) throw err("not_found");
-      const h = this.head(f); f.versions.push({ ver: h.ver + 1, id: null, size: 0, at: this.now(), by, base: h.ver, deleted: true });
+      const h = this.head(f); f.versions.push({ ver: h.ver + 1, id: null, size: 0, at: this.now(), seq: this.nextSeq(), by, base: h.ver, deleted: true });
       await this.pool.reclass(h.id, "cold"); this.save(); return { version: h.ver + 1 };
     });
   }
@@ -91,7 +110,7 @@ export class Drive {
     return this.turn(k, async () => {
       const f = this.ix.files[k], v = f?.versions.find(x => x.ver === version); if (!v || v.deleted) throw err("not_found");
       const h = this.head(f), r = await this.pool.put(await this.pool.get(v.id), { class: "working" }), ver = h.ver + 1;
-      f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base: h.ver, restored_from: version });
+      f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), seq: this.nextSeq(), by, base: h.ver, restored_from: version });
       for (const x of f.versions) if (x.conflict) x.resolved = true;
       for (const x of f.versions) if (x.id && x.ver !== ver && !x.deleted && x.class !== "cold") { x.class = "cold"; await this.pool.reclass(x.id, "cold"); }
       this.save(); return { version: ver };

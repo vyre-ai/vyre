@@ -143,6 +143,11 @@ export function sealedDrive(drive, src) {
     },
     /** @param {string} p */
     history(p) { return drive.history(stored(p)); },
+    /** The Drive's changes with a chat's sealed files left out: a mount never lists them (their names are sealed; they open in the chat). @param {string} [prefix] @param {number | null} [since] */
+    changes(prefix = "", since = null) {
+      const r = drive.changes(prefix, since);
+      return { anchor: r.anchor, items: r.items.filter((/** @type {any} */ i) => { const w = parse(i.path); return (!w || w.rest === null) && !/^Projects\/[^/]+\/\.shared$/.test(i.path); }) };
+    },
     /** Entries under a prefix, with the logical path. A chat whose key is locked here is left out. @param {string} [prefix] */
     async list(prefix = "") {
       const out = [];

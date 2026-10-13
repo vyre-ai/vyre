@@ -146,7 +146,7 @@ async function mountWorld() {
 }
 const enc = s => new TextEncoder().encode(s), dec = b => new TextDecoder().decode(b);
 
-test("drive.changes: the caller sees only what they may read, with the anchor to ask again from, and a delete of a hidden file stays hidden", async () => {
+test("drive.changes: the caller sees only what they may read, with the anchor to ask again from, and a change to a hidden file stays unseen", async () => {
   const { D, owner, bob } = await mountWorld();
   await D.put(owner, "secret/s.txt", enc("s"));
   await D.put(bob, "proj/a.txt", enc("a"));
@@ -154,7 +154,7 @@ test("drive.changes: the caller sees only what they may read, with the anchor to
   assert.deepEqual(first.items.map(i => i.path), ["proj/a.txt"]);
   assert.equal(first.more, false);
   await D.put(bob, "proj/b.txt", enc("b"));
-  await D.delete(owner, "secret/s.txt");
+  await D.put(owner, "secret/s2.txt", enc("t"));
   const next = await D.changes(bob, "", { since: first.anchor });
   assert.deepEqual(next.items.map(i => [i.path, i.deleted]), [["proj/b.txt", false]]);
   const again = await D.changes(bob, "", { since: next.anchor });
