@@ -1219,10 +1219,10 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   // outside. "Unknown" (an unreadable chain, a peer not found) is asked again on the next call.
   if (!v) {
     // A peer read that comes back empty (a busy box starving the helper) is retried a few times, short and bounded, while the connection is still open: a real person's CLI must not be refused because
-    // a helper ran late. Still empty: the call is not taken on its word (a model's, as before) and the refusal says Vyre could not tell who was calling.
+    // a helper ran late. An unreadable process chain (a /proc read that raced on a busy box) is retried the same way, same count and backoff. Still empty or unreadable: the call is not taken on its word (a model's, as before) and the refusal says Vyre could not tell who was calling.
     const measure = async () => {
       let w = await above(socket, registry, undefined, deps);
-      for (let n = 0; n < PEER_RETRIES && w.nopid && canReadPeers && !socket.destroyed; n++) {
+      for (let n = 0; n < PEER_RETRIES && ((w.nopid && canReadPeers) || w.unreadable) && !socket.destroyed; n++) {
         await new Promise(r => setTimeout(r, deps && typeof deps.peerRetryMs === "number" ? deps.peerRetryMs : 60 * (n + 1)));
         w = await above(socket, registry, undefined, deps);
       }

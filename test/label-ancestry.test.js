@@ -80,3 +80,17 @@ test("a peer read that comes back empty is retried a few times and a late helper
   assert.equal(last.model, true); assert.equal(last.couldNotTell, true);
   assert.equal(lines.filter(l => /ancestry: unknown/.test(l)).length, 1, "one line for the connection: " + lines.length);
 });
+
+test("an unreadable process chain is retried like an empty peer read: one failure then a read is accepted, a chain that never reads is refused (fail closed)", async () => {
+  if (!canReadPeers) return;
+  const bad = { inside: false, unknown: true, unreadable: true };
+  let calls = 0;
+  // the first attempt (peerPid is asked once per attempt) reads an unreadable chain, the second reads it
+  const once = await asTaken("cli", /** @type {any} */ ({}), reg, undefined, { peerPid: async () => { calls++; return 4242; }, processTable: () => new Map(), insideClaude: () => (calls < 2 ? bad : { inside: false }), alive: () => true, delayMs: 0, peerRetryMs: 0 });
+  assert.equal(once.model, false); assert.equal(once.outside, true); assert.equal(once.couldNotTell, false); assert.equal(calls, 2);
+  // never readable: after the bounded retries the answer is the same refusal, no fallback
+  let all = 0;
+  const never = await asTaken("cli", /** @type {any} */ ({}), reg, undefined, { peerPid: async () => { all++; return 4242; }, processTable: () => new Map(), insideClaude: () => bad, alive: () => true, delayMs: 0, peerRetryMs: 0 });
+  assert.equal(never.model, true); assert.equal(never.outside, false); assert.equal(never.couldNotTell, true); assert.equal(never.why, "process_chain_unreadable");
+  assert.equal(all, 4, "one try and three retries");
+});
