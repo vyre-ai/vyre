@@ -48,6 +48,11 @@ export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./m
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
 export { Shell } from "./shell/Shell";
+export { ShellLooks, ShellSample, SpaceTileSheet } from "./shell/ShellLooks";
+export { LOOKS as SHELL_LOOKS, LOOK_NAMES as SHELL_LOOK_NAMES, lookOf as shellLookOf } from "./shell/looks-ts";
+export type { ShellLook, ShellLookName } from "./shell/looks-ts";
+export { SpaceTile } from "./components/SpaceTile";
+export { spaceTile, initialsOf, TILE_PALETTE } from "./marks/space-tile.js";
 export type { NavItem, NavDef, ShellSpace, ShellProps } from "./shell/Shell";
 export { FilterPills } from "./components/FilterPills";
 export { ActorMark } from "./tasks/ActorMark";

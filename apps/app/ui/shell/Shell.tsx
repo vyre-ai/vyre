@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "../lib/cn";
 import { Text } from "../components/Text";
@@ -12,14 +12,16 @@ import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
 import { useUiTheme } from "../theme";
 import { glass } from "../lib/glass";
-import { px } from "../lib/measure";
+import { elevation } from "../lib/elevation";
+import { SpaceTile } from "../components/SpaceTile";
+import { lookOf, type ShellLook, type ShellLookName } from "./looks-ts";
 import { allItems, currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
 
 export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
 export type NavGroup = { name: string; items: NavItem[] };
 /** The places the shell draws: main, then each named group, then More, then the bottom. Groups are the ones a person named in the sidebar editor (screens/shell/sidebar). */
 export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[]; groups?: NavGroup[] };
-export type ShellSpace = { id: string; name: string; sub: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
+export type ShellSpace = { id: string; name: string; sub: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ /** The space's own logo (an image the person uploaded); without one the tile is a monogram of its initials. */ logo?: string | null; basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
 export type ShellProps = NavDef & {
   /** The path now showing (usePathname). */
   current: string;
@@ -28,6 +30,8 @@ export type ShellProps = NavDef & {
   space: string;
   onSpace: (id: string) => void;
   user: { name: string; sub?: string };
+  /** The sidebar and space-identity look (ui/shell/looks.js). Default: the default look. */
+  look?: ShellLookName;
   children: React.ReactNode;
 };
 
@@ -36,61 +40,119 @@ function SpaceSwitcher({ spaces, space, onSpace }: Pick<ShellProps, "spaces" | "
 }
 
 /** The count on Now: the one badge the shell shows. */
-function CountBadge({ n }: { n: number }) {
+function CountBadge({ n, ink }: { n: number; ink?: string }) {
+  const { color } = useUiTheme();
   return (
-    <View className="min-w-s5 items-center rounded-full bg-accent-wash px-s2">
-      <Text size="caption" medium tone="accent">{String(n)}</Text>
+    <View className="min-w-s5 items-center rounded-full px-s2" style={{ backgroundColor: ink ? "transparent" : color["accent-wash"], borderWidth: ink ? 1 : 0, borderColor: ink }}>
+      <Text size="caption" medium tone="accent" style={ink ? { color: ink } : undefined}>{String(n)}</Text>
     </View>
   );
 }
 
-/** A rail row: 40 high, icon 20, label 15 medium. The current place is a surface-3 fill (radius 10) with a 3 wide accent bar at the left edge. */
-function RailItem({ it, on, onPress }: { it: NavItem; on: boolean; onPress: () => void }) {
-  const { map } = useUiTheme();
+const WEIGHT = { regular: {}, medium: { medium: true }, strong: { strong: true } } as const;
+
+/**
+ * A rail row, drawn from the look: its height, icon (alone, or in a chip), label weight and the current place (a wash, a solid fill or a pill).
+ * The current row is never marked by colour alone: its fill, weight and aria-selected say it.
+ */
+function RailItem({ it, on, onPress, look }: { it: NavItem; on: boolean; onPress: () => void; look: ShellLook }) {
+  const { color } = useUiTheme();
+  const solid = on && look.active === "fill";
+  const ink = solid ? "primary-ink" : on ? "text" : "text-2";
+  const fill = solid ? color.primary : on ? color["surface-3"] : undefined;
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={it.label} accessibilityState={{ selected: on }} onPress={onPress}
-      style={({ hovered }: any) => [{ minHeight: px(map, "--s-10") }, hovered && !on ? { backgroundColor: "var(--hover)" } : null]}
-      className={cn("flex-row items-center gap-s3 rounded-row px-s3", on && "bg-surface-3")}>
-      {on ? <View className="absolute rounded-full bg-accent" style={{ left: 0, top: 8, height: 24, width: 3 }} /> : null}
-      <Icon name={it.icon} tone={on ? "text" : "text-2"} size={20} />
-      <Text medium style={{ fontSize: 15, lineHeight: 20 }} tone={on ? "default" : "muted"} className="flex-1" numberOfLines={1}>{it.label}</Text>
-      {it.id === "now" && it.badge ? <CountBadge n={it.badge} /> : null}
+      style={({ hovered }: any) => [{ minHeight: look.rowH, borderRadius: look.rowRadius, paddingHorizontal: look.rowPadX, flexDirection: "row", alignItems: "center", gap: look.iconChip ? 12 : 12, backgroundColor: fill }, hovered && !on ? { backgroundColor: "var(--hover)" } : null]}>
+      {look.iconChip ? (
+        <View style={{ width: look.iconChip, height: look.iconChip, borderRadius: Math.round(look.iconChip * 0.3), alignItems: "center", justifyContent: "center", backgroundColor: solid ? "transparent" : color["surface-3"] }}>
+          <Icon name={it.icon} tone={ink} size={look.iconSize} />
+        </View>
+      ) : <Icon name={it.icon} tone={ink} size={look.iconSize} />}
+      <Text {...WEIGHT[on && look.labelWeight === "regular" ? "medium" : look.labelWeight]} style={{ fontSize: look.labelSize, lineHeight: look.labelLine, color: color[solid ? "primary-ink" : on ? "text" : "text-2"] }} className="flex-1" numberOfLines={1}>{it.label}</Text>
+      {it.id === "now" && it.badge ? <CountBadge n={it.badge} ink={solid ? color["primary-ink"] : undefined} /> : null}
     </Pressable>
   );
 }
 
-function Rail(p: ShellProps) {
-  const { map } = useUiTheme();
+/** The space at the top of the rail: a plain mark and name, a card with its subtitle, or a soft bar. The mark is the space's logo or its monogram. */
+function RailSwitcher({ p, look }: { p: Omit<ShellProps, "look">; look: ShellLook }) {
+  const { color } = useUiTheme();
+  const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
+  const all = cur.id === "all";
+  const card = look.switcher === "card", bar = look.switcher === "bar";
+  const box = card ? { borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 16, padding: 8 } : bar ? { backgroundColor: color["surface-2"], borderRadius: 999, paddingVertical: 6, paddingLeft: 6, paddingRight: 14 } : { paddingVertical: 4, paddingHorizontal: 4 };
+  return (
+    <Menu
+      trigger={
+        <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`} style={[{ flexDirection: "row", alignItems: "center", gap: 12 }, box]}>
+          {all ? <View style={{ width: look.tile, height: look.tile, borderRadius: look.tileShape === "round" ? look.tile : Math.round(look.tile * 0.28), backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}><Icon name="space" tone="text-2" size={look.iconSize} /></View> : <SpaceTile space={cur} size={look.tile as 32} shape={look.tileShape} />}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text>
+            {card && cur.sub ? <Text size="caption" tone="label" numberOfLines={1}>{cur.sub}</Text> : null}
+          </View>
+          <Icon name="chevron-down" size={16} tone="label" />
+        </Pressable>
+      }
+      items={p.spaces.map((s) => ({ label: s.id === p.space ? `${s.name} (showing)` : s.name, onPress: () => p.onSpace(s.id) }))}
+    />
+  );
+}
+
+/** You, at the bottom: a face and your name, plain, as a card with a chevron, or as a soft bar. */
+function RailPerson({ p, look }: { p: Omit<ShellProps, "look">; look: ShellLook }) {
+  const { color } = useUiTheme();
+  const card = look.person === "card", bar = look.person === "bar";
+  const box = card ? { borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 16, padding: 8 } : bar ? { backgroundColor: color["surface-2"], borderRadius: 999, paddingVertical: 6, paddingLeft: 6, paddingRight: 14 } : { paddingVertical: 8, paddingHorizontal: 8 };
+  return (
+    <View style={[{ flexDirection: "row", alignItems: "center", gap: 12 }, box]}>
+      <Avatar of={markRef("person", p.user.name)} size={look.personFace} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>
+        {p.user.sub ? <Text size="caption" tone="label" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}
+      </View>
+      {card ? <Icon name="chevron" size={16} tone="label" /> : null}
+    </View>
+  );
+}
+
+function Rail(p: Omit<ShellProps, "look"> & { look: ShellLook }) {
+  const { color, resolved } = useUiTheme();
+  const look = p.look;
   const all = allItems(p) as NavItem[];
   const cur = currentItem(p.current, all)?.id;
   const go = (it: NavItem) => () => p.onNavigate(it.href);
+  const item = (it: NavItem) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} look={look} />;
+  const frame: ViewStyle = look.floating
+    ? { margin: look.inset, borderRadius: look.railRadius, borderWidth: 1, borderColor: color.edge, ...(look.translucent ? glass(color["surface-1"], 0.72) : { backgroundColor: color["surface-1"] }), ...elevation(resolved.scheme === "paper" ? "paper" : "dark", 1) }
+    : { borderRightWidth: 1, borderColor: color.edge, backgroundColor: color["surface-1"] };
   return (
-    <View role="navigation" accessibilityLabel="Places" className="w-rail flex-none gap-s1 border-r border-edge bg-surface-1 p-s3">
-      <View className="px-s1 pb-s1"><SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} /></View>
-      <ScrollView className="mt-s2 flex-1" contentContainerClassName="gap-s1">
-        {p.items.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
-        {(p.groups ?? []).map((g) => (
-          <View key={g.name} className="gap-s1 pt-s2" role="group" accessibilityLabel={g.name}>
-            <Text size="caption" medium tone="label" className="px-s3" numberOfLines={1}>{g.name}</Text>
-            {g.items.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
+    <View role="navigation" accessibilityLabel="Places" style={[{ width: look.rail, flexShrink: 0, flexGrow: 0, padding: look.inset, gap: look.sectionGap - 8 }, look.floating ? { margin: look.inset } : null, frame]}>
+        <RailSwitcher p={p} look={look} />
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: look.sectionGap }} showsVerticalScrollIndicator={false}>
+          <View style={{ gap: look.rowGap }}>
+            {p.items.map(item)}
+            {p.more.length ? <Menu
+              trigger={
+                <Pressable accessibilityRole="button" accessibilityLabel="More places" style={{ minHeight: look.rowH, borderRadius: look.rowRadius, paddingHorizontal: look.rowPadX, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {look.iconChip ? <View style={{ width: look.iconChip, height: look.iconChip, borderRadius: Math.round(look.iconChip * 0.3), alignItems: "center", justifyContent: "center", backgroundColor: color["surface-3"] }}><Icon name="more" tone="text-2" size={look.iconSize} /></View> : <Icon name="more" tone="text-2" size={look.iconSize} />}
+                  <Text medium={look.labelWeight !== "regular"} style={{ fontSize: look.labelSize, lineHeight: look.labelLine, color: color["text-2"] }}>More</Text>
+                </Pressable>
+              }
+              items={p.more.map((it) => ({ label: it.label, onPress: () => p.onNavigate(it.href) }))}
+            /> : null}
           </View>
-        ))}
-        {p.more.length ? <Menu
-          trigger={
-            <Pressable accessibilityRole="button" accessibilityLabel="More places" style={{ minHeight: px(map, "--s-10") }} className="flex-row items-center gap-s3 rounded-row px-s3">
-              <Icon name="more" tone="text-2" size={20} /><Text medium style={{ fontSize: 15, lineHeight: 20 }} tone="muted">More</Text>
-            </Pressable>
-          }
-          items={p.more.map((it) => ({ label: it.label, onPress: () => p.onNavigate(it.href) }))}
-        /> : null}
-      </ScrollView>
-      <View className="gap-s1">
-        {p.bottom.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
-        <View className="mt-s2 flex-row items-center gap-s3 border-t border-edge px-s2 pt-s3">
-          <Avatar of={markRef("person", p.user.name)} size={32} />
-          <View className="min-w-0 flex-1"><Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>{p.user.sub ? <Text mono size="caption" tone="label" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}</View>
+          {(p.groups ?? []).map((g) => (
+            <View key={g.name} style={{ gap: look.rowGap }} role="group" accessibilityLabel={g.name}>
+              <Text size="caption" medium tone="label" style={{ paddingHorizontal: look.rowPadX + (look.iconChip ? 0 : 0), paddingBottom: 4, ...(look.section === "caps" ? { textTransform: "uppercase", letterSpacing: 0.8, fontSize: 11, lineHeight: 14 } : null) }} numberOfLines={1}>{g.name}</Text>
+              {g.items.map(item)}
+            </View>
+          ))}
+        </ScrollView>
+        <View style={{ gap: look.rowGap }}>
+          {p.bottom.map(item)}
+          <View style={{ height: 1, backgroundColor: color.edge, marginVertical: 8, opacity: look.person === "plain" ? 1 : 0 }} />
+          <RailPerson p={p} look={look} />
         </View>
-      </View>
     </View>
   );
 }
@@ -150,9 +212,10 @@ function PhoneShell(p: ShellProps) {
 export function Shell(p: ShellProps) {
   const { phone } = useUiTheme();
   if (phone) return <PhoneShell {...p} />;
+  const look = lookOf(p.look);
   return (
     <View className="flex-1 flex-row bg-bg">
-      <Rail {...p} />
+      <Rail {...p} look={look} />
       <View className="min-w-0 flex-1">{p.children}</View>
     </View>
   );
