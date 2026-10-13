@@ -34,8 +34,11 @@ test("a raw key sent through each surface's chat tools never reaches a turn: a p
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
   /** @param {any} r */ const refused = (r, who = "") => { assert.equal(r.error && r.error.code, "secret_in_message", `${who}: ${JSON.stringify(r)}`); assert.ok(!JSON.stringify(r).includes(KEY), "the refusal never repeats the key"); assert.match(r.error.message, /Anthropic key/); };
 
-  // threads.start from the person's surfaces (cli, deck, capsule, mobile): no session is made
-  for (const caller of ["cli", "local", "deck", "capsule", "mobile"]) refused(await call("threads.start", { cwd: work, prompt: `use ${KEY} please`, surface: "deck" }, caller));
+  // threads.start from the person's surfaces (cli, deck, capsule, and the phone as its paired device): no session is made. The bare label "mobile" is class-only (9ebdd99cc), so it is stopped before the tool.
+  for (const caller of ["cli", "local", "deck", "capsule", "device:aaaaaaaaaaaaaaaa"]) refused(await call("threads.start", { cwd: work, prompt: `use ${KEY} please`, surface: "deck" }, caller));
+  const bare = await call("threads.start", { cwd: work, prompt: `use ${KEY} please`, surface: "deck" }, "mobile");
+  assert.equal(bare.error && bare.error.code, "denied", JSON.stringify(bare));
+  assert.ok(!JSON.stringify(bare).includes(KEY));
   assert.deepEqual((await call("threads.list", { all: true })).data, [], "no thread was started by a refused prompt");
 
   const ok = await call("threads.start", { cwd: work, prompt: "use vault://anthropic-key please", surface: "deck" });

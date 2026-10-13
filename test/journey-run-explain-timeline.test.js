@@ -48,7 +48,7 @@ test("a run explains itself in plain words, and the record it was about has one 
   const run = story.find((/** @type {any} */ e) => e.type === "flow-run");
   assert.ok(run, "the Flow run is on the record's story");
   assert.deepEqual([run.run, run.flow], [runs[0].id, def.data.id], "the entry names its run and its Flow");
-  assert.deepEqual(entryAction(run), { route: `/u/flows/${def.data.id}?run=${runs[0].id}` }, "a run line opens that run's page");
+  assert.deepEqual(entryAction(run), { route: `/u/flows/${def.data.id}/runs/${runs[0].id}` }, "a run line opens that run's page");
   const opened = await d.registry.call("flows.run", { run: run.run }, "cli", await meta());
   assert.ok(!opened.error, JSON.stringify(opened.error));
 });

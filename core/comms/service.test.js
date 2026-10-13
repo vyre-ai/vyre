@@ -18,6 +18,7 @@ function rig({ fields = /** @type {Record<string, string> | null} */ (FIELDS), h
       calls.push([tool, input]);
       if (tool === "gate.offer") return { data: { ok: true } };
       if (tool === "gate.request") return { data: held };
+      if (tool === "vault.connections.list") return { data: fields ? [{ ref: "comms-sending", provider: "sending-service" }] : [] };
       if (tool === "gate.get") return { data: { state: "sending", via: SENDER_SERVICE } };
       return { error: { code: "no_such_tool", message: tool } };
     } };
@@ -104,6 +105,7 @@ test("comms.service.get shows which service and from address, and never the key 
   const none = await rig({ fields: null }).run("comms.service.get", {}, { caller: "cli" });
   assert.equal(none.configured, false);
   assert.match(none.next, /Settings, Connections, Add a sending service/);
+  assert.ok(!r.calls.some(c => c[0].startsWith("vault.release")), "a read opens nothing in the Vault when none is connected");
 });
 
 test("comms.service.test sends one email to the address it is given, from the firm's service, and says so", async () => {
