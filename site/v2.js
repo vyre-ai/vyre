@@ -161,6 +161,23 @@
     }
     if ('IntersectionObserver' in window) { var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); requestAnimationFrame(function () { requestAnimationFrame(go); }); } }); io.observe(svg); } else go();
   });
+
+  // Scroll-linked screens, for a browser without scroll-driven animation: move each tall capture by the page scroll, on the same ranges the CSS uses.
+  if (!reduce && !(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'))) {
+    var shots = [].slice.call(doc.querySelectorAll('.ss')), queued = false;
+    var clamp = function (v) { return Math.max(0, Math.min(1, v)); };
+    var move = function () {
+      queued = false; var vh = window.innerHeight;
+      shots.forEach(function (el) {
+        var r = el.getBoundingClientRect(), phone = el.classList.contains('ss-p'), hero = el.classList.contains('ss-hero'), p;
+        if (hero) p = clamp(window.scrollY / (phone ? 1000 : 760));
+        else { var t = (vh - r.top) / (vh + r.height); p = phone ? clamp(t) : clamp((t - .08) / .70); }
+        [].forEach.call(el.querySelectorAll('img'), function (im) { var travel = im.offsetHeight - el.clientHeight; if (travel > 0) im.style.transform = 'translateY(' + (-p * travel).toFixed(1) + 'px)'; });
+      });
+    };
+    var ask = function () { if (!queued) { queued = true; requestAnimationFrame(move); } };
+    window.addEventListener('scroll', ask, { passive: true }); window.addEventListener('resize', ask); window.addEventListener('load', ask); ask();
+  }
   function paintAll() { painters.forEach(function (p) { p(); }); }
   doc.querySelectorAll('canvas.field').forEach(field);
   doc.querySelectorAll('canvas.markart').forEach(mark);

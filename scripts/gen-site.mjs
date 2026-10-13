@@ -51,9 +51,15 @@ const ic = (d, w = 28) => `<svg class="ic" width="${w}" height="${w}" viewBox="0
 // The frames are drawn in CSS (v2.css: .mbp, .ip, .appwin). A visitor who asks for less motion gets the still poster.
 const clip = (name, w, h) => ['dark', 'light'].map((t) => `<picture class="th-${t}"><source media="(prefers-reduced-motion: reduce)" srcset="/media/${name}-${t}.png"><img src="/media/${name}-${t}.webp" width="${w}" height="${h}" alt="" loading="lazy" decoding="async"></picture>`).join('');
 const BARS = '<svg viewBox="0 0 64 12" aria-hidden="true"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".8"/><rect x="5" y="5.5" width="3" height="6.5" rx=".8"/><rect x="10" y="3" width="3" height="9" rx=".8"/><rect x="15" y="0" width="3" height="12" rx=".8"/></g><path d="M27 4.2a8 8 0 0 1 11 0M29.2 6.9a4.8 4.8 0 0 1 6.6 0M32.5 9.6l.01 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><g><rect x="43" y=".8" width="19" height="10.4" rx="3" fill="none" stroke="currentColor" opacity=".5"/><rect x="44.6" y="2.4" width="13.5" height="7.2" rx="1.6" fill="currentColor"/><rect x="62.6" y="4" width="1.4" height="4" rx=".7" fill="currentColor" opacity=".5"/></g></svg>';
-const laptop = (name, label) => `<figure class="mbp" role="img" aria-label="${esc(label)} Sample data."><div class="mbp-lid"><div class="mbp-bezel"><div class="mbp-screen"><div class="mbp-menubar" aria-hidden="true"><span><b>Vyre</b><i>File</i><i>Edit</i><i>View</i><i>Window</i></span><span>Wed 9:41</span></div><i class="mbp-notch" aria-hidden="true"></i><div class="mbp-app">${clip(name, 1440, 900)}</div></div></div></div><div class="mbp-deck" aria-hidden="true"><i class="mbp-keys"></i><i class="mbp-keys k2"></i></div><div class="mbp-lip" aria-hidden="true"><i></i></div></figure>`;
-const phoneFrame = (name, label, style = '') => `<figure class="ip"${style ? ` style="${style}"` : ''} role="img" aria-label="${esc(label)} Sample data."><i class="ip-btn a" aria-hidden="true"></i><i class="ip-btn u" aria-hidden="true"></i><i class="ip-btn d" aria-hidden="true"></i><i class="ip-btn p" aria-hidden="true"></i><div class="ip-body"><div class="ip-glass"><div class="ip-status" aria-hidden="true"><span>9:41</span><span class="ip-sig">${BARS}</span></div><i class="ip-island" aria-hidden="true"></i><div class="ip-app">${clip(name, 390, 844)}</div></div></div></figure>`;
-const appwin = (name, label) => `<figure class="appwin" role="img" aria-label="${esc(label)} Sample data."><div class="appwin-bar" aria-hidden="true"><span>Vyre</span><span class="cap"><i>&#8211;</i><i>&#9633;</i><i>&#215;</i></span></div><div class="appwin-app">${clip(name, 1440, 900)}</div></figure>`;
+// The tall screens: a full-length 2x capture of an app screen, moved with the page scroll so the content inside a device scrolls as the visitor does.
+// [width, height, the screen's height over its width]; --k is the share of the capture the screen shows, which sets how far it travels.
+const SS = { 'lap-chat': [1440, 2170, 0.974 * 924 / 1440], 'lap-flow': [1440, 1330, 0.974 * 924 / 1440], 'ph-now': [390, 1420, 844 / 390], 'ph-chat': [390, 2300, 844 / 390], 'ipad-chat': [1180, 2170, 0.977 * 1048 / 1366] };
+const tall = (name, cls = '') => `<div class="ss ${cls}" style="--k:${(SS[name][2] / (SS[name][1] / SS[name][0])).toFixed(4)}">${['dark', 'light'].map((t) => `<picture class="th-${t}"><source media="(prefers-reduced-motion: reduce)" srcset="/media/${name}-${t}.png"><img src="/media/${name}-tall-${t}.webp" width="${SS[name][0]}" height="${SS[name][1]}" alt="" loading="lazy" decoding="async"></picture>`).join('')}</div>`;
+const screen = (name, cls, w = 1440, h = 900) => SS[name] ? tall(name, cls) : `<div class="clip">${clip(name, w, h)}</div>`;
+const laptop = (name, label, cls = '') => `<figure class="mbp" role="img" aria-label="${esc(label)} Sample data."><div class="mbp-lid"><div class="mbp-bezel"><div class="mbp-screen"><div class="mbp-menubar" aria-hidden="true"><span><b>Vyre</b><i>File</i><i>Edit</i><i>View</i><i>Window</i></span><span>Wed 9:41</span></div><i class="mbp-notch" aria-hidden="true"></i><div class="mbp-app">${screen(name, cls)}</div></div></div></div><div class="mbp-deck" aria-hidden="true"><i class="mbp-keys"></i><i class="mbp-keys k2"></i></div><div class="mbp-lip" aria-hidden="true"><i></i></div></figure>`;
+const phoneFrame = (name, label, style = '', cls = '') => `<figure class="ip"${style ? ` style="${style}"` : ''} role="img" aria-label="${esc(label)} Sample data."><i class="ip-btn a" aria-hidden="true"></i><i class="ip-btn u" aria-hidden="true"></i><i class="ip-btn d" aria-hidden="true"></i><i class="ip-btn p" aria-hidden="true"></i><div class="ip-body"><div class="ip-glass"><div class="ip-status" aria-hidden="true"><span>9:41</span><span class="ip-sig">${BARS}</span></div><i class="ip-island" aria-hidden="true"></i><div class="ip-app">${screen(name, 'ss-p ' + cls, 390, 844)}</div></div></div></figure>`;
+const ipad = (name, label, cls = '') => `<figure class="ipd" role="img" aria-label="${esc(label)} Sample data."><i class="ipd-btn t1" aria-hidden="true"></i><i class="ipd-btn t2" aria-hidden="true"></i><i class="ipd-btn t3" aria-hidden="true"></i><div class="ipd-body"><div class="ipd-bezel"><i class="ipd-cam" aria-hidden="true"></i><div class="ipd-screen"><div class="ipd-status" aria-hidden="true"><span>9:41 &nbsp; Wed 14 Oct</span><span class="ipd-bat"></span></div><div class="ipd-app">${screen(name, cls, 1180, 884)}</div></div></div></div></figure>`;
+const appwin = (name, label) => `<figure class="appwin" role="img" aria-label="${esc(label)} Sample data."><div class="appwin-bar" aria-hidden="true"><span>Vyre</span><span class="cap"><i>&#8211;</i><i>&#9633;</i><i>&#215;</i></span></div><div class="appwin-app"><div class="clip">${clip(name, 1440, 900)}</div></div></figure>`;
 
 const I = {
   mac: ic('<rect x="3.5" y="5" width="21" height="14" rx="2"/><path d="M10 23h8M14 19v4"/>'),
@@ -231,8 +237,8 @@ const homeBody = `
       <canvas class="field" aria-hidden="true"></canvas>
       <div class="stage-in">
         <div class="stage-row">
-          ${laptop('lap-chat', 'The Vyre app on a laptop: a chat where the agent juno has run the tests and now asks for a yes before it emails a client.')}
-          ${phoneFrame('ph-now', 'The Vyre app on a phone, on the Now screen: what needs you today.')}
+          ${laptop('lap-chat', 'The Vyre app on a laptop: a chat where the agent juno has run the tests and now asks for a yes before it emails a client.', 'ss-hero')}
+          ${phoneFrame('ph-now', 'The Vyre app on a phone, on the Now screen: what needs you today.', '', 'ss-hero')}
         </div>
         <p class="demo-tag">Recorded from the app. Sample data.</p>
       </div>
@@ -275,14 +281,14 @@ const homeBody = `
 </section>
 
 <section class="sec" id="accounts" aria-labelledby="acc-h">
-  <div class="wrap feat flip">
+  <div class="wrap feat flip big">
     <div class="feat-copy rv">
       <span class="num">One chat &middot; Any model</span>
       <h2 id="acc-h" class="h2">One group chat. <b>Every AI account you have.</b></h2>
       <p class="lead">A chat belongs to Vyre, not to one model. Change the model whenever you like and the thread, its files and its recall stay.</p>
       ${list([['The model picker', 'Choose the provider, account, model and effort from the composer.'], ['@codex, @grok', 'Add a name to one message to ask another model. The chat stays where it was.'], ['Agents in roles', 'Anyone in the Space can make an agent and share it with a person or a role as use-only or full. Give one the work, another the review, another the plan.'], ['See who answered', 'Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.']])}
     </div>
-    <div class="mock rv">${laptop('lap-picker', 'The Vyre chat box with the Who answers menu open: Everyone, juno, Claude, Codex and Grok.')}</div>
+    <div class="mock rv bleed">${ipad('ipad-chat', 'The Vyre app on an iPad: a chat with the Who answers menu open, listing Everyone, juno, Claude, Codex and Grok.')}</div>
   </div>
 </section>
 
@@ -294,7 +300,7 @@ const homeBody = `
       <p class="lead">A Flow starts from a trigger and runs steps. A step can give work to a person or to an agent. The agent wakes with the task, the record and the Flow it came from.</p>
       ${list([['Finish, hand on or say stuck', 'An agent ends a task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.'], ['People in the loop', 'A step can name an assignee, an approver and followers. A person approves a Flow before it runs, and every run has its own page.'], ['Readable dates', 'Text in a step fills in values, such as {today} or {after.starts_at - 1 day as date}, with a date picker to insert them.']])}
     </div>
-    <div class="mock rv">${laptop('lap-flows', 'The Flows screen in the Vyre app: each Flow written out in plain words, grouped, with a switch.')}</div>
+    <div class="mock rv">${laptop('lap-flow', 'The Flows screen in the Vyre app: each Flow written out in plain words, grouped, with a switch.')}</div>
   </div>
 </section>
 
