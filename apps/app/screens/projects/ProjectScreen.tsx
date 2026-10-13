@@ -16,13 +16,13 @@ import { mockFolderApi } from "../folderdocs/mock-folder";
 import { ProjectAccess } from "./ProjectAccess";
 import { ProjectHeaderStrip } from "./ProjectHeaderStrip";
 
-/** A rail section that opens and closes (closed at first, so Files and Memory are in view): its name, a chevron, and its body when open. */
-function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+/** A rail section that opens and closes (Instructions open at first, the others closed): its name, a chevron, and its body when open. */
+function Disclosure({ label, children, defaultOpen = false }: { label: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <View className="gap-s2">
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${label}, ${open ? "close" : "open"}`} onPress={() => setOpen((o) => !o)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28 }}>
-        <Icon name="chev" size={12} tone="label" /><Text size="caption" strong tone="label">{label}</Text>
+        <View style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}><Icon name="chev" size={12} tone="label" /></View><Text size="caption" strong tone="label">{label}</Text>
       </Pressable>
       {open ? children : null}
     </View>
@@ -69,7 +69,7 @@ export default function ProjectScreen() {
     return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;
-  const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
+  const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]} defaultOpen={r === "instructions"}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
   const pageBody = (): React.ReactNode => {
     if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
