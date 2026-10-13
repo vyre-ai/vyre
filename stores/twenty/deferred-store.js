@@ -13,12 +13,10 @@ export const MAX_DEFS = 500;
 /** How long one definition may take on the replay before it is logged and left behind (a hung call must not hold the store from joining). */
 export const DEFINE_TIMEOUT_MS = 60_000;
 const TIMED_OUT = Symbol("timed out");
-/** True for a definition that adds or changes a sealed field or anything that shapes access, and for one that cannot be read (a function): those are never skipped. */
-const shapesAccess = (/** @type {any} */ d) => typeof d === "function" || /seal|access|grant|permission|visib|\bacl\b|polic|owner|role|scope|private|share/i.test(JSON.stringify(d) ?? "");
 const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable", name: "StoreError" });
 
 /**
- * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean, onProgress?: (words: string) => void, defineTimeoutMs?: number }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `onProgress(words)` is called as the replay goes ("Applying definitions (n of m)"; m grows when a define is queued mid-replay); `defineTimeoutMs` (default 60 s) is the most one replayed definition may take. `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
+ * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean, onProgress?: (words: string) => void, defineTimeoutMs?: number }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `onProgress(words)` is called as the replay goes ("Applying definitions (n of m)"; m grows when a define is queued mid-replay); `defineTimeoutMs` (default 60 s) is the most one replayed definition may take; past it the store stays unattached and the setup is tried again. `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
  * @returns {any} the store (a Proxy: it forwards to the real store once attached) with `attach(real)`, `bootDone()`, `attached()`, `kind: "twenty"`
  */
 export function createDeferredStore(o) {
@@ -80,9 +78,9 @@ export function createDeferredStore(o) {
           try {
             const got = await Promise.race([run, late]);
             if (got === TIMED_OUT) {
-              // Failing open is not allowed for a definition that seals a field or shapes who can see what: the store would take plain values for a field that should be sealed.
-              if (shapesAccess(d)) { abandoned = run.then(() => {}, () => {}); throw retrying(`a definition that seals a field or sets access did not answer in ${Math.round(limit / 1000)} s`); }
-              log(`a type definition took more than ${Math.round(limit / 1000)} s while the store joined; it touches nothing sealed or access related, moving on without waiting for it`);
+              // Never skipped: a definition that did not answer may be the one that seals a field or shapes access, and the store would take plain values for it. The store stays out and the whole setup is tried again.
+              abandoned = run.then(() => {}, () => {});
+              throw retrying(`a definition did not answer in ${Math.round(limit / 1000)} s`);
             } else log(`definition ${i + 1} applied in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
           } catch (e) {
             if (typeof d === "function" && !(/** @type {any} */ (e)?.retrying)) log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`);
