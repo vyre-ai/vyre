@@ -187,7 +187,7 @@ export function ChatPanel(p: ChatPanelProps) {
   return (
     <View pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 30 }}>
       <Pressable accessibilityLabel="Close the chat panel" onPress={p.onClose} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
-      <View accessibilityLabel="In this chat" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 400, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" } as object) : {}) }}>{body}</View>
+      <View accessibilityLabel="In this chat" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 340, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" } as object) : {}) }}>{body}</View>
     </View>
   );
 }

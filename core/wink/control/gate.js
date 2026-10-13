@@ -90,7 +90,9 @@ const INGRESS_PER_WINDOW = 120;
 const VAULTMCP_PATH = "/vault-mcp", VAULTMCP_BODY_LIMIT = 64 * 1024, VAULTMCP_PER_WINDOW = 60;
 /** The outside agents' MCP (core/outside, team/contracts/ext-agents.md): exactly `POST /agents-mcp`, the same body limit and per-source budget as the Vault MCP, each counted on its own. */
 const AGENTSMCP_PATH = "/agents-mcp";
-const MCP_SHAPES = /** @type {Record<string, "vaultmcp" | "agentsmcp">} */ ({ [VAULTMCP_PATH]: "vaultmcp", [AGENTSMCP_PATH]: "agentsmcp" });
+/** The person's own connected AI over streamable HTTP (core/mcpconn): exactly `POST /mcp`, the same body limit and per-source budget, its own listener. */
+const PERSONMCP_PATH = "/mcp";
+const MCP_SHAPES = /** @type {Record<string, "vaultmcp" | "agentsmcp" | "personmcp">} */ ({ [VAULTMCP_PATH]: "vaultmcp", [AGENTSMCP_PATH]: "agentsmcp", [PERSONMCP_PATH]: "personmcp" });
 /** An app's screens load dozens of files per page, so an app host has its own, larger per-address budget in the same window (override with limits.appsPerWindow). */
 const APPS_PER_WINDOW = 600;
 export const APPS_BODY_LIMIT = 64 * 1024 * 1024;
@@ -122,7 +124,7 @@ export function parseHeadscaleLog(line) {
  *   derp?: boolean,
  *   forwarder?: { trust: string[], header: string },
  *   proxy?: { trust?: string[] },   the peers whose connections may begin with a PROXY v2 header (default: loopback, where the tunnel end connects from)
- *   ingress?: { vaultmcp?: () => number | null | Promise<number | null>, agentsmcp?: () => number | null | Promise<number | null>, hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
+ *   ingress?: { vaultmcp?: () => number | null | Promise<number | null>, agentsmcp?: () => number | null | Promise<number | null>, personmcp?: () => number | null | Promise<number | null>, hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
  *   limits?: Partial<{ maxHeaderBytes: number, headersMs: number, requestMs: number, idleMs: number, upgradedIdleMs: number,
  *     handshakeMs: number, maxBodyBytes: number, windowMs: number, upgradesPerWindow: number, maxConcurrentUpgrades: number,
  *     maxConcurrentDerp: number, maxConnsPerAddr: number, maxConns: number, failThreshold: number, failWindowMs: number, blockMs: number }>,
@@ -286,8 +288,8 @@ export function createGate(o) {
   /** Carry one ingress request to its loopback listener and the answer back. The head is the client's minus every spoofable and hop-by-hop header, plus the real address. */
   async function ingress(/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res, /** @type {"hooks"|"share"|"vaultmcp"|"agentsmcp"} */ kind, /** @type {string} */ addr) {
     const sock = req.socket, k = addrKey(addr), t = now();
-    const mcp = kind === "vaultmcp" || kind === "agentsmcp";
-    const wk = (kind === "vaultmcp" ? "m:" : kind === "agentsmcp" ? "a:" : "i:") + k;
+    const mcp = kind === "vaultmcp" || kind === "agentsmcp" || kind === "personmcp";
+    const wk = (kind === "vaultmcp" ? "m:" : kind === "agentsmcp" ? "a:" : kind === "personmcp" ? "p:" : "i:") + k;
     const w = (windows.get(wk) || []).filter(x => x > t - L.windowMs);
     if (w.length >= (mcp ? VAULTMCP_PER_WINDOW : INGRESS_PER_WINDOW)) { stats.limited++; emit({ type: "limit", addr: k, what: "ingress" }); req.resume(); refuse(sock, TOO_MANY); return; }
     w.push(t); windows.set(wk, w);

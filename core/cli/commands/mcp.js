@@ -16,7 +16,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, usage } from "../kit.js";
+import { json, emit, fail, usage, failTool, parse } from "../kit.js";
+import { call } from "../../daemon/client.js";
+import { ensureUp } from "../daemonctl.js";
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "harness", "mcp", "server.js");
 /** The Design and Module MCP: added when the work is design or building a module (harness/mcp/design-serve.js). */
@@ -24,6 +26,9 @@ const DESIGN = path.join(path.dirname(SERVER), "design-serve.js");
 /** What `claude mcp add` is given, word by word. */
 export const INSTALL = ["mcp", "add", "-s", "user", "vyre", "--", "vyre", "mcp"];
 export const INSTALL_LINE = ["claude", ...INSTALL].join(" ");
+
+/** The line that registers the same server with Codex. */
+export const CODEX_LINE = "codex mcp add vyre -- vyre mcp";
 
 /** Serve until stdin closes, the way Claude Code ends a stdio server. */
 async function serve(server = SERVER) {
@@ -37,6 +42,9 @@ async function serve(server = SERVER) {
 export const VERBS = [
   { verb: "serve", summary: "the MCP server on stdio, which Claude Code starts (vyre mcp alone is the same)", usage: "" },
   { verb: "design", summary: "the Design and Module MCP on stdio: blocks, screen checks, pictures, proposals, and the module kit", usage: "" },
+  { verb: "connect", summary: "make a named key for one of your AIs so it acts as you (one yes); --hosted gives a URL and key for any MCP client", usage: "[--name NAME] [--hosted] [--json]" },
+  { verb: "list", summary: "your AI keys: name, where, when each was last used", usage: "[--json]" },
+  { verb: "revoke", summary: "end a connection at once", usage: "<id> [--json]" },
   { verb: "install", summary: "print the claude mcp add line; --yes runs it", usage: "[--yes] [--json]" },
 ];
 
@@ -70,8 +78,55 @@ async function install(flags) {
   return code;
 }
 
+/** `vyre mcp connect [--name NAME] [--hosted]`: the person makes a key for one of their AIs and names it (one yes). The key is shown once. @param {string[]} args */
+async function connect(args) {
+  const { flags } = parse(args, { values: ["name"], bool: ["hosted"], cmd: "mcp" });
+  await ensureUp();
+  const made = await call("mcpconn.connect", { ...(flags.name ? { name: String(flags.name) } : {}), ...(flags.hosted ? { hosted: true } : {}) });
+  if (made.error) return failTool(made.error);
+  const d = made.data;
+  if (json()) return emit(d);
+  out(`  ${signal("key made")} ${bold(d.name)} ${dim("· it acts as you; sending and publishing still wait for you · vyre mcp revoke " + d.id + " ends it")}`);
+  out("");
+  if (d.local) {
+    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
+    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    out(dim("  Run yours once, then in a new session run /mcp__vyre__setup-vyre, or tell it to call mcpconn_guide."));
+  } else {
+    out(`  ${bold("URL")}          ${d.url || "(shown when this server is reachable)"}`);
+    out(`  ${bold("Key")}          ${d.key}   ${dim("shown only now")}`);
+    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
+    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    out(dim("  Any MCP client takes the URL and the key as a Bearer token over HTTP. vyre mcp revoke " + d.id + " ends it."));
+  }
+  return 0;
+}
+
+/** `vyre mcp list`: the connections, newest first. */
+async function list() {
+  await ensureUp();
+  const r = await call("mcpconn.list", {});
+  if (r.error) return failTool(r.error);
+  if (json()) return emit({ connections: r.data });
+  if (!r.data.length) { out(dim("  nothing connected (vyre mcp connect)")); return 0; }
+  for (const c of r.data) out(`  ${c.id}  ${bold(c.name)}  ${c.where}  ${dim(c.revoked ? "revoked" : c.lastUsed ? "last used " + new Date(c.lastUsed).toLocaleString() : "not used yet")}`);
+  return 0;
+}
+
+/** `vyre mcp revoke ID`: end a connection at once. @param {string[]} args */
+async function revoke(args) {
+  const [id] = args;
+  if (!id) return usage("vyre mcp revoke needs a connection id", "vyre mcp list");
+  await ensureUp();
+  const r = await call("mcpconn.revoke", { id });
+  if (r.error) return failTool(r.error);
+  if (json()) return emit(r.data);
+  out(`  ${signal("revoked")} ${id}`);
+  return 0;
+}
+
 export default {
-  name: "mcp", order: 72, usage: "vyre mcp [serve | design | install [--yes]] [--json]",
+  name: "mcp", order: 72, usage: "vyre mcp [serve | design | connect | list | revoke <id> | install [--yes]] [--json]",
   summary: "the Vyre MCP server on stdio, for plain claude",
   verbs: VERBS,
   /** @param {string[]} args */
@@ -89,6 +144,9 @@ export default {
       return serve(DESIGN);
     }
     if (verb === "install") return install(rest);
+    if (verb === "connect") return connect(rest);
+    if (verb === "list") return list();
+    if (verb === "revoke") return revoke(rest);
     return usage(`vyre mcp ${verb}: not a verb`, "vyre mcp to serve, vyre mcp install to add it to Claude Code");
   },
 };

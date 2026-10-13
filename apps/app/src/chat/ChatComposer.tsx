@@ -400,10 +400,10 @@ export function ChatComposer(p: ComposerProps) {
               <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
             ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-                <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
+                <Chip tone={a.state === "failed" ? "err" : "plain"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
             )))}
-            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={tokenIcon(t.lead, picked.current.get(t.name)?.kind)} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
+            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={tokenIcon(t.lead, picked.current.get(t.name)?.kind)} label={t.name} tone="plain" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
             {stateChips}
           </View>
         ) : null}

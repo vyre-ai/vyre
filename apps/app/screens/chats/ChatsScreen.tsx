@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, Field, LoadingState, Row, Sheet, Text, markRef, showToast } from "@vyre/ui";
-import { callT } from "../../src/real/call-tool";
-import { ProjectPicker } from "../../src/chat/ProjectPicker";
-import { listProjects, moveChat, type ProjectRef } from "../../src/chat/useChatProject";
-import { chatPrefs, useChatPrefs } from "../../src/state/chat-prefs";
+import { Banner, Button, Card, EmptyState, LoadingState, Text, useUiTheme } from "@vyre/ui";
+import { useChatMenu } from "./useChatMenu";
+import { useChatPrefs } from "../../src/state/chat-prefs";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
 import { useGap } from "../../src/state/setup-gap";
@@ -21,6 +19,7 @@ import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
 /** /u/chats: every chat you can see, the ones that need you first. One row type for solo, group and people-only chats; a row for a chat you are not in is greyed and does not open. */
 export default function ChatsScreen() {
+  const { color } = useUiTheme();
   const chatsTag = usePlaceText("showing");
   const router = useRouter();
   const chats = useChats();
@@ -43,35 +42,23 @@ export default function ChatsScreen() {
   // Your own pins go first (after your assistant's chat), in the order the list already has.
   const ordered = chatsOrdered(chatsShown(chats.rows));
   const rows = [...ordered.filter((c) => c.pinned === "assistant"), ...ordered.filter((c) => c.pinned !== "assistant" && prefs.pinned.includes(c.id)), ...ordered.filter((c) => c.pinned !== "assistant" && !prefs.pinned.includes(c.id))];
-  // The row menu: Move to a project, Rename (the box's work.chat.move and work.chat.rename), and your own Pin and Mute.
-  const [moving, setMoving] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
-  const [projects, setProjects] = useState<ProjectRef[]>([]);
-  useEffect(() => { if (moving) void listProjects().then(setProjects); }, [moving]);
-  const menu = (id: string) => [
-    { label: "Open", onPress: () => router.push({ pathname: "/u/chats/[id]", params: { id } }) },
-    { label: "Move to a project", onPress: () => setMoving(id) },
-    { label: "Rename", onPress: () => setRenaming({ id, title: chats.rows.find((c) => c.id === id)?.title ?? "" }) },
-    { label: prefs.pinned.includes(id) ? "Unpin" : "Pin", onPress: () => chatPrefs.setPinned(id, !prefs.pinned.includes(id)) },
-    { label: prefs.muted.includes(id) ? "Unmute" : "Mute", onPress: () => chatPrefs.setMuted(id, !prefs.muted.includes(id)) },
-  ];
-  const done = async (r: { error?: { message: string } }, ok: string) => { if (r.error) showToast(r.error.message || "That did not go through."); else { showToast(ok); void refresh(); } };
+  const { menu, sheets } = useChatMenu(chats.rows);
+  // The list's own search ("/" focuses it): the title, the last line, who is in it and its project.
+  const [q, setQ] = useState("");
+  const search = useRef<TextInput>(null);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const on = (e: KeyboardEvent) => { const el = document.activeElement as HTMLElement | null; if (e.key === "/" && !(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) && !e.metaKey && !e.ctrlKey) { e.preventDefault(); search.current?.focus(); } };
+    document.addEventListener("keydown", on);
+    return () => document.removeEventListener("keydown", on);
+  }, []);
+  const word = q.trim().toLowerCase();
+  const found = word ? rows.filter((c) => [c.title, c.line, c.project, ...c.people, ...c.agents].join(" ").toLowerCase().includes(word)) : rows;
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
       <PlaceTag of="showing" />
-      <Sheet open={!!moving} onClose={() => setMoving(null)} title="Move to a project">
-        <ProjectPicker projects={projects} current={projects.find((x) => x.name === chats.rows.find((c) => c.id === moving)?.project) ?? null} onBack={() => setMoving(null)}
-          onPick={async (slug) => { const id = moving as string; setMoving(null); if (!slug) return; const why = await moveChat(id, slug); await done(why ? { error: { message: why } } : {}, "Moved to the project."); }} />
-      </Sheet>
-      <Sheet open={!!renaming} onClose={() => setRenaming(null)} title="Rename chat">
-        {renaming ? (
-          <View className="gap-s3">
-            <Field name="Chat name" value={renaming.title} onChangeText={(t) => setRenaming({ ...renaming, title: t })} />
-            <View className="self-start"><Button kind="primary" size="sm" label="Save" onPress={async () => { const r0 = renaming; setRenaming(null); if (r0.title.trim()) await done(await callT("work.chat.rename", { chat: r0.id, title: r0.title.trim() }), "Renamed."); }} /></View>
-          </View>
-        ) : null}
-      </Sheet>
+      {sheets}
       {view.banner && gap ? (
         <Banner icon="info">
           <View className="gap-s2">
@@ -87,7 +74,13 @@ export default function ChatsScreen() {
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
-          <ChatsList menu={menu} tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+          <View className="gap-s3">
+            <TextInput ref={search} value={q} onChangeText={setQ} placeholder="Search chats  /" placeholderTextColor={color.label} accessibilityLabel="Search chats"
+              onKeyPress={(e: any) => { if (e.nativeEvent.key === "Escape" && q) { e.preventDefault?.(); setQ(""); } }}
+              style={{ minHeight: 36, borderWidth: 1, borderColor: color.edge, borderRadius: 8, paddingHorizontal: 12, color: color.text, fontSize: 15, outlineStyle: "none" } as any} />
+            {word && !found.length ? <Card><EmptyState title="No chat matches" body="Try a name, a project or a word from the last message." /></Card> : null}
+            <ChatsList menu={menu} tag={chatsTag} rows={found} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+          </View>
         )}
     </Page>
   );

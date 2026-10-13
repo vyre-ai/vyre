@@ -80,7 +80,7 @@ export type BlockCtx = {
   onJumpTo?: (message: string) => void;
   /** The message to light up for a moment after a jump. */
   flash?: string | null;
-  /** Highlight to agent: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
+  /** Highlight to assistant: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
@@ -167,8 +167,8 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to agent" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
-            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to agent</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Ask about this</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (
@@ -241,7 +241,7 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
       </Pressable>
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
-      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
+      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
     </View>
   );
 }
@@ -293,7 +293,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
                     <DiffLines file={full} wide={ctx.wide} />
-                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
+                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
               </View>
