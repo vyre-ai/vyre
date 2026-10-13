@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs: the README shows the app in sharp animated WebP and 2x screenshots instead of 256-colour GIFs; unused old README images removed.
 - fix(tests): core/sessions/credential-scan.test.js no longer pins two holes the launch has closed: Vyre's launch hands a setup token over on file descriptor 3 (env, environ and fd all 0), and the owner's bwrap agent thread shows neither the picked token nor the machine login to its tools; the BAR test is unchanged.
 - fix(ci): the heap after a full GC is back under its 60 MB budget (59.1 to 55.8 MB on Node 22): a source file with one character outside Latin-1 (a dash or ellipsis) is held by V8 at two bytes a character, so 130 daemon-loaded files now use ASCII in comments and unicode escapes in code; and the pairing test count is recorded as 1 (the three offerFrom tests went with the classic pairing code in aa0a8ba1).
 - docs: ARCHITECTURE.md at the repo root is the front door (mission, what Vyre is, what makes it strong, a Mermaid map, a table of contents, how to extend it), with one page per 0.5 feature in docs/architecture/features/ (17 pages, one template, each ending in Extend it) and docs/for-agents/MAP-YOUR-BUSINESS.md, a method an AI agent follows to map a business onto Vyre; the mission leads the README and docs home.

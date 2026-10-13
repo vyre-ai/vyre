@@ -11,7 +11,8 @@
   <a href="docs/get-started/install.md">Install</a> ·
   <a href="docs/index.md">Docs</a> ·
   <a href="ARCHITECTURE.md">Architecture</a> ·
-  <a href="docs/known-gaps.md">Known gaps</a>
+  <a href="roadmap/README.md">Roadmap</a> ·
+  <a href="docs/for-agents/MAP-YOUR-BUSINESS.md">Map your business</a>
 </p>
 
 <p align="center">
@@ -20,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/readme/vyre-tour.gif" width="860" alt="A tour of the Vyre app: what needs you today, a conversation where an agent runs the tests and fixes a failure, the vault showing which agents used a login without seeing it, your projects, and your automations.">
+  <img src="docs/images/readme/now.webp" width="880" alt="The Now screen in Vyre: what needs you today, agents that are stuck and why, approvals waiting with their exact words, and what agents are doing now.">
 </p>
 
 In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
@@ -31,7 +32,7 @@ Your people, your agents and the work they share live on a server you own and on
 
 - **People and agents in the same chats.** @ a teammate or an agent, # a record, a file or a project, and keep one thread with exact recall of anything said before. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
 - **Agents that wake on a task and finish it.** Give a task to an agent, or let a Flow's agent step do it. The agent wakes with the task, the record and the Flow it came from. It ends the task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.
-- **One instructions file per agent and per project.** Each has an `AGENTS.md` (`CLAUDE.md` is kept the same). Type @ or # in the editor to reference a person, a record or a file by its address. Every session reads the file natively.
+- **One instructions file per agent and per project.** Each has one `AGENTS.md` that every model reads (a `CLAUDE.md` beside it only points at it). Type @ or # in the editor to reference a person, a record or a file by its address. Every session reads the file natively.
 - **Flows that do the same thing every time.** A Flow starts from a person, a schedule (with business hours, holidays and a rule for missed runs), a change to a record, a stage, a form or a link, or a watcher. Steps include find, create, update, find-or-create, wait (for a time, a date or an event), ask, assign, call a connected service, and run an agent. A step that gives work to a person or an agent can name an assignee, an approver and followers. Text in a step fills in values, and dates read well: `{today}`, `{now}`, and offsets such as `{after.starts_at - 1 day as date}`, with a date picker to insert them. A person approves a Flow before it runs, and a run has its own page.
 - **Playbooks.** A template for a kind of project: stages, tasks per stage, who does each task, and when a stage counts as done. A project can start from a Playbook and link a record.
 - **Records.** Contacts, projects, tasks and your own record types, with fields in named groups, tags on records, projects and chats, saved views, Excel or CSV import on every list, and CSV export from the web app (a cell that would run as a formula in Excel is quoted). Each record type shows the template token of every field, by group, with a copy button. Fields marked sealed show an agent a placeholder, never the value.
@@ -43,6 +44,24 @@ Your people, your agents and the work they share live on a server you own and on
 - **Teams.** Members reach their own things on the team's server: their projects, chats, Flows, skills, vault and MCP servers. A Space-wide Google or Microsoft 365 key lets each member read their own mail, calendar and drive and only theirs. Roles, per-project seat levels and invites with a role are built in.
 
 New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARCHITECTURE.md): a map of the system and one page per feature. To see how a business would run on Vyre, an agent can follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md).
+
+
+## See it
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/readme/chat.webp" alt="An agent in a chat runs the tests, finds the failing date check, fixes it, and asks before a status note goes to a client."><br><sub><b>Chat.</b> An agent runs the tests, fixes the bug and asks before anything goes out.</sub></td>
+    <td width="50%"><img src="docs/images/readme/flows.webp" alt="Flows grouped by area, each written as a plain sentence, with a run page that shows every step."><br><sub><b>Flows.</b> Each Flow reads as a sentence, and every run has its own timeline.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/readme/records.png" alt="A Records list of contacts with their fields."><br><sub><b>Records.</b> Your own objects, fields and links, with views.</sub></td>
+    <td><img src="docs/images/readme/vault.png" alt="The Vault with a login an agent can use without seeing the value."><br><sub><b>Vault.</b> Agents use a credential without ever seeing it.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/readme/agents.png" alt="The Agents screen with each agent's role and projects."><br><sub><b>Agents.</b> Give each agent a role, instructions and its own memory.</sub></td>
+    <td><img src="docs/images/readme/sites.png" alt="Sites with versions, a preview address and a domain."><br><sub><b>Sites.</b> An agent builds and publishes a site on one yes from you.</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
