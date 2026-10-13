@@ -1,6 +1,7 @@
 // Project templates over an injected `call` (work.template.*): reads on open, every write the person's own or their assistant's draft. The box checks again.
 import type { Call } from "../settings/real-source";
-import type { Row, Version } from "./model.ts";
+import { projectIdOf, type Row, type Version } from "./model.ts";
+import { seatCalls } from "./board.ts";
 
 export function templatesSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -32,6 +33,12 @@ export function templatesSource(call: Call) {
     /** A draft template made from a project: its stages when it ran a template, else its tasks and team (a free-flow project). */
     fromProject: (project: string, name?: string): Promise<Version> => ask("work.template.from-project", { project, ...(name ? { name } : {}) }),
     /** Start a project from the live version: its team, its pinned stages and the first stage's tasks. */
-    start: (template: string, name: string) => ask<{ project: string; slug?: string; tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }>("work.start-project", { template, name }),
+    start: async (template: string, name: string, o: { client?: string; lead?: string; team?: string[]; names?: Record<string, string> } = {}) => {
+      const r = await ask<{ project: string; slug?: string; tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }>("work.start-project", { template, name, ...(o.client ? { client: o.client } : {}) });
+      // the people chosen are seated on the new project (lead, or contributor); one who cannot be is said, the project stands
+      const seats_failed: { person: string; why: string }[] = [];
+      for (const c of seatCalls(r.slug || projectIdOf(r.project), o)) { try { await ask("work.project.level", c); } catch (e) { seats_failed.push({ person: o.names?.[c.person] || c.person, why: e instanceof Error && e.message ? e.message : "that did not work" }); } }
+      return { ...r, seats_failed };
+    },
   };
 }

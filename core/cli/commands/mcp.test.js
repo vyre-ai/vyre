@@ -11,7 +11,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tempHome } from "../../../test/helpers.js";
-import { INSTALL_LINE } from "./mcp.js";
+import { INSTALL_LINE, CODEX_LINE } from "./mcp.js";
+import { spawn } from "node:child_process";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 
@@ -25,8 +26,8 @@ const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
 test("mcp: vyre commands lists serve, design and install, the verbs run() handles; any other is a usage mistake", async t => {
   const root = tempHome(t);
   const verbs = JSON.parse((await run(root, ["commands", "mcp", "--json"])).stdout).commands[0].verbs;
-  assert.deepEqual(verbs.map(v => v.verb), ["serve", "design", "install"]);
-  assert.deepEqual(verbs[2].flags.map(f => f.name), ["yes", "json"]);
+  assert.deepEqual(verbs.map(v => v.verb), ["serve", "design", "connect", "list", "revoke", "install"]);
+  assert.deepEqual(verbs[5].flags.map(f => f.name), ["yes", "json"]);
   const bad = await run(root, ["mcp", "frob"]);
   assert.equal(bad.code, 2, bad.all);
   assert.match(bad.all, /vyre mcp frob: not a verb/);
@@ -68,4 +69,26 @@ test("mcp --json: install prints the line, runs a fake claude only with --yes; s
   }
   const sv = frames((await run(root, ["mcp", "--view"])).stdout);
   assert.deepEqual([sv[0].view.kind, sv[0].view.code, sv.at(-1).exit], ["error", "bad_input", 2]);
+});
+
+test("mcp: connect, list and revoke are verbs of vyre mcp, and the server offers the setup-vyre prompt", async t => {
+  const root = tempHome(t);
+  assert.equal((await run(root, ["mcp", "revoke"])).code, 2, "revoke needs an id");
+
+  const server = path.join(path.dirname(BIN), "..", "harness", "mcp", "server.js");
+  const p = spawn(process.execPath, [server], { env: { ...process.env, VYRE_HOME: root, VYRE_SOCKET: "", NO_COLOR: "1" } });
+  t.after(() => p.kill());
+  let buf = "";
+  const got = new Map();
+  p.stdout.on("data", d => { buf += d; for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); got.get(m.id)?.(m); } });
+  const ask = (id, method, params = {}) => new Promise(r => { got.set(id, r); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
+  const init = await ask(1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } });
+  assert.ok(init.result.capabilities.prompts);
+  const list = await ask(2, "prompts/list");
+  assert.deepEqual(list.result.prompts.map(x => x.name), ["setup-vyre"]);
+  const get = await ask(3, "prompts/get", { name: "setup-vyre" });
+  assert.match(get.result.messages[0].content.text, /import_sessions_run/);
+  assert.match(get.result.messages[0].content.text, /vyre mcp connect/);
+  assert.ok(!/\u2014|\u00a7/.test(get.result.messages[0].content.text), "no em dash or section sign in what the AI reads");
+  assert.equal((await ask(4, "prompts/get", { name: "nope" })).error.code, -32602);
 });

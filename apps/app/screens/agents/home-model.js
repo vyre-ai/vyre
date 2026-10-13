@@ -39,7 +39,7 @@ const worksLine = (/** @type {unknown} */ projects) => {
 export function agentRow(a, me) {
   const sharing = sharingOf(a, me);
   return {
-    name: String(a.name), kind: String(a.kind ?? "agent"), role: roleLine(a.instructions, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
+    name: String(a.name), kind: String(a.kind ?? "agent"), role: roleLine(a.instructions, a.kind === "assistant" ? "Your agent" : a.builtin ? "Builds your Space by conversation" : "Agent"),
     model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
     ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
   };

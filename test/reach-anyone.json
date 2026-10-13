@@ -2564,6 +2564,10 @@
   "publish.job.runs": {
    "module": "publish",
    "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+  },
+  "mcpconn.guide": {
+   "module": "mcpconn",
+   "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
   }
  }
 }
