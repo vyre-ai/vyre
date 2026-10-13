@@ -1,0 +1,31 @@
+// @ts-check
+// The home hint: the one route and pinned box key of the server that holds the person's personal vault. A brand-new device needs it before it can read the list in the vault (the names worker maps a TEAM Space's
+// name to its servers, not a person's name to their vault's home). It rides beside the Secret Key in the GitHub escrow bundle, on the recovery kit, and from the approving device on the approve path. It is not secret
+// (a route and a public key), and it is pinned: the connection checks the server holds `box` before any hello is sent. Pure.
+
+export const HINT_MAX = 512;
+const MIN_BOX = 32;
+
+/** @typedef {{ v: 1, relay: string, route: string, box: string, name?: string }} HomeHint */
+
+/** @param {{ relay?: string, route?: string, box?: string, name?: string }} p @returns {HomeHint | null} */
+export function homeHintOf(p) {
+  if (!p || typeof p.relay !== "string" || typeof p.route !== "string" || typeof p.box !== "string" || p.box.length < MIN_BOX || !p.route) return null;
+  const name = typeof p.name === "string" ? p.name.trim().slice(0, 64) : "";
+  return { v: 1, relay: p.relay, route: p.route, box: p.box, ...(name ? { name } : {}) };
+}
+
+/** @param {HomeHint} h @returns {string} */
+export function serializeHomeHint(h) {
+  const text = JSON.stringify(h);
+  if (text.length > HINT_MAX) throw Object.assign(new Error("The home hint is too long."), { code: "hint_too_big" });
+  return text;
+}
+
+/** @param {string | null | undefined} text @returns {HomeHint | null} */
+export function parseHomeHint(text) {
+  let j;
+  try { j = JSON.parse(String(text ?? "")); } catch { return null; }
+  if (!j || j.v !== 1 || typeof j.relay !== "string" || !/^wss:\/\//.test(j.relay)) return null;
+  return homeHintOf(j);
+}

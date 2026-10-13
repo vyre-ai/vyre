@@ -44,9 +44,11 @@ export function deviceName(): string {
 export const visibility = undefined;
 export const directFetch = undefined;
 
-const pairingStore = makePairingStore({
-  get: async (k) => localStorage.getItem(k),
-  set: async (k, v) => localStorage.setItem(k, v),
-  del: async (k) => localStorage.removeItem(k),
-});
+/** The keyed text store this platform keeps its small device records in (the pairings, and the space list's two counters). */
+export const keyedText = {
+  get: async (k: string) => localStorage.getItem(k),
+  set: async (k: string, v: string) => localStorage.setItem(k, v),
+  del: async (k: string) => localStorage.removeItem(k),
+};
+const pairingStore = makePairingStore(keyedText);
 export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;

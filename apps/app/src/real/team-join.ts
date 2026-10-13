@@ -86,7 +86,12 @@ export async function previewTeamInvite(link: string) {
 export async function acceptTeamInvite(link: string) {
   let inv = open.get(link);
   if (!inv) { const d = await joinDeps(); if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" }); inv = await openInvite(d, link); open.set(link, inv); }
-  try { return await inv.accept(); } finally { inv.close(); open.delete(link); }
+  try {
+    const r = await inv.accept();
+    // the person's yes to join is the only prompt: the list in the vault is told in the same breath, and never blocks the join
+    void import("./space-list-app").then((m) => m.recordJoined()).catch(() => {});
+    return r;
+  } finally { inv.close(); open.delete(link); }
 }
 
 /** Did this device join that team space as a member (so its sidebar and the rest of its Space are reached through the team's own server, not a box of its own)? */
@@ -151,4 +156,19 @@ export async function confirmTeamInviteWords(space: string, id: string, words: s
 export async function cancelTeamInvite(space: string, id: string) {
   const { revokeTeamInvite } = await import("./team-invite.js");
   return revokeTeamInvite(await inviteDeps(space), id);
+}
+
+/** The teams this device joined, as where to connect: for the list of a person's servers and teams that travels with the personal vault (space-list.js). Only where each home is; no role, no session. */
+export function joinedTeams(): Array<{ name: string; at: number; home: { relay: string; route: string; box: string } }> {
+  const out: Array<{ name: string; at: number; home: { relay: string; route: string; box: string } }> = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? "";
+      if (!k.startsWith(`${KEY}member-of/`)) continue;
+      const row = JSON.parse(localStorage.getItem(k) || "null");
+      const c = row && row.channel;
+      if (row && typeof row.name === "string" && c && typeof c.relay === "string" && typeof c.route === "string" && typeof c.box === "string") out.push({ name: row.name, at: Number(row.at) || 0, home: { relay: c.relay, route: c.route, box: c.box } });
+    }
+  } catch { /* none kept on this page */ }
+  return out;
 }
