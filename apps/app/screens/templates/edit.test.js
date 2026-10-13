@@ -223,7 +223,7 @@ test("followers are added and removed once each, and the approver's and follower
 });
 
 test("a task is dropped at a place in a stage, in its own or another; a stage is dropped at a place; both keep every task", async () => {
-  const { moveTaskTo, moveStageTo } = await import("./edit.ts");
+  const { moveTaskTo, moveStageTo, setStageGroups } = await import("./edit.ts");
   let b = addStage(addStage(base())); // Start, Done, Stage 3, Stage 4
   b = setTask(addTask(addTask(b, 0), 0), 0, 1, { title: "Second" });
   b = setTask(b, 0, 2, { title: "Third" });
