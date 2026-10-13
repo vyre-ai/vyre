@@ -1,7 +1,7 @@
 // @ts-check
 // Read and write the list (space-list.js) as one personal note in the vault, through the vault's own tools handed in as `tool` (name, input). Reading is one person-present reveal; writing is an update (a put
 // the first time). A locked vault, or a reveal that is refused, is an empty list with the reason, and nothing is written over a list that could not be read.
-import { FIELD, ITEM, entriesFromDevice, mergeLists, parseList, serializeList, toPair } from "./space-list.js";
+import { FIELD, ITEM, entriesFromDevice, mergeLists, notOlder, parseList, serializeList, toPair, unpinned } from "./space-list.js";
 
 /** @typedef {(name: string, input?: Record<string, unknown>) => Promise<any>} Tool */
 
@@ -27,15 +27,19 @@ export async function writeList(tool, list) {
 }
 
 /**
- * Bring this device and the vault together: read the vault's list, merge in what this device holds, write it back when it changed, and say which servers this device still has to pair to. A list that could not
- * be read is never written over.
- * @param {Tool} tool @param {{ pairings: Array<{ relay: string, route: string, box: string, name?: string }>, teams: Array<{ name: string, home: { relay: string, route: string, box: string } }> }} device
+ * Bring this device and the vault together: read the vault's list, merge in what this device holds, write it back (at the next seq) when it changed, and say which servers this device still has to pair to and
+ * which entries carry no pin. A list that could not be read is never written over. `seen` is the highest seq this device has seen (kept by the caller): a lower one is the worker's or the vault's old copy,
+ * ignored with the reason. @param {Tool} tool @param {{ pairings: Array<{ relay: string, route: string, box: string, name?: string }>, teams: Array<{ name: string, home: { relay: string, route: string, box: string } }> }} device @param {number} [seen]
  */
-export async function syncList(tool, device) {
+export async function syncList(tool, device, seen = 0) {
   const there = await readList(tool);
-  if (there.unavailable) return { list: there, toPair: [], unavailable: there.unavailable };
-  const mine = { ...there, at: Date.now(), entries: entriesFromDevice(device) };
-  const list = mergeLists(there, { ...mine, removed: [] });
-  if (JSON.stringify(list.entries) !== JSON.stringify(there.entries)) await writeList(tool, { ...list, at: Date.now() });
-  return { list, toPair: toPair(list, device.pairings.map((p) => p.box)) };
+  if (there.unavailable) return { list: there, toPair: [], unpinned: [], seen, unavailable: there.unavailable };
+  if (!notOlder(there, seen).ok) return { list: there, toPair: [], unpinned: [], seen, unavailable: "rolled_back" };
+  const have = device.pairings.map((p) => p.box);
+  const mine = { v: /** @type {const} */ (1), seq: there.seq, entries: entriesFromDevice(device), removed: [] };
+  const merged = mergeLists(there, mine);
+  const changed = JSON.stringify(merged.entries) !== JSON.stringify(there.entries);
+  const list = changed ? { ...merged, seq: there.seq + 1 } : merged;
+  if (changed) await writeList(tool, list);
+  return { list, toPair: toPair(list, have), unpinned: unpinned(list, have), seen: Math.max(seen, list.seq) };
 }
