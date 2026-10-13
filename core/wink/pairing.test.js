@@ -1777,7 +1777,7 @@ test("Sign in by name: a request opens a two-minute ticket, the device that rede
   const q = await w.call("wink.phone.pairing");
   assert.equal(q.asking, true);
   assert.equal(q.signin, true);
-  assert.match(q.line, /^Someone typed your name on a new device called "Alex's iPhone" and asked to sign in as you\. Read the three words off that device's own screen, never from a message: 1\) .+ If you did not just do this, say no\.$/);
+  assert.match(q.line, /^Someone typed your name to sign in on "Alex's iPhone"\. Read the three words off that device's own screen, never from a message: 1\) .+ If that wasn't you just now, decline\.$/);
   assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].signin === true));
   await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
   const yes = await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" });
