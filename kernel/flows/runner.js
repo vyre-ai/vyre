@@ -18,6 +18,7 @@ import { parse, evaluate, truthy } from "./expr.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
 import { stampAdders } from "./adders.js";
+import { resolveTags } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
@@ -1733,13 +1734,24 @@ export class FlowRunner {
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
       const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record });
+      // What each person on the task is told: tags in a box are resolved now, through the approver's own chain, so a record is read as it is at this moment and a sealed field stays sealed.
+      const chainNow = this.#chain(ctx);
+      const tag = (/** @type {any} */ t) => typeof t === "string" && t ? resolveTags(t, { here: record ?? run.record ?? null, read: async (type, id) => this.k.records.get(chainNow, type, id), query: async (type, n) => (await this.k.records.query(chainNow, type, { page: { limit: n } })).rows }) : Promise.resolve(undefined);
+      const told = { instructions: await tag(s.kind === "agent" ? val(s.instructions) : undefined), brief: await tag(s.brief), approver: await tag(s.notes && s.notes.approver), followers: await tag(s.notes && s.notes.followers) };
       const spec = s.kind === "ask"
         ? { title, doer, ...(helpers.length ? { helpers } : {}), output: { kind: "decision" }, source: "flow_step", ...(record ? { record } : {}), ...(s.form ? { form: s.form } : {}) }
-        : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: String(val(s.instructions) ?? "") } } : {}) };
+        : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: told.instructions ?? String(val(s.instructions) ?? ""), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}), ...(s.kind === "assign" && told.brief ? { note: told.brief.slice(0, 400) } : {}), ...(s.kind === "assign" && (told.brief || told.approver) ? { form: { ...(told.brief ? { brief: told.brief } : {}), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}) };
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
       const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
+      // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
+      for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
+        try {
+          const f = await this.#actor(ctx, ref, { record });
+          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_follow", ...(record ? { record } : {}), note: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n").slice(0, 400), form: { brief: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n") }, flow: run.flow }, { idem: `${idem}:follow${i}` });
+        } catch (e) { this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
+      }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
       await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });

@@ -63,15 +63,28 @@ function onlyKeys(o, allowed, path, out) {
 /** @param {any} t @param {Problem[]} out */
 function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, EVENT_RE, NAME_RE }); }
 
+/** Who else is on a task: an approver, followers and what each is told. A text may carry tags (kernel/flows/tags.js), which are kept as written. @param {any} s @param {string} p @param {Problem[]} out */
+function checkPeople(s, p, out) {
+  if (s.followers !== undefined && !(Array.isArray(s.followers) && s.followers.length <= 10 && s.followers.every((/** @type {any} */ x) => typeof x === "string" && /^(?:person|teammate|role):[A-Za-z0-9._:-]{1,80}$/.test(x)))) out.push({ path: `${p}.followers`, message: "followers are up to 10 of person:<id>, teammate:<name> or role:<name>" });
+  if (s.notes !== undefined) {
+    if (!isObj(s.notes)) out.push({ path: `${p}.notes`, message: "notes is { approver?, followers? }, each a text" });
+    else {
+      onlyKeys(s.notes, ["approver", "followers"], `${p}.notes`, out);
+      for (const k of ["approver", "followers"]) if (s.notes[k] !== undefined && (typeof s.notes[k] !== "string" || s.notes[k].length > 4000)) out.push({ path: `${p}.notes.${k}`, message: "a note is a text of at most 4000 characters" });
+    }
+  }
+  if (s.brief !== undefined && (typeof s.brief !== "string" || s.brief.length > 4000)) out.push({ path: `${p}.brief`, message: "a brief is a text of at most 4000 characters" });
+}
+
 /** Keys each step kind may carry (beyond id, kind, label). */
 export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
-  ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
+  ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills", "followers", "notes", "brief"],
   call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
-  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills"], classify: ["input", "labels"], extract: ["input", "fields"],
+  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels"], extract: ["input", "fields"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input", "approve"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
@@ -111,6 +124,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
     onlyKeys(s, ["id", "kind", "label", "added_by", ...keys, ...policyKeys], p, out);
     if (s.added_by !== undefined && (typeof s.added_by !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(s.added_by))) out.push({ path: `${p}.added_by`, message: "added_by is the id of the person who added the step" });
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
+    if (s.kind === "agent" || s.kind === "assign") checkPeople(s, p, out);
     if (s.approve !== undefined && typeof s.approve !== "boolean") out.push({ path: `${p}.approve`, message: "approve is true when this send always asks a person, even in a turned-on Flow" });
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });
     const need = (/** @type {string} */ k, /** @type {(v: any) => boolean} */ ok, /** @type {string} */ msg) => { if (s[k] === undefined || !ok(s[k])) out.push({ path: `${p}.${k}`, message: msg }); };
@@ -180,6 +194,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("assistant", v => typeof v === "string" && /^(?:teammate|pool):/.test(v), "name the assistant: teammate:<name> or pool:<name>");
         if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
         need("title", () => true, "give the title"); value("title"); need("instructions", () => true, "say what to do"); value("instructions");
+        if (s.checker !== undefined && (typeof s.checker !== "string" || !/^(?:person|role):/.test(s.checker))) out.push({ path: `${p}.checker`, message: "a checker is person:<id> or role:<name>" });
         checkOutput(s.output, `${p}.output`, out); value("record");
         break;
       case "call":
