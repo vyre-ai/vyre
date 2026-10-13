@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- feat(site): 37 product comparison pages (/compare/zapier/ and the rest) generated from scripts/site/compare-data.mjs, each answering how Vyre works with the product, where Vyre replaces parts of it and why that helps; the /compare/ index groups them and the four category pages link them.
 - feat(site): comparison pages on vyre.run (/compare/ and four kinds of tool: automation, work management, AI assistants, practice software), built by scripts/site/compare.mjs.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).

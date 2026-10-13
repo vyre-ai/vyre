@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre and n8n: works with it, and where Vyre replaces parts of it</title>
+  <meta name="description" content="How Vyre works with n8n today, which parts of the job Vyre does natively, and why that helps a team with fewer tools.">
+  <link rel="canonical" href="https://vyre.run/compare/n8n/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/compare/n8n/">
+  <meta property="og:title" content="Vyre and n8n: works with it, and where Vyre replaces parts of it">
+  <meta property="og:description" content="How Vyre works with n8n today, which parts of the job Vyre does natively, and why that helps a team with fewer tools.">
+  <meta property="og:image" content="https://vyre.run/og/compare-automation.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Vyre and n8n.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre and n8n: works with it, and where Vyre replaces parts of it">
+  <meta name="twitter:description" content="How Vyre works with n8n today, which parts of the job Vyre does natively, and why that helps a team with fewer tools.">
+  <meta name="twitter:image" content="https://vyre.run/og/compare-automation.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Compare","item":"https://vyre.run/compare/"},{"@type":"ListItem","position":3,"name":"n8n","item":"https://vyre.run/compare/n8n/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does Vyre replace n8n?","acceptedAnswer":{"@type":"Answer","text":"For some parts of the job, yes. If n8n already runs on your server and links your apps, keep it. Vyre sits on top as the place the work and the approvals live."}},{"@type":"Question","name":"How does Vyre work with n8n?","acceptedAnswer":{"@type":"Answer","text":"A workflow can call a Flow’s path, and a Flow’s web step can call a workflow’s webhook. In Vyre, a person adds a Connection in the Vault that declares the host, how the key is sent and which operations read, draft, change, send, spend or delete. A Flow then calls the service from a web step, or a custom module wraps it. Next (0.5.2): a packaged Integration, so the Connection and its operations arrive ready-made. Integrations work where the vendor provides an API."}}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=41ced04a61">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/architecture/">Architecture</a><a href="/compare/" aria-current="page">Compare</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/compare/">Compare</a> / n8n</p>
+    <p class="eyebrow">Automation.</p>
+    <h1 class="display">Vyre and <b>n8n.</b></h1>
+    <p class="lead">n8n: builds workflows with nodes, hosted or on your own server. Vyre works with it today and does some of its parts natively.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="who-h">
+  <div class="wrap">
+    <h2 id="who-h" class="lbl" style="margin-bottom:20px">Who it is for, and what it does well</h2>
+    <div class="cmp-two rv">
+      <div class="cmp-col"><h3>n8n</h3><p>Technical teams that want a node-based workflow tool they can run themselves.</p><ul class="cmp-mini"><li><b>Self-hosting is an option.</b> The same workflow tool can run on a server you control.</li><li><b>Code where you need it.</b> Nodes can run code, so a technical team is not boxed in.</li><li><b>Many integration nodes.</b> A broad library of connections.</li></ul></div>
+      <div class="cmp-col cmp-col-v"><h3>Vyre</h3><p>The agentic command center for AI-native teams: people and agents work in one Space on a server you own.</p><p>Industry-neutral. You shape the records, and Flows, Playbooks and a Gate run the work.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="with-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Works with Vyre.</p>
+      <h2 id="with-h" class="h2">How Vyre connects to n8n <b>today.</b></h2>
+    </div>
+    <div class="cmp-two rv">
+      <div class="cmp-col cmp-col-v"><h3>Today</h3><p>A workflow can call a Flow’s path, and a Flow’s web step can call a workflow’s webhook. A person adds a Connection in the Vault that declares the host, how the key is sent and which operations read, draft, change, send, spend or delete. A Flow then calls the service from a web step, or a custom module wraps it.</p><p>Where the vendor publishes an MCP server, a person can add it for agents to use.</p></div>
+      <div class="cmp-col"><h3>Next (0.5.2)</h3><p>A packaged Integration, so the Connection and its operations arrive ready-made.</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, n8n included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="repl-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where Vyre replaces it.</p>
+      <h2 id="repl-h" class="h2">What Vyre does <b>natively.</b></h2>
+      <p class="lead">Vyre does these parts of the job natively, so a team can drop a seat or a step. n8n stays the better fit for what it was built for.</p>
+    </div>
+    <div class="ar-ideas rv"><div class="piece"><span class="num">01</span><h3>Flows</h3><p>Flows run on the same server as the records, with a person approving each version.</p></div><div class="piece"><span class="num">02</span><h3>Vault</h3><p>A Flow uses a login from the Vault and a model never sees the value.</p></div><div class="piece"><span class="num">03</span><h3>Agents</h3><p>Agents are members of the Space and take tasks a Flow hands them.</p></div></div>
+    <div class="cmp-prose rv"><p>If n8n already runs on your server and links your apps, keep it. Vyre sits on top as the place the work and the approvals live.</p></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="why-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Why that helps.</p>
+      <h2 id="why-h" class="h2">What a team <b>gets from it.</b></h2>
+      <p class="lead">Both can run on your server. Vyre adds the records, the agents and the Gate around the workflows.</p>
+    </div>
+    <ul class="cmp-good rv"><li><b>Data on your own server</b><span>Records, files and the history of every decision stay on a server you own. Sealed fields show an agent a placeholder.</span></li><li><b>Rules decide, not a model</b><span>A Flow follows stored steps and a person approves each version, so the same input takes the same path every run. A model is one step you place on purpose.</span></li><li><b>Every outward action approved</b><span>An email, a payment, a deletion or a published page waits at the Gate until a person has read the exact words and said yes.</span></li></ul>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="table-h">
+  <div class="wrap">
+    <h2 id="table-h" class="lbl" style="margin-bottom:20px">Side by side</h2>
+    <table class="cmp-table rv">
+        <caption class="cmp-cap">n8n compared with Vyre, one row for each question a buyer asks</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">n8n</th><th scope="col">Vyre</th></tr></thead>
+        <tbody><tr><th scope="row">What it is</th><td data-label="n8n">Builds workflows with nodes, hosted or on your own server.</td><td data-label="Vyre">A shared working layer for people and agents: records, tasks, Flows, documents, sites and a Gate.</td></tr><tr><th scope="row">Where it runs</th><td data-label="n8n">Hosted by the vendor, or self-hosted.</td><td data-label="Vyre">On a server you own.</td></tr><tr><th scope="row">Connecting to the other</th><td data-label="n8n">A workflow can call a Flow’s path, and a Flow’s web step can call a workflow’s webhook.</td><td data-label="Vyre">A Connection in the Vault and a Flow web step or custom module. Next (0.5.2): a packaged Integration.</td></tr><tr><th scope="row">Parts of the job in Vyre</th><td data-label="n8n">Set by the product.</td><td data-label="Vyre">Flows, Vault and Agents.</td></tr><tr><th scope="row">Outward actions</th><td data-label="n8n">Set by how the product is configured.</td><td data-label="Vyre">Held at the Gate until a person approves the exact words.</td></tr></tbody>
+    </table>
+    <p class="cmp-note">The left column comes from the product’s public documentation or describes the kind of product. Where it differs, the vendor’s own documentation is the one to trust.</p>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="faq-h">
+  <div class="wrap">
+    <h2 id="faq-h" class="lbl" style="margin-bottom:20px">Questions people ask</h2>
+    <div class="faq rv"><details><summary>Does Vyre replace n8n?</summary><p>For some parts of the job, yes. If n8n already runs on your server and links your apps, keep it. Vyre sits on top as the place the work and the approvals live.</p></details><details><summary>How does Vyre work with n8n?</summary><p>A workflow can call a Flow’s path, and a Flow’s web step can call a workflow’s webhook. In Vyre, a person adds a Connection in the Vault that declares the host, how the key is sent and which operations read, draft, change, send, spend or delete. A Flow then calls the service from a web step, or a custom module wraps it. Next (0.5.2): a packaged Integration, so the Connection and its operations arrive ready-made. Integrations work where the vendor provides an API.</p></details></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="conn-h">
+  <div class="wrap">
+    <h2 id="conn-h" class="lbl" style="margin-bottom:20px">Connects to</h2>
+    <div class="note rv"><p class="lbl" style="margin-bottom:8px">Connects to</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0"><a href="/compare/automation-tools/">Automation: the kind of tool, side by side</a></li><li style="margin:.3em 0"><a href="/architecture/">The architecture: the door, the kernel and the Gate</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/flows.md">Flows, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/vault.md">Vault, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/agents.md">Agents, in the repository</a></li><li style="margin:.3em 0"><a href="/compare/">The other comparisons</a></li><li style="margin:.3em 0"><a href="/start/">Set up Vyre</a></li></ul></div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/compare/">All comparisons</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/compare/">Compare</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>

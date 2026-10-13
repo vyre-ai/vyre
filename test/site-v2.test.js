@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "architecture", "start", "privacy", "compare", "compare/automation-tools", "compare/work-management", "compare/ai-assistants", "compare/practice-software"];
+const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "architecture", "start", "privacy", "compare", "compare/automation-tools", "compare/work-management", "compare/ai-assistants", "compare/practice-software", "compare/zapier", "compare/make", "compare/n8n", "compare/power-automate", "compare/notion", "compare/clickup", "compare/asana", "compare/monday", "compare/airtable", "compare/trello", "compare/hubspot", "compare/salesforce", "compare/pipedrive", "compare/zoho-crm", "compare/gohighlevel", "compare/clio", "compare/mycase", "compare/practicepanther", "compare/lawmatics", "compare/karbon", "compare/taxdome", "compare/canopy", "compare/docusign", "compare/pandadoc", "compare/dropbox-sign", "compare/1password", "compare/bitwarden", "compare/chatgpt-team", "compare/claude-teams", "compare/copilot", "compare/webflow", "compare/squarespace", "compare/wix", "compare/ringcentral", "compare/slack", "compare/quickbooks", "compare/xero"];
 const read = (p) => fs.readFileSync(path.join(SITE, p), "utf8");
 const pageFile = (slug) => (slug ? `${slug}/index.html` : "index.html");
 const BANNED = /[—§]/;

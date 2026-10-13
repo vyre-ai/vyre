@@ -4,6 +4,8 @@
 // Where that is not certain the line describes the kind of tool. What Vyre does follows docs/architecture (overview, flows, gate, vault, records, agents).
 // Anything planned is marked Next with its version.
 
+import { GROUPS, PRODUCTS, NATIVE, WHY, TODAY, NEXT, NOAPI } from './compare-data.mjs';
+
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // The six things that make Vyre different, in one place so every page says them the same way.
@@ -231,7 +233,7 @@ const PAGES = [
 export function buildCompare(h) {
   const { page, eyebrow, faqHtml, faqLd, crumbs, SITE, REPO, MAP_URL } = h;
   const feat = (f) => `${REPO}/blob/main/docs/architecture/features/${f}.md`;
-  const LINKS = { FLOWS: feat('flows'), GATE: feat('gate'), VAULT: feat('vault'), AGENTS: feat('agents'), TASKS: feat('tasks-and-needs-you'), RECORDS: feat('records'), SESSIONS: feat('sessions-and-models'), MCP: feat('mcp-and-engineer'), DOCS: feat('documents-and-signing'), MAP: MAP_URL };
+  const LINKS = { FLOWS: feat('flows'), GATE: feat('gate'), VAULT: feat('vault'), AGENTS: feat('agents'), TASKS: feat('tasks-and-needs-you'), RECORDS: feat('records'), SESSIONS: feat('sessions-and-models'), MCP: feat('mcp-and-engineer'), SITES: feat('sites-and-publishing'), CHATS: feat('chats'), DOCS: feat('documents-and-signing'), MAP: MAP_URL };
   const href = (k) => LINKS[k] || k;
 
   const traitsHtml = `<div class="ar-table rv">${TRAITS.map(([t, d]) => `<div><p class="lbl">${t}</p><p>${d}</p></div>`).join('')}</div>`;
@@ -245,6 +247,19 @@ export function buildCompare(h) {
       </table>`;
 
   const flow = (c) => `<ol class="cmp-flow rv" aria-label="One way ${esc(c.name.toLowerCase())} and Vyre work together, in four steps">${c.diagram.map(([t, d], i) => `<li class="cmp-step"><span class="cmp-n">0${i + 1}</span><b>${t}</b><span>${d}</span></li>`).join('')}</ol><p class="cmp-note">${c.diagramNote}</p>`;
+
+  const productLink = (x) => `<a class="cmp-pl" href="/compare/${x.key}/"><b>${esc(x.name)}</b><span>${esc(x.what)}</span></a>`;
+  const productsHere = (pageKey) => {
+    const gs = GROUPS.filter((g) => g.page === pageKey);
+    if (!gs.length) return '';
+    return `<section class="sec" aria-labelledby="prods-h">
+  <div class="wrap">
+    <h2 id="prods-h" class="lbl" style="margin-bottom:20px">One page for each product</h2>
+    ${gs.map((g) => `${gs.length > 1 ? `<p class="cmp-gh">${esc(g.name)}</p>` : ''}<div class="cmp-grid rv">${PRODUCTS.filter((x) => x.group === g.key).map(productLink).join('')}</div>`).join('')}
+  </div>
+</section>
+`;
+  };
 
   const out = { sitemap: [['/compare/', '0.8']], llms: [], full: [] };
 
@@ -312,6 +327,8 @@ export function buildCompare(h) {
   </div>
 </section>
 
+${productsHere(c.key)}
+
 <section class="sec" aria-labelledby="faq-h">
   <div class="wrap">
     <h2 id="faq-h" class="lbl" style="margin-bottom:20px">Questions people ask</h2>
@@ -344,7 +361,142 @@ ${c.lead}
 ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`);
   }
 
-  const cards = PAGES.map((c, i) => `<div class="piece"><span class="num">0${i + 1}</span><h3>${esc(c.name)}</h3><p>${esc(c.tools)}. ${c.ogSub}</p><p><a href="/compare/${c.key}/">Read the comparison</a></p></div>`).join('');
+  const nativeTitles = (x) => x.use.map(([k]) => NATIVE[k][0]);
+  const list = (a) => a.length < 3 ? a.join(' and ') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+  const catPage = (x) => GROUPS.find((g) => g.key === x.group);
+
+  const modeIntro = (x) => ({
+    whole: `Vyre can do most of what a team uses ${x.name} for in this role, so a team that only used it for this can drop the tool or a seat.`,
+    part: `Vyre does these parts of the job natively, so a team can drop a seat or a step. ${x.name} stays the better fit for what it was built for.`,
+    with: `Vyre does not replace ${x.name}. These are the parts of the work Vyre does around it.`,
+  })[x.mode];
+  const modeHead = (x) => x.mode === 'with' ? ['Where Vyre fits.', 'What Vyre does <b>around it.</b>'] : ['Where Vyre replaces it.', 'What Vyre does <b>natively.</b>'];
+
+  const productFaq = (x) => [
+    [`Does Vyre replace ${x.name}?`, { whole: `For many uses, yes. ${x.keep}`, part: `For some parts of the job, yes. ${x.keep}`, with: `No. ${x.keep}` }[x.mode]],
+    [`How does Vyre work with ${x.name}?`, x.api === false
+      ? `${NOAPI} ${NEXT}`
+      : `${x.apiNote} In Vyre, ${TODAY.charAt(0).toLowerCase()}${TODAY.slice(1)} ${NEXT} Integrations work where the vendor provides an API.`],
+  ];
+
+  const productBody = (x) => {
+    const g = catPage(x);
+    const faq = productFaq(x);
+    const [eb, h2] = modeHead(x);
+    const rows = [
+      ['What it is', x.what, 'A shared working layer for people and agents: records, tasks, Flows, documents, sites and a Gate.'],
+      ['Where it runs', x.host, 'On a server you own.'],
+      ['Connecting to the other', x.api === false ? 'See the vendor’s developer documentation.' : x.apiNote, 'A Connection in the Vault and a Flow web step or custom module. Next (0.5.2): a packaged Integration.'],
+      ['Parts of the job in Vyre', 'Set by the product.', list(nativeTitles(x)) + '.'],
+      ['Outward actions', 'Set by how the product is configured.', 'Held at the Gate until a person approves the exact words.'],
+    ];
+    const conn = [...(g.page ? [[`/compare/${g.page}/`, `${g.name}: the kind of tool, side by side`]] : []), ['/architecture/', 'The architecture: the door, the kernel and the Gate'], ...[...new Set(x.use.map(([k]) => k))].map((k) => [NATIVE[k][1].toUpperCase(), `${NATIVE[k][0]}, in the repository`])];
+    return `
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/compare/">Compare</a> / ${esc(x.name)}</p>
+    ${eyebrow(`${g.name}.`)}
+    <h1 class="display">Vyre and <b>${esc(x.name)}.</b></h1>
+    <p class="lead">${esc(x.name)}: ${esc(x.what.charAt(0).toLowerCase() + x.what.slice(1))} ${x.mode === 'with' ? 'Vyre works with it and does not replace it.' : x.mode === 'whole' ? 'Vyre can do most of this job natively, and it also works with it.' : 'Vyre works with it today and does some of its parts natively.'}</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="who-h">
+  <div class="wrap">
+    <h2 id="who-h" class="lbl" style="margin-bottom:20px">Who it is for, and what it does well</h2>
+    <div class="cmp-two rv">
+      <div class="cmp-col"><h3>${esc(x.name)}</h3><p>${esc(x.who)}</p><ul class="cmp-mini">${x.strong.map(([b, t]) => `<li><b>${esc(b)}.</b> ${esc(t)}</li>`).join('')}</ul></div>
+      <div class="cmp-col cmp-col-v"><h3>Vyre</h3><p>The agentic command center for AI-native teams: people and agents work in one Space on a server you own.</p><p>Industry-neutral. You shape the records, and Flows, Playbooks and a Gate run the work.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="with-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('Works with Vyre.')}
+      <h2 id="with-h" class="h2">How Vyre connects to ${esc(x.name)} <b>today.</b></h2>
+    </div>
+    <div class="cmp-two rv">
+      <div class="cmp-col cmp-col-v"><h3>Today</h3><p>${x.api === false ? NOAPI : esc(x.apiNote) + ' ' + TODAY}</p><p>Where the vendor publishes an MCP server, a person can add it for agents to use.</p></div>
+      <div class="cmp-col"><h3>Next (0.5.2)</h3><p>${NEXT.replace('Next (0.5.2): a', 'A')}</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, ${esc(x.name)} included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="repl-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow(eb)}
+      <h2 id="repl-h" class="h2">${h2}</h2>
+      <p class="lead">${esc(modeIntro(x))}</p>
+    </div>
+    <div class="ar-ideas rv">${x.use.map(([k, t], i) => `<div class="piece"><span class="num">0${i + 1}</span><h3>${NATIVE[k][0]}</h3><p>${esc(t)}</p></div>`).join('')}</div>
+    <div class="cmp-prose rv"><p>${esc(x.keep)}</p></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="why-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('Why that helps.')}
+      <h2 id="why-h" class="h2">What a team <b>gets from it.</b></h2>
+      <p class="lead">${esc(x.whyLine)}</p>
+    </div>
+    <ul class="cmp-good rv">${x.why.map((k) => `<li><b>${WHY[k][0]}</b><span>${WHY[k][1]}</span></li>`).join('')}</ul>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="table-h">
+  <div class="wrap">
+    <h2 id="table-h" class="lbl" style="margin-bottom:20px">Side by side</h2>
+    <table class="cmp-table rv">
+        <caption class="cmp-cap">${esc(x.name)} compared with Vyre, one row for each question a buyer asks</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">${esc(x.name)}</th><th scope="col">Vyre</th></tr></thead>
+        <tbody>${rows.map(([q, a, b]) => `<tr><th scope="row">${q}</th><td data-label="${esc(x.name)}">${esc(a)}</td><td data-label="Vyre">${esc(b)}</td></tr>`).join('')}</tbody>
+    </table>
+    <p class="cmp-note">The left column comes from the product’s public documentation or describes the kind of product. Where it differs, the vendor’s own documentation is the one to trust.</p>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="faq-h">
+  <div class="wrap">
+    <h2 id="faq-h" class="lbl" style="margin-bottom:20px">Questions people ask</h2>
+    ${faqHtml(faq)}
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="conn-h">
+  <div class="wrap">
+    <h2 id="conn-h" class="lbl" style="margin-bottom:20px">Connects to</h2>
+    ${connects(conn)}
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/compare/">All comparisons</a></div></div></section>`;
+  };
+
+  const OG = { automation: 'compare-automation', work: 'compare-work', crm: 'compare-practice', practice: 'compare-practice', ai: 'compare-assistants' };
+  for (const x of PRODUCTS) {
+    const path = `/compare/${x.key}/`;
+    const title = `Vyre and ${x.name}: works with it, and where Vyre replaces parts of it`;
+    const desc = `How Vyre works with ${x.name} today, which parts of the job Vyre does natively, and why that helps a team with fewer tools.`;
+    const faq = productFaq(x);
+    page({
+      slug: OG[x.group] || 'compare', path, title, desc, ogTitle: `Vyre and ${x.name}.`, ogSub: x.whyLine, body: productBody(x),
+      ld: [crumbs([['Vyre', `${SITE}/`], ['Compare', `${SITE}/compare/`], [x.name, SITE + path]]), faqLd(faq)],
+    });
+    out.sitemap.push([path, '0.6']);
+    out.llms.push(`- [${title}](${SITE}${path}): ${desc}`);
+    out.full.push(`### Vyre and ${x.name} (${SITE}${path})
+- What ${x.name} is: ${x.what} ${x.who}
+- What it does well: ${x.strong.map(([b, t]) => `${b}. ${t}`).join(' ')}
+- Works with Vyre today: ${x.api === false ? NOAPI : x.apiNote + ' ' + TODAY} ${NEXT}
+- Where Vyre ${x.mode === 'with' ? 'fits' : 'replaces it'}: ${x.use.map(([k, t]) => `${NATIVE[k][0]}. ${t}`).join(' ')} ${x.keep}
+- Why that helps: ${x.why.map((k) => `${WHY[k][0]}. ${WHY[k][1]}`).join(' ')}`);
+  }
+
+  const cards = PAGES.map((c, i) => `<div class="piece"><span class="num">0${i + 1}</span><h3>${esc(c.name)}</h3><p>${c.ogSub}</p><p><a href="/compare/${c.key}/">Read the comparison</a></p></div>`).join('');
   const indexBody = `
 <section class="phead">
   <div class="wrap">
@@ -357,8 +509,16 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
 
 <section class="sec" style="padding-top:56px" aria-labelledby="four-h">
   <div class="wrap">
-    <h2 id="four-h" class="lbl" style="margin-bottom:20px">Four comparisons</h2>
+    <h2 id="four-h" class="lbl" style="margin-bottom:20px">By kind of tool</h2>
     <div class="cmp-two rv">${cards}</div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="prod-h">
+  <div class="wrap">
+    <h2 id="prod-h" class="lbl" style="margin-bottom:8px">${PRODUCTS.length} products, one page each</h2>
+    <p class="lead" style="margin:0 0 28px">Each page answers three questions: how Vyre works with the product, where Vyre does part of its job natively, and why that helps a team.</p>
+    ${GROUPS.map((g) => `<p class="cmp-gh">${esc(g.name)}</p><div class="cmp-grid rv">${PRODUCTS.filter((x) => x.group === g.key).map(productLink).join('')}</div>`).join('')}
   </div>
 </section>
 
@@ -390,7 +550,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
 <section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/architecture/">Read the architecture</a></div></div></section>`;
   page({
     slug: 'compare', path: '/compare/',
-    title: 'Compare Vyre with automation, work management and AI tools',
+    title: 'Compare Vyre with Zapier, Notion, HubSpot, Clio, DocuSign and more',
     desc: 'How Vyre fits next to automation tools, work management tools, AI assistants and practice software: what each does well, where Vyre differs and how to use them together.',
     ogTitle: 'Vyre next to the tools you have.', ogSub: 'Automation, planning, AI assistants and practice software, and how they fit with Vyre.',
     body: indexBody, ld: [crumbs([['Vyre', `${SITE}/`], ['Compare', `${SITE}/compare/`]])],
