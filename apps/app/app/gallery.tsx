@@ -30,6 +30,9 @@ import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
+import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../screens/records-setup/SetupDemos";
+import { DRAFTS } from "../screens/records-setup/data";
+import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -78,6 +81,24 @@ function Sample({ name }: { name: string }) {
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
   }
+  if (name === "grouped-list") return <GroupedTasksDemo />;
+  if (name === "record-form") return <RecordFormDemo />;
+  if (name === "record-form-errors") return <RecordFormDemo tried values={{ title: "", kind: "Real estate" }} />;
+  if (name === "record-page") return <RecordPageDemo />;
+  if (name === "import-1") return <ImportDemo start={0} />;
+  if (name === "import-2") return <ImportDemo start={1} />;
+  if (name === "import-3") return <ImportDemo start={2} />;
+  if (name === "import-4") return <ImportDemo start={3} />;
+  if (name === "setup-model") return <ModelMapDemo />;
+  if (name === "setup-starter") return <StarterDemo />;
+  if (name === "setup-type") return <TypeSetupDemo />;
+  if (name === "setup-type-editing") return <TypeSetupDemo open="kind" />;
+  if (name === "setup-field-new") return <FieldPaneDemo draft={DRAFTS.blank} />;
+  if (name === "setup-field-choice") return <FieldPaneDemo draft={DRAFTS.kind} />;
+  if (name === "setup-field-link") return <FieldPaneDemo draft={DRAFTS.client} />;
+  if (name === "setup-field-access") return <FieldPaneDemo draft={DRAFTS.value} rules={{ visible: null, required: { field: "kind", op: "is_not", value: "Other" } }} />;
+  if (name === "setup-field-seal") return <FieldPaneDemo draft={DRAFTS.sealed} />;
+  if (name === "setup-field-errors") return <FieldPaneDemo draft={DRAFTS.broken} tried />;
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
     const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });

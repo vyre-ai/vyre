@@ -181,6 +181,17 @@ export function createStages(o) {
         continue;
       }
       made.set(t.title, task.id);
+      // Followers and the approver are not on the doer's task: each gets an informational note task of their own (doer = that person, no access to the main task), carrying their own box. One nobody can be is
+      // said and never stops the stage. (Tags in a box stay as written until the per-reader resolver lands.)
+      const noteTask = async (/** @type {string} */ ref, /** @type {string} */ title, /** @type {string} */ box, /** @type {string} */ lead, /** @type {string} */ idem) => {
+        const a = await actorFor(ref, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
+        if (!a) { emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${ref} was not told about "${t.title}": nobody holds it` }); return; }
+        const text = [box ? renderBrief(box, data) : "", `${lead}${t.title}`].filter(Boolean).join("\n\n");
+        try { await o.kernel.ask.request(chain, { title, doer: a, output: { kind: "note" }, record: e.urn, stage: e.stage, note: text.slice(0, 400), form: { brief: text } }, { idem }); }
+        catch (err) { emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${ref} was not told about "${t.title}": ${err instanceof Error ? err.message : String(err)}` }); }
+      };
+      for (const [fi, f] of (t.followers || []).entries()) await noteTask(f, `Following: ${t.title}`, t.notes && t.notes.followers, "Task: ", `stage:${key}:${t.title}:follow${fi}`);
+      if (t.checker && t.notes && t.notes.approver && /^(person|role|teammate):/.test(String(t.checker))) await noteTask(String(t.checker), `To check: ${t.title}`, t.notes.approver, "Task to check: ", `stage:${key}:${t.title}:check`);
       ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
       taskEntry.set(task.id, key);
     }
@@ -241,6 +252,8 @@ export function createStages(o) {
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
     if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data[fieldOf(cur.data)], why: "the stage is not in the set this record follows now" }); await closeGate(ent, { note: "the stage is not in the set this record follows now" }); return; }
+    // A stage held for a person's sign-off, or in a project whose stages are not run in order: the tasks are done, and someone moves it on (advance); the module does not.
+    if (next && stages[at].hold) { ent.waitingOn = stages[at].hold === "sign_off" ? "sign-off" : "a person"; emit("stage.waiting", { record: ent.urn, stage: ent.stage, why: stages[at].hold === "sign_off" ? `the tasks of ${ent.stage} are done and it waits for ${ent.owner || "its sign-off"} to sign it off` : `the tasks of ${ent.stage} are done; a person moves this project on` }); return; }
     // The next stage has an entry condition the record does not meet yet: it stays where it is, and the gateway would refuse the move anyway.
     if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); ent.waitingOn = "condition"; await mark(ent, "condition", { status: "waiting", output: { say: `${next.name} cannot be entered yet: ${next.enter_if}` } }, { attention: { kind: "stale", message: `${next.name} cannot be entered yet: ${next.enter_if}` } }); return; }
     ent.waitingOn = undefined;
@@ -318,7 +331,11 @@ export function createStages(o) {
 
   /** Who may move a record on early: the stage's owner (a person, or anyone holding the role), or an admin. @param {any} ent @param {any} who */
   async function mayAdvance(ent, who) {
-    if (ent.owner) {
+    if (ent.owner === "lead") {
+      // the stage is signed off by whoever holds the Lead seat on this project (else its owner), read now
+      const a = await actorFor("lead", (await o.catalog()).space, { record: ent.urn, type: ent.type, stage: ent.stage });
+      if (a && a.kind === "person" && a.id === who.id) return true;
+    } else if (ent.owner) {
       const [kind, name] = String(ent.owner).split(":");
       if (kind === "person" && name === who.id) return true;
       if (kind === "role" && o.ports && o.ports.roles) { const holders = (await o.ports.roles((await o.catalog()).space, name)) || []; if (holders.some((/** @type {any} */ a) => a.id === who.id)) return true; }
