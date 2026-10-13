@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Access, accessMigration } from "../../lib/access.js";
+import { agentDir, agentPart } from "../../lib/files/layout.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
@@ -47,8 +48,8 @@ export function contextBrief(c) {
 export function register(ctx, h) {
   const { db } = h;
   const shared = new Access(db, "agents_access");
-  const home = (/** @type {any} */ a) => path.join(h.root, "agents", String(a.uid));
-  const ctxDir = (/** @type {any} */ a) => path.join(home(a), "context");
+  const home = (/** @type {any} */ a) => path.join(h.root, agentDir(String(a.uid)));
+  const ctxDir = (/** @type {any} */ a) => path.join(h.root, agentPart(String(a.uid), "context"));
   const only = (/** @type {any} */ meta, what) => {
     const { caller } = meta;
     h.guard(caller, what);
@@ -69,9 +70,10 @@ export function register(ctx, h) {
   const useOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's use"); if ((await levelOf(meta, a)) === "none") throw h.notYours("sees where it is used (Can use)"); };
   const shareOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "share another agent"); if (!(await h.mayChange(meta, a))) throw h.notYours("shares it"); };
   // The folder layout (lib/files/layout.js, files-layout): agents/<id>/ with instructions/, context/, memory/ and work/.
-  const claudeFile = (/** @type {any} */ a) => path.join(home(a), "instructions", "CLAUDE.md");
-  const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(home(a), part), { recursive: true, mode: 0o700 }); };
-  const readClaude = (/** @type {any} */ a) => { try { return fs.readFileSync(claudeFile(a), "utf8"); } catch { return ""; } };
+  const claudeFile = (/** @type {any} */ a) => path.join(h.root, agentPart(String(a.uid), "instructions"), "CLAUDE.md");
+  const oldClaudeFile = (/** @type {any} */ a) => path.join(home(a), "CLAUDE.md");   // where an earlier build kept it: still read, never written
+  const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(h.root, agentPart(String(a.uid), part)), { recursive: true, mode: 0o700 }); };
+  const readClaude = (/** @type {any} */ a) => { for (const f of [claudeFile(a), oldClaudeFile(a)]) { try { return fs.readFileSync(f, "utf8"); } catch { /* the next place */ } } return ""; };
   const listFiles = (/** @type {any} */ a) => {
     try { return fs.readdirSync(ctxDir(a), { withFileTypes: true }).filter(e => e.isFile()).map(e => { const s = fs.statSync(path.join(ctxDir(a), e.name)); return { name: e.name, size: s.size, at: Math.round(s.mtimeMs) }; }).sort((x, y) => x.name.localeCompare(y.name)); }
     catch { return []; }
