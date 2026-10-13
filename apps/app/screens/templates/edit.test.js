@@ -145,3 +145,26 @@ test("an assistant's task can wait for a person's yes, written in a line; a pers
   const person = setTask(b, 0, 0, { doer: "role:attorney" });
   assert.equal(person.stages[0].tasks[0].needs_yes, undefined, "moving the task to a person drops the approval line");
 });
+
+test("a stage's tasks sit in named groups: a task is put in one, a rename or a delete keeps the tasks, and a stage that loses its groups keeps its tasks", async () => {
+  const { setStageGroups, groupsOf } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, {});
+  b = setStageGroups(b, 0, { groups: [{ name: "Documents" }, { name: "Client calls" }], items: b.stages[0].tasks });
+  assert.deepEqual(groupsOf(b.stages[0]), [{ name: "Documents" }, { name: "Client calls" }]);
+  b = setTask(b, 0, 0, { group: "Documents" });
+  assert.equal(b.stages[0].tasks[0].group, "Documents");
+  b = setStageGroups(b, 0, { groups: [{ name: "Papers" }, { name: "Client calls" }], items: b.stages[0].tasks.map((t) => (t.group === "Documents" ? { ...t, group: "Papers" } : t)) });
+  assert.equal(b.stages[0].tasks[0].group, "Papers");
+  b = setStageGroups(b, 0, { groups: [{ name: "Client calls" }], items: b.stages[0].tasks.map(({ group, ...t }) => t) });
+  assert.equal(b.stages[0].tasks[0].group, undefined);
+  assert.equal(b.stages[0].tasks.length, 1, "deleting a group keeps its tasks");
+  assert.equal(setStageGroups(b, 0, { groups: [], items: b.stages[0].tasks }).stages[0].groups, undefined, "no groups: the field is gone");
+});
+
+test("removing a stage's last group of tasks never leaves a task naming a group its stage no longer has, and a renamed task group fails the save in words", async () => {
+  const { setStageGroups } = await import("./edit.ts");
+  let b = setStageGroups(setTask(base(), 0, 0, {}), 0, { groups: [{ name: "Documents" }], items: [{ ...base().stages[0].tasks[0], group: "Documents" }] });
+  b = setStageGroups(b, 0, { groups: [], items: b.stages[0].tasks });
+  assert.equal(b.stages[0].tasks[0].group, undefined);
+  assert.deepEqual(missing(b), []);
+});

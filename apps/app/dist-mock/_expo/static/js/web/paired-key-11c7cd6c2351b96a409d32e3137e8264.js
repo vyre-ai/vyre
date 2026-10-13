@@ -1,0 +1,1 @@
+__d(function(g,r,i,a,_m,e,d){"use strict";Object.defineProperty(e,'__esModule',{value:!0}),e.pairedKey=async function(){const t=await(0,n.personKey)();return{sign:async n=>new Uint8Array(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},t.privateKey,n)),keep:(t,o)=>(0,n.keepToken)(location.origin,o)}};var n=r(d[0])},2212,[1253]);
