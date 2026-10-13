@@ -425,7 +425,7 @@ export class Curator {
       if (rows.length < PAGE) break;
       const l = rows[rows.length - 1];
       at = [String(l.session), Number(l.seq), String(l.node)];
-      await yieldNow();
+      await yieldAndTidy();
     }
     /** @type {Map<string, { session: string, seq: number, rel: string, a: string, b: string, ts: number }[]>} */
     const cuesBy = new Map();
@@ -480,7 +480,7 @@ export class Curator {
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
       results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
         said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
-      await yieldNow();
+      await yieldAndTidy();
     }
     results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
       said: facts.filter(c => c.scope === "*") }, common));
@@ -562,7 +562,7 @@ export class Curator {
       cues.push(c);
     }
     cues.sort((x, y) => (x.session < y.session ? -1 : x.session > y.session ? 1 : x.seq - y.seq));
-    await yieldNow();
+    await yieldAndTidy();
 
     // Taught facts: their things are nodes whatever the thresholds say, since a module asserted
     // them, and each claim remembers which lessons made it.
@@ -805,7 +805,7 @@ export class Curator {
       else if (n >= T.nameSessions && a.mid) kept.add(a.id);
     }
 
-    await yieldNow();
+    await yieldAndTidy();
     // ---- edges
     /** @type {Want[]} */
     const want = [];
@@ -1151,7 +1151,7 @@ export class Curator {
         for (const r of rows) this.rowSession.set(Number(r.rowid), String(r.session));
         if (rows.length < PAGE) break;
         after = Number(rows[rows.length - 1].rowid);
-        await yieldNow();
+        await yieldAndTidy();
       }
     }
     const sessionOf = rowid => {
@@ -1180,7 +1180,7 @@ export class Curator {
       if (!all) {
         try { all = [...new Set(q.all(`"${form.replace(/"/g, "")}"`).map(r => sessionOf(Number(r.rowid))).filter(Boolean))]; } catch { all = []; }
         saidBy.set(form, all);
-        if (++asked % 50 === 0) await yieldNow();
+        if (++asked % 50 === 0) await yieldAndTidy();
       }
       const said = all.filter(inScope);
       if (!said.length) continue;
@@ -1219,7 +1219,7 @@ export class Curator {
     let changed = 0;
     for (const r of results) {
       changed += this.tx(() => this.writeScope(r, now));
-      await yieldNow();
+      await yieldAndTidy();
     }
     // Rooms that are gone keep nothing.
     changed += this.tx(() => {
