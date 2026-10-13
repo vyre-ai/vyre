@@ -109,7 +109,7 @@ export function registerLinked(ctx, o) {
   t("files.linked.status", "A linked folder and how your index of it stands: { space?, id }.", obj({ space: str, id: str }, ["id"]), {},
     async (i, d, who) => { const r = linkOf(i, d); return { link: view(r), sync: index().status(r.id, who) }; });
 
-  t("files.linked.tree", "Every file in your own index of each linked folder, for the # picker: { space?, limit? } -> { folders: [{ id, name, files: [{ path }] }] }. A folder you have not synced (or whose last sync failed) is synced first, as you; one the source refuses comes back empty.",
+  t("files.linked.tree", "Every file in your own index of each linked folder, for the # picker: { space?, limit? }. An unsynced folder is synced first, as you.",
     obj({ space: str, limit: { type: "integer" } }), {}, async (i, d, who) => {
       const rows = db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space);
       const folders = [];
