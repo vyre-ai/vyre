@@ -1,6 +1,6 @@
 import { kindOf, type AvatarRef } from "../components/Avatar";
-import { aid } from "../../src/store-core/kernel-view.js";
-import { templateNoun } from "./template-stage.js";
+import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
+import { templateNoun, templateStage } from "./template-stage.js";
 import { recordTitle, spaceName, who, type World } from "./model";
 
 /** An actor as a mark reference. */
@@ -27,4 +27,14 @@ export function projectHeader(world: World, def: any, row: any): { title: string
     context: [(def?.name === "project" ? templateNoun(row.data) : null) || def?.label, spaceName(world, row.labels?.source_spaces?.[0])].filter(Boolean).join(" · "),
     faces: [{ kind: "project", id: row.id, name: title, seed: row.data?.avatar_seed }],
   };
+}
+
+/** Where a project is in its stages ("Stage 2 of 5") and who is on it (its actor fields: the owner), from the record alone, the same reading the Projects list uses. */
+export function projectStrip(world: World, def: any, row: any): { stage: { name: string; at: number; of: number } | null; people: string[] } {
+  const pinned = templateStage(row.data);
+  const sf = def ? stageFieldOf(def) : null;
+  const stages: string[] = pinned ? pinned.stages : sf ? stageNames(def, sf) : [];
+  const at = pinned ? pinned.at : sf ? stages.indexOf(String(row.data?.[sf.name] ?? "")) : -1;
+  const people = (def?.fields ?? []).filter((x: any) => x.kind === "actor").map((f: any) => who(world, aid(row.data?.[f.name]?.actor))?.name).filter(Boolean) as string[];
+  return { stage: at >= 0 && stages.length ? { name: stages[at], at: at + 1, of: stages.length } : null, people: [...new Set(people)] };
 }

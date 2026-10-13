@@ -11,7 +11,7 @@ test("the role is the first line of the instructions, without markup, short", ()
   assert.equal(roleLine("# Intake agent\n\nWelcomes new clients."), "Intake agent");
   assert.equal(roleLine("\n\n  **Drafts** welcome emails for the attorney.  \nMore."), "Drafts welcome emails for the attorney.");
   assert.equal(roleLine("x".repeat(200)).length, 90);
-  assert.equal(roleLine(null, "Your assistant"), "Your assistant");
+  assert.equal(roleLine(null, "Your agent"), "Your agent");
   assert.equal(roleLine("   ", "Agent"), "Agent");
 });
 

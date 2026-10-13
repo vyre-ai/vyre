@@ -22,7 +22,7 @@ export function RecordNewScreen() {
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="New" onBack={back} /><LoadingState rows={4} /></View>;
   const def = world?.types.find((t: any) => t.name === type);
-  if (!def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go back", onPress: back }} />;
+  if (!def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go back", onPress: back }} />;
   const fields = def.fields.map((f: any) => ({ ...f, sealed: f.kind === "sealed" || !!f.seal }));
   const errors = tried ? formErrors(fields, values) : {};
   const noun = def.label.toLowerCase();

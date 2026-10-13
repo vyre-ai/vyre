@@ -56,6 +56,8 @@ export type BlockCtx = {
   wide: boolean;
   onOpenTerminal?: (command: string) => void;
   onOpenInDrive?: (path: string) => void;
+  /** A file a model made or changed: open it in the file viewer, here. */
+  onOpenFile?: (path: string) => void;
   onOpenRecord?: (urn: string) => void;
   onOpenFlow?: () => void;
   /** After a turn that used several of Vyre tools: ask the assistant to turn what it did into a Flow (flows.from-chat). */
@@ -167,8 +169,8 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
-            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Ask about this</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (
@@ -239,8 +241,10 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
         <Icon name="file" />
         <Text mono size="caption" strong numberOfLines={1} style={S.s9}>{file.path}</Text>
       </Pressable>
+      <Text size="caption" tone="label">{file.op === "create" ? "created" : file.op === "delete" ? "deleted" : "edited"}</Text>
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
+      {ctx.onOpenFile && file.op !== "delete" ? <Button size="sm" kind="ghost" label="Open" onPress={() => ctx.onOpenFile?.(file.path)} /> : null}
       {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
     </View>
   );
