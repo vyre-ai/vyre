@@ -823,13 +823,13 @@ test("who reads a task: only the chain's PERSON counts, never a later hop; an as
 
 
 // ---- an agent as checker (rc1-d, 13 Oct) ----
-const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "note" }, record: `vyre://${SPACE}/matter/m1`, ...over });
+const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, record: `vyre://${SPACE}/matter/m1`, ...over });
 
 test("agent checker: it passes the internal check under its own chain, and the card says an agent approved", async () => {
   const r = rig();
   const t = await r.tasks.request(owner(), internal());
   await r.tasks.start(asIntake(), t.id);
-  const w = await r.tasks.complete(asIntake(), t.id, { note: "done" });
+  const w = await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
   assert.equal(w.state, "needs_check");
   const done = await r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" });
   assert.equal(done.state, "done");
@@ -843,9 +843,9 @@ test("agent checker: it is never its own doer, nor a send's checker, nor a stage
   await assert.rejects(() => r.tasks.request(owner(), internal({ stage: "Drafting" })), { code: "not_allowed" }, "not a stage hold");
   const t = await r.tasks.request(owner(), internal());
   await r.tasks.start(asIntake(), t.id);
-  await r.tasks.complete(asIntake(), t.id, { note: "done" });
-  await assert.rejects(() => r.tasks.decide(agentChain("rogue"), t.id, { outcome: "approved" }), { code: "not_allowed" }, "only the named agent");
-  await assert.rejects(() => r.tasks.decide(asIntake(), t.id, { outcome: "approved" }), { code: "not_allowed" }, "the doer cannot check itself");
+  await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
+  await assert.rejects(() => r.tasks.decide(agentChain("rogue"), t.id, { outcome: "approved" }), { code: "chain_not_person" }, "only the named agent");
+  await assert.rejects(() => r.tasks.decide(asIntake(), t.id, { outcome: "approved" }), { code: "chain_not_person" }, "the doer cannot check itself");
   const rej = await r.tasks.decide(agentChain("research"), t.id, { outcome: "rejected", reason: "missing a section" });
   assert.equal(rej.state, "ready");
   const mine = await r.tasks.request(owner(), { title: "mine", doer: actor("person", ALICE), checker: actor("person", BOB), output: { kind: "decision" } });

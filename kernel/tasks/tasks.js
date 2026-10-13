@@ -300,10 +300,12 @@ export function createTasks(cfg) {
    */
   const agentDecide = async (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) => {
     const agent = acting(chain);
+    const t0 = get_(id);
+    // Only the agent a task names as its checker may decide it; for every other agent this stays a person's act.
+    if (!t0.checker || t0.checker.kind !== "agent" || !same(t0.checker, agent)) throw new KernelError("chain_not_person", "only a person on their own can decide this task");
     const d = await gate(chain, "tasks.decide", urnOf(cfg.space, id));
     const t = get_(id);
     if (t.state !== "needs_check") throw new KernelError("bad_state", "that task is not waiting for a check");
-    if (!t.checker || t.checker.kind !== "agent" || !same(t.checker, agent)) throw new KernelError("not_allowed", "you are not this task's checker");
     if (same(agent, t.doer) || chain.hops.some((/** @type {any} */ h) => same(h.actor, t.doer))) throw new KernelError("not_allowed", "an agent cannot check its own work");
     if (outward(t) || t.payload || t.stage) throw new KernelError("not_allowed", "an agent's approval is for the internal check only: a person says yes to anything that leaves or holds a stage");
     if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(t)))) throw new KernelError("not_found", "no such task");
