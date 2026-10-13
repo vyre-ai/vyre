@@ -1,4 +1,5 @@
 import { View } from "react-native";
+import { openEngineer } from "../engineer/openEngineer";
 import { useRouter } from "expo-router";
 import { Button, Menu, Card, Divider, EmptyState, GroupedList, IconTile, Row, Switch, Text, allowsMock, flowSentence } from "@vyre/ui";
 import { RealFlows } from "./RealFlows";
@@ -36,7 +37,7 @@ function SampleFlowsScreen() {
   return (
     <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps: make a record, start a project, hand work to an agent." scope>
       <View className="flex-row">
-        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => router.push("/u/engineer" as never) }]} />
+        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => openEngineer(router, { source: "flow" }) }]} />
       </View>
       {!items.length ? <Card><EmptyState title="No Flows in Mine" body="Flows live in a space. Make one, ask @Engineer, or install a Kit." /></Card> : (
         <GroupedList groups={groups} items={items} itemNoun="Flows" addLabel="Add a group"

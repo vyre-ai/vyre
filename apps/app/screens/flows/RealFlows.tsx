@@ -1,5 +1,6 @@
 // The Flows list from the real vyred (flows.list, with each Flow's trigger line from flows.graph). The switch pauses and resumes a Flow (a person's own call).
 import { useEffect, useState } from "react";
+import { openEngineer } from "../engineer/openEngineer";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Menu, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
@@ -42,7 +43,7 @@ export function RealFlows() {
         })}
       </Card>
       <View className="flex-row pt-s4">
-        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => router.push("/u/engineer" as never) }]} />
+        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => openEngineer(router, { source: "flow" }) }]} />
       </View>
     </Frame>
   );

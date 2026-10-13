@@ -12,6 +12,7 @@ import { ChatsList } from "../chats/ChatsList";
 import { chatsFrom, chatsOrdered, sampleChats, type ChatRow } from "../chats/chats-model.js";
 import { useChatMenu } from "../chats/useChatMenu";
 import { playbookPath } from "../templates/board";
+import { dayOf } from "../../src/time/show.js";
 
 /** A project's chats (work.chat.list for the project, by short name or record id): the same rows and the same row menu as the Chat list; the ones the person is in open, the others only show that they exist. */
 export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; name?: string }) {
@@ -20,7 +21,13 @@ export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; 
   const [n, setN] = useState(0);
   useEffect(() => {
     // The sample world has no box: its chats are the sample ones filed under this project's name .
-    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const mine = all.filter((c) => c.project === name); setRows(mine); return; }
+    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const now = Date.now();
+      const estate: ChatRow[] = /estate/i.test(name ?? "") ? [
+        { id: "demo-estate-1", title: "Draft the trust funding letter", project: name ?? "", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 40 * 60_000, line: "Draft ready: the assets to move are listed", asks: 0, unread: 0, open: true },
+        { id: "demo-estate-2", title: "Questions for the Does", project: name ?? "", people: ["alex"], agents: ["juno"], models: [], providers: ["claude"], status: "idle", last: now - 5 * 3_600_000, line: "Four questions for Tuesday's call", asks: 0, unread: 0, open: true },
+        { id: "demo-estate-3", title: "Pour-over will checklist", project: name ?? "", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 26 * 3_600_000, line: "Witness and notary steps", asks: 0, unread: 0, open: true },
+      ] : [];
+      setRows([...estate, ...all.filter((c) => c.project === name)]); return; }
     void callT("work.chat.list", { project: refId, limit: 50 }).then((r) => setRows(r.error ? [] : chatsOrdered(chatsFrom(r.data))));
   }, [refId, n, name]);
   const { menu, sheets } = useChatMenu(rows ?? [], () => setN((x) => x + 1));
@@ -62,7 +69,7 @@ function sourceOf(f: Fact): { line: string; href: string | null } {
   if (s.startsWith("vyre://") || s.includes("/files/")) return { line: "From a file", href: "/u/files" };
   return { line: s ? `From ${s}` : "Added by hand", href: null };
 }
-const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : new Date(n).toLocaleDateString(); };
+const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : dayOf(n); };
 
 /** What this project has learned (memory.space.recall for the project): each item says what was learned, where it came from and when, with Pin, Edit and Forget, and an "Add a memory" field (memory.space.file, memory.space.retire, memory.pin). */
 export function MemoryPane({ id }: { id: string }) {

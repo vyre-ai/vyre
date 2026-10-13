@@ -2,7 +2,7 @@
 title: Chat panel
 summary: The one panel for everything about a chat, a right-side panel on a wide screen and a sheet on a phone, replacing the two "In this chat" sheets.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 

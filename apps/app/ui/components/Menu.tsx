@@ -17,7 +17,7 @@ export function Menu({ trigger, items, align }: { trigger: React.ReactNode; item
       {items.map((i) => (
         <P.Item key={i.label} onPress={i.onPress} style={{ minHeight: px(map, "--control-sm"), flexDirection: "row", alignItems: "center", gap: px(map, "--s-3"), borderRadius: px(map, "--r-row"), paddingHorizontal: px(map, "--s-3") }}>
           <Text tone={i.danger ? "err" : "default"} className="flex-1">{i.label}</Text>
-          {i.selected ? <Icon name="check" size={16} tone="text-2" /> : null}
+          {i.selected ? <Icon name="check" size={16} tone="text" /> : null}
         </P.Item>
       ))}
     </P.Content>

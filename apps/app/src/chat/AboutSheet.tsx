@@ -61,7 +61,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
               key={p.id}
               lead={<Face name={p.name} family={fam(p.family)} size={32} id={p.id} />}
               title={p.name}
-              sub={p.id === viewer ? "You" : p.family === "assistant" ? `Assistant${p.role ? `, ${p.role}` : ""}` : p.role ?? "Person"}
+              sub={p.id === viewer ? "You" : p.family === "assistant" ? `Agent${p.role ? `, ${p.role}` : ""}` : p.role ?? "Person"}
               onPress={onOpenParticipant ? () => onOpenParticipant(p.id) : undefined}
               accessibilityLabel={`${p.name}, open card`}
             />
@@ -83,7 +83,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
           {info.record ? <Row title={info.record.title} sub={`${info.record.type}${info.space ? " in " + info.space : ""}`} /> : <Text tone="muted">Not attached to a record. Type # and a record name in a message to attach one.</Text>}
         </Section>
 
-        <Section label="What assistants can see">
+        <Section label="What agents can see">
           <Text tone="muted">This chat and the records you tag, with the grants of whoever asked.</Text>
           <View style={{ flexDirection: "row", paddingTop: 4 }}>
             <Chip tone="sealed" icon="shield">{info.sealed > 0 ? `${info.sealed} sealed field${info.sealed === 1 ? "" : "s"}, never shown` : "No sealed fields here"}</Chip>

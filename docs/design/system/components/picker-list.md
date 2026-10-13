@@ -2,7 +2,7 @@
 title: Picker list
 summary: The one list under the composer for / commands, @ people and AIs, # records, the + menu and the Answering list, driven from the box by keyboard.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 

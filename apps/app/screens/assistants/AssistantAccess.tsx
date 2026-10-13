@@ -12,7 +12,7 @@ export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurn
   onSwitch: (id: string, on: boolean) => void; onTurnOffTool: () => void; onTurnOnTool: (name: string) => void;
 }) {
   return (
-    <Page title="What my assistant may do" sub={summary(s)} back="/u/settings">
+    <Page title="What my agent may do" sub={summary(s)} back="/u/settings">
       <Group title="Areas">
         <Card flush>
           {s.screens.map((a, i) => (
@@ -34,7 +34,7 @@ export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurn
         </Card>
       </Group>
       {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-      <Banner><Text>This only ever lets your assistant do less. It cannot change these settings, and when it is refused something it says what you turned off.</Text></Banner>
+      <Banner><Text>This only ever lets your agent do less. It cannot change these settings, and when it is refused something it says what you turned off.</Text></Banner>
     </Page>
   );
 }
@@ -52,11 +52,11 @@ export function AssistantAccessScreen() {
     catch (e) { setProblem(refusal((e as { code?: string }).code, e instanceof Error ? e.message : "")); }
     finally { setBusy(false); }
   };
-  if (!s) return <Page title="What my assistant may do" back="/u/settings"><Text tone="label">This server does not keep these settings yet.</Text></Page>;
+  if (!s) return <Page title="What my agent may do" back="/u/settings"><Text tone="label">This server does not keep these settings yet.</Text></Page>;
   return (
     <AccessView s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
       onSwitch={(id, on) => void run(switchCall(id, on))}
-      onTurnOffTool={() => { const c = toolCall(typed) as { problem?: string; tool?: string; input?: Record<string, unknown> }; if (c.problem || !c.tool) { setProblem(c.problem ?? ""); return; } setTyped(""); void run({ tool: c.tool, input: c.input ?? {} }, "Turned off for your assistant."); }}
+      onTurnOffTool={() => { const c = toolCall(typed) as { problem?: string; tool?: string; input?: Record<string, unknown> }; if (c.problem || !c.tool) { setProblem(c.problem ?? ""); return; } setTyped(""); void run({ tool: c.tool, input: c.input ?? {} }, "Turned off for your agent."); }}
       onTurnOnTool={(name) => void run({ tool: "assistant.access.restore", input: { tools: [name] } })} />
   );
 }

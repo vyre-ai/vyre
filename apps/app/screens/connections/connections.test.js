@@ -89,7 +89,7 @@ test("cancel, finish, disconnect, scope: tool names and inputs", { skip: !strip 
 test("who can use it: lines, choice to scope, scope to choice", { skip: !strip }, async () => {
   const { scopeLine, scopeOf, whoFrom } = await import("./model.ts");
   assert.equal(scopeLine(undefined), "Scope not recorded");
-  assert.equal(scopeLine(null), "Just you and the assistant");
+  assert.equal(scopeLine(null), "Just you and the agent");
   assert.equal(scopeLine({ projects: "*", agents: "*" }), "All projects, every agent");
   assert.equal(scopeLine({ projects: "*", agents: ["kit"] }), "All projects, kit");
   assert.equal(scopeLine({ projects: ["a", "b"], agents: "*" }), "a, b");
@@ -114,7 +114,7 @@ test("MCP servers: only named fields, a bad state is stopped, env refs with fiel
   assert.equal(authWords(t), "TRACKER_TOKEN from tracker.token, OTHER from other-item");
   assert.equal(authWords(d), "Bearer token, from docs-key");
   assert.equal(serverScopeLine(t), "juniper, every agent");
-  assert.equal(serverScopeLine(d), "Just you and the assistant");
+  assert.equal(serverScopeLine(d), "Just you and the agent");
   assert.equal(serverHow(t), "npx tracker-mcp");
   assert.equal(serverHow(d), "https://docs.example.com/mcp");
   assert.deepEqual(itemsOf(t), ["tracker", "other-item"]);
@@ -274,7 +274,7 @@ test("any app: the list is picked from the box's answer, and a new connection is
   assert.deepEqual(b.seen.at(-1)?.input, { id: "ghl" });
 });
 
-test("any app: an assistant's proposal is shown as the card the person is asked, and yes or no are one call each", { skip: !strip }, async () => {
+test("any app: an agent's proposal is shown as the card the person is asked, and yes or no are one call each", { skip: !strip }, async () => {
   const { pickProposals } = await import("./any-app.ts");
   const { connectionsSource } = await import("./source.ts");
   const raw = { proposals: [{ proposal: "prop_1", by: "mcp", why: "from their docs", form: { label: "x" }, card: { title: "Connect Acme?", lines: ["It can reach api.acme.example and nothing else."] } }, { proposal: "bad" }, { nope: 1 }] };

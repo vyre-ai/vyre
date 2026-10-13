@@ -749,6 +749,18 @@
    "module": "google",
    "reason": "read-only: names and states, never a value"
   },
+  "google.drive.read": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.drive.search": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.members.email": {
+   "module": "google",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before any list, set or clear"
+  },
   "google.mail.draft": {
    "module": "google",
    "reason": "a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
@@ -1056,10 +1068,6 @@
   "planner.update": {
    "module": "planner",
    "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
-  },
-  "mcpconn.guide": {
-   "module": "mcpconn",
-   "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
   },
   "pluginagent.ask": {
    "module": "pluginagent",
@@ -2557,6 +2565,62 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
   },
+  "vault.me.account.create": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.account.lock": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.account.reset": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.account.status": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.account.unlock": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.get": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.list": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.put": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.remove": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.store.get": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.store.list": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.store.put": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.store.remove": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.me.update": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
   "vault.account.export-secret-key": {
    "module": "vault",
    "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); a presence proof is required"
@@ -2568,6 +2632,10 @@
   "vault.account.reset": {
    "module": "vault",
    "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); the recovery secret and a presence proof are both required"
+  },
+  "mcpconn.guide": {
+   "module": "mcpconn",
+   "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
   }
  }
 }

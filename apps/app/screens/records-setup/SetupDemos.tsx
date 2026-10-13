@@ -22,7 +22,7 @@ export function FieldPaneDemo({ draft: initial, tried = false, rules: r0 = noRul
 export function ModelMapDemo() {
   return (
     <View className="gap-s3">
-      <SectionLabel first>Record types</SectionLabel>
+      <SectionLabel first>Objects</SectionLabel>
       <ModelMap types={MODEL} onOpen={() => {}} />
       <View className="flex-row"><Button kind="primary" icon="plus" label="Add a type" onPress={() => {}} /></View>
     </View>

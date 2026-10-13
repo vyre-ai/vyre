@@ -32,7 +32,7 @@ function SampleSiteScreen() {
         <Card>
           <View className="gap-s2">
             <Text size="caption" strong tone="label">Source</Text>
-            <View className="flex-row flex-wrap items-center gap-s2"><Chip icon={s.src[0] === "GitHub repo" ? "link" : s.src[0] === "Drive folder" ? "drive" : "chat"}>{s.src[0]}</Chip><Text strong>{s.src[1]}</Text><Text size="caption" tone="label">{s.src[2]}</Text></View>
+            <View className="flex-row flex-wrap items-center gap-s2"><Chip icon={s.src[0] === "GitHub repo" ? "link" : s.src[0] === "Files folder" ? "drive" : "chat"}>{s.src[0]}</Chip><Text strong>{s.src[1]}</Text><Text size="caption" tone="label">{s.src[2]}</Text></View>
           </View>
         </Card>
         <Sec title={`The pipeline for ${d.v} (${pre ? "preview" : "live"})`}>
