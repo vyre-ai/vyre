@@ -216,24 +216,40 @@ test("two calls at once after a store-away refusal run one define, not two", asy
   assert.equal(defines, 1, "one define for two callers");
 });
 
-test("a replayed define that never answers no longer holds the store from joining, and a define queued mid-replay is still applied", async () => {
-  const phases = /** @type {string[]} */ ([]), logs = /** @type {string[]} */ ([]);
-  const d = createDeferredStore({ reason: () => "starting", defineTimeoutMs: 50, log: (m) => logs.push(m), onProgress: (w) => phases.push(w) });
-  await d.define({ name: "first", note: "a plain type" });
+test("a define queued mid-replay is still applied, and the progress words count it", async () => {
+  const phases = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "starting", onProgress: (w) => phases.push(w) });
+  await d.define({ name: "first" });
   await d.define({ name: "second" });
   const applied = /** @type {string[]} */ ([]);
   /** @type {any} */ const real = createMemoryStore();
   real.define = async (/** @type {any} */ diff) => {
-    if (diff.name === "first") { await new Promise(() => {}); }
     applied.push(diff.name);
     if (diff.name === "second") d.define({ name: "queued mid-replay" }).catch(() => {});   // arrives while the replay runs: same queue
     return { applied: true, changes: [] };
   };
   await d.attach(real);   // the kernel is still booting, so a define made during the replay goes onto the same queue
-  assert.equal(d.attached(), true, "the store joined although the first define never answered");
-  assert.deepEqual(applied, ["second", "queued mid-replay"]);
+  assert.equal(d.attached(), true);
+  assert.deepEqual(applied, ["first", "second", "queued mid-replay"]);
   assert.deepEqual(phases, ["Applying definitions (1 of 2)", "Applying definitions (2 of 2)", "Applying definitions (3 of 3)"]);
-  assert.ok(logs.some((l) => /took more than/.test(l)));
+});
+
+test("a replayed define that never answers keeps the store unattached whatever it is, and the retry waits for it and plays the queue again", async () => {
+  const d = createDeferredStore({ reason: () => "starting", defineTimeoutMs: 50 });
+  await d.define({ name: "first", note: "carries a flag no keyword would catch", hidden: true });
+  await d.define({ name: "second" });
+  /** @type {any} */ let release; const hung = new Promise((r) => { release = r; });
+  const applied = /** @type {string[]} */ ([]);
+  /** @type {any} */ const real = createMemoryStore();
+  real.define = async (/** @type {any} */ diff) => { if (diff.name === "first" && !release.done) await hung; applied.push(diff.name); return { applied: true, changes: [] }; };
+  await assert.rejects(d.attach(real), /Applying definitions: retrying/);
+  assert.equal(d.attached(), false);
+  assert.deepEqual(applied, []);
+  await assert.rejects(d.attach(real), /still running/);
+  release.done = true; release();
+  await d.attach(real);
+  assert.equal(d.attached(), true);
+  assert.deepEqual(applied, ["first", "first", "second"]);
 });
 
 test("a hanging define that seals a field keeps the store unattached, and nothing applies beside the abandoned call on the retry", async () => {
