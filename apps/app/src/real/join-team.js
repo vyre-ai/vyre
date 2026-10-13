@@ -148,7 +148,7 @@ export async function homeSession(d, channel, space, invite) {
   };
 }
 
-const fingerprintWords = (/** @type {string[] | undefined} */ words, /** @type {string} */ fp) => {
+export const fingerprintWords = (/** @type {string[] | undefined} */ words, /** @type {string} */ fp) => {
   if (!words || words.length < 2048 || !fp) return null;
   const bits = BigInt("0x" + fp.slice(0, 11));
   return [3, 2, 1, 0].map(k => words[Number((bits >> BigInt(11 * k)) & 2047n)]).join(" ");
