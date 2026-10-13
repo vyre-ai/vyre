@@ -1733,6 +1733,14 @@
    "module": "undo",
    "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
   },
+  "vault.access.get": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
+  },
+  "vault.access.set": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
+  },
   "vault.account.create": {
    "module": "vault",
    "reason": "callers list in code (cli, local, mobile, device): no model caller; presence proof required"

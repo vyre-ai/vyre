@@ -229,7 +229,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
 export const SELF_GATED = Object.freeze(new Set([
-  "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
+  "vault.access.get", "vault.access.set", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
   "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",

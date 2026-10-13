@@ -32,6 +32,7 @@ import { isAsker } from "./asker.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
+import * as sharingTools from "./tools/sharing.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -512,6 +513,7 @@ export default {
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     meTools.register({ ctx, people, tool });
+    sharingTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
