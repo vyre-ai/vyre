@@ -31,7 +31,7 @@ export function eachStep(steps, fn, depth = 0) {
 }
 
 /** @param {Step[]} steps @returns {Step[]} */
-export const flat = (steps) => { /** @type {Step[]} */ const out = []; eachStep(steps, (s) => out.push(s)); return out; };
+export const flat = (steps) => { const out = /** @type {Step[]} */ ([]); eachStep(steps, (s) => out.push(s)); return out; };
 
 /** @param {Step[]} steps @param {string} id @returns {Step | undefined} */
 export const findStep = (steps, id) => flat(steps).find((s) => s.id === id);

@@ -10,7 +10,7 @@
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
@@ -82,6 +82,16 @@ export function stepSummary(s, o, d) {
     case "email": return `Email ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the address from the form" : s.to.trim()) : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
+    case "find": return `Find ${named(o.types, s.type) || "records"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
+    case "upsert": return `Create or update a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
+    case "remove": return `Remove ${linkWords(s.record, d, o)}`;
+    case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
+    case "wait": return `Wait ${s.amount || 1} ${s.unit || "hours"}`;
+    case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
+    case "sms": return `Text ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the number from the form" : s.to.trim()) : "someone"}`;
+    case "classify": return `Sort the text into ${String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean).join(" or ") || "groups"}`;
+    case "extract": return `Pull out ${(s.fields || []).map((/** @type {any} */ f) => f.name).filter(Boolean).join(", ") || "facts"} from the text`;
+    case "subflow": return `Run the flow ${named(o.flows || [], s.flow) || "chosen"}`;
     case "decide": return `If ${condWords(s.cond, d ? d.trigger : { kind: "manual" })}: ${(s.then || []).length} step${(s.then || []).length === 1 ? "" : "s"}, otherwise ${(s.else || []).length}`;
     case "repeat": return `For each item${s.over ? ` of ${s.over}` : ""}: ${(s.steps || []).length} step${(s.steps || []).length === 1 ? "" : "s"}`;
     case "parallel": return `Do ${(s.lanes || []).length} things side by side, then carry on`;
@@ -122,6 +132,15 @@ export function stepProblem(s, o) {
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
+    case "find": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
+    case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
+    case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
+    case "wait": return Number(s.amount) > 0 ? null : "Say how long to wait.";
+    case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
+    case "sms": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the text." : null;
+    case "classify": return !(s.input || "").trim() ? "Say what to read." : String(s.labels || "").split(",").filter((x) => x.trim()).length < 2 ? "Give at least two groups, separated by commas." : null;
+    case "extract": return !(s.input || "").trim() ? "Say what to read." : !(s.fields || []).some((/** @type {any} */ f) => (f.name || "").trim()) ? "Name at least one fact to pull out." : null;
+    case "subflow": return s.flow ? null : "Choose the flow to run.";
     case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
     case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
     default: return null;
@@ -178,6 +197,16 @@ export function stepDefinition(s, d) {
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
+    case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20 };
+    case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields) };
+    case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
+    case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
+    case "wait": return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
+    case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
+    case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: val(s.to), body: val(s.body) } };
+    case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
+    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text" })) };
+    case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
     case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: 50, steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
@@ -191,6 +220,14 @@ export function stepDefinition(s, d) {
     default: throw new Error(`no step kind ${s.kind}`);
   }
 }
+
+/** Field rows as a stored object: the field's slug and a typed value. @param {any[] | undefined} rows */
+const pairs = (rows) => Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)]));
+const UNITS = /** @type {Record<string, number>} */ ({ minutes: 60_000, hours: 3_600_000, days: 86_400_000 });
+export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);
+/** A formula is a Code step that returns one value: the engine evaluates the expression (its own language, kernel/flows/expr.js) before the code runs. `FORMULA_HASH` is the hash of this source, checked by a test. */
+export const FORMULA_SOURCE = "return { value: inputs.value };";
+export const FORMULA_HASH = "7qwxhVRKeL6pL4KISfzabcHuuGGlWbVtqWloRYyYn_c";
 
 /** The approver, the followers and what they are told, as the stored step has them. @param {DraftStep} s */
 export function peopleOf(s) {
@@ -218,6 +255,16 @@ export function newStep(kind, d, o) {
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "email": return { id, kind, to: "", subject: "", body: "" };
     case "ask": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
+    case "find": return { id, kind, type: "", where: "", limit: 20 };
+    case "upsert": return { id, kind, type: "", matchFields: [{ field: "", value: "" }], fields: [{ field: "", value: "" }] };
+    case "remove": return { id, kind, type: lastMade?.type || "", record: link };
+    case "stage": return { id, kind, type: lastMade?.type || d.trigger.type || "", record: link, to: "" };
+    case "wait": return { id, kind, amount: 1, unit: "days" };
+    case "formula": return { id, kind, formula: "" };
+    case "sms": return { id, kind, to: "", body: "" };
+    case "classify": return { id, kind, input: "", labels: "" };
+    case "extract": return { id, kind, input: "", fields: [{ name: "", kind: "text" }] };
+    case "subflow": return { id, kind, flow: o.flows?.[0]?.name || "", fields: [{ field: "", value: "" }] };
     case "decide": return { id, kind, cond: { mode: "build", source: "trigger", field: "", op: ">", value: "" }, then: [], else: [] };
     case "repeat": return { id, kind, over: "", as: "item", steps: [] };
     case "parallel": return { id, kind, lanes: [{ steps: [] }, { steps: [] }] };
@@ -278,6 +325,9 @@ function triggerFrom(t) {
   return raw;
 }
 
+/** Stored field values back to editable rows, or null when one is something the rows cannot say. @param {Record<string, any>} o */
+const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
+
 /** @param {any} s */
 const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
 
@@ -293,6 +343,18 @@ function stepFrom(s) {
   const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
+    case "find": return keys(s, ["id", "kind", "type", "where", "limit", "label"]) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20 } : adv;
+    case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "label"]) && rowsOf(s.match) && rowsOf(s.set) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set) } : adv;
+    case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
+    case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
+    case "wait": {
+      const u = Object.entries(UNITS).reverse().find(([, ms]) => s.for_ms % ms === 0);
+      return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
+    }
+    case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
+    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text" })) } : adv;
+    case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
+    case "fn": return s.source === FORMULA_SOURCE && exprOf(s.inputs && s.inputs.value) !== null && keys(s, ["id", "kind", "language", "source", "hash", "inputs", "outputs", "label"]) ? { id: s.id, kind: "formula", formula: exprOf(s.inputs.value) } : adv;
     case "decide": {
       const cond = condFrom(s.if);
       return typeof s.if === "string" && keys(s, ["id", "kind", "if", "then", "else", "label"]) ? { id: s.id, kind: "decide", cond, then: (s.then || []).map(stepFrom), else: (s.else || []).map(stepFrom) } : adv;
@@ -311,6 +373,7 @@ function stepFrom(s) {
         const name = exprOf(i.name) === "trigger.name" ? "" : unval(i.name);
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
+      if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unval(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unval(i.to), body: unval(i.body) };
       if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }

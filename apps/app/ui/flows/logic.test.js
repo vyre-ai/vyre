@@ -1,9 +1,9 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkFlow } from "../../../../kernel/flows/schema.js";
+import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
-import { approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { FORMULA_HASH, FORMULA_SOURCE, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -144,4 +144,28 @@ test("steps are found, changed, moved and removed at any depth", () => {
   const gone = removeDeep(steps, "a");
   assert.equal(gone[0].id, "d");
   assert.equal(gone[0].then[0].record, "trigger", "what pointed at the removed step points at what started the Flow");
+});
+
+test("every other step kind the engine has stores, checks and comes back", () => {
+  const d = { name: "Everything", trigger: { kind: "form", path: "intake" }, steps: [
+    { id: "find1", kind: "find", type: "client", where: "record.email == trigger.email", limit: 5 },
+    { id: "upsert2", kind: "upsert", type: "client", matchFields: [{ field: "Email", value: "{email}" }], fields: [{ field: "Name", value: "{name}" }] },
+    { id: "stage3", kind: "stage", type: "client", record: "upsert2", to: "Active" },
+    { id: "remove4", kind: "remove", type: "client", record: "upsert2" },
+    { id: "wait5", kind: "wait", amount: 2, unit: "days" },
+    { id: "formula6", kind: "formula", formula: "round(trigger.amount * 1.2)" },
+    { id: "sms7", kind: "sms", to: "{phone}", body: "Hello" },
+    { id: "classify8", kind: "classify", input: "{message}", labels: "Urgent, Routine" },
+    { id: "extract9", kind: "extract", input: "{message}", fields: [{ name: "Amount", kind: "number" }] },
+    { id: "subflow10", kind: "subflow", flow: "send_welcome", fields: [{ field: "Client", value: "{name}" }] },
+  ] };
+  const def = toDefinition(d);
+  assert.equal(def.steps[4].for_ms, 2 * 86_400_000);
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+  assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
+});
+
+test("the formula step is a Code step with a fixed source whose hash is the engine's", () => {
+  assert.equal(FORMULA_HASH, sourceHash(FORMULA_SOURCE));
 });
