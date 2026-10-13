@@ -15,7 +15,8 @@ import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
 import { retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
-import { canRetry, recordLines, startRefusal } from "./run-model";
+import { canRetry, retryLimits, startRefusal } from "./run-model";
+import { RunSteps } from "./RunSteps";
 import { listReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
 import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
@@ -41,6 +42,7 @@ export function RealFlow({ id }: { id: string }) {
   const [runId, setRunId] = useState<string | undefined>(wanted ? String(wanted) : undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
   const [shrunk, setShrunk] = useState<string | null>(null);
+  const [ledger, setLedger] = useState<Record<string, any> | undefined>(undefined);
   const [explain, setExplain] = useState("");
   const [health, setHealth] = useState<{ level: string; line: string } | null>(null);
   const [picked, setPicked] = useState<string | undefined>(undefined);
@@ -63,9 +65,9 @@ export function RealFlow({ id }: { id: string }) {
   }, [id, n]);
 
   useEffect(() => {
-    if (!runId) { setPainted(null); setShrunk(null); setExplain(""); return; }
+    if (!runId) { setPainted(null); setShrunk(null); setLedger(undefined); setExplain(""); return; }
     explainReal(runId).then((d) => setExplain(explainText(d))).catch(() => setExplain(""));
-    runReal(runId).then((r) => { setPainted(r.painted?.nodes ?? null); setShrunk(shrunkNote(r.run)); }).catch(() => { setPainted(null); setShrunk(null); });
+    runReal(runId).then((r) => { setPainted(r.painted?.nodes ?? null); setShrunk(shrunkNote(r.run)); setLedger(r.run?.steps); }).catch(() => { setPainted(null); setShrunk(null); });
   }, [runId]);
 
   if (err) return <Frame title="Flows" back="/u/flows"><ErrorState title="Flows did not load" reason={err} retry={() => { setErr(""); setN((x) => x + 1); }} /></Frame>;
@@ -124,7 +126,7 @@ export function RealFlow({ id }: { id: string }) {
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
           <ExplainCard text={explain} />
           <Card flush>
-            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
+            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
           </Card>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
         </Sec>

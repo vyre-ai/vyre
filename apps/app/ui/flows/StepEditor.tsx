@@ -11,7 +11,7 @@ import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
 import { ValueField } from "./ValueField";
 import { FormulaBox } from "./FormulaBox";
-import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, whoChoices, whoWords } from "./logic.js";
+import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -22,7 +22,7 @@ export function recordSources(d: Draft, stepId: string, o: Options): [string, st
   const before: DraftStep[] = [];
   for (const x of flat(d.steps)) { if (x.id === stepId) break; before.push(x); }
   const made = before.filter((s) => s.kind === "create" || s.kind === "upsert").map((s): [string, string] => [s.id, `The ${o.types.find((t) => t.name === s.type)?.label ?? "new"} record made in ${s.id}`]);
-  return [...(d.trigger.kind === "created" || d.trigger.kind === "stage" ? [["trigger", "The record that started the Flow"] as [string, string]] : []), ...made];
+  return [...(isRecordTrigger(d.trigger) ? [["trigger", "The record that started the Flow"] as [string, string]] : []), ...made];
 }
 
 /** Rows of field and value, for Create a record, Create or update and Run another flow. */
