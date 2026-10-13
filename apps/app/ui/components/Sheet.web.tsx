@@ -8,7 +8,7 @@ import { px } from "../lib/measure";
 import { useWindowDimensions } from "react-native";
 
 /** The web Sheet (a dialog): a bottom sheet at phone width, centred on a wide screen. The native sheet is Sheet.tsx (springs and drag to dismiss). Same props. */
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode }) {
+export function Sheet({ open, onClose, title, children, scroll = true }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode; /** false when the content scrolls itself (a viewer): the sheet then does not scroll too, so there is one scrollbar. */ scroll?: boolean }) {
   const { width, height } = useWindowDimensions();
   const { resolved, color, map } = useUiTheme();
   const phone = width < PHONE_MAX;
@@ -26,7 +26,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         <View pointerEvents="box-none" className={cn("absolute inset-0", phone ? "justify-end" : "items-center justify-center")}>
           <P.Content style={[elevation(resolved.scheme, 3), content]}>
             {title ? <P.Title asChild><Text size="title" strong>{title}</Text></P.Title> : null}
-            <ScrollView className="flex-shrink" contentContainerClassName="gap-s3" keyboardShouldPersistTaps="handled">{children}</ScrollView>
+            {scroll ? <ScrollView className="flex-shrink" contentContainerClassName="gap-s3" keyboardShouldPersistTaps="handled">{children}</ScrollView> : <View className="min-h-0 flex-shrink gap-s3">{children}</View>}
           </P.Content>
         </View>
       </P.Portal>
