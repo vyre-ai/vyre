@@ -4802,7 +4802,7 @@ Finish a sign-in with the whole address the browser landed on (for a browser on 
 
 ### `google.drive.read`
 
-Read one Drive file (id) as text: a Google doc, slide deck or sheet is exported, plain text is read; other files give their name and link. Capped near 20,000 characters.
+Read one Drive file (id) as text. Google docs, decks and sheets are exported; other files give their name and link. Capped near 20,000 characters.
 
 - Input:
   - `id` string, required
@@ -4811,7 +4811,7 @@ Read one Drive file (id) as text: a Google doc, slide deck or sheet is exported,
 
 ### `google.drive.search`
 
-Search Google Drive by words in the name or text, newest first: [{account, id, name, type, modified, url}]. A team member searches their own Drive only.
+Search Google Drive by words in the name or text, newest first. A team member searches their own Drive only.
 
 - Input:
   - `q` string, required
@@ -6146,7 +6146,7 @@ The person makes a key for one of their AI agents and names it ("Claude Code on 
 
 ### `mcpconn.guide`
 
-The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): look, propose per client, confirm, make it, bring the sessions in. Read it first, then follow it.
+The walk-through for setting Vyre up from the work on this computer: look, propose, confirm, make it, bring the sessions in. Read it first.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
