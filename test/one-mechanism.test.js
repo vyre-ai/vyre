@@ -39,6 +39,7 @@ test("B. one secret detector: a token shape or a private key header is spelled o
   const allowed = new Set([
     "lib/credential-shapes.js",
     "apps/app/src/store-core/credential-shapes.js", // the app cannot bundle lib/: generated from the table by scripts/sync-copies.mjs
+    "apps/app/screens/vault/sample-redesign.ts", // sample rows with made-up secrets for the vault design gallery
     "lib/siteops/redact.js",                   // generated into the Chrome extension by scripts/sync-copies.mjs; pinned by the same test
   ]);
   const shapes = /\bghp_|github_pat_|xox\[?[abprs]|\bsk_live|\bAKIA|\bsk-ant-|-----BEGIN [A-Z0-9 \[\]*]*PRIVATE KEY/;
