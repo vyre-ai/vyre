@@ -44,3 +44,20 @@ test("a task assigned to a person wakes nothing", async () => {
   await feed();
   assert.deepEqual(woke, []);
 });
+
+test("end to end with no person: the agent closes its task and the run goes on to the next step by itself", async () => {
+  const { w, woke, feed } = await run([
+    { id: "go", kind: "agent", assistant: "teammate:research", title: "Draft the refund note", instructions: "Write it", output: { kind: "note" } },
+    { id: "open", kind: "create", type: "matter", set: { client: "Jane", stage: "Intake" } },
+  ]);
+  await feed();
+  assert.equal(woke.length, 1);
+  const id = (await w.runner.listRuns())[0].id;
+  assert.equal((await w.runner.getRun(id)).state, "waiting", "the run waits on the agent's task");
+  await w.kernel.completeTask(woke[0].task, { evidence: { note: "Drafted and filed." } });   // the agent's own act, under [assigner, agent]
+  await settle(w);
+  const done = await w.runner.getRun(id);
+  assert.equal(done.state, "done", JSON.stringify(done.error || done.waiting));
+  const rows = (await w.kernel.records.query(w.kernel.sysChain(), "matter", { page: { limit: 10 } })).rows;
+  assert.equal(rows.length, 1, "the step after the agent's ran with nobody else involved");
+});
