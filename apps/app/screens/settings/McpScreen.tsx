@@ -47,7 +47,7 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   const [only, setOnly] = useState("");
   const load = useCallback(() => {
     setErr("");
-    mcp.list().then(setConns).catch((e) => { setConns([]); setErr(say(e, "Your AI keys could not be read.")); });
+    mcp.list().then(setConns).catch((e) => { setConns([]); setErr("Your keys could not be read. Try again."); console.warn("mcpconn.list failed:", e instanceof Error ? e.message : e); });
     mcp.activity().then(setChanges).catch(() => setChanges([]));
   }, []);
   useEffect(() => { if (!sample) load(); }, [load, sample]);
