@@ -70,6 +70,18 @@ export function nextLine(b: Body, si: number): string {
   if (stageModeOf(b) !== "ordered") return "Then a person moves the project on.";
   return `Then the project moves to ${next.name || `stage ${si + 2}`}.`;
 }
+const setOn = (b: Body, si: number, ti: number, f: (t: Task) => Task): Body => ({ ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, f) })) });
+/** Followers (who is kept in the loop on a task), each once. */
+export const addFollower = (b: Body, si: number, ti: number, who: string): Body => setOn(b, si, ti, (t) => ((t.followers || []).includes(who) ? t : { ...t, followers: [...(t.followers || []), who] }));
+export const removeFollower = (b: Body, si: number, ti: number, who: string): Body => setOn(b, si, ti, (t) => { const { followers: _f, ...rest } = t; const left = (t.followers || []).filter((x) => x !== who); return (left.length ? { ...rest, followers: left } : rest) as Task; });
+/** What the approver or the followers are told, as the person typed it (tags in it stay as written). */
+export const setNote = (b: Body, si: number, ti: number, who: "approver" | "followers", text: string): Body => setOn(b, si, ti, (t) => {
+  const { notes: _n, ...rest } = t;
+  const notes = { ...(t.notes || {}), [who]: text };
+  const kept = Object.fromEntries(Object.entries(notes).filter(([, v]) => String(v).trim() !== ""));
+  return (Object.keys(kept).length ? { ...rest, notes: kept } : rest) as Task;
+});
+export const noteOf = (t: Task, who: "approver" | "followers"): string => t.notes?.[who] || "";
 export const addTask = (b: Body, si: number): Body => ({ ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: [...(s.tasks || []), { title: "", doer: firstDoer(b), output: { kind: "note" } }] })) });
 export const setTask = (b: Body, si: number, ti: number, patch: Partial<Task> & { output_kind?: string }): Body => ({
   ...b,

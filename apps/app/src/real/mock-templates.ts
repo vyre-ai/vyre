@@ -10,7 +10,7 @@ const MATTER = {
   stages: [
     { name: "Opening", owner: "role:attorney", groups: [{ name: "Documents" }, { name: "Client calls" }], tasks: [
       task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY, group: "Documents" }),
-      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY, group: "Documents" }),
+      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY, group: "Documents", checker: "role:paralegal", followers: ["person:alex"], notes: { approver: "Check the signature page and the date.", followers: "For your information; no action needed." } }),
       task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY, group: "Client calls", required: false }),
     ] },
     { name: "Initial Administration", done_when: "all", tasks: [
