@@ -119,7 +119,7 @@ export function roleOf(r, types = []) {
   const keys = lv ? Object.keys(lv) : types.map((t) => t.id);
   const hidden = r.hidden_fields && typeof r.hidden_fields === "object" ? r.hidden_fields : {};
   return {
-    id, name: String(r.label || r.name || id), builtin: r.builtin === true || ROLE_IDS.includes(id) || id === "guest", from: r.base ? String(r.base) : "",
+    id, name: String(r.label || r.name || id), builtin: r.builtin === true || /** @type {readonly string[]} */ (ROLE_IDS).includes(id) || id === "guest", from: r.base ? String(r.base) : "",
     holders: Number(r.people ?? r.holders) || 0, can, where: { kind, projects: Array.isArray(r.where?.projects) ? r.where.projects.map(String) : [] },
     data: keys.map((t) => ({ id: t, name: names[t] ?? t, access: lv ? (["none", "read", "edit"].includes(lv[t]) ? lv[t] : "none") : can.edit ? "edit" : can.view ? "read" : "none", hidden: Array.isArray(hidden[t]) ? hidden[t].map(String) : [] })),
     tools: ids(r.tools),

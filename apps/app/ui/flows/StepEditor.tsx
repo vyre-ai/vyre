@@ -13,7 +13,7 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
-import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -28,10 +28,10 @@ export function recordSources(d: Draft, stepId: string, o: Options): [string, st
 }
 
 /** Rows of field and value, for Create a record, Create or update and Run another flow. */
-function Rows({ rows, onChange, draft, stepId, options, fieldLabel = "Field", help }: { rows: { field: string; value: string }[]; onChange: (r: { field: string; value: string }[]) => void; draft: Draft; stepId: string; options: Options; fieldLabel?: string; help?: string }) {
+function Rows({ rows, onChange, draft, stepId, options, fieldLabel = "Field", help, title }: { rows: { field: string; value: string }[]; onChange: (r: { field: string; value: string }[]) => void; draft: Draft; stepId: string; options: Options; fieldLabel?: string; help?: string; title?: string }) {
   return (
     <View className="gap-s2">
-      <Text size="caption" strong tone="label">{fieldLabel === "Field" ? "Fields" : `${fieldLabel}s`}</Text>
+      <Text size="caption" strong tone="label">{title ?? (fieldLabel === "Field" ? "Fields" : `${fieldLabel}s`)}</Text>
       {rows.map((f, i) => (
         <View key={i} className="gap-s1">
           <View className="flex-row items-end gap-s2">
@@ -146,7 +146,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
               ) : null}
               {s.kind === "ask" ? (
                 <>
-                  <Select label="Who is asked" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
+                  <Select label="Who is asked" value={s.to ?? ""} options={askChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The question" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Approve this refund" />
                   <Text size="caption" tone="label">The Flow stops here until they answer.</Text>
                 </>
@@ -180,8 +180,17 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       {s.kind === "upsert" ? (
         <>
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
-          <Rows rows={s.matchFields ?? []} onChange={(matchFields) => set({ matchFields })} draft={draft} stepId={s.id} options={options} fieldLabel="Match on" help="The record whose fields equal these is updated. If there is none, one is made." />
-          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} />
+          <Rows rows={s.matchFields ?? []} onChange={(matchFields) => set({ matchFields })} draft={draft} stepId={s.id} options={options} title="Match on" help="The first record whose fields equal these is used. If there is none, one is made with these fields too." />
+          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} title="Set when it is created" help="Only used when no record matches. A record that is found keeps what it has." />
+          {s.updateFields ? (
+            <Rows rows={s.updateFields} onChange={(updateFields) => set({ updateFields })} draft={draft} stepId={s.id} options={options} title="Also update if found" help="Optional. Changed only when a record is found. Leave empty to use the found record as it is." />
+          ) : (
+            <View className="gap-s2">
+              <Text size="caption" tone="label">This older step also changes the fields above on a record it finds.</Text>
+              <View className="flex-row"><Button kind="ghost" size="sm" label="Only set them when creating" onPress={() => set({ updateFields: [] })} /></View>
+            </View>
+          )}
+          <Text size="caption" tone="label">{`Later steps read the record as {steps.${s.id}.record.id} and whether it was new as {steps.${s.id}.created}.`}</Text>
         </>
       ) : null}
       {s.kind === "remove" ? (
@@ -267,7 +276,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       {s.kind === "subflow" ? (
         <>
           <Select label="The flow to run" value={s.flow ?? ""} options={pick(options.flows ?? [])} placeholder="Choose a flow" onChange={(flow) => set({ flow })} />
-          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" help="What the other flow starts with. It must be switched on in this space." />
+          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
     </>

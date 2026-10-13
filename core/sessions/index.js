@@ -806,15 +806,15 @@ export default {
      * the file on disk. A read that fails drops that block.
      * @param {{ agent?: string, project?: string }} i
      */
-    const instructionsOf = async i => {
+    const instructionsOf = async (/** @type {{ agent?: string, project?: string, no_project_docs?: boolean }} */ i) => {
       const got = async (/** @type {string} */ tool, /** @type {any} */ input) => { try { const r = await ctx.call(tool, input); return r && !r.error && r.data && typeof r.data.text === "string" ? r.data : null; } catch { return null; } };
-      const [mine, theirs] = await Promise.all([i.agent ? got("agents.instructions", { agent: i.agent }) : null, i.project ? got("projects.instructions", { project: i.project }) : null]);
+      const [mine, theirs] = await Promise.all([i.agent ? got("agents.instructions", { agent: i.agent }) : null, i.project && !i.no_project_docs ? got("projects.instructions", { project: i.project }) : null]);
       return { ...(mine ? { agent: { name: String(mine.name || i.agent), text: mine.text } } : {}), ...(theirs ? { project: { name: String(theirs.name || i.project), text: theirs.text } } : {}) };
     };
 
     ctx.tool("sessions.prompt.compose", {
       description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is Lumen's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
-      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, no_project_docs: { type: "boolean" }, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => i.purpose === "capsule"
         ? (r => ({ ...r, text: `${r.text}\n\n${timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: zoneFrom(i.zone, zoneFrom(i.space_zone, "UTC")), space: zoneFrom(i.space_zone, "") || null, contacts: Array.isArray(i.contacts) ? i.contacts : [] })}` }))(composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") }))
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null, environment: (await environment(i)).text, context: i.context || null, instructions: await instructionsOf(i) }),

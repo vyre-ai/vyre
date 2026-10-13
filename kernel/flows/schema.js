@@ -79,7 +79,7 @@ function checkPeople(s, p, out) {
 /** Keys each step kind may carry (beyond id, kind, label). */
 export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
-  create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
+  create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set", "update"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "offset_ms", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills", "followers", "notes", "brief"],
@@ -137,7 +137,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
       case "filter": need("from", v => typeof v === "string", "name the list (an expression)"); exprOk("from"); need("where", v => typeof v === "string", "give the condition"); exprOk("where"); break;
       case "create": need("type", typeName, "name the record type"); need("set", isObj, "set the fields"); value("set"); break;
       case "update": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); need("set", isObj, "set the fields"); value("set"); break;
-      case "upsert": need("type", typeName, "name the record type"); need("match", isObj, "say how to find an existing record"); value("match"); need("set", isObj, "set the fields"); value("set"); break;
+      case "upsert": need("type", typeName, "name the record type"); need("match", isObj, "say how to find an existing record"); value("match"); need("set", isObj, "set the fields"); value("set"); if (s.update !== undefined) { if (!isObj(s.update)) out.push({ path: `${p}.update`, message: "update is the fields to change when the record is found (an empty one leaves a found record alone)" }); else value("update"); } break;
       case "remove": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); break;
       case "decide":
         need("if", v => typeof v === "string", "give the condition"); exprOk("if");

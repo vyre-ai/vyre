@@ -162,7 +162,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "projects.sync", "projects.add-threads", "projects.add-workspace", "projects.archive", "projects.catalog", "projects.context", "projects.create", "projects.history", "projects.of",
   "projects.remove-threads", "projects.rename", "projects.threads", "projects.watchers.add", "projects.watchers.remove",
   "roles.assign", "roles.create", "roles.remove", "roles.update",
-  "publish.approve", "publish.create", "publish.decide", "publish.domain.add", "publish.domain.remove", "publish.domain.verify", "publish.edge", "publish.edge.down",
+  "publish.approve", "publish.create", "publish.decide", "publish.domain.add", "publish.domain.remove", "publish.domain.status", "publish.domain.verify", "publish.edge", "publish.edge.down", "publish.holds",
   "publish.edge.up", "publish.flow", "publish.go", "publish.job.attention", "publish.job.run", "publish.job.runs", "publish.list", "publish.plan", "publish.preview",
   "publish.publish", "publish.quick", "publish.retire", "publish.rollback", "publish.secret.grant", "publish.secret.revoke", "publish.status",
   "push.devices", "push.key", "push.receipt", "push.seen", "push.settings", "push.subscribe", "push.test", "push.unsubscribe",
