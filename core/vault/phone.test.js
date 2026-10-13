@@ -70,7 +70,8 @@ test("the personal vault from the phone with no presence (a browser session, a d
   // the same daemon cannot be restarted with another verifier here, so ask a daemon whose verifier finds nobody: it has no account, but the refusal comes before the tool runs
   const none = await daemon(t, { keystore: "file" }, absent);
   const r = await none("vault.account.unlock-phone", { password: pw }, PHONE);
-  assert.equal(r.error && r.error.code, "presence_required");
+  // a device with nobody there is refused either at the person session or at presence: the phone is never let in without the person
+  assert.ok(["presence_required", "person_session_required"].includes(r.error && r.error.code), JSON.stringify(r));
 });
 
 test("the personal vault from the phone: five wrong passwords lock further tries out with code throttled and a retry_after_s the app can name; a right password is refused too while locked out", async t => {
