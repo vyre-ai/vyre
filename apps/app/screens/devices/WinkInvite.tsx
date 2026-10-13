@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Field, Ring, Text, showToast, spaceRef } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Field, Text, showToast, spaceRef } from "@vyre/ui";
+import { InviteMade } from "./InviteMade";
 import { screenRole } from "../roles/roles";
 import { MOCK } from "../../src/real/box";
 import { Page } from "../places/Frame";
@@ -29,12 +30,10 @@ function SampleInvite() {
           <View className="flex-row"><Button kind="primary" label="Make the invitation" onPress={() => setStep(1)} /></View>
         </Card>
       ) : step === 1 ? (
-        <Card className="max-w-read items-center gap-s3">
-          <View className="w-ring"><Ring seed={3} /></View>
-          <Text strong>{`Invitation for ${first}`}</Text>
-          <Text tone="muted" className="text-center">Good for 24 hours. Goes into Juniper Studio.</Text>
-          <Button size="sm" label="Send the link" onPress={() => setStep(2)} />
-        </Card>
+        <View className="max-w-read gap-s3">
+          <InviteMade space={{ id: "juniper", name: "Juniper Studio" }} who={first} role={sampleRoles().find((r) => r.id === screenRole(role))?.name ?? role} line="Good for 24 hours" code="K7QD-M2XP-4RNB" link="https://juniper.vyre.run/join/k7qdm2xp4rnb" />
+          <View className="self-start"><Button kind="ghost" label="See what they see" onPress={() => setStep(2)} /></View>
+        </View>
       ) : step === 2 ? (
         <Card className="max-w-read gap-s3">
           <Text size="caption" strong tone="label">What they see</Text>

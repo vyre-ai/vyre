@@ -1,20 +1,20 @@
 // Invite someone to a space on the real box: pick the role, make the link (spaces.invites.create), send it; the invites still open are listed with Revoke.
 // An invite for an admin or owner waits for you to confirm the words the invitee reads to you (spaces.invites.confirm).
 import { useCallback, useEffect, useState } from "react";
-import { Linking, Platform, Share, View } from "react-native";
+import { View } from "react-native";
 import { isPhone } from "../install/first-run.js";
 import { deviceKindHere } from "../../src/real/pair-say";
-import { WinkCode } from "../../src/ui/WinkCode";
 import { AckCode } from "./TypeCode";
 import { useRouter } from "expo-router";
-import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { InviteRolePicker } from "../roles/InviteRolePicker";
+import { InviteMade } from "./InviteMade";
+import { roleLabel } from "../spaces/roles.js";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
 import { invitesHere } from "../../src/real/team-join";
-import { createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
+import { createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
 
@@ -77,19 +77,9 @@ export function RealInvite() {
   return (
     <Page title="Invite someone" sub={`To ${card.name}. They read one card and tap Join.`} back="/u/wink">
       {made ? (
-        <Card className="max-w-read gap-s3">
-          <Text strong>The invitation is ready</Text>
-          <Card className="flex-row items-center gap-s3"><Text mono size="caption" className="flex-1">{made.link}</Text><Button size="sm" label="Copy link" onPress={() => { Clipboard.setStringAsync(made.link).catch(() => {}); showToast("Copied"); }} /></Card>
-          <WinkCode text={made.link} kind="join" space={card.name} typed={made.code} expires={made.codeExpires} />
+        <View className="max-w-read gap-s3">
+          <InviteMade space={{ id: card.id, name: card.name }} who={to.trim().replace(/^@/, "") || "them"} role={roleLabel(role)} line={made.line.split(". ")[0].replace(/\.$/, "")} code={made.code ?? ""} link={made.link} />
           {made.code && made.codeOffer ? <AckCode offer={made.codeOffer} onDone={() => showToast("Confirmed. They can join now.")} /> : null}
-          <Text tone="muted">{made.line}</Text>
-          <View className="flex-row flex-wrap gap-s2">
-            <Button size="sm" label="Email it" onPress={() => {
-              // The person's own mail app (or the share sheet on a phone): Vyre sends nothing.
-              const e = emailIt(card.name, made.link);
-              if (Platform.OS === "web") void Linking.openURL(e.mailto).catch(() => {}); else void Share.share({ title: e.subject, message: e.body }).catch(() => {});
-            }} />
-          </View>
           {made.needsConfirm ? (
             <View className="gap-s2">
               <Banner><Text>This role needs your yes. When they open the link they read you a few words. Type them here to let them in.</Text></Banner>
@@ -99,7 +89,7 @@ export function RealInvite() {
           ) : null}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           <View className="self-start"><Button kind="ghost" label="Make another" onPress={() => { setMade(null); setTo(""); }} /></View>
-        </Card>
+        </View>
       ) : (
         <Card className="max-w-read gap-s3">
           <InviteRolePicker actor={card.role} role={role} onRole={setRole} projects={projects} onProjects={setProjects} days={days} onDays={setDays} />

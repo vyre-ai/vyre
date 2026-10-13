@@ -26,6 +26,7 @@ export { Segmented } from "./components/Segmented";
 export { RolePicker } from "./components/RolePicker";
 export type { RoleChoice } from "./components/RolePicker";
 export { ControlRow } from "./components/ControlRow";
+export { SpaceTile } from "./components/SpaceTile";
 export { Tabs } from "./components/Tabs";
 export { Avatar, AvatarStack, SpaceMark, kindOf, badgePx } from "./components/Avatar";
 export type { AvatarKind, AvatarRef, AvatarSize } from "./components/Avatar";
