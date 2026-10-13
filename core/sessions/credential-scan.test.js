@@ -117,9 +117,9 @@ test("Vyre's launch hands an API key over unreadable (spawnSession: file descrip
   const r = await scan({ env: { ANTHROPIC_API_KEY: SECRET }, viaSpawnSession: true });
   assert.equal(r.env, 0, JSON.stringify(r)); assert.equal(r.environ, 0, JSON.stringify(r)); assert.equal(r.fd, 0, JSON.stringify(r));
 });
-test("KNOWN: Vyre's launch hands a setup token over in the environment, so a tool reads it from the parent's environ", { skip: SKIP, timeout: 150_000 }, async () => {
+test("Vyre's launch hands a setup token over on file descriptor 3, so no tool reads it from the environment or the parent's environ", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true });
-  assert.ok(r.environ >= 1, "KNOWN (flip to 0 when the launch uses CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR): " + JSON.stringify(r));
+  assert.equal(r.env, 0, JSON.stringify(r)); assert.equal(r.environ, 0, JSON.stringify(r)); assert.equal(r.fd, 0, JSON.stringify(r));
 });
 // THE BAR: when this passes, a setup token may be used for a turn somebody else drives (not before)
 test("BAR: Vyre's launch hands a setup token over where no tool of the session can read it", { skip: SKIP, todo: "rc2-own-compute's fd delivery of the setup token (work/rc2/sealed-credential)", timeout: 150_000 }, async () => {
@@ -171,9 +171,7 @@ test("a member's request for an agent thread on a picked credential is refused i
   assert.equal(r.login.refused && r.login.refused.code, "no_account", JSON.stringify(r.login));
   assert.match(String(r.login.refused.message), /Nothing was started/);
 });
-test("KNOWN (bwrap, the OWNER's agent thread with a setup token picked for the agent): the picked token never reaches the session, which runs on the machine login, and its tools can read that login file", { skip: SKIP_BWRAP, timeout: 240_000 }, async t => {
+test("bwrap, the OWNER's agent thread with a setup token picked for the agent: neither the picked token nor the machine login is readable from the session", { skip: SKIP_BWRAP, timeout: 240_000 }, async t => {
   const r = /** @type {any} */ (await bwrapSession(t, "owner", { login: "FAKE-MACHINE-LOGIN-0123456789", picked: "FAKE-PICKED-TOKEN-0123456789" }));
-  assert.equal(r.picked.environ, 0, "KNOWN: the picked credential is dropped by the home sandbox's environment filter (flip when it is delivered by a file descriptor, then assert clean): " + JSON.stringify(r.picked));
-  assert.equal(r.picked.config, 0, JSON.stringify(r.picked));
-  assert.ok(r.login.config >= 1, "KNOWN (bar: must be 0 before a member may drive an agent here): the machine login's copy is readable from the session: " + JSON.stringify(r.login));
+  for (const k of ["picked", "login"]) { const x = r[k]; assert.equal(x.env, 0, k + " " + JSON.stringify(x)); assert.equal(x.environ, 0, k + " " + JSON.stringify(x)); assert.equal(x.fd, 0, k + " " + JSON.stringify(x)); assert.equal(x.config, 0, k + " " + JSON.stringify(x)); }
 });
