@@ -12,6 +12,8 @@ A **project template** is the way a kind of work runs: stages, and in each stage
 
 ## What a template holds
 
+- **A name for its projects.** `noun: { one: "Matter", many: "Matters" }`. A firm calls its projects Matters, an agency Campaigns. The app says "New matter" in the New menu, and a project started from the template shows "Matter" where it would say "Project". Leave it out and they are projects. Only the owner or an admin makes a new template; a member starts projects from the live ones.
+
 - **Stages**, in order. A stage moves on when its required tasks are done and, if the stage before it says `moves_on_when`, that condition holds on the project. Its `owner` (`role:attorney` or `person:alex`) may move it on early, with a reason that is kept.
 - **Tasks** in a stage. Each has a doer (`role:researcher`, `teammate:research`, `person:alex` or `owner`), what it produces (`note`, `draft`, `decision`, `file`, `sent` or `fields`), an optional checker, and a checklist that proves it done. A task can also name what needs a yes, who to ask when stuck, and the Connections it may use.
 - **Roles**, each optionally filled by an agent on the roster. At most one role is the project lead.

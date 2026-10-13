@@ -106,6 +106,23 @@ jobs:
           echo '{"private":true}' > package.json
           npm i --no-audit --no-fund --no-package-lock playwright@1
           npx playwright install --with-deps chromium
+      - name: "No fake wire in the release export (the proof's stand-in for the peer wire is compiled out unless the build is made for the proof)"
+        run: |
+          if grep -rl "vyre-peer-fake-enabled" dist; then echo "the release export carries the proof's fake wire"; exit 1; fi
+          echo "release export: no fake wire"
+      - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server), on its own export made for the proof"
+        run: |
+          EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof --clear
+          grep -rl "vyre-peer-fake-enabled" dist-proof > /dev/null || { echo "the proof export has no fake wire, so the proof cannot run"; exit 1; }
+          node scripts/two-server-proof.mjs --dist dist-proof
+      - name: "Positive control: Hermes bytecode keeps the marker as plain bytes (so the APK and iOS greps cannot pass because the string is hidden)"
+        run: |
+          for os in android ios; do
+            EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p $os --output-dir "dist-hermes-$os" --clear
+            test -n "$(find "dist-hermes-$os" -name '*.hbc' | head -1)" || { echo "the $os export is not Hermes bytecode, so this control proves nothing"; ls -R "dist-hermes-$os" | head -20; exit 1; }
+            grep -rl "vyre-peer-fake-enabled" "dist-hermes-$os" > /dev/null || { echo "a flagged $os Hermes bundle does not show the marker: the release greps could pass vacuously"; exit 1; }
+            echo "$os: a flagged Hermes bundle shows the marker, so the release check can find it"
+          done
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --clear --output-dir dist-mock
@@ -234,6 +251,13 @@ jobs:
             fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner key" + s.slice(at + line.length));'
       - run: ./gradlew --no-daemon assembleDebug assembleRelease
         working-directory: apps/app/android
+      - name: "No fake wire in the release APK (the proof's stand-in for the peer wire is compiled out unless the build is made for the proof)"
+        run: |
+          unsigned=$(ls android/app/build/outputs/apk/release/*-unsigned.apk | head -1)
+          rm -rf "$RUNNER_TEMP/apk" && mkdir -p "$RUNNER_TEMP/apk" && unzip -q "$unsigned" -d "$RUNNER_TEMP/apk"
+          test -n "$(find "$RUNNER_TEMP/apk" -name 'index.android.bundle' | head -1)" || { echo "no JS bundle in the release APK"; exit 1; }
+          if grep -rl "vyre-peer-fake-enabled" "$RUNNER_TEMP/apk"; then echo "the release APK carries the proof's fake wire"; exit 1; fi
+          echo "release APK: no fake wire"
       - name: Name the release and write android.json
         run: |
           out=android/app/build/outputs/apk
@@ -313,6 +337,13 @@ jobs:
           ws=$(ls -d *.xcworkspace | head -1); scheme=$(basename "$ws" .xcworkspace)
           xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: "No fake wire in the release simulator build"
+        run: |
+          app=$(ls -d build/Build/Products/Release-iphonesimulator/*.app 2>/dev/null | head -1)
+          test -n "$app" || { echo "no .app built"; exit 1; }
+          if grep -rl "vyre-peer-fake-enabled" "$app"; then echo "the iOS release build carries the proof's fake wire"; exit 1; fi
+          echo "iOS release build: no fake wire"
+        working-directory: apps/app/ios
       - uses: actions/upload-artifact@v4
         with:
           name: app-ios-sim-${{ github.sha }}

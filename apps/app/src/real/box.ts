@@ -5,17 +5,19 @@
 
 import { REUSE_OPS } from "../../../../lib/one-yes-ops.js";
 import { call } from "../api/box";
-import { peerCall, peerWanted } from "./peer";
+import { ACTIVE, peerCall, peerWanted } from "./peer";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { NOT_FOR_MEMBERS_YET, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
+import { isApprovalList, isEveryServer, urnSpace } from "./server-route.js";
+import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
 import { useSpaces } from "../../screens/shell/state";
+import { mockTools } from "./mock-templates";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -40,7 +42,17 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
 let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
 export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
 
-export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+/**
+ * A call that names its server: the Space-making calls (spaces.name-here, spaces.host-here) name a server and no Space yet. Where a device is paired to several servers `server` is the server's box id and the
+ * call goes down that server's own wire; on the computer whose own daemon is the door it is the paired server's id, which the daemon's tool takes as `server`. Every other call follows the Space it is for.
+ */
+/** The chat id out of what work.chat.create answered (its id, chat or urn). */
+const chatIdOfAnswer = (r: unknown): string => { const x = r as { chat?: unknown; id?: unknown; urn?: unknown } | null; const v = [x?.chat, x?.id, x?.urn].find((y) => typeof y === "string") as string | undefined; const m = v ? /\/chat\/([^/?#]+)$/.exec(v) : null; return m ? m[1] : v ?? ""; };
+
+export type ToolOptions = { server?: string };
+
+export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
+  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (override) return (await override(name, given)) as T;
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
@@ -59,19 +71,38 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     if (space && (await (await import("./team-join")).joinedHere(space))) throw new BoxError("not_allowed", NOT_FOR_MEMBERS_YET);
   }
   // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
-  const input = withSpace(name, given, useSpaces.getState().space);
+  let input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
-    try { return await peerCall<T>(name, input); }
+    // With several servers paired, the call goes to the one that hosts its Space (or the one it names); one pairing goes where it always went.
+    const { routeCall, listAllSpaces, listAllChats, noteChat, noteItems } = await import("./space-servers");
+    // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
+    if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
+    // The approvals inbox is every server's, and the phone's push token goes to every server (one that was down is named by pushMissed).
+    if (isApprovalList(name) && !opts.server) { const all = await (await import("./space-servers")).listAllApprovals(name, input); if (all) return all as T; }
+    if (isEveryServer(name) && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) return (await import("./space-servers")).callEvery<T>(name, input);
+    const route = await routeCall({ tool: name, input: given, showing: useSpaces.getState().space, server: opts.server });
+    if (route.error) throw new BoxError(route.error.code, route.error.message);
+    const to = route.box;
+    // an id-only action goes with the Space its id was seen in, not the one that happens to be showing
+    if (route.space && SPACE_TOOLS.has(name)) input = { ...input, space: route.space };
+    // a record address names its own Space: that is the one the call carries, not the one that happens to be showing
+    else if (urnSpace(given) && SPACE_TOOLS.has(name) && !given.space) input = { ...input, space: urnSpace(given) };
+    // The chats list is every server's under All spaces. A new chat belongs to a Space on one server, so with several servers it is made only when a Space is showing (never guessed onto the active one).
+    if (name === "work.chat.list" && !to && !opts.server) { const all = await listAllChats(input); if (all) return all as T; }
+    if (name === "work.chat.create" && !to && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) throw new BoxError("pick_a_space", "Pick the Space this chat is for first, then start it. A chat belongs to one Space on one server. Nothing was made.");
+    try { const out = await peerCall<T>(name, input, to ?? ACTIVE); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); else noteItems(out, typeof input.space === "string" ? input.space : undefined); return out; }
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
       const held = heldAsk(x, name, input);
       // The same act again with the approval id beside it, as an extra input key on the peer wire (the door strips it before the tool sees it).
-      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}), (approval) => peerCall<T>(name, { ...input, approval }));
+      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}, to ?? ACTIVE), (approval) => peerCall<T>(name, { ...input, approval }, to ?? ACTIVE));
       throw new BoxError(x.code ?? "error", x.message ?? "");
     }
   }
+  // On the computer whose own daemon is the door, a call that names a server hands it on as `server` (the daemon asks that paired server).
+  if (opts.server) input = { ...input, server: opts.server };
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   // The relay says the owner removed this device: it forgets everything it held and pairs again.
   if (r.error?.code === "relay_removed") await (await import("../identity/removed")).ifRemoved("relay_removed");

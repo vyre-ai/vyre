@@ -71,6 +71,10 @@ Pick another name. Service names such as `app`, `login` and `vault`, well-known 
 
 It is shown once, so nothing can show it again. It is the only way back in if you lose every device. If you still have a device signed in to your name, add the new device from it with **Add a device**.
 
+### Signing in on a new device by your name
+
+On the new device, type your name and ask to sign in. Every device already signed in to that name asks "Someone typed your name to sign in on ..." with three words to pick. Read the three words off the new device's own screen, never from a message, and decline if you did not just ask. A request lasts 2 minutes. If nobody answers, the new device says so; it cannot tell you whether the name has a device online. A name can be asked about only a few times a minute, so wait a minute and try again.
+
 ## The box
 
 ### "vyre: no box in /srv/vyre (set VYRE_DIR)"

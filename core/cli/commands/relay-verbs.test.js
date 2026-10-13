@@ -3,7 +3,7 @@
 // vyred started in this process in a temp home, with the Node relay on 127.0.0.1. The person is
 // stood in for by a presence verifier that finds one at every call (test/helpers.js present), so
 // the changes go through; one test keeps the real verifier to show a change is refused without a
-// person. A browser from the web app, played by the test, pairs through the QR code's address.
+// person. A browser from the web app, played by the test, pairs through an address made from a ring ticket (the classic code is gone).
 // No Tailscale, no Cloudflare, no dialogs.
 
 import "../../../scripts/mac-test-guard.mjs";
@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
-import { tempHome, present } from "../../../test/helpers.js";
+import { tempHome, present, offerUrl } from "../../../test/helpers.js";
 import { createRelay } from "../../../relay/node/server.js";
 import { keyPair } from "../../relay/noise.js";
 import { deviceSide } from "../../relay/channel.js";
@@ -41,7 +41,7 @@ async function world(t, { presence = /** @type {any} */ (present) } = {}) {
   t.after(() => useReleasesFile());
   const d = await start({ root, log: () => {}, ...(presence ? { presence } : {}) });
   t.after(() => d.stop());
-  return { root, url };
+  return { root, url, d };
 }
 
 /** A browser from the hosted web app that opens the pairing address, as Northwind Bakery's laptop. */
@@ -60,8 +60,8 @@ async function browser(t, scanned) {
   return (await side.ready).reply;
 }
 
-test("relay cli verbs: status, on, pair, devices, trust, rename, pin, unpin, remove, off", async t => {
-  const { root, url } = await world(t);
+test("relay cli verbs: status, on, devices, trust, rename, pin, unpin, remove, off", async t => {
+  const { root, url, d } = await world(t);
 
   const s0 = await run(root, ["relay", "status", "--json"]);
   assert.equal(s0.code, 0, s0.out);
@@ -84,10 +84,8 @@ test("relay cli verbs: status, on, pair, devices, trust, rename, pin, unpin, rem
   assert.match(s1.out, /relay (connected|on, not connected yet)/);
   assert.match(s1.out, /0 devices paired/);
 
-  // pair: the address the QR code holds; a browser from the web app opens it.
-  const pair = await run(root, ["relay", "pair", "--json"]);
-  assert.equal(pair.code, 0, pair.out);
-  const reply = await browser(t, JSON.parse(pair.stdout).url);
+  // pair: a browser from the web app opens an address made from a ring ticket (the classic `relay pair` is gone, and is pinned below).
+  const reply = await browser(t, await offerUrl(d));
   assert.equal(reply.paired, true);
   const id = reply.device;
 
@@ -166,33 +164,28 @@ test("relay cli verbs: vyre commands lists every verb run() handles", async t =>
   const r = await run(root, ["commands", "relay", "--json"]);
   assert.equal(r.code, 0, r.out);
   const verbs = JSON.parse(r.stdout).commands[0].verbs;
-  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "devices", "remove", "rename", "trust", "mark", "on", "off", "pin", "unpin"]);
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "devices", "remove", "rename", "trust", "mark", "on", "off", "pin", "unpin"]);
   assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["status", "devices"]);
   assert.ok(verbs.filter(v => !v.read).every(v => v.person), "every change asks for a person");
   assert.deepEqual(verbs.find(v => v.verb === "rename").args, [{ name: "id", required: true }, { name: "name", required: true, repeat: true }]);
   assert.deepEqual(verbs.find(v => v.verb === "on").flags.map(f => f.name), ["url"]);
 });
 
-test("relay cli verbs: pair says the device it pairs cannot sign in as you until you confirm it from Devices", async t => {
+test("relay cli verbs: pair is gone: it refuses with words and names Devices, Add a device, in text, --json and --view", async t => {
   const { root, url } = await world(t);
   assert.equal((await run(root, ["relay", "on", "--url", url])).code, 0);
   const r = await run(root, ["relay", "pair"]);
-  assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /This device can't sign in as you until you confirm it from Devices\./);
-});
-
-test("relay cli verbs: --view pair is a qr frame of the address, with the same data as --json", async t => {
-  const { root, url } = await world(t);
-  assert.equal((await run(root, ["relay", "on", "--url", url])).code, 0);
-  const r = await run(root, ["relay", "pair", "--view"]);
-  assert.equal(r.code, 0, r.out);
-  const f = r.stdout.trim().split("\n").map(l => JSON.parse(l));
-  assert.equal(f.length, 2, "one frame, then done: no QR blocks drawn as text");
-  assert.equal(f[0].cmd, "relay pair");
-  assert.equal(f[0].view.kind, "qr");
-  assert.equal(f[0].view.text, f[0].data.url);
-  assert.match(f[0].view.caption, /works once, for 10 minutes/);
-  assert.deepEqual(f[1], { v: 1, done: true, exit: 0 });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /vyre relay pair is gone/);
+  assert.match(r.out, /Devices, Add a device/);
+  const j = await run(root, ["relay", "pair", "--json"]);
+  assert.equal(j.code, 1);
+  assert.match(JSON.parse(j.stdout).error.next, /Devices, Add a device/);
+  const v = await run(root, ["relay", "pair", "--view"]);
+  assert.equal(v.code, 1);
+  const f = v.stdout.trim().split("\n").map(l => JSON.parse(l));
+  assert.equal(f[0].view.kind, "error", "an error frame, never a QR");
+  assert.match(f[0].view.next, /Devices, Add a device/);
   const s = JSON.parse((await run(root, ["relay", "status", "--view"])).stdout.split("\n")[0]);
   assert.deepEqual([s.view.kind, s.view.title, s.data.enabled], ["card", "Relay", true]);
 });

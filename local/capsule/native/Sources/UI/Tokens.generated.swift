@@ -266,9 +266,9 @@ public enum Tokens {
             public static let rail: CGFloat = 64
             public static let list: CGFloat = 320
             public static let side: CGFloat = 340
-            public static let pageMax: CGFloat = 980
+            public static let pageMax: CGFloat = 1120
             public static let readMax: CGFloat = 720
-            public static let gutter: CGFloat = 32
+            public static let gutter: CGFloat = 40
             public static let gutterPhone: CGFloat = 16
         }
 

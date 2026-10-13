@@ -11,6 +11,7 @@ import { createTimeline } from "./timeline.js";
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
+import { levelOfSeat } from "../../lib/seat-levels.js";
 import { planUpgrade, runUpgrade, manifestPath } from "./chat-upgrade.js";
 import crypto from "node:crypto";
 import { planMove, runMove, linkedClosure } from "./project-move.js";
@@ -121,6 +122,8 @@ export default {
       // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
       hear("chat.created", p => hubOf().onChatCreated(p));
       hear("chat.changed", p => hubOf().onChatChanged(p));
+      // an accepted invite that named projects: the joiner is seated on each, at the level the invite chose, by the one seat-giving path (setSeatLevel, keep: a replay leaves an edited seat alone)
+      hear("invite.used", p => hubOf().onInviteUsed(p && p.data));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => (p && p.space ? null : hubOf().onThreadRenamed(p)));
@@ -456,10 +459,21 @@ export default {
       },
     });
     ctx.tool("work.project.seat", {
-      description: "Where a person stands on a project (its owner, on its team, or neither): { exists, owner, team }. For the teammates module, which sends work only for a person who has a seat.",
+      description: "Where a person stands on a project (its owner, on its team, or neither): { exists, owner, team, level }, level being lead, contributor or viewer (null off the team). For the teammates module, which sends work only for a person who has a seat, and the switchboard.",
       internal: true, callers: ["module"],
       input: obj({ project: { type: "string" }, person: { type: "string" } }, ["project", "person"]),
-      run: async (/** @type {any} */ input) => { kernelOf(); const seat = await hubOf().seatOf(String(input.project || ""), String(input.person || "")); return seat ? { exists: true, ...seat } : { exists: false, owner: false, team: false }; },
+      run: async (/** @type {any} */ input) => { kernelOf(); const seat = await hubOf().seatOf(String(input.project || ""), String(input.person || "")); return seat ? { exists: true, ...seat } : { exists: false, owner: false, team: false, level: null }; },
+    });
+    ctx.tool("work.project.level", {
+      description: "Set a person's level on a project: lead (manages it), contributor (reads and writes in it) or viewer (reads only: records, tasks, files, chats; their AI session there is read-only too). A level only narrows what their Space role allows. Only the project's owner or a lead on it, an owner or an admin may; a person not yet on the project is seated at that level.",
+      input: obj({ project: { type: "string", description: "The Project's short name, record id or address" }, person: { type: "string", description: "The person's id" }, level: { type: "string", enum: ["lead", "contributor", "viewer"] } }, ["project", "person", "level"]),
+      run: async (input, extra) => {
+        kernelOf();
+        const chain = await chainOf(extra);
+        const r = await hubOf().setSeatLevel(chain, { project: String(input.project || ""), person: String(input.person || ""), level: String(input.level || "") });
+        if (!r) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
+        return r;
+      },
     });
     ctx.tool("work.project.members", {
       description: "Who is on a Project's team: each assistant or person with the role it fills, from the project's team records ({ members: [{ agent, role }] }). Read under the caller's own chain: a Project the caller may not read is not found.",
@@ -471,7 +485,7 @@ export default {
         const mine = rec ? await k.records.get(chain, "project", rec.id).catch(() => null) : null;
         if (!rec || !mine) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
         const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 200 } }).catch(() => ({ rows: [] }))).rows || [];
-        return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || "") }; }).filter((/** @type {any} */ m) => m.agent) };
+        return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || ""), ...(d.kind === "person" ? { level: levelOfSeat(d) } : {}) }; }).filter((/** @type {any} */ m) => m.agent) };
       },
     });
     ctx.tool("work.project.may-read", {

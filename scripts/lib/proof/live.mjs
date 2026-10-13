@@ -291,7 +291,7 @@ export async function walkLive(w) {
           assert.equal(r.code, 0, `vyre update as a normal user failed (exit ${r.code}): ${r.out.slice(-400)}`);
           return "vyre update as a normal user: exit 0";
         }
-        const r = await mac.callTool("update.apply", {});
+        const r = await mac.callTool("update.apply", { yes: true });
         assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
         return "requested";
       }, { needs: [U("the notice names the release under test")] });

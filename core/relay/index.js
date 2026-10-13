@@ -14,6 +14,7 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
+import { createChainAdmit } from "./chain-admit.js";
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
@@ -25,24 +26,23 @@ import { relayLink } from "./link.js";
 import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
 import { peersFor, inviteesFor, serversFor, homesFor } from "./peers.js";
-import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
 import { loadKeys, keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
-import { redeem } from "./redeem.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { publishableRelay, relayUrlProblem } from "../../lib/relay-url.js";
 
 export { loadKeys } from "./keys.js";
 export { DEFAULT_RELAY } from "../../lib/relay-default.js";
-const PAIR_TTL = 10 * 60_000;
 const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const DAY = 24 * 60 * 60_000;
 /** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
 export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|relay\.setup\.claim$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
+/** The next step every refusal of the old pairing code names. */
+const ADD_A_DEVICE = "Pair this device again from your app: Devices, Add a device.";
 
 export const MIGRATIONS = [
   `CREATE TABLE relay_devices (
@@ -74,6 +74,12 @@ export const MIGRATIONS = [
   // The owner's own PRESENT act paired this device (the first device, the classic QR he made with presence, a window he confirmed on a screen, the three words): who and how, as a fact of its own beside the Wink record.
   // It is never written for a ticket nobody was present for. It opens no person session and grants no pairing; the bus rule and the caller's facts read it (see `deviceIsOwner` in core/daemon/index.js).
   `ALTER TABLE relay_devices ADD COLUMN owner_paired TEXT;`,
+  // The classic bearer code is gone (13 Oct 2026). NULL: not yet judged; 1: this device came in by a code anyone could hold, before this version, and no one confirmed it; 0: it did not. Judged once, at the first
+  // start of a version that has it (see `judgeOldCodes`); every device enrolled after that is written 0. Only a 1 with no owner fact is refused, so the owner can still mark a phone of his own before it next connects.
+  `ALTER TABLE relay_devices ADD COLUMN old_code INTEGER;`,
+  // Design B (rc.4): this device came in because the person's identity chain lists it, not because the owner was present: { identity, entry, seq, at }. Never owner_paired. Whether it is `limited` is read from the chain at each call
+  // (core/relay/chain-admit.js limitedOf), and a limited device is refused the device-admin tools at the registry (core/modules/device-admin.js).
+  `ALTER TABLE relay_devices ADD COLUMN via_chain TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -89,10 +95,8 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
 
 /**
  * Shared by every relay tool that would create or persist a new key on this Mac before vyre-core
- * (ADR 0040) holds it instead: `relay.join` (this device's own identity key,
- * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
- * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
- * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
+ * (ADR 0040) holds it instead: `relay.pair.ticket` (a pairing whose secret and
+ * MAC key derive from a ticket held only in this box's process). All of it sits at the person's own login uid today, readable and
  * writable by any process at that uid, the same gap that already keeps relay hosting off by
  * default on local role (core/relay/keys.js, team/archive/work-journals/tailnet.md "Needs from others"). Refuse
  * plainly rather than ship the gap on any of these paths.
@@ -128,6 +132,11 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = seam.now || Date.now;
+    // A device paired by the classic code before this version has no owner fact and no Wink record of anyone confirming it. Judged once per row, here, so the connect check below is a plain read.
+    try {
+      const wink = /** @type {any} */ (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wink_devices'").get());
+      db.prepare(`UPDATE relay_devices SET old_code = CASE WHEN owner_paired IS NULL AND kind IN ('app', 'web') AND removed_at IS NULL${wink ? " AND id NOT IN (SELECT id FROM wink_devices WHERE removed_at IS NULL)" : ""} THEN 1 ELSE 0 END WHERE old_code IS NULL`).run();
+    } catch (e) { /* no table yet on a first start: nothing to judge */ }
     const platform = seam.platform || process.platform;
     const settings = () => /** @type {any} */ ({ enabled: false, url: DEFAULT_RELAY, web_expiry_days: 30, tunnel_url: "", ...(ctx.config.relay || {}) });
     const save = patch => config.save({ relay: patch }, ctx.paths.root, ctx.config);
@@ -165,22 +174,17 @@ export default {
       try { return toBase64url(fingerprint8(ctx.config.owner && ctx.config.owner.id, "person")); } catch { return null; }
     };
 
-    /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
-    /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
-    let pairing = null;
     /** Live ticket-minted pairings (ADR 0045), any number at once, each single-use: the pairing
-     * secret's hash keyed by itself (hex), same check as `pairing` above but there can be several. */
+     * secret's hash keyed by itself (hex). There is no classic bearer code any more (13 Oct 2026): a ticket is the only secret a device can redeem. */
     /** @type {Map<string, { exp: number }>} */
     const pendingTickets = new Map();
     // (an entry may carry `offer`: a Wink invitation sealed into the same ticket, handled by core/wink)
-    /** Does a presented secret match a live pairing (the classic single one, or a ticket's), and
-     * burn it either way? Null when nothing matches. */
+    /** Does a presented secret match a live ticket, and burn it either way? Null when nothing matches. */
     const takeLiveSecret = provided => {
       const h = sha(provided);
-      if (pairing && pairing.exp > now() && crypto.timingSafeEqual(h, pairing.hash)) { const m = { first: pairing.first, ticket: false, via: "start" }; pairing = null; return m; }
       const hex = h.toString("hex");
       const t = pendingTickets.get(hex);
-      if (t && t.exp > now()) { pendingTickets.delete(hex); return { first: false, ticket: true, via: t.via || (t.window ? "window" : "ticket"), ...(t.gate ? { gate: t.gate } : {}), ...(t.window ? { window: t.window } : {}), ...(t.offer ? { offer: t.offer } : {}) }; }
+      if (t && t.exp > now()) { pendingTickets.delete(hex); return { ticket: true, via: t.via || (t.window ? "window" : "ticket"), ...(t.gate ? { gate: t.gate } : {}), ...(t.window ? { window: t.window } : {}), ...(t.offer ? { offer: t.offer } : {}) }; }
       for (const [k, v] of pendingTickets) if (v.exp <= now()) pendingTickets.delete(k);
       return null;
     };
@@ -214,6 +218,24 @@ export default {
       if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
 
+    /** The chain-hello check: the owner's identity, or a member of this home's Space at exactly their role. Built on first use. */
+    /** @type {ReturnType<typeof createChainAdmit> | null} */ let chainGate = null;
+    const chains = () => (chainGate ??= createChainAdmit({
+      boxId: async () => { await keys.ready(); return Buffer.from(k().box.pub).toString("base64url"); },
+      // the owner, or a member of this home's Space with exactly the role the kernel gives them (the same person, a new device: no code)
+      roleOf: async identity => {
+        try {
+          const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {}));
+          if (r && r.data && r.data.claimed === identity) return "owner";
+          const space = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
+          if (!space) return null;
+          const m = /** @type {any} */ (await ctx.call("spaces.membership", { person: identity, space }));
+          return m && m.data && typeof m.data.role === "string" ? m.data.role : null;
+        } catch { return null; }
+      },
+      fetchState: async identity => { const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
+    }));
+
     // ---- the link ----
 
     /** @type {ReturnType<typeof relayLink> | null} */
@@ -226,6 +248,7 @@ export default {
         // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
         ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
         // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
+        onsignin: m => { try { ctx.events.emit("relay.signin-asked", m); } catch {} },
         oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
           try { ctx.events.emit(s === "connected" ? "relay.connected" : "relay.disconnected", s === "connected" ? {} : { why: why || "" }); } catch {}
@@ -303,10 +326,11 @@ export default {
         if (typeof /** @type {any} */ (homes).homeArrive === "function") /** @type {any} */ (homes).homeArrive();
         return { v: 1, box: { name: boxName() }, home: id };
       }
+      // Design B: a key the person's identity chain lists, for the owner's own identity, with a signed chain hello. Makes a row marked via_chain (never owner_paired).
+      if (hello && hello.chain && typeof hello.chain === "object" && !existing && !pendingPairs.has(id)) return admitChain(pub, hello, id);
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
-        if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
-        if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
+        if (!match) throw new Error(`this pairing code has expired or was already used. ${ADD_A_DEVICE}`);
         const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: hello.kind === "web" ? "web" : "device", owner: (ctx.config.onboard || {}).person });
         // A Wink invitation (core/wink): redeeming it enrols no device here. The person who was invited becomes a member of this space
         // through the wink module, which hears the event below and writes the grant. Nothing about the invitee's other devices crosses.
@@ -329,7 +353,7 @@ export default {
         if (!crypto.timingSafeEqual(waiting.pub, pub)) throw new Error("not a paired device");
         return { v: 1, box: { name: boxName() }, pending: id, gate: waiting.gate };
       }
-      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen, owner_paired, old_code, via_chain FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
         // A device the owner removed hears exactly that, on the same code (4401) as when its open channel was
         // closed, so an app can tell "removed" from "box unreachable" and stop retrying (pwa).
@@ -337,7 +361,22 @@ export default {
         if (gone && crypto.timingSafeEqual(Buffer.from(gone.pub, "base64url"), pub)) throw new Error("device removed");
         throw new Error("not a paired device");
       }
+      // A device that came in on the chain is checked against the chain again (at most every 5 minutes): taken off the list, it is refused at once.
+      if (row.via_chain) {
+        let v = null; try { v = JSON.parse(row.via_chain); } catch { v = null; }
+        const st = v ? await chains().status(String(v.identity), String(v.entry)) : { state: "gone" };
+        if (st.state === "gone") { forget(id, "removed from your identity list"); throw new Error("device removed"); }
+        // the chain cannot be read and the hour of grace is over: refused, not removed (the device is fine; it connects again when the chain can be read)
+        if (st.state !== "ok") throw new Error("this device could not be checked against your identity list just now; try again in a few minutes");
+      }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
+      // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
+      // the words and the next step are in the box's log and in the event the owner's screens show.
+      if (row.old_code === 1 && !row.owner_paired) {
+        ctx.log(`relay: refused ${id}: it was paired by a code anyone could hold. ${ADD_A_DEVICE}`);
+        forget(id, `unconfirmed: paired by a code anyone could hold. ${ADD_A_DEVICE}`);
+        throw new Error("device removed");
+      }
       const release = hello && typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
       const manifest = hello && typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
       if (row.kind === "web") db.prepare("UPDATE relay_devices SET last_seen = ?, release = ?, manifest = ? WHERE id = ?").run(now(), release, manifest, id);
@@ -345,6 +384,29 @@ export default {
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
+
+    /**
+     * Design B: admit a key the identity chain lists. The check is core/relay/chain-admit.js; this writes the row (kind app, via_chain, no owner_paired, no presence key yet: the entry key is what presence accepts, offered in
+     * the hello as presenceKey and enrolled as for any device) and answers as a paired device. @param {Buffer} pub @param {any} hello @param {string} id
+     */
+    async function admitChain(pub, hello, id) {
+      const r = await chains().check({ ...hello.chain, channel: id }, id);
+      if (!r.ok) throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
+      const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: "device", owner: (ctx.config.onboard || {}).pe });
+      const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now() });
+      // The presence key is part of what the entry key signed (the hello's `pk` is its sha256): a key that does not match is not enrolled, so nobody can attach a key of their own to a chain device's hello.
+      let presenceKey = null;
+      const pk = hello.presenceKey;
+      if (pk && typeof pk.public_key === "string" && r.pk !== "-" && crypto.createHash("sha256").update(pk.public_key).digest("hex") === r.pk) {
+        const e = await ctx.call("presence.enroll", { kind: "device", name: `${name} (chain ${r.entry})`, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        if (e && e.data && (e.data.keyId || e.data.id)) presenceKey = String(e.data.keyId || e.data.id);
+      }
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
+      ctx.events.emit("device.paired", { kind: "relay", id, name, via: "chain" });
+      return { v: 1, box: { name: boxName() }, device: id };
+    }
 
     /**
      * Enrols a device that redeemed a ticket: its row, its presence key, the notice and the tailnet grant. Everything a pairing makes happens here and only here, so a gated or
@@ -377,14 +439,15 @@ export default {
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
       const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
-      // The owner's own present act paired it? The first device (nobody is on this box yet), a window ticket (his screen confirmed this exact phone) and a phone's or a ring's gated ticket
-      // (he confirmed the words) are; a server's gated ticket, the classic QR (a bearer ticket: any holder redeems it) and an ungated ticket a module minted are not.
-      const ownerAct = match && (match.first === true || Boolean(match.window) || match.gate === "phone" || match.gate === "ring");
-      const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.first ? "first" : match.gate ? `gate:${match.gate}` : "window" }) : null;
-      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?)
+      // The owner's own present act paired it? A window ticket (his screen confirmed this exact phone) and a phone's or a ring's gated ticket (he confirmed the words) are. A server's gated ticket is not
+      // (the wink record says who confirmed it) and an ungated ticket a module minted is not. The one-step ring a relay test takes (VYRE_TEST_UNGATED_RING, never honoured in a packaged daemon) stands for the
+      // confirmed ring, so a test device is the owner's like the real one. There is no bearer code any more: nothing here is paired by a secret a stranger could hold.
+      const ownerAct = match && (Boolean(match.window) || match.gate === "phone" || match.gate === "ring" || (match.via === "ring" && !match.gate));
+      const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.gate ? `gate:${match.gate}` : match.window ? "window" : "ring" }) : null;
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired, old_code) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?, 0)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
-          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired`)
+          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired, old_code = 0`)
         .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage, ownerPaired);
       // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
       // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
@@ -738,7 +801,9 @@ export default {
         const s = settings();
         if (s.enabled || await keys.exists()) await keys.ready();
         return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys.loaded ? route() : null,
-          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
+          devices: active().length, open: link ? link.open : 0, pairing: null,
+          // this server admits a device the identity chain lists (core/relay/chain-admit.js); an app offers chain sign-in only to a server that says so
+          chainHello: 1,
           // the public door (relay.tunnel_url): off, connecting or live, for the Settings row that says whether people outside can reach signing pages and shared links
           tunnel: { url: tunnelUrl() || null, connected: Boolean(tlink && tlink.connected) } };
       },
@@ -787,42 +852,25 @@ export default {
         owner(meta.caller, meta, "turning the relay off");
         save({ enabled: false });
         stopLink();
-        pairing = null;
         return { enabled: false };
       },
     });
 
-    // The code is only useful once the box is at the relay to answer it, so wait for that (a
-    // few seconds at most) and say so when it is not there yet.
-    const mint = async first => {
-      const secret = crypto.randomBytes(16).toString("base64url");
-      pairing = { hash: sha(secret), exp: now() + PAIR_TTL, first };
-      await keys.ready();
-      if (!settings().enabled) save({ enabled: true });
-      startLink();
-      const connected = link ? await link.ready() : false;
-      return { url: pairUrl({ relay: publishableRelay(settings().url), route: route(), box: k().box.pub, secret, name: boxName() }), expiresAt: pairing.exp, connected };
-    };
-
+    // The classic bearer code (relay.pair.start, relay.pair.first, and relay.join to redeem one) is gone (owner's ruling, 13 Oct 2026): a code any holder could redeem made a device nobody confirmed. The names stay
+    // registered so an older CLI, app or script that still calls one hears why and what to do instead, not "no such tool". Nothing is made or enrolled.
+    const classicGone = (/** @type {string} */ what) => fail("gone", `${what} is gone: a code anyone could hold made devices nobody confirmed. A device now joins by signing in with the person's name and approving on another device, or with a space code and the same words. ${ADD_A_DEVICE}`);
     ctx.tool("relay.pair.start", {
-      description: "Make a QR code that pairs one more device with this box through the relay. The code works once, for 10 minutes; making a new one voids the last.",
+      description: "Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj(),
-      presence: { summary: async () => "Pair a new device with this box" },
-      // The surfaces, the owner's own devices, and a module (onboard runs this step); owner() below refuses a model, an agent, a hook, a guest and anonymous.
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
-      run: async (_, meta = {}) => { owner(meta.caller, meta, "pairing a device"); return mint(false); },
+      run: async () => { throw classicGone("The pairing code from relay.pair.start"); },
     });
 
     ctx.tool("relay.pair.first", {
-      description: "During onboarding only, before this box has any person on a device: make the QR code for the first device. Refused once a device is paired or a tailnet owner exists.",
+      description: "Gone: the classic bearer pairing code for the first device. Refuses and says how to add a device now (a space code plus the same words, or sign in by name).",
       input: obj(),
       callers: ["onboard"],
-      // No yes is asked here (ruled 10 Oct): before the first device exists no yes can, so a Mac's Touch ID prompt could never be answered by anyone but the process that asks. What guards it instead: only the
-      // onboarding page's own caller (a listener behind the one-time setup token, never a label a socket client can claim), and never once any person or owner exists (below).
-      run: async () => {
-        if (personExists()) throw fail("denied", "this box already has a person on a device; pair more from Settings, Devices");
-        return mint(true);
-      },
+      run: async () => { throw classicGone("The pairing code for a first device"); },
     });
 
     // Scan-to-pair, "Wink" in copy (ADR 0045): a Vyre code carries only a compact 64-bit ticket,
@@ -887,6 +935,19 @@ export default {
         }
         const minted = await mintTicket(seed, { via: "module", ...(offer ? { offer } : {}), ...(input.gate ? { gate: String(input.gate) } : {}) });
         return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
+      },
+    });
+    ctx.tool("relay.signin.watch", {
+      internal: true,
+      description: "Serve a name's sign-in requests: the locator derived from the name (relay/client/signin.js signinLoc). The relay hands each request for it to this box as the relay.signin-asked event { loc, s }, and tells a device that asks nothing about whether any box does. Modules only.",
+      input: obj({ loc: str, on: { type: "boolean" } }, ["loc"]),
+      run: async input => {
+        const loc = String(input.loc);
+        if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
+        await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink();
+        if (link) await link.ready();
+        if (input.on === false) link?.signinUnwatch(loc); else link?.signinWatch(loc);
+        return { watching: input.on !== false, supported: Boolean(link && link.signins()) };
       },
     });
     ctx.tool("relay.code.alloc", {
@@ -1089,34 +1150,10 @@ export default {
     const keyFingerprint = box => { const s = base32(crypto.createHash("sha256").update(box).digest()).slice(0, 8); return `${s.slice(0, 4)} ${s.slice(4)}`; };
 
     ctx.tool("relay.join", {
-      description: "This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:\"relay\"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to \"device\" once paired (onboard.machine): the same flag onboard.join{action:\"verify\",becomeDevice} takes. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).",
-      input: obj({ url: { type: "string", pattern: "^https://vyre\\.run/pair#[A-Za-z0-9_-]+$" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
+      description: "Gone: redeeming a classic bearer pairing code to become a device of another box. Refuses and says how to join now (sign in by name and approve on another device, or a space code plus the same words).",
+      input: obj({ url: { type: "string" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
-      // On darwin this always refuses (see macCoreRefusal above), so presence is not required
-      // there either: no Touch ID prompt for a call that can only ever fail.
-      presence: {
-        when: () => !macCoreRefusal(platform, keys.core),
-        summary: async i => {
-          const offer = parsePairUrl(i && i.url);
-          if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
-          const host = promptSafe((offer.relay.match(/^wss?:\/\/([^/]+)/) || [])[1] || offer.relay, "a relay", 64);
-          // The name is the OTHER box's own text; the key shown after it is always this box's own
-          // computed fingerprint, never anything the other side sent.
-          const name = promptSafe(offer.name, "a Vyre box");
-          return `Pair this device with "${name}" on ${host} (key ${keyFingerprint(offer.box)})`;
-        },
-      },
-      run: async ({ url, name, becomeDevice = false }, meta = {}) => {
-        const refusal = macCoreRefusal(platform, keys.core);
-        if (refusal) throw refusal;
-        owner(meta.caller, meta, "joining another box");
-        if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
-        let paired;
-        try { paired = await redeem(url, { root: ctx.paths.root, name, coreKeys: keys.client }); }
-        catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
-        if (becomeDevice) await ctx.call("onboard.machine", { machine: "device" }).catch(() => {});
-        return paired;
-      },
+      run: async () => { throw classicGone("Joining another box with a pairing code"); },
     });
 
     // The paired devices for other modules (VyreDrop asks which of the person's computers exist and which are connected): id, name, kind and whether connected now. Nothing else, and no web browser's row.
@@ -1323,8 +1360,17 @@ export default {
       description: "A paired relay device as the link module's companion check needs it: kind, trusted, when it paired, its presence key id and whether it was removed. Null for an id never paired. Modules only.",
       input: obj({ id: str }, ["id"]),
       run: async input => {
-        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired FROM relay_devices WHERE id = ?").get(String(input.id)));
-        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null } : null;
+        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired, via_chain FROM relay_devices WHERE id = ?").get(String(input.id)));
+        // a chain device is judged against the CURRENT chain at each call (read again at most every 5 minutes): off the list it is removed here; with the chain unreadable past the grace it is refused without being removed;
+        // `limited` is recomputed from the entry now, never read from what was true when it was admitted
+        let now_ = null;
+        if (via) {
+          const st = await chains().status(String(via.identity), String(via.entry));
+          if (st.state === "gone") { forget(String(input.id), "removed from your identity list"); return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false }; }
+          if (st.state !== "ok") return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false };
+          now_ = { identity: String(via.identity), limited: st.limited };
+        }
+        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null, ...(now_ ? { viaChain: now_ } : {}) } : null;
       },
     });
 

@@ -7,6 +7,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { motion } from "../motion/tokens";
 import { useMark, type MarkRef } from "../marks/useMark";
 import { Text } from "./Text";
+import { SpaceTile } from "./SpaceTile";
 import { useCardFill } from "../lib/cardFill";
 
 /** What a mark stands for. Person, assistant, teammate and agent are faces and characters; project (matter, trip) and space are emblems; device a line drawing. */
@@ -25,6 +26,8 @@ export function kindOf(family?: string): AvatarKind {
 }
 
 function Mark({ of, size }: { of: AvatarRef; size: number }) {
+  // A space is its logo or a monogram on a calm tile: never the generated pattern.
+  if (of.kind === "space") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
   const ast = useMark(of, size);
   if (!ast) return <View style={{ width: size, height: size }} />;
   return <SvgAst ast={ast} override={{ width: size, height: size }} />;

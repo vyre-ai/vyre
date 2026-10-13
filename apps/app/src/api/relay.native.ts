@@ -15,10 +15,9 @@ import { base64url, fromBase64url } from "@vyre/relay-client/bytes.js";
 import * as Keys from "../../modules/vyre-signer";
 import { keyStorage } from "../native/presence-model";
 import { fromB64url, spkiFromXY } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.native.ts on the phone, which exports neither
-import { readPairing, type Pairing } from "./pairing";
+import { makePairingStore } from "./pairing-store";
 
 const KEY = "vyre.relay.key";
-const PAIRING = "vyre.relay.pairing";
 const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 
 const randomBytes = (n: number) => fromB64url(Keys.randomBytes(n));
@@ -89,17 +88,11 @@ export const visibility = {
 /** expo/fetch streams a response body, which React Native's own fetch does not (the event stream needs it). */
 export const directFetch = expoFetch as unknown as typeof fetch;
 
-export async function loadPairing(): Promise<Pairing | null> {
-  try {
-    return readPairing(await SecureStore.getItemAsync(PAIRING, ONLY_HERE));
-  } catch {
-    return null;
-  }
-}
-
-export async function savePairing(p: Pairing | null): Promise<void> {
-  try {
-    if (p) await SecureStore.setItemAsync(PAIRING, JSON.stringify(p), ONLY_HERE);
-    else await SecureStore.deleteItemAsync(PAIRING, ONLY_HERE);
-  } catch {}
-}
+/** The keyed text store this platform keeps its small device records in (the pairings, and the space list's two counters). */
+export const keyedText = {
+  get: (k: string) => SecureStore.getItemAsync(k, ONLY_HERE),
+  set: (k: string, v: string) => SecureStore.setItemAsync(k, v, ONLY_HERE),
+  del: (k: string) => SecureStore.deleteItemAsync(k, ONLY_HERE),
+};
+const pairingStore = makePairingStore(keyedText);
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { InviteRolePicker } from "../roles/InviteRolePicker";
+import { InviteMade } from "../devices/InviteMade";
 import { Banner, Button, Card, ChoiceList, Chip, CodeBlock, CodeDisplay, CodeField, Divider, Field, FlowStep, Icon, MatchWords, Meter, Row, Segmented, Stack, Text, showToast } from "@vyre/ui";
 import { DEMO, WORDS, addressOf, afterSpace, inviteStatus, spaceCodeStatus, wordsMatch } from "./flow-model.js";
-import { usePair } from "./VaultInferenceScreens";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { Linking } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -101,25 +102,14 @@ function CreateCodeMock({ go, back, steps }: ScreenProps) {
   );
 }
 
-function CreateConfirmMock({ go, back, steps }: ScreenProps) {
+function CreateConfirmMock({ set, go, back, steps }: ScreenProps) {
   const [bad, setBad] = useState(false);
   return (
     <FlowStep steps={steps} onBack={back} title="Do the four words match?" lead="Your server shows four words too. They must be the same, in the same order."
       failure={bad ? "The words do not match, so this is not your server. Do not go on. Run vyre space up on your server for a fresh code, then enter it again." : undefined}
-      primary={bad ? { label: "Enter a new code", onPress: () => go("create.code") } : { label: "They match", onPress: () => go("create.vault") }}
+      primary={bad ? { label: "Enter a new code", onPress: () => go("create.code") } : { label: "They match", onPress: () => { set({ created: true }); go("create.setup"); } }}
       secondary={bad ? undefined : { label: "They do not match", onPress: () => setBad(true) }}>
       <MatchWords label="Words on this screen" words={WORDS} note="Check them against the words on your server." />
-    </FlowStep>
-  );
-}
-
-function CreateVaultMock({ ctx, set, go, back, steps }: ScreenProps) {
-  const pair = usePair();
-  return (
-    <FlowStep steps={steps} onBack={back} title="Set the space's master password" lead="This locks the space's shared passwords and accounts. You are the owner, and you can hand ownership to another member later."
-      failure={pair.failure}
-      primary={{ label: "Create the space", disabled: !pair.ready, onPress: () => { if (pair.check()) { set({ created: true }); go("create.setup"); } } }}>
-      {pair.fields}
     </FlowStep>
   );
 }
@@ -246,7 +236,7 @@ function InviteWhoMock({ ctx, set, go, back }: ScreenProps) {
       primary={{ label: "Make the invite", onPress: () => { setTried(true); if (ctx.inviteName.trim()) go("invite.link"); } }}>
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
       <Field label="Email (optional)" kind="email" value="" onChangeText={() => {}} placeholder="name@firm.com" />
-      <Segmented label="Role" options={[["member", "Member"], ["admin", "Admin"]]} value={ctx.inviteRole} onChange={(r) => set({ inviteRole: r })} />
+      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
       <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
@@ -478,32 +468,30 @@ function InviteWhoLive({ ctx, set, go, back }: ScreenProps) {
     setTried(true);
     if (!ctx.inviteName.trim()) return;
     setBusy(true); setFailure("");
-    try { keepMadeInvite(await makeInvite(ctx.inviteRole)); go("invite.link"); } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); }
+    try { keepMadeInvite(await makeInvite(ctx.inviteRole, ctx.inviteProjects, Number(ctx.inviteDays) || 7)); go("invite.link"); } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); }
   };
   return (
     <FlowStep onBack={back} title="Invite people" lead="Vyre makes a link and a short code. You send them privately."
       failure={failure}
       primary={{ label: "Make the invite", loading: busy, disabled: busy, onPress: () => { void next(); } }}>
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
-      <Segmented label="Role" options={[["member", "Member"], ["admin", "Admin"]]} value={ctx.inviteRole} onChange={(r) => set({ inviteRole: r })} />
+      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
       <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
 }
 
+const roleName = (r: string) => (r === "temp" ? "Guest" : r.charAt(0).toUpperCase() + r.slice(1));
+
 function InviteLinkLive({ ctx, go, back }: ScreenProps) {
   const m = useMadeInvite();
-  const admin = ctx.inviteRole === "admin" || m?.needsConfirm;
+  const space = useActiveSpace();
+  const admin = ctx.inviteRole === "admin" || !!m?.needsConfirm;
   if (!m) return <FlowStep onBack={back} title="Invite people" failure="No invite was made. Go back and make it again." primary={{ label: "Back", onPress: () => back?.() }}><Text tone="muted">Nothing to send.</Text></FlowStep>;
   return (
     <FlowStep onBack={back} title={`Send ${ctx.inviteName.trim() || "them"} the invite`} lead="Send the link privately. It works once."
       primary={{ label: admin ? "They have the link" : "I sent it", onPress: () => go(admin ? "invite.words" : "invite.done") }}>
-      <CodeBlock code={m.link} lang="" />
-      {m.code ? <CodeDisplay label="Or read them this code" code={m.code} /> : null}
-      <Stack gap={2}>
-        <Button kind="secondary" size="sm" label="Copy link" onPress={() => { Clipboard.setStringAsync(m.link).catch(() => {}); showToast("Copied"); }} />
-        <Button kind="secondary" size="sm" label="Email it" onPress={() => { void Linking.openURL(inviteEmail(m.link)).catch(() => showToast("Your mail app did not open. Copy the link and send it yourself.")); }} />
-      </Stack>
+      <InviteMade space={{ id: space?.id ?? "", name: space?.name ?? SPACE }} who={ctx.inviteName.trim() || "them"} role={roleName(ctx.inviteRole)} line="Works once" code={m.code ?? ""} link={m.link} />
     </FlowStep>
   );
 }
@@ -530,7 +518,6 @@ function InviteWordsLive({ go, back }: ScreenProps) {
 export const CreateRun = LIVE ? CreateRunLive : CreateRunMock;
 export const CreateCode = LIVE ? CreateCodeLive : CreateCodeMock;
 export const CreateConfirm = LIVE ? CreateConfirmLive : CreateConfirmMock;
-export const CreateVault = CreateVaultMock;
 export const CreateSetup = LIVE ? CreateSetupLive : CreateSetupMock;
 export const JoinCode = LIVE ? JoinCodeLive : JoinCodeMock;
 export const JoinReview = LIVE ? JoinReviewLive : JoinReviewMock;

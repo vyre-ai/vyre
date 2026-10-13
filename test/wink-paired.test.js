@@ -1241,3 +1241,31 @@ shardTest("the My Cloud upgrade end to end: a space made on the person's server 
   const late = await dcall("records.create", { space: home, type: "note", data: { title: "late" } });
   assert.equal(late.error && late.error.code, "moved", "Personal takes no new records");
 });
+
+shardTest("sign in by name, real daemon and relay: a new device types the name, the signed-in box asks with the same words, one yes pairs it; a name nobody serves times out with the same answer", async t => {
+  const { signInByName, signinLoc } = await import("../relay/client/signin.js");
+  const w = await world(t);
+  // the box holds the identity named kit; the relay then hands it that name's requests
+  w.d.registry.tools.set("spaces.identity.self", { module: "spaces", description: "", input: { type: "object" }, internal: false, callers: null, hook: false, presence: false, run: async () => ({ id: "ident-kit", name: "kit" }) });
+  w.d.events.emit("names", "name.claimed", {});
+  await new Promise(r => setTimeout(r, 400));
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  const idKey = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  let shown = "";
+  const joining = signInByName({ name: "Kit", relay: w.status.url, key: { publicKey: idKey, label: "Sam's phone" }, deviceName: "Sam's phone", presenceKey, crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onWords: x => { shown = x; } });
+  joining.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing", {})).data; return x && x.asking ? x : null; }, 10_000);
+  assert.equal(q.signin, true);
+  assert.match(q.line, /^Someone typed your name to sign in on "Sam.s phone"/);
+  assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.length, 0, "nothing is paired before the yes");
+  await until(async () => shown);
+  const yes = await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 });
+  assert.equal(yes.data && yes.data.yes, true, JSON.stringify(yes));
+  const done = await joining;
+  assert.equal(done.paired, true);
+  // a name nobody serves: the asker gets the same quiet 202 and then runs out of time, not a "no such name"
+  const other = await signinLoc("nobody", nodeCrypto());
+  const res = await fetch(`${w.status.url.replace(/^ws/, "http")}/v1/signin`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: other, s: "g".repeat(22) }) });
+  assert.equal(res.status, 202);
+});

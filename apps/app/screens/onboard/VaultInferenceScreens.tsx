@@ -3,8 +3,6 @@ import { Linking } from "react-native";
 import { Banner, Button, Card, CodeDisplay, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { DEMO } from "./flow-model.js";
-import { createVault, openVault } from "./real-vault";
-import { linkGithub } from "./real-github";
 import { claudeConnected, finishSignIn, followSignIn, saveKey, startSignIn, type Flow, type Step } from "./real-inference";
 import type { AiState, ScreenProps } from "./types";
 
@@ -29,10 +27,12 @@ function usePair() {
 
 export function MasterSet({ ctx, set, go, back, steps }: ScreenProps) {
   const pair = usePair();
+  const [kit, setKit] = useState("");
   return (
     <FlowStep steps={steps} onBack={back} title={ctx.reset ? "Create a new master password" : "Create your master password"} lead="Choose something only you would think of. A phrase of four words is easy to remember and hard to guess."
       failure={pair.failure}
-      primary={{ label: "Continue", disabled: !pair.ready, onPress: () => { if (pair.check()) { set({ master: pair.value }); go("master.confirm"); } } }}>
+      primary={{ label: "Continue", disabled: !pair.ready || (ctx.reset && !MOCK && !kit.trim()), onPress: () => { if (pair.check()) { set({ master: pair.value }); go("master.confirm"); } } }}>
+      {ctx.reset && !MOCK ? <Field label="Vault recovery secret" mono value={kit} onChangeText={(v) => { setKit(v); holdResetKit(v); }} placeholder="R1-..." help="It is in the vault block of your recovery kit." /> : null}
       {pair.fields}
       <Banner tone="plain" icon="vault">Touch ID or your device's lock opens your vault day to day. You type this password once on each new device.</Banner>
     </FlowStep>
@@ -58,6 +58,8 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
   const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState("");
+  const [made, setMade] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const open = async () => {
     setBusy(true); setSay("");
     const r = await createVault(ctx.master, ctx.reset);
@@ -65,13 +67,17 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
     if (!r.ok) { setSay(r.say); return; }
     // The password is not needed again: the prototype keeps it only to pretend to check it on the next screen.
     if (!MOCK) set({ master: "" });
-    // A new person who came in with GitHub: tie it to the name now that the vault has its Secret Key. Linking can wait for Settings if it fails, so it never blocks the flow.
-    if (ctx.github && !ctx.reset) {
-      const l = await linkGithub(ctx.githubSession ?? null, ctx.github);
-      if (!l.ok) showToast(l.say);
-    }
-    go("inf.pick");
   };
+  if (made) {
+    return (
+      <FlowStep steps={steps} title="Save your vault recovery secret" lead="This page can open your vault and sign in as you. Keep it like a house key: printed or in a safe place, never in email or chat."
+        primary={{ label: "Continue", disabled: !saved, onPress: () => { setMade(null); go("inf.pick"); } }}>
+        <CodeDisplay label="Vault recovery secret" code={made} note="If you forget your master password, this sets a new one. It is shown once." />
+        <Banner tone="warn" icon="warning">Keep it apart from your identity recovery code if you can. Anyone with both can sign in as you and open your vault. If you lose this and your master password, your vault cannot be opened, and Vyre cannot get it back.</Banner>
+        <Stack row gap={3} align="center" justify="between"><Text>I saved my vault recovery secret</Text><Switch label="I saved my vault recovery secret" on={saved} onChange={setSaved} /></Stack>
+      </FlowStep>
+    );
+  }
   return (
     <FlowStep steps={steps} onBack={back} title="Only you know it" lead="If you forget your master password, your recovery kit can set a new one. If you lose both, your vault cannot be opened, and Vyre cannot get it back."
       failure={say || undefined}

@@ -1,5 +1,6 @@
 // This computer: what runs here, history search, and the advanced network cards (the Deck's settings.js machine, history, webhooks, guests, agent nodes, egress, hand-back, lock and drive sections, ported).
 import { RC } from "../shell/rc";
+import { ServerLine } from "./ServerLine";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Segmented, Select, Sheet, Text, showToast } from "@vyre/ui";
@@ -17,6 +18,7 @@ export function SystemScreen() {
   useEffect(load, [load]);
   return (
     <Page title="This computer" back="/u/settings">
+      <ServerLine />
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!info && !err ? <LoadingState rows={4} /> : null}
       {info ? <Machine info={info} onRenamed={load} /> : null}

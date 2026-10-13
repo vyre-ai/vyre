@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalLine, targetOf, proofsAsked, runInputWith, plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
+import { approvalLine, targetOf, proofsAsked, runInputWith, plural, serversOf, blockersOf, canMove, cloudState, offerFor, rowsOnFailure, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
 
 const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title", "other_emails"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
 
@@ -72,4 +72,16 @@ test("my cloud: the approval says where the data goes, from the plan's own targe
   assert.equal(targetOf({ target_name: "bad name; drop" }), null);
   assert.equal(approvalLine({ target_name: "acme" }), "Move to My Cloud: acme.vyre.run");
   assert.equal(approvalLine({}), "Move to My Cloud");
+});
+
+// A Mac that runs on a server has no local vyred, so it has no Personal space and spaces.list cannot be asked. With no server paired either, My Cloud still offers to add one (the server installer's last line says to choose Add a server).
+test("a boxless window with no Personal space and no server paired is offered Add a server", () => {
+  assert.equal(offerFor(cloudState([]), false), "add");
+  assert.equal(offerFor(cloudState(/** @type {any} */ (null)), false), "add");
+  assert.equal(offerFor(cloudState([]), true), "none", "with a server paired and no Personal space there is nothing to move");
+});
+
+test("when spaces.list cannot be asked, a device with no pairing reads as having no spaces (so the card shows); one that is paired stays quiet (its server is only down)", () => {
+  assert.deepEqual(rowsOnFailure(false), []);
+  assert.equal(rowsOnFailure(true), null);
 });

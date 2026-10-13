@@ -28,6 +28,11 @@ class_name = "PairTicket"
 name = "CODES"
 class_name = "CodeSlot"
 
+# One object per name's sign-in requests (`si:<hash of the name>`): the routes that serve the name and a per-minute count. No name, no secret.
+[[durable_objects.bindings]]
+name = "SIGNIN"
+class_name = "SigninSlot"
+
 # Sign in with GitHub (relay/worker/github.js): starts, one-use tickets, nonces and the GitHub-id to identity links, in one object. Holds no key and no secret of a person.
 [[durable_objects.bindings]]
 name = "GITHUB"
@@ -47,9 +52,13 @@ new_sqlite_classes = ["PairTicket"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["CodeSlot"]
-
+# SigninSlot, the same way.
 [[migrations]]
 tag = "v4"
+new_sqlite_classes = ["SigninSlot"]
+
+[[migrations]]
+tag = "v5"
 new_sqlite_classes = ["GithubLinks"]
 
 # Per-address limiting for /v1/device: the 256-bit route id and the DO's own per-route caps make
@@ -103,3 +112,9 @@ simple = { limit = 30, period = 60 }
 # Cloudflare keeps request logs, with addresses, whenever this is on; Vyre needs none of them (#70). A specific failure may switch it on for a day, and the privacy page says so.
 [observability]
 enabled = false
+
+# Per-address limiting for /v1/signin (sign in by name). A name is also limited inside its own object (3 a minute), and there is no global limit.
+[[ratelimits]]
+name = "SIGNIN_LIMITER"
+namespace_id = "26020"
+simple = { limit = 10, period = 60 }

@@ -81,20 +81,18 @@ const makeSpace = async (t, { allow }) => {
   await t.type("Space code", "WINK-0000-0000"); await t.press("Connect to my server"); await t.sees("expired");
   await t.type("Space code", "WINK-7QMK-4P2X"); await t.press("Connect to my server"); await t.at("Do the four words match?");
   await t.press("They do not match"); await t.sees("not your server"); await t.press("Enter a new code"); await t.at("Type the space code");
-  await t.type("Space code", "WINK-7QMK-4P2X"); await t.press("Connect to my server"); await t.press("They match"); await t.at("Set the space's master password");
-  await t.field(0, PHRASE); await t.field(1, "different"); await t.press("Create the space"); await t.sees("do not match");
-  await t.field(1, PHRASE); await t.press("Create the space"); await t.at("Setting up Harlow Legal");
+  await t.type("Space code", "WINK-7QMK-4P2X"); await t.press("Connect to my server"); await t.press("They match"); await t.at("Setting up Harlow Legal");
   await t.press("Continue");
 };
 const invite = async (t) => {
   await t.press("Invite people"); await t.at("Invite people");
   await t.press("Make the invite"); await t.sees("Add a name");
-  await t.type("Name", "Sam"); await t.pick("Admin", true); await t.press("Make the invite"); await t.at("Send Sam the invite");
+  await t.type("Name", "Sam"); await t.press("Admin. "); await t.press("Make the invite"); await t.at("Send Sam the invite");
   await t.press("They have the link"); await t.at("Confirm four words");
   await t.type("Their four words", "one two"); await t.press("Check the words"); await t.sees("do not match");
   await t.type("Their four words", PHRASE); await t.press("Check the words"); await t.at("Sam is an admin");
   await t.press("Invite someone else"); await t.at("Invite people");
-  await t.type("Name", "Kim"); await t.pick("Member", true); await t.press("Make the invite"); await t.press("I sent it"); await t.at("Kim is invited");
+  await t.type("Name", "Kim"); await t.press("Member. "); await t.press("Make the invite"); await t.press("I sent it"); await t.at("Kim is invited");
   await t.press("Back to the space");
 };
 

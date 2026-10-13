@@ -179,7 +179,7 @@ export function IdKit({ go, back, steps }: ScreenProps) {
     void saveKit(kitText(kit.name, kit.code), how).then((ok) => showToast(ok ? (how === "file" ? "Saved vyre-recovery-kit.txt." : "The kit page is ready to print.") : "The kit was not saved. Try again, or copy the code by hand."));
   };
   return (
-    <FlowStep steps={steps} onBack={back} title="Save your recovery kit" lead="One page with your recovery code. It is shown once, so save it before you go on."
+    <FlowStep steps={steps} onBack={back} title="Save your recovery kit" lead="This page can sign in as you. Keep it like a house key: printed or in a safe place, never in email or chat. It is shown once."
       failure={kit ? undefined : "The recovery code is no longer on this screen, so it cannot be shown again. Go back and sign in with your recovery code if you saved it, or ask another device to approve you."}
       primary={{ label: "Continue", disabled: !saved || !kit, onPress: () => { dropKit(); go("vault.intro"); } }}>
       {kit ? <CodeDisplay label="Recovery code" code={kit.code} note="If you lose access to your devices, this code lets you sign in again." /> : null}

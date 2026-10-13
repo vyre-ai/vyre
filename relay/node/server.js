@@ -91,10 +91,10 @@ class Peer {
 }
 
 /**
- * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, code?: Partial<typeof CODE>, clientAddress?: (req: import("node:http").IncomingMessage) => string, log?: (event: string, x?: any) => void }} [o]
+ * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, code?: Partial<typeof CODE>, signin?: { locPerMin?: number, ipPerMin?: number }, clientAddress?: (req: import("node:http").IncomingMessage) => string, log?: (event: string, x?: any) => void }} [o]
  */
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = ["registered", "revoke", "code"];
+export const FEATURES = ["registered", "revoke", "code", "signin"];
 
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
@@ -187,6 +187,31 @@ export function createRelay(o = {}) {
   const codeMissLimit = rateLimiter(codeCfg.missPerMin, 60_000);
   const codeAllocLimit = rateLimiter(codeCfg.allocPerMin, 60_000);
   const addressOf = req => o.clientAddress ? o.clientAddress(req) : String(req.socket.remoteAddress || "");
+  // Sign in by name: a box says which names it serves (signin.watch { loc }, renewed while it is connected), a new device posts { loc, s } and the relay hands the request to those boxes. The new
+  // device is always told the same thing, so the relay never says whether a name has a device online. A name is asked about SIGNIN_LOC_PER_MIN times a minute; an address SIGNIN_IP_PER_MIN.
+  const SIGNIN_WATCH_MS = 10 * 60_000;
+  const signinWatch = /** @type {Map<string, Map<string, number>>} loc to route to expiry */ (new Map());
+  const signinLocLimit = rateLimiter(o.signin?.locPerMin ?? 3, 60_000);
+  const signinIpLimit = rateLimiter(o.signin?.ipPerMin ?? 10, 60_000);
+  const onSigninAsk = (req, res) => {
+    const ip = addressOf(req);
+    let body = "", over = false;
+    req.on("data", c => { body += c; if (body.length > 512) { over = true; req.destroy(); } });
+    req.on("end", () => {
+      if (over) return;
+      let m; try { m = JSON.parse(body); } catch { reply(res, 400, { error: "bad request" }); return; }
+      const loc = String((m && m.loc) || ""), sd = String((m && m.s) || "");
+      if (!/^[A-Za-z0-9_-]{43}$/.test(loc) || !/^[A-Za-z0-9_-]{22,43}$/.test(sd)) { reply(res, 400, { error: "bad request" }); return; }
+      if (!signinIpLimit(ip) || !signinLocLimit(loc)) { reply(res, 429, { error: "too many sign-in requests; wait a minute" }); return; }
+      const now = Date.now();
+      for (const [route, exp] of signinWatch.get(loc) || []) {
+        if (exp <= now) { signinWatch.get(loc)?.delete(route); continue; }
+        routes.get(route)?.control?.json({ t: "signin.ask", loc, s: sd });
+      }
+      reply(res, 202, { ok: true });
+    });
+    req.on("error", () => {});
+  };
   const sweepCodes = () => { const now = Date.now(); for (const [rv, c] of codeSlots) if (c.exp <= now) { codeSlots.delete(rv); if (routeCode.get(c.route) === rv) routeCode.delete(c.route); } };
   /** Frees a route's code and refuses what is waiting on it. @param {string} route */
   const releaseCode = route => {
@@ -314,6 +339,12 @@ export function createRelay(o = {}) {
       return;
     }
     if (url.pathname === "/v1/wink/code" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onCodeStep(req, res); return; }
+    if (url.pathname === "/v1/signin" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/signin" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onSigninAsk(req, res); return; }
     if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
     if (url.pathname === "/v1/reach/check" && req.method === "POST") { onReachCheck(req, res); return; }
     // The setup mailbox answers any origin too: the page reads it from vyre.run, and its safety is a signature and a sealed stream.
@@ -482,6 +513,13 @@ export function createRelay(o = {}) {
         let t;
         try { t = JSON.parse(d2.toString()); } catch { return; }
         if (typeof t?.t === "string" && t.t.startsWith("code.")) { onCodeControl(route, peer, t); return; }
+        if (t?.t === "signin.watch") {
+          const wloc = String(t.loc || "");
+          if (!/^[A-Za-z0-9_-]{43}$/.test(wloc)) return;
+          let w = signinWatch.get(wloc); if (!w) { w = new Map(); signinWatch.set(wloc, w); }
+          if (w.size < 16 || w.has(route)) w.set(route, Date.now() + SIGNIN_WATCH_MS);
+          return;
+        }
         if (!pairRegisterLimit(route)) return;
         if (t?.t === "revoke") {
           const rloc = String(t.loc || "");

@@ -21,7 +21,7 @@ export async function startMacServer(o) {
   // the relay and names stand-ins only; the installer itself sets machine server (write_machine), which is what the walk proves
   fs.writeFileSync(path.join(vhome, "config.json"), JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } }));
   // The test release carries a signed module list made with a throwaway key (mac-release.mjs), so its modules are first party and run with no development switch; a packaged daemon ignores the path rule.
-  const env = { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", VYRE_BOX_URL: `file://${work}/site/`, VYRE_HOME: vhome, VYRE_SERVER_DIR: sdir, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_NO_DIALOGS: "1", VYRE_STORE: o.store === "plain" ? "sqlite" : "auto" };
+  const env = { ...process.env, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", VYRE_BOX_URL: `file://${work}/site/`, VYRE_HOME: vhome, VYRE_SERVER_DIR: sdir, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_NO_DIALOGS: "1", VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", ...(o.store === "plain" ? { VYRE_PROOF_BUILTIN_STORE: "1" } : {}) };
   const child = spawn("sh", [script, "--yes"], { env, stdio: ["ignore", "pipe", "pipe"] });
   let all = ""; child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });
   const exit = await new Promise(res => child.on("close", res));

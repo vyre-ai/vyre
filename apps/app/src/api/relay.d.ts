@@ -17,5 +17,17 @@ export function deviceName(): string;
 export const visibility: { hidden(): boolean; on(fn: () => void): () => void } | undefined;
 /** The fetch the direct path uses; undefined for the global one. */
 export const directFetch: typeof fetch | undefined;
+/** The active server's pairing (the one a call that names no server or Space reaches), or null when none. */
 export function loadPairing(): Promise<Pairing | null>;
+/** Add a server's pairing (or replace its record); null forgets the active one. */
 export function savePairing(p: Pairing | null): Promise<void>;
+/** Every server this device is paired to, in the order they were added. */
+export function listPairings(): Promise<Pairing[]>;
+/** The keyed text store this platform keeps its small device records in. */
+export const keyedText: { get(key: string): Promise<string | null>; set(key: string, value: string): Promise<void>; del(key: string): Promise<void> };
+export function loadPairings(): Promise<import("./pairing-list").Pairings>;
+export function loadPairingFor(box: string): Promise<Pairing | null>;
+export function removePairingFor(box: string): Promise<void>;
+export function setActivePairing(box: string): Promise<void>;
+/** Called after every change to the saved pairings; returns the way to stop. */
+export function subscribePairings(cb: () => void): () => void;
