@@ -504,6 +504,38 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a drive file's versions the caller may read; the kernel decides"
  },
  {
+  "tool": "files.linked.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.list opened to a model or a module in dead5a0dd (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.ls",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.ls opened to a model or a module in 92063c9dc (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.mentions.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.mentions.search opened to a model or a module in b4e39750c (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.read opened to a model or a module in 92063c9dc (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.search opened to a model or a module in cf5bcdbc0 (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.status opened to a model or a module in cf5bcdbc0 (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.tree",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.tree opened to a model or a module in 2ef5acf92 (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
+  "tool": "files.linked.versions",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.versions opened to a model or a module in 92063c9dc (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+ },
+ {
   "tool": "files.mentions.search",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
  },
@@ -790,6 +822,10 @@
  {
   "tool": "google.drive.search",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.drive.search opened to a model or a module in a92b5741e (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "google.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.find opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
  },
  {
   "tool": "google.mail.draft",
