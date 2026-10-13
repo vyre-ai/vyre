@@ -585,10 +585,13 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
   @media (prefers-reduced-motion: no-preference) {
     .ss img { animation: ss-run linear both; animation-timeline: --ss; animation-range: cover 8% cover 78%; }
     .ss.ss-p img { animation-range: cover 0% cover 100%; }
+    .ss.ss-rev img { animation-name: ss-run-rev; animation-range: cover 38% cover 100%; }
     .ss.ss-hero img { animation-timeline: scroll(root); animation-range: 0px 760px; }
     .ss.ss-hero.ss-p img { animation-range: 0px 1000px; }
   }
 }
+@keyframes ss-run-rev { from { transform: translateY(calc(-100% * (1 - var(--k)))); } to { transform: translateY(0); } }
+.ss.ss-rev img { transform: translateY(calc(-100% * (1 - var(--k)))); }
 @media (prefers-reduced-motion: reduce) { .ss img { transform: none !important; } }
 
 /* iPad Pro, landscape: aluminium edge, thin even black bezel, rounded corners, camera on the top bezel, buttons on the top edge. */

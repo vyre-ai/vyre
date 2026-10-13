@@ -172,6 +172,7 @@
         var r = el.getBoundingClientRect(), phone = el.classList.contains('ss-p'), hero = el.classList.contains('ss-hero'), p;
         if (hero) p = clamp(window.scrollY / (phone ? 1000 : 760));
         else { var t = (vh - r.top) / (vh + r.height); p = phone ? clamp(t) : clamp((t - .08) / .70); }
+        if (el.classList.contains('ss-rev')) p = 1 - clamp(((vh - r.top) / (vh + r.height) - .38) / .62);
         [].forEach.call(el.querySelectorAll('img'), function (im) { var travel = im.offsetHeight - el.clientHeight; if (travel > 0) im.style.transform = 'translateY(' + (-p * travel).toFixed(1) + 'px)'; });
       });
     };

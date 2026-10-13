@@ -287,7 +287,7 @@ const homeBody = `
       <p class="lead">A chat belongs to Vyre, not to one model. Change the model whenever you like and the thread, its files and its recall stay.</p>
       ${list([['The model picker', 'Choose the provider, account, model and effort from the composer.'], ['@codex, @grok', 'Add a name to one message to ask another model. The chat stays where it was.'], ['Agents in roles', 'Anyone in the Space can make an agent and share it with a person or a role as use-only or full. Give one the work, another the review, another the plan.'], ['See who answered', 'Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.']])}
     </div>
-    <div class="mock rv bleed">${ipad('ipad-chat', 'The Vyre app on an iPad: a chat with the Who answers menu open, listing Everyone, juno, Claude, Codex and Grok.')}</div>
+    <div class="mock rv bleed">${ipad('ipad-chat', 'The Vyre app on an iPad: a chat with the Who answers menu open, listing Everyone, juno, Claude, Codex and Grok.', 'ss-rev')}</div>
   </div>
 </section>
 
