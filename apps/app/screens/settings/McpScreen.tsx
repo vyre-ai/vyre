@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Switch, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { changeLine, usedLine, type Change, type Connection, type Made } from "./mcp-model";
 import { mcp } from "./mcp";
@@ -24,8 +24,28 @@ function SecretBox({ value }: { value: string }) {
         <Button size="sm" label="Copy the key" onPress={() => copy(value)} />
         {shown ? <Button size="sm" kind="ghost" label="Hide" onPress={() => { setShown(false); if (timer.current) clearTimeout(timer.current); }} /> : <Button size="sm" kind="ghost" label="Reveal for 60 seconds" onPress={reveal} />}
       </View>
-      <Text size="caption" tone="label">You won't see it again.</Text>
+      <Text size="caption" tone="label">Shown once. You won't see it again.</Text>
     </View>
+  );
+}
+
+type Snip = "claude" | "codex" | "json";
+/** After a key is made: where it goes, what to paste, and one Copy. The key itself is masked and shown once. */
+function MadeCard({ made, onDone }: { made: Made; onDone: () => void }) {
+  const [snip, setSnip] = useState<Snip>("claude");
+  return (
+    <Card className="gap-s3">
+      <Text strong>{`${made.name} has a key`}</Text>
+      <Text size="caption" tone="label">{made.local ? "Paste the line for your AI once. The key is in a file only your user account can read." : "Paste one of these into the AI's own settings."}</Text>
+      {made.url ? <Text mono selectable>{made.url}</Text> : null}
+      {!made.local ? <SecretBox value={made.key} /> : null}
+      <Segmented label="What to paste" options={[["claude", "Claude Code"], ["codex", "Codex"], ["json", "JSON"]]} value={snip} onChange={setSnip} />
+      <View className="flex-row flex-wrap gap-s2">
+        <Button label={`Copy the ${snip === "claude" ? "Claude Code line" : snip === "codex" ? "Codex line" : "JSON config"}`} onPress={() => copy(made.snippets[snip])} />
+        {made.url ? <Button kind="ghost" size="sm" label="Copy the URL" onPress={() => copy(made.url as string)} /> : null}
+        <Button kind="ghost" size="sm" label="Done" onPress={onDone} />
+      </View>
+    </Card>
   );
 }
 
@@ -56,22 +76,8 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   return (
     <Page title="Your AI keys" back="/u/settings">
       <Banner>A key lets one of your AIs act as you in Vyre, with the access you have and no more. Name it for what it is. Sending, publishing and paying still wait for your yes.</Banner>
-      {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
-      {made ? (
-        <Card className="gap-s3">
-          <Text strong>{`${made.name} has a key`}</Text>
-          <Text size="caption" tone="label">{made.local ? "Run the line for your AI once. The key is in a file only your user account can read." : "Paste one of these into the AI's own settings. The key is shown only now; if you lose it, make another."}</Text>
-          {made.url ? <Text mono selectable>{made.url}</Text> : null}
-          {!made.local ? <SecretBox value={made.key} /> : null}
-          <View className="flex-row flex-wrap gap-s2">
-            {made.url ? <Button size="sm" label="Copy the URL" onPress={() => copy(made.url as string)} /> : null}
-            <Button size="sm" kind="ghost" label="Copy the Claude Code line" onPress={() => copy(made.snippets.claude)} />
-            <Button size="sm" kind="ghost" label="Copy the Codex line" onPress={() => copy(made.snippets.codex)} />
-            <Button size="sm" kind="ghost" label="Copy the JSON config" onPress={() => copy(made.snippets.json)} />
-          </View>
-          <View className="self-start"><Button kind="ghost" size="sm" label="Done" onPress={() => setMade(null)} /></View>
-        </Card>
-      ) : null}
+      {problem ? <Banner tone="warn">{problem}</Banner> : null}
+      {made ? <MadeCard made={made} onDone={() => setMade(null)} /> : null}
       <Sec title="Make a key">
         <Card className="gap-s2">
           <Field name="Its name" value={name} onChangeText={setName} placeholder="Claude Code on laptop" />
@@ -88,8 +94,8 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
             <View key={c.id}>
               {i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
-                <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.name}</Text><Chip>{c.revoked ? "Revoked" : c.hosted ? "Hosted" : "This computer"}</Chip></View>
-                <Text size="caption" tone="muted">{`${c.hosted ? "Hosted" : c.where}. ${usedLine(c, now)}.`}</Text>
+                <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.name}</Text><Chip>{c.revoked ? "Revoked" : "Active"}</Chip></View>
+                <Text size="caption" tone="muted">{`${c.hosted ? "Hosted" : `This computer (${c.where})`}. ${usedLine(c, now)}.`}</Text>
                 {c.revoked ? null : ending === c.id ? (
                   <View className="gap-s2">
                     <Text size="caption">{`Revoke ${c.name}? Its next call is refused.`}</Text>
