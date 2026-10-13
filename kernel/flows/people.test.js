@@ -43,7 +43,7 @@ test("at run, the boxes are resolved from the live record and each follower gets
   const main = rows.find(t => t.title === "Call"), follow = rows.find(t => t.title === "Following: Call");
   assert.ok(main, "the assignee has the task");
   assert.match(main.form.brief, /^Call Jane today\.$/);
-  assert.ok(follow, "the follower has a Now item");
+  assert.ok(follow, "the follower has a Now item: " + JSON.stringify((await w.runner.listRuns({ flow: id })).map(r => r.steps)).slice(0, 900));
   assert.equal(follow.doer.id, ALEX.id);
   assert.match(follow.form.brief, /Heads up on Jane/);
 });
