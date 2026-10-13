@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Platform, View } from "react-native";
 import { Button } from "../components/Button";
-import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
 import { pickFiles, type Picked } from "../../src/chat/attach-pick";
 import { useVyreFiles } from "../../src/chat/useVyreFiles";
-import { dayText, laterChoices, parseDay, quickDays } from "./ask-model.js";
+import { laterChoices } from "./ask-model.js";
+import { DateTimePicker } from "../DateTimePicker";
 
 /** A dropped file read once into base64 (the web only; a phone has no drop). */
 const readDropped = (f: File): Promise<Picked> => new Promise((resolve, reject) => {
@@ -67,58 +67,9 @@ export function FilePick({ lands, busy, onFile }: { lands: string; busy?: boolea
   );
 }
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const DOW = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-
-/** "Wed 28 Oct 2026" for 2026-10-28. */
-const words = (v: string) => { const d = parseDay(v); return d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : ""; };
-
-/** A real date picker: Today, Tomorrow and In a week, then a month grid. The value is 2026-10-28 or "". It works the same on a phone and on the web. */
+/** The date picker of a card: the shared DateTimePicker, day only. The value is 2026-10-28 or "". */
 export function DatePick({ label, value, onChange, now }: { label: string; value: string; onChange: (v: string) => void; now: number }) {
-  const { color } = useUiTheme();
-  const picked = parseDay(value);
-  const start = picked ? new Date(`${picked}T12:00:00`) : new Date(now);
-  const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState({ y: start.getFullYear(), m: start.getMonth() });
-  const today = dayText(new Date(now));
-  const cells = useMemo(() => {
-    const first = new Date(shown.y, shown.m, 1);
-    const lead = (first.getDay() + 6) % 7;
-    const days = new Date(shown.y, shown.m + 1, 0).getDate();
-    return [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => dayText(new Date(shown.y, shown.m, i + 1)))] as (string | null)[];
-  }, [shown.y, shown.m]);
-  const step = (n: number) => setShown((s) => { const d = new Date(s.y, s.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
-  const choose = (v: string) => { onChange(v); setOpen(false); };
-  return (
-    <View className="min-w-0 gap-s2">
-      <Text size="caption" strong tone="label">{label}</Text>
-      <View className="flex-row flex-wrap items-center gap-s2">
-        {quickDays(now).map((q) => <Chip key={q.label} selected={picked === q.value} onPress={() => choose(q.value)}>{q.label}</Chip>)}
-        <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${picked ? words(picked) : "choose a date"}`} onPress={() => setOpen(!open)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: open ? color.primary : color.edge, backgroundColor: color["surface-3"] }}>
-          <Icon name="cal" size={16} tone="muted" />
-          <Text>{picked ? words(picked) : "Pick a date"}</Text>
-        </Pressable>
-      </View>
-      {open ? (
-        <View style={{ borderWidth: 1, borderColor: color.edge, borderRadius: 12, padding: 10, gap: 6, backgroundColor: color["surface-3"], alignSelf: "flex-start", width: 7 * 40 + 24, maxWidth: "100%" }}>
-          <View className="flex-row items-center justify-between">
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => step(-1)} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}><Icon name="chev-l" size={16} tone="muted" /></Pressable>
-            <Text strong>{MONTHS[shown.m]} {shown.y}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => step(1)} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}><Icon name="chev-r" size={16} tone="muted" /></Pressable>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {DOW.map((d) => <View key={d} style={{ width: 40, alignItems: "center", paddingVertical: 2 }}><Text size="caption" tone="label">{d}</Text></View>)}
-            {cells.map((c, i) => c === null ? <View key={`b${i}`} style={{ width: 40, height: 36 }} /> : (
-              <Pressable key={c} accessibilityRole="button" accessibilityLabel={words(c)} accessibilityState={{ selected: c === picked }} onPress={() => choose(c)}
-                style={{ width: 40, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 18, backgroundColor: c === picked ? color.primary : "transparent", borderWidth: c === today && c !== picked ? 1 : 0, borderColor: color["edge-strong"] }}>
-                <Text tone={c === picked ? "inverse" : "default"}>{Number(c.slice(8))}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
+  return <DateTimePicker label={label} value={value} onChange={onChange} now={now} />;
 }
 
 /** "Later": put the card away until a time the person picks. One menu, four times (an hour, this evening, tomorrow morning, next Monday). */
