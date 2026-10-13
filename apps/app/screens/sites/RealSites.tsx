@@ -159,7 +159,7 @@ export function RealSite() {
     ) : tab === "history" ? (
       <View className="gap-s2">
         <VersionTable rows={versionRows(site.versions, hist, (who) => approverName(actors, who, me))} phone={phone} />
-        {site.live ? <View className="flex-row gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
+        {site.live ? <View className="flex-row flex-wrap gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
         <Text size="caption" tone="label">Going back needs you, and takes effect at once. The version you leave stays in the history.</Text>
       </View>
     ) : tab === "domain" ? (
@@ -243,7 +243,12 @@ function VersionTable({ rows, phone }: { rows: ReturnType<typeof versionRows>; p
     <Card flush>
       {rows.map((v, i) => (
         <View key={v.id}>{i ? <Divider /> : null}
-          <Row lead={v.approverId ? <Avatar of={{ kind: "person", id: v.approverId, name: v.approvedBy }} size={24} /> : undefined} title={`Version ${v.version}`} sub={[v.approvedBy && `Approved by ${v.approvedBy}`, v.wentLive && `Live ${v.wentLive}`, v.address].filter(Boolean).join(" · ")} end={chip(v.stage)} />
+          <View className="gap-s1 px-s4 py-s3">
+            <View className="flex-row items-center justify-between gap-s3"><Text strong>{`Version ${v.version}`}</Text>{chip(v.stage)}</View>
+            <View className="flex-row items-center gap-s2">{v.approverId ? <Avatar of={{ kind: "person", id: v.approverId, name: v.approvedBy }} size={20} /> : null}<Text tone="muted">{v.approverId ? `Approved by ${v.approvedBy}` : v.approvedBy}</Text></View>
+            {v.wentLive ? <Text tone="muted">{v.wentLive === "Never live" ? v.wentLive : `Went live ${v.wentLive}`}</Text> : null}
+            <Text mono size="caption" tone="label" numberOfLines={1}>{v.address}</Text>
+          </View>
         </View>
       ))}
     </Card>
