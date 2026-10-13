@@ -69,8 +69,11 @@ test("sharing a Flow: its creator shares it, someone else cannot, and a level is
   const t = createFlows({ kernel: w.kernel, chains: { forFlow: x => w.kernel.chainFor(x), forModule: x => w.kernel.moduleChain(x), forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports,
     access: { list: async () => [...given].map(([subject, level]) => ({ kind: "person", subject, level })), set: async (_f, person, level) => { level ? given.set(person, level) : given.delete(person); return { ok: true }; } } });
   const made = await t.tools["flows.define"](chainOf(ALEX), { flow: base([make("one")]) });
-  await assert.rejects(() => t.tools["flows.access.set"](chainOf(BOB), { id: made.id, subject: "per_carl", level: "use" }), /Can edit/);
+  await assert.rejects(() => t.tools["flows.access.set"](chainOf(BOB), { id: made.id, subject: "per_carl", level: "use" }), /creator/);
   await t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: "edit" });
+  // Can edit is not the right to share: a person who was given it cannot give it on
+  w.kernel.rules.push({ match: i => i.action === "flows.define" && i.chain.hops.at(-1).actor.id === BOB.id, effect: "allow", reason: "granted" });
+  await assert.rejects(() => t.tools["flows.access.set"](chainOf(BOB), { id: made.id, subject: "per_carl", level: "edit" }), /creator/);
   assert.deepEqual((await t.tools["flows.access.get"](chainOf(ALEX), { id: made.id })).access, [{ kind: "person", subject: BOB.id, level: "edit" }]);
   await assert.rejects(() => t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: "admin" }), /level/);
   await assert.rejects(() => t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, kind: "role", subject: "member", level: "use" }), /person/);

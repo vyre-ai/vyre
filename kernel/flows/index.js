@@ -104,6 +104,16 @@ export function createFlows(o) {
    * made (one a Kit installed) has no creator, and then the grant decides.
    * @param {any} chain @param {string} id
    */
+  /** The creator, an owner or an admin shares a Flow; a person who was only given Can edit does not (an admin is told apart by the right to give access). @param {any} chain @param {string} id */
+  const mayShare = async (chain, id) => {
+    const row = await store.flowRow?.(id);
+    if (!row) return;
+    const who = chain.hops[chain.hops.length - 1].actor;
+    const first = row.versions[0] && row.versions[0].by;
+    if (first && who && first.id === who.id) return;
+    const d = await o.kernel.authorize({ chain, action: "grants.create", resource: `vyre://${row.space}/grant/*` }).catch(() => null);
+    if (!d || d.effect !== "allow") throw Object.assign(new Error("only its creator, the owner or an admin shares a Flow"), { code: "denied" });
+  };
   const mayEdit = async (chain, id) => {
     const row = await store.flowRow?.(id);
     if (!row) return;
@@ -275,12 +285,12 @@ export function createFlows(o) {
     // Share one Flow with a person: Can use (run it, see it) or Can edit (change it too). Only its creator, an owner or an admin shares it. The kernel's grant on that Flow is the one source of truth.
     "flows.access.get": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
-      await mayEdit(chain, id);
+      await mayShare(chain, id);
       return { access: o.access ? await o.access.list(id) : [] };
     },
     "flows.access.set": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
-      await mayEdit(chain, id);
+      await mayShare(chain, id);
       const kind = i.kind === undefined ? "person" : i.kind, level = i.level ?? null;
       if (kind !== "person") throw Object.assign(new Error("a Flow can be shared with a person for now; a team or role comes later"), { code: "bad_input" });
       if (typeof i.subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(i.subject)) throw Object.assign(new Error("name the person to share with"), { code: "bad_input" });

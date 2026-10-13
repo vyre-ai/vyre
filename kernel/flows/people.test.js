@@ -65,3 +65,20 @@ test("each box is resolved for its own reader: a record the assignee cannot read
   assert.match(main.form.brief, /\[unavailable: /, "the assignee cannot read it, so the tag is not resolved for them");
   assert.match(follow.form.brief, /FYI Jane/, "the follower can, so theirs is");
 });
+
+test("the approver's box never rides on the doer's task: the doer who cannot read a record is not handed it through the approver, and the approver has a note task of their own", async () => {
+  const w = await world();
+  const chain = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: w.cat.space });
+  const m = await w.kernel.records.create(chain, "matter", { client: "Jane-SECRET", stage: "Intake" });
+  const { id } = await install(w, base([{ id: "go", kind: "assign", to: "person:" + BOB.id, title: "Call", output: { kind: "note" }, checker: "person:" + ALEX.id, notes: { approver: "CHK [[field:this#client]]" }, record: m.urn }]));
+  const get = w.kernel.records.get.bind(w.kernel.records);
+  w.kernel.records.get = async (c, ...rest) => { if (c.hops.at(-1).actor.id === BOB.id && c.hops[0].actor.kind === "automation") throw Object.assign(new Error("not allowed"), { code: "denied" }); return get(c, ...rest); };
+  await w.runner.start(id, {}, w.kernel.as(ALEX));
+  await settle(w);
+  await w.kernel.pump();
+  const doerTask = w.kernel.tasks.find(t => t.title === "Call"), checkTask = w.kernel.tasks.find(t => t.title === "To check: Call");
+  assert.ok(doerTask && checkTask);
+  assert.equal(JSON.stringify(doerTask).includes("Jane-SECRET"), false, "nothing of the record is on the doer's task");
+  assert.equal(checkTask.doer.id, ALEX.id);
+  assert.match(checkTask.form.brief, /CHK Jane-SECRET/);
+});

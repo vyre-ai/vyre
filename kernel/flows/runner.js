@@ -186,8 +186,8 @@ export class FlowRunner {
         // A module's own tool and an outward act are held for a person's yes whenever they run, so reaching them is judged then; the check here is for what a step reads and writes.
         const info = cat.actions[n.action] || {};
         if (info.tool || OUTWARD.has(info.risk) || n.action === "service.call") continue;
-        const d = await this.k.authorize({ chain, action: n.action, resource: n.resource, purpose: "define" }).catch(() => null);
-        if (d && d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
+        const d = await this.k.authorize({ chain, action: n.action, resource: n.resource, purpose: "define" }).catch(() => ({ effect: "deny", reason: "could not be checked" }));
+        if (!d || d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
       }
       if (refused.length) return { ok: false, errors: refused, warnings: compiled.warnings, effects: compiled.effects };
     }
@@ -1388,8 +1388,8 @@ export class FlowRunner {
     // The person who added the step must still reach what it touches, as well as the approver: a Flow never gives anyone more than their own access.
     if (!isTool && s.added_by && run.approver && s.added_by !== run.approver.id && d.effect !== "deny") {
       const adder = this.chains.forFlow({ flow: run.flow, space: run.space, approver: { kind: "person", id: s.added_by, space: run.space }, tainted: run.tainted, run: run.id, source_spaces: run.source_spaces });
-      const da = await this.k.authorize({ chain: adder, action: need.action, resource: need.resource }).catch(() => null);
-      if (da && da.effect === "deny") { this.#note(ctx, s, `denied: the person who added it cannot reach this (${da.reason})`); throw new StepFail("adder_denied", `step ${s.id}: the person who added it can no longer reach what it touches (${da.reason}), so it does not run`); }
+      const da = await this.k.authorize({ chain: adder, action: need.action, resource: need.resource }).catch(() => ({ effect: "deny", reason: "could not be checked" }));
+      if (!da || da.effect === "deny") { this.#note(ctx, s, `denied: the person who added it cannot reach this (${da.reason})`); throw new StepFail("adder_denied", `step ${s.id}: the person who added it can no longer reach what it touches (${da.reason}), so it does not run`); }
     }
     let effect = d.effect;
     // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
@@ -1748,10 +1748,10 @@ export class FlowRunner {
         const held = this.ports && this.ports.roles ? await this.ports.roles(run.space, rest.join(":")) : [];
         return Array.isArray(held) ? held : [];
       };
-      const told = { instructions: await tagFor(s.kind === "agent" ? val(s.instructions) : undefined, [doer]), brief: await tagFor(s.brief, [doer]), approver: await tagFor(s.notes && s.notes.approver, await checkerReaders()) };
+      const told = { instructions: await tagFor(s.kind === "agent" ? val(s.instructions) : undefined, [doer]), brief: await tagFor(s.brief, [doer]) };
       const spec = s.kind === "ask"
         ? { title, doer, ...(helpers.length ? { helpers } : {}), output: { kind: "decision" }, source: "flow_step", ...(record ? { record } : {}), ...(s.form ? { form: s.form } : {}) }
-        : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: told.instructions ?? String(val(s.instructions) ?? ""), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}), ...(s.kind === "assign" && told.brief ? { note: told.brief.slice(0, 400) } : {}), ...(s.kind === "assign" && (told.brief || told.approver) ? { form: { ...(told.brief ? { brief: told.brief } : {}), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}) };
+        : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: told.instructions ?? String(val(s.instructions) ?? "") } } : {}), ...(s.kind === "assign" && told.brief ? { note: told.brief.slice(0, 400) } : {}), ...(s.kind === "assign" && told.brief ? { form: { brief: told.brief } } : {}) };
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
@@ -1764,6 +1764,17 @@ export class FlowRunner {
           const text = [mine, `Task: ${title}`].filter(Boolean).join("\n\n");
           await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text }, flow: run.flow }, { idem: `${idem}:follow${i}` });
         } catch (e) { this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
+      }
+      // The approver's box is theirs alone: it is never put on the doer's task (the doer, and anyone helping, would read a record through the approver's reach). Each person who checks gets a note task of
+      // their own, resolved through their own chain.
+      if (s.checker && s.notes && s.notes.approver) {
+        for (const [i, who] of (await checkerReaders()).entries()) {
+          try {
+            const mine = await tagFor(s.notes.approver, [who]);
+            const text = [mine, `Task to check: ${title}`].filter(Boolean).join("\n\n");
+            await this.k.ask.request(this.#chain(ctx), { title: `To check: ${title}`, doer: who, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text }, flow: run.flow }, { idem: `${idem}:check${i}` });
+          } catch (e) { this.#note(ctx, s, `the approver was not told: ${/** @type {Error} */ (e).message}`); }
+        }
       }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
