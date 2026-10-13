@@ -19,7 +19,7 @@ import { SpaceTag } from "@vyre/ui";
 
 type Tab = "space" | "shared" | "linked" | "files" | "sharing";
 const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", files: "server", sharing: "laptop" };
-const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what assistants made for you", linked: "Live folders from Google Drive", files: "Folders your server offers", sharing: "Sharing to your computer" };
+const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what agents made for you", linked: "Live folders from Google Drive", files: "Folders your server offers", sharing: "Sharing to your computer" };
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
