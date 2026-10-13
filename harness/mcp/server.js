@@ -54,6 +54,8 @@ const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
  */
 function ident() {
   if (AGENT) return { caller: CALLER };
+  // A hosted key (core/mcpconn, POST /mcp): the daemon starts this server for one key and hands it the key in its environment, so every call is that key's.
+  if (process.env.VYRE_MCP_ID && process.env.VYRE_MCP_KEY && !process.env.VYRE_SOCKET) return { caller: CALLER, headers: { "x-vyre-mcp-id": process.env.VYRE_MCP_ID, "x-vyre-mcp-key": process.env.VYRE_MCP_KEY } };
   if (!process.env.VYRE_SOCKET) {
     // The person connected their own AI (core/mcpconn, `vyre mcp connect`): this server then speaks as them, with the connection's id and key.
     try {

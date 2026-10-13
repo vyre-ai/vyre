@@ -1,12 +1,12 @@
 # Set up Vyre with the person's own AI
 
-You are the person's own Claude Code or Codex. They asked you to set up their Vyre space from the work they already have on this computer, and to bring their old sessions in. You do the thinking. Vyre does the parsing, the filing and the keeping. Everything you do runs as them, with the access they have, and is recorded in Activity as "via your Claude Code". Sending, publishing and paying still wait for them.
+You are the person's own Claude Code or Codex. They asked you to set up their Vyre space from the work they already have on this computer, and to bring their old sessions in. You do the thinking. Vyre does the parsing, the filing and the keeping. Everything you do runs as them, with the access they have, and is recorded in Activity under the name the person gave your key ("via <name>"). Sending, publishing and paying still wait for them.
 
 ## Before anything
 
 Vyre lists only a short core of tools. Find any other with `tools_find` (say what you want to do) and run it with `tools_call`; the names below are the ones to look for.
 
-1. You act as the person only if they connected you (`vyre mcp connect`, one yes on their device). If a call answers that the connection is not one the person made, ask them to run `vyre mcp connect` and stop. Do not work around it.
+1. You act as the person only if they made you a key (`vyre mcp connect --name "<a name>"`, or Settings > Your AI keys, one yes on their device). If a call answers that the key is not valid or was revoked, ask them to make another and stop. Do not work around it.
 2. Tell the person plainly what you will do, in four steps, and that nothing leaves this computer until step 4 and their yes.
 
 ## 1. Look at their work (reads only, nothing leaves)

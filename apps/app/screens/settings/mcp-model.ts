@@ -1,24 +1,21 @@
-// The person's connected AI (core/mcpconn): the connections as drawn, what each says, and the recent changes it made. Pure: no calls.
+// The person's AI keys (core/mcpconn): the keys as drawn, what each says, and the recent changes it made. Pure: no calls.
 
-export type Connection = { id: string; client: string; device: string; created: number; lastUsed: number | null; revoked: boolean };
-export type Change = { at: number; client: string; tool: string; ok: boolean; says: string };
-export type Made = { id: string; client: string; device: string; lines: { claude: string; codex: string } };
-
-/** The lines that register `vyre mcp` with each client; the same words the box returns from mcpconn.connect. */
-export const LINES = Object.freeze({ claude: "claude mcp add -s user vyre -- vyre mcp", codex: "codex mcp add vyre -- vyre mcp" });
+export type Connection = { id: string; name: string; where: string; hosted: boolean; created: number; lastUsed: number | null; revoked: boolean };
+export type Change = { at: number; name: string; tool: string; ok: boolean; says: string };
+export type Made = { id: string; name: string; key: string; local: boolean; url?: string; snippets: { claude: string; codex: string; json: string } };
 
 /** mcpconn.list's rows, reduced to what is drawn; ended ones stay in the list, labelled. */
 export function connectionsOf(d: any): Connection[] {
   return (Array.isArray(d) ? d : [])
-    .filter((c: any) => c && typeof c.id === "string" && typeof c.client === "string")
-    .map((c: any): Connection => ({ id: c.id, client: c.client, device: typeof c.device === "string" ? c.device : "", created: Number(c.created) || 0, lastUsed: typeof c.lastUsed === "number" ? c.lastUsed : null, revoked: c.revoked === true }));
+    .filter((c: any) => c && typeof c.id === "string" && typeof c.name === "string")
+    .map((c: any): Connection => ({ id: c.id, name: c.name, where: typeof c.where === "string" ? c.where : "", hosted: c.hosted === true, created: Number(c.created) || 0, lastUsed: typeof c.lastUsed === "number" ? c.lastUsed : null, revoked: c.revoked === true }));
 }
 
 /** mcpconn.activity's rows, reduced to what is drawn. */
 export function changesOf(d: any): Change[] {
   return (Array.isArray(d) ? d : [])
     .filter((c: any) => c && typeof c.tool === "string" && typeof c.at === "number")
-    .map((c: any): Change => ({ at: c.at, client: typeof c.client === "string" ? c.client : "", tool: c.tool, ok: c.ok !== false, says: typeof c.says === "string" ? c.says : "via your Claude Code" }));
+    .map((c: any): Change => ({ at: c.at, name: typeof c.name === "string" ? c.name : "", tool: c.tool, ok: c.ok !== false, says: typeof c.says === "string" && c.says ? c.says : `via ${typeof c.name === "string" ? c.name : "your AI"}` }));
 }
 
 /** When a connection last asked, in words. */

@@ -42,8 +42,8 @@ async function serve(server = SERVER) {
 export const VERBS = [
   { verb: "serve", summary: "the MCP server on stdio, which Claude Code starts (vyre mcp alone is the same)", usage: "" },
   { verb: "design", summary: "the Design and Module MCP on stdio: blocks, screen checks, pictures, proposals, and the module kit", usage: "" },
-  { verb: "connect", summary: "connect your own Claude Code or Codex so it acts as you (one yes), and print the lines that register it", usage: "[--client NAME] [--json]" },
-  { verb: "list", summary: "the connections of your own AI, with when each was last used", usage: "[--json]" },
+  { verb: "connect", summary: "make a named key for one of your AIs so it acts as you (one yes); --hosted gives a URL and key for any MCP client", usage: "[--name NAME] [--hosted] [--json]" },
+  { verb: "list", summary: "your AI keys: name, where, when each was last used", usage: "[--json]" },
   { verb: "revoke", summary: "end a connection at once", usage: "<id> [--json]" },
   { verb: "install", summary: "print the claude mcp add line; --yes runs it", usage: "[--yes] [--json]" },
 ];
@@ -78,20 +78,27 @@ async function install(flags) {
   return code;
 }
 
-/** `vyre mcp connect [--client NAME]`: the person connects their own AI (one yes), then both registration lines are shown. @param {string[]} args */
+/** `vyre mcp connect [--name NAME] [--hosted]`: the person makes a key for one of their AIs and names it (one yes). The key is shown once. @param {string[]} args */
 async function connect(args) {
-  const { flags } = parse(args, { values: ["client"], cmd: "mcp" });
+  const { flags } = parse(args, { values: ["name"], bool: ["hosted"], cmd: "mcp" });
   await ensureUp();
-  const made = await call("mcpconn.connect", flags.client ? { client: String(flags.client) } : {});
+  const made = await call("mcpconn.connect", { ...(flags.name ? { name: String(flags.name) } : {}), ...(flags.hosted ? { hosted: true } : {}) });
   if (made.error) return failTool(made.error);
   const d = made.data;
-  const next = "start a new session and run /mcp__vyre__setup-vyre (Claude Code), or tell it to call mcpconn_guide (Codex)";
-  if (json()) return emit({ ...d, next });
-  out(`  ${signal("connected")} ${bold(d.client)} on ${d.device} ${dim("· it now acts as you; sending and publishing still wait for you · vyre mcp revoke " + d.id + " ends it")}`);
+  if (json()) return emit(d);
+  out(`  ${signal("key made")} ${bold(d.name)} ${dim("· it acts as you; sending and publishing still wait for you · vyre mcp revoke " + d.id + " ends it")}`);
   out("");
-  out(`  ${bold("Claude Code")}  ${INSTALL_LINE}`);
-  out(`  ${bold("Codex")}        ${CODEX_LINE}`);
-  out(dim("  Run yours once, then " + next + "."));
+  if (d.local) {
+    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
+    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    out(dim("  Run yours once, then in a new session run /mcp__vyre__setup-vyre, or tell it to call mcpconn_guide."));
+  } else {
+    out(`  ${bold("URL")}          ${d.url || "(shown when this server is reachable)"}`);
+    out(`  ${bold("Key")}          ${d.key}   ${dim("shown only now")}`);
+    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
+    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    out(dim("  Any MCP client takes the URL and the key as a Bearer token over HTTP. vyre mcp revoke " + d.id + " ends it."));
+  }
   return 0;
 }
 
@@ -102,7 +109,7 @@ async function list() {
   if (r.error) return failTool(r.error);
   if (json()) return emit({ connections: r.data });
   if (!r.data.length) { out(dim("  nothing connected (vyre mcp connect)")); return 0; }
-  for (const c of r.data) out(`  ${c.id}  ${bold(c.client)}  ${c.device}  ${dim(c.revoked ? "revoked" : c.lastUsed ? "last used " + new Date(c.lastUsed).toLocaleString() : "not used yet")}`);
+  for (const c of r.data) out(`  ${c.id}  ${bold(c.name)}  ${c.where}  ${dim(c.revoked ? "revoked" : c.lastUsed ? "last used " + new Date(c.lastUsed).toLocaleString() : "not used yet")}`);
   return 0;
 }
 

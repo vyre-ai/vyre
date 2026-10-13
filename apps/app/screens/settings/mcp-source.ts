@@ -11,7 +11,7 @@ export function mcpSource(call: Call) {
   return {
     list: async (): Promise<Connection[]> => connectionsOf(await ask("mcpconn.list")),
     activity: async (): Promise<Change[]> => changesOf(await ask("mcpconn.activity")),
-    connect: (client?: string): Promise<Made> => ask("mcpconn.connect", client ? { client } : {}),
+    connect: (name: string, hosted: boolean): Promise<Made> => ask("mcpconn.connect", { name, ...(hosted ? { hosted: true } : {}) }),
     revoke: (id: string) => ask("mcpconn.revoke", { id }),
   };
 }

@@ -1,17 +1,17 @@
-// Connect your AI: Claude Code or Codex acts as you in Vyre once you connect it here. The lines to register it, the connections with when each was last used and a Revoke, and what it changed lately.
-// Sending, publishing and paying still wait for your yes.
+// Your AI keys: make a key for one of your AIs and name it. The AI then acts as you in Vyre, with the access you have and no more; the name is what shows in Activity and approvals afterwards.
+// A key is for `vyre mcp` on this computer, or hosted: a URL and the key for any MCP client over HTTP. Each key has a Revoke that ends it at once. Sending, publishing and paying still wait for your yes.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, LoadingState, Row, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Switch, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
-import { LINES, changeLine, usedLine, type Change, type Connection, type Made } from "./mcp-model";
+import { changeLine, usedLine, type Change, type Connection, type Made } from "./mcp-model";
 import { mcp } from "./mcp";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); };
 
-/** Sample world only (the screenshot pass): the screen with these connections and changes, calling nothing. */
+/** Sample world only (the screenshot pass): the screen with these keys and changes, calling nothing. */
 export type McpSample = { connections: Connection[]; changes: Change[]; made?: Made; ending?: string };
 
 export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
@@ -22,9 +22,11 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   const [busy, setBusy] = useState("");
   const [made, setMade] = useState<Made | null>(sample?.made ?? null);
   const [ending, setEnding] = useState(sample?.ending ?? "");
+  const [name, setName] = useState("");
+  const [hosted, setHosted] = useState(false);
   const load = useCallback(() => {
     setErr("");
-    mcp.list().then(setConns).catch((e) => { setConns([]); setErr(say(e, "Your connected AI could not be read.")); });
+    mcp.list().then(setConns).catch((e) => { setConns([]); setErr(say(e, "Your AI keys could not be read.")); });
     mcp.activity().then(setChanges).catch(() => setChanges([]));
   }, []);
   useEffect(() => { if (!sample) load(); }, [load, sample]);
@@ -33,39 +35,48 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
     try { await fn(); load(); } catch (e) { setProblem(say(e)); } finally { setBusy(""); }
   };
   const now = Date.now();
-  const lines = made?.lines ?? LINES;
   return (
-    <Page title="Connect your AI" back="/u/settings">
-      <Banner>Connect your own Claude Code or Codex and it acts as you in Vyre, with the access you have and no more. It can set up your projects, agents and records, and bring your old sessions in. Sending, publishing and paying still wait for your yes.</Banner>
+    <Page title="Your AI keys" back="/u/settings">
+      <Banner>A key lets one of your AIs act as you in Vyre, with the access you have and no more. Name it for what it is. Sending, publishing and paying still wait for your yes.</Banner>
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
-      <Sec title="Connect">
+      {made ? (
         <Card className="gap-s3">
-          {made ? <Text strong>{`${made.client} is connected on ${made.device}`}</Text> : <Text strong>Connect an AI on this computer</Text>}
-          <Text size="caption" tone="label">Connect it here with one yes, then run the line for your AI once.</Text>
-          <Text mono selectable>{lines.claude}</Text>
-          <Text mono selectable>{lines.codex}</Text>
+          <Text strong>{`${made.name} has a key`}</Text>
+          <Text size="caption" tone="label">{made.local ? "Run the line for your AI once. The key is in a file only your user account can read." : "Paste one of these into the AI's own settings. The key is shown only now; if you lose it, make another."}</Text>
+          {made.url ? <Text mono selectable>{made.url}</Text> : null}
+          {!made.local ? <Text mono selectable>{made.key}</Text> : null}
+          <Text mono selectable>{made.snippets.claude}</Text>
           <View className="flex-row flex-wrap gap-s2">
-            <Button size="sm" label="Copy the Claude Code line" onPress={() => copy(lines.claude)} />
-            <Button size="sm" kind="ghost" label="Copy the Codex line" onPress={() => copy(lines.codex)} />
+            {made.url ? <Button size="sm" label="Copy the URL" onPress={() => copy(made.url as string)} /> : null}
+            {!made.local ? <Button size="sm" label="Copy the key" onPress={() => copy(made.key)} /> : null}
+            <Button size="sm" kind="ghost" label="Copy the Claude Code line" onPress={() => copy(made.snippets.claude)} />
+            <Button size="sm" kind="ghost" label="Copy the Codex line" onPress={() => copy(made.snippets.codex)} />
+            <Button size="sm" kind="ghost" label="Copy the JSON config" onPress={() => copy(made.snippets.json)} />
           </View>
-          <View className="self-start"><Button label={made ? "Connect again" : "Connect"} disabled={busy === "new"} onPress={() => void act("new", async () => setMade(await mcp.connect()))} /></View>
-          <Text size="caption" tone="muted">Then, in a new session, run the prompt setup-vyre and it will walk through your work with you.</Text>
+          <View className="self-start"><Button kind="ghost" size="sm" label="Done" onPress={() => setMade(null)} /></View>
+        </Card>
+      ) : null}
+      <Sec title="Make a key">
+        <Card className="gap-s2">
+          <Field name="Its name" value={name} onChangeText={setName} placeholder="Claude Code on laptop" />
+          <Row dense title="Hosted" sub="A URL and a key for any MCP client, not only this computer." end={<Switch label="Hosted" on={hosted} onChange={setHosted} />} />
+          <View className="self-start"><Button label="Make the key" disabled={!name.trim() || busy === "new"} onPress={() => void act("new", async () => { setMade(await mcp.connect(name.trim(), hosted)); setName(""); })} /></View>
         </Card>
       </Sec>
-      <Sec title="Your connections">
+      <Sec title="Your keys">
         <Card flush>
           {conns === null ? <LoadingState rows={2} /> : null}
-          {err ? <ErrorState title="Connections did not load" reason={err} retry={load} /> : null}
-          {conns && !err && !conns.length ? <EmptyState title="Nothing connected yet" body="Connect above. It can then work as you until you end it." /> : null}
+          {err ? <ErrorState title="Keys did not load" reason={err} retry={load} /> : null}
+          {conns && !err && !conns.length ? <EmptyState title="No keys yet" body="Make one above. The AI can then work as you until you revoke it." /> : null}
           {(conns || []).map((c, i) => (
             <View key={c.id}>
               {i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
-                <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.client}</Text><Chip>{c.revoked ? "Ended" : "Connected"}</Chip></View>
-                <Text size="caption" tone="muted">{`${c.device ? c.device + ". " : ""}${usedLine(c, now)}.`}</Text>
+                <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.name}</Text><Chip>{c.revoked ? "Revoked" : c.hosted ? "Hosted" : "This computer"}</Chip></View>
+                <Text size="caption" tone="muted">{`${c.hosted ? "Hosted" : c.where}. ${usedLine(c, now)}.`}</Text>
                 {c.revoked ? null : ending === c.id ? (
                   <View className="gap-s2">
-                    <Text size="caption">{`End ${c.client} on ${c.device || "this computer"}? Its key stops working now.`}</Text>
+                    <Text size="caption">{`Revoke ${c.name}? Its next call is refused.`}</Text>
                     <View className="flex-row flex-wrap gap-s2">
                       <Button size="sm" label="Revoke" disabled={busy === c.id} onPress={() => void act(c.id, async () => { await mcp.revoke(c.id); setEnding(""); })} />
                       <Button size="sm" kind="ghost" label="Cancel" onPress={() => setEnding("")} />
@@ -77,9 +88,9 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
           ))}
         </Card>
       </Sec>
-      <Sec title="Changed lately, via your Claude Code">
+      <Sec title="Changed lately">
         <Card flush>
-          {!changes.length ? <EmptyState title="Nothing yet" body="What your connected AI changes shows here, by tool, never what was in it." /> : null}
+          {!changes.length ? <EmptyState title="Nothing yet" body="What your AIs change shows here, by key name and tool, never what was in it." /> : null}
           {changes.slice(0, 12).map((c, i) => <View key={`${c.at}-${i}`}>{i ? <Divider /> : null}<Row dense title={changeLine(c, now)} /></View>)}
         </Card>
       </Sec>

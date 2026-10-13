@@ -70,7 +70,7 @@ function all(/** @type {string} */ space) {
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "spark"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
-      ["Connect your AI", "Your own Claude Code or Codex, acting as you", "/u/settings/mcp", "terminal"],
+      ["Your AI keys", "Name a key for each AI that acts as you", "/u/settings/mcp", "terminal"],
       ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "agents"],
       ["Spending limits", "A daily cap per provider", "/u/settings/spend", "budget"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],

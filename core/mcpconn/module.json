@@ -13,6 +13,8 @@
       { "name": "mcpconn.activity", "reach": "person", "effect": "read" },
       { "name": "mcpconn.guide", "reach": "anyone", "effect": "read" },
       { "name": "mcpconn.vouch", "reach": "modules", "effect": "read" },
+      { "name": "mcpconn.status", "reach": "modules", "effect": "read" },
+      { "name": "mcpconn.base", "reach": "modules", "effect": "write" },
       { "name": "mcpconn.note", "reach": "modules", "effect": "write" }
     ]
   },
