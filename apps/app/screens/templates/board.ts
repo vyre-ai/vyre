@@ -42,19 +42,18 @@ export function boardColumns(b: Body, people: Who[] = [], agents: Who[] = []): C
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** How many things differ from the live version: a template setting, a stage's own settings, and each task added, removed or changed count once. */
+/** How many things differ from the live version: a template setting, a stage's own settings, and each task added, removed or changed count once (by position, so a rename is one change). */
 export function changeCount(live: Body | null, cur: Body): number {
   if (!live) return 0;
   const { stages: ls, ...lrest } = live, { stages: cs, ...crest } = cur;
   let n = same(lrest, crest) ? 0 : Object.keys({ ...lrest, ...crest }).filter((k) => !same((lrest as any)[k], (crest as any)[k])).length;
-  const names = [...new Set([...ls.map((s) => s.name), ...cs.map((s) => s.name)])];
-  for (const name of names) {
-    const a = ls.find((s) => s.name === name), c = cs.find((s) => s.name === name);
+  // by position: a rename or an edit is one change, an added or removed stage or task is one
+  for (let i = 0; i < Math.max(ls.length, cs.length); i++) {
+    const a = ls[i], c = cs[i];
     if (!a || !c) { n++; continue; }
     const { tasks: at, ...arest } = a, { tasks: ct, ...crest2 } = c;
     if (!same(arest, crest2)) n++;
-    const titles = [...new Set([...(at || []).map((t) => t.title), ...(ct || []).map((t) => t.title)])];
-    for (const title of titles) { const x = (at || []).find((t) => t.title === title), y = (ct || []).find((t) => t.title === title); if (!same(x, y)) n++; }
+    for (let k = 0; k < Math.max((at || []).length, (ct || []).length); k++) if (!same((at || [])[k], (ct || [])[k])) n++;
   }
   return n;
 }
