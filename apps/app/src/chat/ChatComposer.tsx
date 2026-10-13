@@ -123,7 +123,7 @@ export function ChatComposer(p: ComposerProps) {
   const effective = answering.length ? answering : dflt ? [dflt] : [];
   const ais = effective.map((id) => slots.find((s) => s.id === id)).filter(Boolean) as { id: string; label: string; provider?: string | null }[];
   const current = (p.models ?? []).find((m) => m.id === p.model);
-  const summary = slots.length > 1 ? answeringSummary(answering, slots, dflt) : current ? current.label : "Model";
+  const summary = slots.length ? answeringSummary(answering, slots, dflt) : current ? current.label : "Model";
 
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const closePop = () => { setPop(null); setMenuQ(""); setActive(0); input.current?.focus(); };
@@ -134,7 +134,7 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
-        { key: "files", group: "Add", label: "Files", sub: "From Vyre Files or your computer", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
+        { key: "files", group: "Attach", label: "Files", sub: "From Vyre Files or your computer", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
         { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
@@ -157,8 +157,8 @@ export function ChatComposer(p: ComposerProps) {
     if (pop === "vyrefiles") return (p.vyreFiles ?? []).map((f) => ({ key: f.id, label: f.name, sub: f.path, leading: <Icon name={fileIcon(f.name)} size={18} />, run: () => { closePop(); p.onAttachVyreFile?.(f.id); } }));
     if (pop === "answering") {
       const rows: Row[] = [];
-      if (slots.length > 1) {
-        rows.push({ key: "all", group: "Who answers", label: "Everyone", sub: "Every AI in this chat replies", leading: <Icon name="agents" size={18} />, checked: effective.length === allIds.length, hint: "Alt 0", run: askEveryone });
+      if (slots.length) {
+        if (slots.length > 1) rows.push({ key: "all", group: "Who answers", label: "Everyone", sub: "Every AI in this chat replies", leading: <Icon name="agents" size={18} />, checked: effective.length === allIds.length, hint: "Alt 0", run: askEveryone });
         slots.forEach((sl, i) => rows.push({ key: sl.id, group: "Who answers", label: sl.label, sub: sl.id === dflt ? "Answers by default" : undefined, leading: <AiMark ai={sl} size={22} />, checked: effective.includes(sl.id), hint: i < 9 ? `Alt ${i + 1}` : undefined, run: () => toggleAi(sl.id) }));
       }
       if (p.models?.length) {
@@ -226,7 +226,7 @@ export function ChatComposer(p: ComposerProps) {
     const sc = composerShortcut(ev);
     if (sc === "answering") { stop(); openPop("answering"); return; }
     if (sc === "attach") { stop(); if (p.vyreFiles && p.onAttachVyreFile) openPop("files"); else p.onAttachFile?.(); return; }
-    if (sc && sc.startsWith("ai:") && slots.length > 1) {
+    if (sc && sc.startsWith("ai:") && slots.length) {
       stop();
       if (sc === "ai:all") askEveryone(); else { const sl = slots[Number(sc.slice(3))]; if (sl) toggleAi(sl.id); }
       return;
@@ -302,7 +302,7 @@ export function ChatComposer(p: ComposerProps) {
   const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
 
   const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc";
-  const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "plus" ? "More" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
+  const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
   const aiMenu = slots.length > 1 || !!p.models?.length;
 
   return (

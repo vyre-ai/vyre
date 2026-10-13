@@ -4,6 +4,8 @@ import { Text } from "./Text";
 import { Icon } from "./Icon";
 import { ProviderBadge } from "./ProviderBadge";
 import { providerOfModel } from "../marks/provider.js";
+import { Avatar, type AvatarSize } from "./Avatar";
+import { markRef } from "../marks/useMark";
 
 export type AnsweringAi = { id: string; label: string; provider?: string | null };
 
@@ -12,6 +14,8 @@ export function AiMark({ ai, size = 22 }: { ai: AnsweringAi; size?: number }) {
   const { color } = useUiTheme();
   const p = ai.provider ?? providerOfModel(ai.label);
   if (p) return <ProviderBadge provider={p} model={ai.label} size={size} />;
+  // An assistant with no provider (juno) is drawn as its own face, as everywhere else in the chat.
+  if (ai.id) return <Avatar of={markRef("assistant", ai.label, ai.id)} size={size as AvatarSize} />;
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color.hover, alignItems: "center", justifyContent: "center" }}><Text strong size="caption" tone="muted">{(ai.label.trim()[0] ?? "?").toUpperCase()}</Text></View>;
 }
 

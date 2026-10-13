@@ -17,6 +17,7 @@ import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
+import { useVyreFiles } from "./useVyreFiles";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread } from "./ChatRows";
 import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
@@ -122,6 +123,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
+  const vyre = useVyreFiles(att.add, att.addReady);
   useAttachDrop(att.add);
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
@@ -293,6 +295,11 @@ export function ChatScreen(p: ChatScreenProps) {
   const slots = found.length
     ? found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }))
     : allowsMock() ? [] : here.slots.map((x) => ({ id: x.id, label: x.name, provider: null as string | null }));
+  // The AIs that can answer: the stream's, else the chat's slots, else the chat's assistants (juno), and in the sample world the person's accounts as well (Claude, Codex, Grok).
+  const answerSlots = slots.length ? slots : [
+    ...faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => ({ id: f.id, label: f.name, provider: null as string | null })),
+    ...(allowsMock() ? [{ id: "slot:claude", label: "Claude", provider: "claude" }, { id: "slot:codex", label: "Codex", provider: "codex" }, { id: "slot:grok", label: "Grok", provider: "grok" }] : []),
+  ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   const paneOpen = usePreviewPane();
   const body = (
@@ -440,13 +447,15 @@ export function ChatScreen(p: ChatScreenProps) {
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this Mac", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
-          slots={slots}
+          slots={answerSlots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}
           onAttachFile={() => void att.choose(false)}
+          vyreFiles={vyre.files}
+          onAttachVyreFile={(id) => void vyre.pick(id)}
           {...p.composer}
         />
       </View>
