@@ -11,7 +11,8 @@ import { sectionsOf } from "../components/groups.js";
 /** The token of every field of an object, by field name. @param {Def} def @param {Def[]} types */
 export function fieldTokens(def, types) {
   /** @type {Record<string, FieldToken>} */ const out = {};
-  const groups = insertList({ trigger: { kind: "created", type: def.name }, steps: [] }, "", { types }, {});
+  const draft = /** @type {any} */ ({ name: "", trigger: { kind: "created", type: def.name }, steps: [] });
+  const groups = insertList(draft, "", /** @type {any} */ ({ types }), {});
   const items = groups[0]?.items ?? [];
   for (const f of def.fields) {
     const own = items.find((i) => /^\{[^.}]+\.[^.}]+\}$/.test(i.alias) && i.alias.endsWith(`.${f.name}}`));
