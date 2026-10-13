@@ -268,6 +268,21 @@
               "label": "Model"
             },
             {
+              "name": "folder",
+              "kind": "text",
+              "label": "Folder"
+            },
+            {
+              "name": "projects",
+              "kind": "text",
+              "label": "Projects"
+            },
+            {
+              "name": "users",
+              "kind": "text",
+              "label": "Who may use it"
+            },
+            {
               "name": "tags",
               "kind": "text",
               "label": "Tags",

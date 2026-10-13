@@ -28,6 +28,7 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
+import { Access } from "../../lib/access.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
@@ -156,7 +157,7 @@ export default {
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name} (agents.list shows them)`), { code: "not_found" }); return a; };
-    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(shape), log: m => ctx.log(m) });
+    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(r => ({ ...shape(r), users: new Access(db, "agents_access").list(String(/** @type {any} */ (r).name)).map(g => `${g.kind === "role" ? "role " : ""}${g.subject} (${g.level})`) })), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
@@ -533,6 +534,7 @@ export default {
     });
 
     config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+      changed: () => { void mirror.schedule(); },
       chainPerson, roleOf: async person => {
         const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
         if (m && m.role) return String(m.role);

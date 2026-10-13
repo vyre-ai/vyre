@@ -16,12 +16,15 @@ export const AGENT = Object.freeze({
     { name: "owner", kind: "text", label: "Owner" },
     { name: "builtin", kind: "boolean", label: "Built in" },
     { name: "model", kind: "text", label: "Model" },
+    { name: "folder", kind: "text", label: "Folder" },
+    { name: "projects", kind: "text", label: "Projects" },
+    { name: "users", kind: "text", label: "Who may use it" },
     { ...TAGS, hidden_from: ["member", "manager", "temp"] },
   ],
 });
 
 /** What a roster row looks like as a record. @param {any} a a shaped agent */
-export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a.owner || "", builtin: Boolean(a.builtin), model: a.model || "", tags: a.tags || "" });
+export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a.owner || "", builtin: Boolean(a.builtin), model: a.model || "", folder: a.uid ? `agents/${a.uid}` : "", projects: a.projects === "*" ? "*" : Array.isArray(a.projects) ? a.projects.join(", ") : "", users: Array.isArray(a.users) ? a.users.join(", ") : "", tags: a.tags || "" });
 
 /**
  * @param {{ kernel: () => any, rows: () => any[], log?: (m: string) => void, retryMs?: number }} o

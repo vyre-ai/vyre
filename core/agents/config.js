@@ -42,7 +42,7 @@ export function contextBrief(c) {
  * @param {any} ctx
  * @param {{ db: any, root: string, must: (n: string) => any, mayChange: (m: any, a: any) => Promise<boolean>, notYours: (w: string) => Error, guard: (c: any, w: string) => void,
  *   modelMay: (m: any) => boolean, personOf: (m: any) => Promise<string>, scope: (a: any) => Promise<{ projects: any, cwds: string[] }>,
- *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null> }} h
+ *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null>, changed?: () => void }} h
  */
 export function register(ctx, h) {
   const { db } = h;
@@ -68,7 +68,9 @@ export function register(ctx, h) {
   const writeOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "change another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("changes its files (Can edit)"); };
   const useOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's use"); if ((await levelOf(meta, a)) === "none") throw h.notYours("sees where it is used (Can use)"); };
   const shareOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "share another agent"); if (!(await h.mayChange(meta, a))) throw h.notYours("shares it"); };
-  const claudeFile = (/** @type {any} */ a) => path.join(home(a), "CLAUDE.md");
+  // The folder layout (lib/files/layout.js, files-layout): agents/<id>/ with instructions/, context/, memory/ and work/.
+  const claudeFile = (/** @type {any} */ a) => path.join(home(a), "instructions", "CLAUDE.md");
+  const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(home(a), part), { recursive: true, mode: 0o700 }); };
   const readClaude = (/** @type {any} */ a) => { try { return fs.readFileSync(claudeFile(a), "utf8"); } catch { return ""; } };
   const listFiles = (/** @type {any} */ a) => {
     try { return fs.readdirSync(ctxDir(a), { withFileTypes: true }).filter(e => e.isFile()).map(e => { const s = fs.statSync(path.join(ctxDir(a), e.name)); return { name: e.name, size: s.size, at: Math.round(s.mtimeMs) }; }).sort((x, y) => x.name.localeCompare(y.name)); }
@@ -95,7 +97,7 @@ export function register(ctx, h) {
       if (typeof text !== "string" || text.length > DOC_MAX) throw bad(`the text is up to ${DOC_MAX / 1024} KB`);
       if (a.builtin && file === "CLAUDE.md") throw Object.assign(new Error(`${a.name} is built in: only its instructions change`), { code: "denied" });
       if (file === "AGENTS.md") h.setWords(a, text, await h.personOf(meta));
-      else { fs.mkdirSync(home(a), { recursive: true, mode: 0o700 }); const f = claudeFile(a); fs.writeFileSync(f + ".tmp", text, { mode: 0o600 }); fs.renameSync(f + ".tmp", f); }
+      else { ensureParts(a); const f = claudeFile(a); fs.writeFileSync(f + ".tmp", text, { mode: 0o600 }); fs.renameSync(f + ".tmp", f); }
       return { ok: true, file };
     },
   });
@@ -117,7 +119,7 @@ export function register(ctx, h) {
       const buf = Buffer.from(base64, "base64");
       if (buf.length > CONTEXT_MAX) throw bad("a context file is up to 10 MB");
       const dir = ctxDir(a);
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      ensureParts(a);
       if (!fs.existsSync(path.join(dir, n)) && listFiles(a).length >= CONTEXT_FILES_MAX) throw bad(`an agent keeps up to ${CONTEXT_FILES_MAX} context files`);
       const f = path.join(dir, n);
       if (!inside(dir, f) || f === dir) throw bad("give the file a plain name");
@@ -215,6 +217,7 @@ export function register(ctx, h) {
       await shareOk(meta, a);
       if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
       shared.set(a.name, { kind, subject, level: level ?? null }, await h.personOf(meta));
+      if (h.changed) h.changed();
       return { ok: true };
     },
   });
