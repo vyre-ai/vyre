@@ -8,10 +8,10 @@ const MATTER = {
   name: "Estate plan", noun: { one: "Matter", many: "Matters" }, description: "From the first call to the signed documents.", tags: ["estate"],
   roles: [{ role: "attorney", lead: true }, { role: "paralegal" }],
   stages: [
-    { name: "Opening", owner: "role:attorney", tasks: [
-      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY }),
-      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY }),
-      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY }),
+    { name: "Opening", owner: "role:attorney", groups: [{ name: "Documents" }, { name: "Client calls" }], tasks: [
+      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY, group: "Documents" }),
+      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY, group: "Documents" }),
+      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY, group: "Client calls" }),
     ] },
     { name: "Initial Administration", tasks: [
       task("Gather the family's documents", "role:paralegal", { due_offset_ms: 7 * DAY }),

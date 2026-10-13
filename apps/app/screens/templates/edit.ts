@@ -1,6 +1,6 @@
 // The template studio's visual editor, pure (no React, no calls): every change a person makes to a template is a function from one body to the next, so the screen only binds fields to these and a test
 // can say what each one does. Nothing here talks to the box; the box checks the saved draft again (work.template.define).
-import type { Body, Noun, Stage, Task } from "./model.ts";
+import type { Body, Group, Noun, Stage, Task } from "./model.ts";
 
 export const PAGES: [string, string][] = [["", "The usual (stages)"], ["stages", "Stages"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["timeline", "Timeline"], ["team", "Team"]];
 export const OUTPUTS: [string, string][] = [["note", "A note"], ["decision", "A yes or no"], ["file", "A file"], ["record", "A record"]];
@@ -42,6 +42,17 @@ export const removeStage = (b: Body, i: number): Body => tidyAutomations({ ...b,
 export const setStageOwner = (b: Body, i: number, owner: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { owner: _o, ...rest } = s; return (owner ? { ...rest, owner } : rest) as Stage; }) });
 export const setMovesOn = (b: Body, i: number, text: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { moves_on_when: _m, ...rest } = s; return (text.trim() ? { ...rest, moves_on_when: text.trim() } : rest) as Stage; }) });
 
+/** A stage's task groups, in order. */
+export const groupsOf = (s: Stage): Group[] => s.groups || [];
+/** What GroupedList hands back after an add, rename, move or delete: the stage's groups and its tasks (a rename or a delete has already moved the tasks). A task never names a group the stage does not have. */
+export function setStageGroups(b: Body, si: number, next: { groups: Group[]; items: Task[] }): Body {
+  const have = new Set(next.groups.map((g) => g.name));
+  return { ...b, stages: at(b.stages, si, (s) => {
+    const { groups: _g, tasks: _t, ...rest } = s;
+    const tasks = next.items.map((t) => { if (!t.group || have.has(t.group)) return t; const { group: _x, ...r } = t; return r as Task; });
+    return { ...rest, ...(next.groups.length ? { groups: next.groups } : {}), ...(tasks.length ? { tasks } : {}) } as Stage;
+  }) };
+}
 export const addTask = (b: Body, si: number): Body => ({ ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: [...(s.tasks || []), { title: "", doer: firstDoer(b), output: { kind: "note" } }] })) });
 export const setTask = (b: Body, si: number, ti: number, patch: Partial<Task> & { output_kind?: string }): Body => ({
   ...b,

@@ -1,7 +1,8 @@
 // The template studio's words and shapes, pure (no React, no calls): what a list of templates, one version's tree, a test run and the editor's text say. Tested by templates.test.js.
 export type Version = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string | null; kit?: string; note?: string; tags: string[]; body?: Body };
-export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number };
-export type Stage = { name: string; owner?: string; moves_on_when?: string; tasks?: Task[] };
+export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number; group?: string };
+export type Group = { name: string; collapsed?: boolean };
+export type Stage = { name: string; owner?: string; groups?: Group[]; moves_on_when?: string; tasks?: Task[] };
 export type Noun = { one: string; many: string };
 export type Body = { name: string; noun?: Noun; description?: string; tags?: string[]; opens_on?: string; automations?: { when: string; flow: string; note?: string }[]; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
 export type Row = { template: string; name: string; live: number | null; latest: number; versions: number; owner: string | null; tags: string[]; noun?: Noun; archived?: boolean };
