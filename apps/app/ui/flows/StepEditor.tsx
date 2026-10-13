@@ -10,6 +10,7 @@ import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
 import { ValueField } from "./ValueField";
+import { ComposeField } from "./ComposeField";
 import { FormulaBox } from "./FormulaBox";
 import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
@@ -133,10 +134,12 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
               ) : null}
               {s.kind === "email" ? (
                 <>
-                  <ValueField label="To" value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or {email} from the form" draft={draft} stepId={s.id} options={options} />
-                  <ValueField label="Subject" value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
-                  <ValueField label="Message" multiline lines={5} value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
                   <SendWith kind="email" s={s} set={set} options={options} />
+                  <ValueField label="To" value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or {email} from the form" draft={draft} stepId={s.id} options={options} />
+                  <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
+                  <ValueField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or {client.email}" draft={draft} stepId={s.id} options={options} />
+                  <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
+                  <ComingNext />
                 </>
               ) : null}
               {s.kind === "ask" ? (
@@ -225,7 +228,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       {s.kind === "sms" ? (
         <>
           <ValueField label="To" value={s.to ?? ""} onChange={(to) => set({ to })} placeholder="A number, or {phone} from the form" draft={draft} stepId={s.id} options={options} />
-          <ValueField label="Message" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} />
+          <ComposeField label="Message" count value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} />
           <SendWith kind="sms" s={s} set={set} options={options} />
         </>
       ) : null}
@@ -266,6 +269,16 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         </>
       ) : null}
     </>
+  );
+}
+
+/** What the sending service cannot do yet: shown, switched off, never faked. */
+function ComingNext() {
+  return (
+    <View className="gap-s2">
+      {["CC", "BCC", "Attachments"].map((x) => <Field key={x} label={x} name={x} value="" disabled placeholder="Coming next" />)}
+      <Text size="caption" tone="label">CC, BCC and attachments (a file from Files, or one an earlier step made) need the sending service to carry them. They are next.</Text>
+    </View>
   );
 }
 
