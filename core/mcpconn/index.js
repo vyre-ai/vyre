@@ -12,6 +12,7 @@ import { newPrefixedId } from "../../lib/id.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcpconn_connections (id TEXT PRIMARY KEY, client TEXT NOT NULL, device TEXT NOT NULL, key_hash TEXT NOT NULL, created_at INTEGER NOT NULL, last_used INTEGER, revoked_at INTEGER);`,
+  `CREATE TABLE mcpconn_activity (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, conn TEXT NOT NULL, client TEXT NOT NULL, tool TEXT NOT NULL, ok INTEGER NOT NULL);`,
 ];
 /** The file `vyre mcp` reads, in the home: { id, key }. Mode 0600. */
 export const KEY_FILE = "mcp-connection.json";
@@ -76,6 +77,12 @@ export default {
       },
     });
 
+    ctx.tool("mcpconn.activity", {
+      description: "What the person's connected AI changed lately: [{ at, client, tool, ok, says }], newest first, at most 50. Tool names only, never what was in the call.",
+      input: obj(), callers: PEOPLE,
+      run: async () => db.prepare("SELECT at, client, tool, ok FROM mcpconn_activity ORDER BY seq DESC LIMIT 50").all().map((/** @type {any} */ r) => ({ at: Number(r.at), client: String(r.client), tool: String(r.tool), ok: Number(r.ok) === 1, says: SAYS })),
+    });
+
     ctx.tool("mcpconn.guide", {
       description: "The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): look, propose per client, confirm, make it, bring the sessions in. Read it first, then follow it.",
       input: obj(), callers: [...PEOPLE, "mcp", "harness"],
@@ -103,6 +110,8 @@ export default {
       run: async (/** @type {any} */ i) => {
         const r = db.prepare("SELECT client FROM mcpconn_connections WHERE id = ?").get(String(i.conn));
         db.prepare("UPDATE mcpconn_connections SET last_used = ? WHERE id = ?").run(now(), String(i.conn));
+        db.prepare("INSERT INTO mcpconn_activity (at, conn, client, tool, ok) VALUES (?,?,?,?,?)").run(now(), String(i.conn), r ? String(r.client) : "", String(i.tool).slice(0, 120), i.ok !== false ? 1 : 0);
+        db.prepare("DELETE FROM mcpconn_activity WHERE seq <= (SELECT MAX(seq) FROM mcpconn_activity) - 200").run();
         emit("mcpconn.did", { conn: String(i.conn), client: r ? String(r.client) : "", tool: String(i.tool).slice(0, 120), ok: i.ok !== false, says: SAYS });
         return { noted: true };
       },

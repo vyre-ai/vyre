@@ -23,6 +23,8 @@ One yes on your device. Vyre makes a connection for this computer: a key only yo
 
 Run yours once. `vyre mcp revoke <id>` ends a connection at once, and needs no yes.
 
+In the app, Settings > Connect your AI does the same: it shows both lines with a copy button, lists each connection with its device and when it was last used and a Revoke, and shows what your AI changed lately.
+
 ## What it can do
 
 A connected client is you, on a connection you made. It has exactly the access you have, judged by the same rules as the app, so it can do what you do in the app: make projects, agents, record types, templates and Flows, and file sessions in projects. It cannot do more than you can.

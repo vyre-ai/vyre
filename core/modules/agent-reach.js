@@ -123,6 +123,7 @@ export const PERSON_ONLY = new Map([
   ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
   ["mcpconn.connect", "needs the person's Face ID or presence: it widens an AI's authority to the person's own, the person's own yes"],
   ["mcpconn.list", "the person's own connections of their AI: the person's own view"],
+  ["mcpconn.activity", "what the person's own connected AI changed: the person's own view"],
   ["mcpconn.revoke", "the person's own stop: ends a connection of their AI; an assistant must not undo it"],
   ["pluginagent.revoke", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.decline", "the person's own decision about what Claude Code on a computer may reach"],

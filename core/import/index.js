@@ -17,6 +17,7 @@ import { scan, notSuggested } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
 import { folderName } from "./formats/shared.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { isCredentialFile } from "../runner/credfiles.js";
 
 /** Only the person's own surfaces read what is on their disk. "onboard" is the onboarding page on the machine's own loopback, reached only with the one-time link the person was given: its history step is this module's first screen. */
 const PEOPLE = ["cli", "local", "deck", "capsule", "onboard"];
@@ -81,9 +82,9 @@ export default {
     });
 
     /** A plan from scan rows: what would go, with the hash that consent is tied to. */
-    const makePlan = chosen => ({ at: Date.now(), files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
+    const makePlan = all => { const chosen = all.filter(f => !isCredentialFile(f.file)); return { at: Date.now(), files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
       hash: crypto.createHash("sha256").update(chosen.map(f => f.file).sort().join("\n")).digest("hex"), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
-      folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() });
+      folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() }; };
 
     ctx.tool("import.plan", {
       effect: "write",
@@ -259,7 +260,7 @@ export default {
         const ps = await projects().catch(() => []);
         const projectOf = cwd => { let best = null; for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, len: f.length }; return best; };
         const r = await doScan(folders);
-        const all = [...r.files.values()].filter(f => !(Number(since) > 0) || f.mtime > Number(since)).sort((a, b) => b.mtime - a.mtime);
+        const all = [...r.files.values()].filter(f => !isCredentialFile(f.file)).filter(f => !(Number(since) > 0) || f.mtime > Number(since)).sort((a, b) => b.mtime - a.mtime);
         return { sessions: all.slice(0, ROWS).map(f => rowOf(f, projectOf)), total: all.length, ...(all.length > ROWS ? { more: true } : {}), projects: ps.map(p => ({ slug: p.slug, name: p.name })), left_out: r.left_out, capped: r.capped,
           unsupported: ["grok"], claude_keeps_days: keepsDays() };
       },

@@ -64,6 +64,10 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.ok(noted.some(n => n.payload.tool === "projects.create" && n.payload.ok === true && n.payload.says === "via your Claude Code"), JSON.stringify(noted));
   assert.ok(noted.every(n => !JSON.stringify(n).includes("Harlow")), "no input in the note");
 
+  const act = (await call("mcpconn.activity", {}, opts)).data;
+  assert.ok(act.some((/** @type {any} */ a) => a.tool === "projects.create" && a.ok && a.says === "via your Claude Code"), JSON.stringify(act).slice(0, 200));
+  assert.ok(!JSON.stringify(act).includes("Harlow"), "the activity names tools, never input");
+
   // Revoke: the same key is refused at once.
   const rv = await call("mcpconn.revoke", { id }, opts);
   assert.ok(!rv.error, JSON.stringify(rv));

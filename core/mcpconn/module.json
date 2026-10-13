@@ -10,6 +10,7 @@
       { "name": "mcpconn.connect", "reach": "person", "effect": "write" },
       { "name": "mcpconn.list", "reach": "person", "effect": "read" },
       { "name": "mcpconn.revoke", "reach": "person", "effect": "write" },
+      { "name": "mcpconn.activity", "reach": "person", "effect": "read" },
       { "name": "mcpconn.guide", "reach": "anyone", "effect": "read" },
       { "name": "mcpconn.vouch", "reach": "modules", "effect": "read" },
       { "name": "mcpconn.note", "reach": "modules", "effect": "write" }
