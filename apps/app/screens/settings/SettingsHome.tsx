@@ -11,6 +11,7 @@ import { showingName } from "../shell/real-model";
 import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { backupLine, storedLine } from "../shell/basic.js";
+import { StarLink } from "./StarOnGithub";
 import { MakeServer } from "./MakeServer";
 import { PersonalHost } from "./PersonalHost";
 import { VERSION } from "./data";
@@ -42,7 +43,7 @@ export function SettingsHome() {
     blocks: { places: { type: "list", props: { density: "tight" }, content: { rows: settingsGroups(name, MOCK ? undefined : role).flatMap((g) => g.rows.map(([title, sub, href, icon]) => ({ id: href, title, subtitle: sub, icon, group: g.title, ...(state(href) ? { accessory: state(href) } : {}) }))) } } },
   };
   return (
-    <Frame title="Settings" top>
+    <Frame title="Settings" top actions={<StarLink />}>
       <ServerLine />
       <BlockScreen screen={screen} handlers={{
         open: (_b, row) => router.push(row.id as never),

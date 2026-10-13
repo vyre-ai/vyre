@@ -6,6 +6,7 @@ import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { Linking, View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { AboutCard } from "./AboutCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
@@ -118,7 +119,7 @@ export function RealAbout() {
     apply().then((r) => showToast(appliedLine(r))).catch((e) => showToast(say(e)));
   };
   return (
-    <Page title="About Vyre" sub={v ? `Version ${v}.` : undefined} back="/u/settings">
+    <Page title="About Vyre" back="/u/settings">
       {status ? (
         <Card className="gap-s2">
           <ServerLine />
@@ -128,6 +129,7 @@ export function RealAbout() {
             : button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
         </Card>
       ) : null}
+      <AboutCard version={v} />
       <Group title="Open-source credits">
         <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
       </Group>
