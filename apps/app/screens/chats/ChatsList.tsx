@@ -2,7 +2,7 @@
 import { BlockScreen, type BlockScreenData } from "@vyre/ui";
 import { chatRowsOf, type ChatRow } from "./chats-model.js";
 
-export function ChatsList({ rows, now, places, onOpen }: { rows: ChatRow[]; now: number; places: unknown; onOpen: (id: string) => void }) {
-  const screen: BlockScreenData = { v: 2, id: "chats", layout: { block: "chats" }, blocks: { chats: { type: "list", content: { rows: chatRowsOf(rows, now, places) } } } };
+export function ChatsList({ rows, now, places, onOpen, tag }: { rows: ChatRow[]; now: number; places: unknown; onOpen: (id: string) => void; /** where these chats live (placeTag): each row carries it */ tag?: string | null }) {
+  const screen: BlockScreenData = { v: 2, id: "chats", layout: { block: "chats" }, blocks: { chats: { type: "list", content: { ...(tag ? { tag } : {}), rows: chatRowsOf(rows, now, places) } } } };
   return <BlockScreen screen={screen} handlers={{ open: (_b, row) => { const t = rows.find((x) => x.id === String(row.id)); if (t && t.open) onOpen(t.id); } }} />;
 }

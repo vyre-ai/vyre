@@ -14,7 +14,8 @@ export function settingsSource(call: Call) {
   return {
     updateStatus: () => ask<UpdateStatus>("update.status"),
     updateCheck: () => ask<UpdateStatus>("update.check"),
-    updateApply: () => ask<{ requested?: boolean; reason?: string }>("update.apply"),
+    // the owner has said yes by the time this is called (the screens ask first); the server refuses an apply without it
+    updateApply: () => ask<{ requested?: boolean; reason?: string }>("update.apply", { yes: true }),
     pushSettings: () => ask<PushSettings>("push.settings"),
     /** Change only what is given: kinds merge, quiet is replaced (null for none). */
     pushSet: (patch: { quiet?: PushSettings["quiet"]; kinds?: Record<string, boolean> }) => ask<PushSettings>("push.settings", patch as Record<string, unknown>),

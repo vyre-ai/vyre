@@ -84,7 +84,7 @@ In the order `vyre help` lists them.
 | [`vyre reboot`](#vyre-reboot) | restart this computer the planned way (FileVault Macs come back by themselves) |
 | [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
 | [`vyre signout`](#vyre-signout) | sign this terminal out |
-| [`vyre space`](#vyre-space) | which space this terminal acts in |
+| [`vyre space`](#vyre-space) | this server's space: its details, its setup code, and which space this terminal acts in |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -842,13 +842,13 @@ vyre signout [--json]
 
 ### vyre space
 
-Which space this terminal acts in.
+This server's space: its details, its setup code, and which space this terminal acts in.
 
 ```
-vyre space [use <name> | use --clear | add-agent <space> <agent>] [--json]
+vyre space [up | use <name> | use --clear | add-agent <space> <agent>] [--json]
 ```
 
-`vyre space use harlow` remembers harlow for this terminal's calls. `vyre call records.list` then acts in it; `--space <name>` on one call overrides it. With none, calls act in the home's own space.
+`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` shows the code that sets it up from the Vyre app (again, any time). `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.
 
 ### vyre tips
 

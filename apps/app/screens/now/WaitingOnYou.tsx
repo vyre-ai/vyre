@@ -1,7 +1,8 @@
 import { View } from "react-native";
 import { ASSISTANT_MARK, actedVia } from "../../src/store-core/kernel-view.js";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Divider, Row, SectionLabel, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, Row, SectionLabel, SpaceTag, Text } from "@vyre/ui";
+import { usePlaceText } from "../../src/real/PlaceTag";
 import { visibleNeeds } from "../../src/state/answers";
 import { useHidden, useNeeds } from "../../src/state/needs";
 import type { Need } from "../../src/state/needs";
@@ -24,6 +25,7 @@ export function GapNotice({ gap }: { gap: { title?: string; line?: string; actio
 /** The assistants' open asks and the Gate's held items, oldest first: a row opens the ask in its session or the item's page. */
 export function WaitingOnYou() {
   const router = useRouter();
+  const waitTag = usePlaceText("showing");
   const items = visibleNeeds(useNeeds(), useHidden());
   if (!items.length) return null;
   const open = (n: Need) => {
@@ -36,7 +38,7 @@ export function WaitingOnYou() {
       <Card flush>
         {items.map((n, i) => (
           <View key={n.id}>{i ? <Divider /> : null}
-            <Row dense title={n.title} sub={[[n.agent, n.project].filter(Boolean).join(" · ") || n.detail, actedVia(n) ? ASSISTANT_MARK : ""].filter(Boolean).join(" ")} end={<Chip tone="accent">{n.source === "gate" && n.kind === "send" ? "Send" : "Needs you"}</Chip>} onPress={() => open(n)} />
+            <Row dense title={n.title} sub={[[n.agent, n.project].filter(Boolean).join(" · ") || n.detail, actedVia(n) ? ASSISTANT_MARK : ""].filter(Boolean).join(" ")} end={<>{waitTag ? <SpaceTag text={waitTag} /> : null}<Chip tone="accent">{n.source === "gate" && n.kind === "send" ? "Send" : "Needs you"}</Chip></>} onPress={() => open(n)} />
           </View>
         ))}
       </Card>

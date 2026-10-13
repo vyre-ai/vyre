@@ -79,6 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 25 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -824,6 +825,18 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## roles
+
+A Space's roles as a person sees them: Owner, Admin, Member, Guest and custom roles built from Member or Admin. One tool per call, each under the caller's own chain; the kernel refuses anything wider than a role's base.
+
+- Folder: `core/roles`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#roles)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## rules
 

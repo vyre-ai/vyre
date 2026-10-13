@@ -32,6 +32,8 @@ export const who = (w, id) => actorOf(id, w.actors);
 export const nameOf = (w, id) => who(w, id)?.name || id || "";
 /** @param {World} w @param {string|undefined} spaceId */
 export const spaceName = (w, spaceId) => w.spaces.find((s) => s.id === spaceId)?.name || "";
+/** The small tag that says where a thing lives: "Personal - Home", "Personal - Cloud" or the team space's name (placeTag, carried on the space row); the space's name when a row has no tag. */
+export const spaceTag = (w, spaceId) => { const s = w.spaces.find((x) => x.id === spaceId); return (s && (s.tag || s.name)) || ""; };
 
 /**
  * What a task is, to a person, as a card: the line it says, the sentence under it, the tags and the buttons.
@@ -108,7 +110,7 @@ export function cardFor(w, task, o = {}) {
   const tpl = task.template ? w.records.get(task.template) : null;
   const def = rec ? w.types.get(rec.type) : null;
   return cardModel({
-    task, record: rec, recordTitle: recordTitle(w, rec), actors: w.actors, me: w.me, spaceName: spaceName(w, task.space), showSpace: o.showSpace,
+    task, record: rec, recordTitle: recordTitle(w, rec), actors: w.actors, me: w.me, spaceName: spaceTag(w, task.space), showSpace: true,
     templateName: tpl ? recordTitle(w, tpl) : undefined, fieldLabel: (n) => def?.fields.find((/** @type {any} */ f) => f.name === n)?.label,
   });
 }

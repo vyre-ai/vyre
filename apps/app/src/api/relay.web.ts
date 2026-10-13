@@ -8,9 +8,8 @@ import { personKey } from "../auth/person.web";
 import { loadIdentity } from "../identity/store";
 import { shellIdentity } from "../shell/shell.ts";
 import { passkeyPresenceKey } from "../identity/passkey.js";
-import { readPairing, type Pairing } from "./pairing";
+import { makePairingStore } from "./pairing-store";
 
-const PAIRING = "vyre.relay.pairing";
 
 let provider: ReturnType<typeof webCrypto> | null = null;
 export const relayCrypto = () => (provider ??= webCrypto());
@@ -45,17 +44,9 @@ export function deviceName(): string {
 export const visibility = undefined;
 export const directFetch = undefined;
 
-export async function loadPairing(): Promise<Pairing | null> {
-  try {
-    return readPairing(localStorage.getItem(PAIRING));
-  } catch {
-    return null;
-  }
-}
-
-export async function savePairing(p: Pairing | null): Promise<void> {
-  try {
-    if (p) localStorage.setItem(PAIRING, JSON.stringify(p));
-    else localStorage.removeItem(PAIRING);
-  } catch {}
-}
+const pairingStore = makePairingStore({
+  get: async (k) => localStorage.getItem(k),
+  set: async (k, v) => localStorage.setItem(k, v),
+  del: async (k) => localStorage.removeItem(k),
+});
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;

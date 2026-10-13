@@ -52,6 +52,7 @@ export const TEAM_MEMBER = {
     f("actor", "actor", "Person or assistant", { required: true }),
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
+    choice("level", "Level on this project (lead manages it, contributor works in it, viewer only reads; none means contributor)", ["lead", "contributor", "viewer"]),
     text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
     f("link", "project", "Project"), // any record that holds work (a Kit's matter or trip too), so no target type and no inverse
     f("rich_text", "instructions", "Role instructions (assistants)"),

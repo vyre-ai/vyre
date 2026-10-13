@@ -67,7 +67,6 @@ export const deviceSpaces = (deviceIds, names) => Object.fromEntries(deviceIds.m
 
 /** The text a server's QR holds, rebuilt from a parsed code, for wink.pair.server's `payload`. @param {any} c a parseWinkCode result with ok true */
 export function payloadOf(c) {
-  if (c.kind === "offer") return c.offer;
   return `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay || "")}${c.for === "phone" ? "&k=phone" : ""}`;
 }
 

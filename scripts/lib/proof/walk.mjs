@@ -415,7 +415,7 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
   }, { needs });
   // (no replace step BEFORE the update: the old release this proof starts from (0.2.12) predates #112 and refuses a second sign-in while its first session is live)
   await run.step(U("the app asks for the update (update.apply, the Settings button's call)"), async () => {
-    const r = await mac.callTool("update.apply");
+    const r = await mac.callTool("update.apply", { yes: true });
     assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
     return "requested";
   }, { needs: [U("record what the vault and records hold before the update")] });

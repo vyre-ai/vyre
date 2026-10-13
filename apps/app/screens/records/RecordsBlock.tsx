@@ -8,6 +8,9 @@ import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { BlockScreen, BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { usePlaceText } from "../../src/real/PlaceTag";
+import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
+import { useMembers } from "../spaces/state";
 
 type ViewKind = "list" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
@@ -39,6 +42,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   useEffect(() => { setViewName(openedView); setPicked(null); setCleared(false); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
+  const cards = useMembers((st) => st.spaces);
+  const showing = useSpaces((st) => st.space);
+  usePlaceText("showing");   // loads the spaces the row tags are read from
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
@@ -66,7 +72,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
-  const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } }) } } };
+  const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
+  // each row says where it lives (placeTag): the space its address names, else the space showing
+  const tagged = { ...table, content: { ...table.content, rows: table.content.rows.map((r: any) => ({ ...r, tag: tagFor(cards, spaceOfUrn(r.urn) || showing, showing) })) } };
+  const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
     frame(vd.plural, <>
       <View className="flex-row items-center gap-s3">

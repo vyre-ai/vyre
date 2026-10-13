@@ -33,7 +33,7 @@ test("removing a member's seat reaches the Switchboard's recheck, and her sessio
     await d.kernel.gateway.grants.setRole(oc, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
     const R = d.kernel.gateway.records, urn = `vyre://${SPACE}/project/${project.record}`;
     const seat = async () => { const r = await d.registry.call("work.project.seat", { project: project.slug, person: BEN }, "module:switchboard", {}); return r.data; };
-    assert.deepEqual(await seat(), { exists: true, owner: false, team: false });
+    assert.deepEqual(await seat(), { exists: true, owner: false, team: false, level: null });
     const row = await R.create(oc, "team-member", { name: "ben", actor: { actor: { kind: "person", id: BEN, space: SPACE } }, kind: "person", project: { urn } });
     assert.equal((await seat()).team, true, "on the team: the seat rule says so");
 

@@ -88,7 +88,7 @@ export function SpacesScreen() {
                   sub={temp ? (
                     <View className="gap-s1 pt-s1">
                       <Text size="secondary" tone="label" numberOfLines={1}>{`Only ${m.scope}`}</Text>
-                      <View className="flex-row items-center gap-s2"><Chip tone="warn">{`Temp, ends ${m.end}`}</Chip></View>
+                      <View className="flex-row items-center gap-s2"><Chip tone="warn">{`Guest, ends ${m.end}`}</Chip></View>
                     </View>
                   ) : roleLabel(m.role)}
                   onPress={can ? () => open(m) : undefined} />
@@ -100,12 +100,12 @@ export function SpacesScreen() {
         {canInvite ? (
           <View className="gap-s1 pt-s3">
             <Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />
-            <Button kind="ghost" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: projectNames[0] ?? "", days: "7" })} />
+            <Button kind="ghost" label="Add a guest" onPress={() => setSheet({ kind: "temp", name: "", scope: projectNames[0] ?? "", days: "7" })} />
           </View>
         ) : cur ? <Footnote>{`Your role in ${spaceName} is ${roleLabel(MY_ROLE)}. An owner or admin invites people and changes roles.`}</Footnote> : null}
       </Sec>
       {warnings.map((w) => <Footnote key={w}>{w}</Footnote>)}
-      {cur ? <Footnote>Temp access ends on its date. An owner or admin can extend it with one tap.</Footnote> : null}
+      {cur ? <Footnote>Guest access ends on its date. An owner or admin can extend it with one tap.</Footnote> : null}
 
       <Sheet open={sheet?.kind === "role"} onClose={() => setSheet(null)} title={sheet?.kind === "role" ? member(sheet.id)?.name : undefined}>
         {sheet?.kind === "role" ? (
@@ -153,7 +153,7 @@ export function SpacesScreen() {
         })() : null}
       </Sheet>
 
-      <Sheet open={sheet?.kind === "temp"} onClose={() => setSheet(null)} title="Add a temp member">
+      <Sheet open={sheet?.kind === "temp"} onClose={() => setSheet(null)} title="Add a guest">
         {sheet?.kind === "temp" ? (
           <>
             <Text tone="muted">They see one project until the end date.</Text>

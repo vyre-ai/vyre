@@ -6,6 +6,7 @@ import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
+import { SpaceTag } from "../components/SpaceTag";
 import { Field } from "../components/Field";
 import { ICON_NAMES, type IconName } from "../components/Icon";
 import { IconTile } from "../components/IconTile";
@@ -51,6 +52,8 @@ export function ListBlock({ k, b, h }: P) {
     if (!g) groups.push((g = { name, rows: [] }));
     g.rows.push(x);
   }
+  // The small tag that says where a row lives (placeTag): a row's own `tag`, else the list's (content.tag, the connection the list came from).
+  const tagOf = (x: any): string => (typeof x.tag === "string" && x.tag ? x.tag : typeof c(b).tag === "string" ? c(b).tag : "");
   const card = (rs: any[]) => (
     <Card flush>
       {rs.map((x, i) => {
@@ -61,9 +64,9 @@ export function ListBlock({ k, b, h }: P) {
             <Row dense={tight} chevron={tight && !!h.open}
               lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => markRef(f.kind as "person" | "assistant", f.name))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
               title={x.title} sub={x.subtitle}
-              end={ex.any
+              end={<>{tagOf(x) ? <SpaceTag text={tagOf(x)} /> : null}{ex.any
                 ? <>{ex.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{ex.accessories.map((a, j) => (a.as === "text" ? <Text key={j} size="caption" tone="label">{a.label}</Text> : <Chip key={j} tone={a.tone as any}>{a.label}</Chip>))}</>
-                : x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined}
+                : x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined}</>}
               state={!ex.any && x.accessory && !accessoryAsChip(tight, x.tone) ? String(x.accessory) : undefined}
               onPress={h.open ? () => h.open!(k, x) : undefined} />
           </View>

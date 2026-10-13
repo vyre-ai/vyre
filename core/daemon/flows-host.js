@@ -222,6 +222,11 @@ export function createFlowsHost(o) {
           await gw.records.define(owner(), { add_types: base.filter((/** @type {any} */ t) => !now.has(t.name)), change_types: base.filter((/** @type {any} */ t) => now.has(t.name)) });
         } catch (/** @type {any} */ e) { log(`flows: could not define the base Kit's types for ${space}: ${e && e.message}`); }
       }
+      // A Space made before seat levels has the old team-member type: it gains `level` (the core definition is additive; a row with none is a contributor).
+      try {
+        const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");
+        if (seat && wantSeat && wantSeat.fields.some((/** @type {any} */ f) => !seat.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantSeat] });
+      } catch (e) { log(`flows: the team-member type for ${space} did not gain its level field: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
       // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
       try {

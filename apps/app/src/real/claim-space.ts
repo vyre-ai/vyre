@@ -19,6 +19,12 @@ export async function pairedRoute(): Promise<{ relay: string; route: string; box
   return { relay: p.relay, route: p.route, box: p.box };
 }
 
+/** Where the chosen server is reached; a server whose route is not known cannot have its Space's record published, so it is refused with the next step. */
+function chosenRoute(s: { route: { relay: string; route: string; box: string } | null }) {
+  if (!s.route) throw Object.assign(new Error("This device does not know where that server is reached yet. Open Settings, Servers, wait a moment and try again."), { code: "unreachable" });
+  return s.route;
+}
+
 /** The paired session plus the presence proof: spaces.host-here over the peer wire as this device's paired session (renewed once on a lapse), and the proof answered as for any person-only act. Answers { space }. */
 export const hostOnPairedServer = (name: string) =>
   tool<{ space: string; rootPublic?: string }>("spaces.host-here", { name });
@@ -42,15 +48,16 @@ export async function makeSpaceOnPairedServer(o: { name: string; displayName?: s
  * ONE SPACE PER SERVER: make the paired server's OWN Space the team's. The server makes the Space's root key if it has none (spaces.name-here), the same names-directory record a hosted Space gets is published
  * for the EXISTING id, and the server then keeps the name for its listing ("<Name>'s Cloud"). Nothing is hosted and nothing is ever retired: a refusal at the directory leaves the Space as it was.
  */
-export async function nameServerOwnSpace(o: { name: string; displayName?: string }) {
-  const [mine, route] = await Promise.all([loadIdentity().catch(() => null), pairedRoute()]);
+export async function nameServerOwnSpace(o: { name: string; displayName?: string; server?: { key: string; route: { relay: string; route: string; box: string } | null } }) {
+  // With several servers the person picked one: it is named by `server`, and its own route (not the active pairing's) goes in the directory record. No pick means the one paired server, as before.
+  const [mine, route] = await Promise.all([loadIdentity().catch(() => null), o.server ? chosenRoute(o.server) : pairedRoute()]);
   if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   const claimed = await claimServerSpace({
     identity: { id: mine.id, name: mine.name, eid: mine.eid, ops: mine.ops as any[], key: mine.key },
     name: o.name, displayName: o.displayName, base: DIRECTORY,
     route,
-    host: ({ name }) => tool<{ space: string; rootPublic?: string }>("spaces.name-here", { name }),
+    host: ({ name }) => tool<{ space: string; rootPublic?: string }>("spaces.name-here", { name }, o.server ? { server: o.server.key } : {}),
   });
-  await tool("spaces.name-here", { name: claimed.label, done: true });
+  await tool("spaces.name-here", { name: claimed.label, done: true }, o.server ? { server: o.server.key } : {});
   return claimed;
 }
