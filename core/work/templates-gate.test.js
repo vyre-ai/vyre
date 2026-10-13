@@ -38,3 +38,18 @@ test("a draft is put live only by an owner or an admin, even a draft the member 
   await assert.rejects(t.goLive(chain(ANA), { template: made.template, version: 1 }), /owner or an admin puts/);
   assert.equal((await t.goLive(chain(ADMIN), { template: made.template, version: 1 })).state, "live");
 });
+
+test("a new version of someone else's template is added by its owner or an admin, not by an assistant of a member", async () => {
+  const t = world();
+  const made = await t.define(chain(ADMIN), { body: BODY("Kit") });
+  await assert.rejects(t.define(chain(ANA, true), { template: made.template, body: BODY("Kit") }), /owner or an admin adds a version/);
+  assert.equal((await t.define(chain(ADMIN, true), { template: made.template, body: BODY("Kit") })).version, 2);
+});
+
+test("a template a member owns (made before this rule) still lists", async () => {
+  const t = world();
+  const made = await t.define(chain(ADMIN), { body: BODY("Old") });
+  await t.goLive(chain(ADMIN), { template: made.template, version: 1 });
+  const row = (await t.list(chain(ANA))).templates.find((/** @type {any} */ x) => x.template === made.template);
+  assert.equal(row.live, 1);
+});
