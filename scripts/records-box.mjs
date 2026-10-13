@@ -15,7 +15,7 @@ const srv = await startDaemonServer({ dir: path.join(dir, "server"), name: "rbox
 console.log(`SOCKET ${path.join(dir, "server", ".vyre", "vyred.sock")}`);
 const t0 = Date.now();
 for (;;) {
-  const r = await srv.registry.call("records.types", {}, "cli").catch((/** @type {any} */ e) => ({ error: { message: String(e.message) } }));
+  const r = await srv.operator("records.types", {}).catch((/** @type {any} */ e) => ({ error: { message: String(e.message) } }));
   if (r && !r.error) { console.log(`READY records.types answered after ${Math.round((Date.now() - t0) / 1000)} s`); break; }
   if (Date.now() - t0 > 600_000) { console.log(`NOT READY after 10 min: ${JSON.stringify(r).slice(0, 200)}`); break; }
   await new Promise((res) => setTimeout(res, 5000));
