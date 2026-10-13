@@ -41,3 +41,35 @@ test("seesFull fails closed: a call whose chain cannot be read is not given the 
   for (const row of r.data) for (const k of ["instructions", "auth", "uid", "tools"]) assert.ok(!(k in row), `an unreadable chain gets no ${k}`);
   void real;
 });
+
+test("a remote call with no person on it (a device, visiting Space or tailnet node) gets no list and the next step, never the roster or the whole row; the owner's local surfaces still do", { timeout: 120_000 }, async t => {
+  const { tool, d } = await boot(t);
+  const OWNER = d.kernel.id.owner;
+  const BEN = "per_" + "c".repeat(26);
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const full = await tool("agents.list", {});
+  for (const caller of ["device:bcdefghijklmnopq", "space:ben@spc_team", "tailnet-guest:ben@example.com", "tailnet:ben@example.com"]) {
+    const r = await d.registry.call("agents.list", {}, caller, {});
+    assert.ok(!r.data && r.error && r.error.code === "denied", `${caller}: no list: ${JSON.stringify(r).slice(0, 160)}`);
+    assert.match(String(r.error.message), /vyre relay mark/, `${caller}: and says how to mark the device`);
+    assert.ok(!full.some(/** @type {any} */ x => String(r.error.message).includes(x.name)), "the refusal names no agent");
+  }
+  for (const caller of ["cli", "local", "deck"]) {
+    const r = await d.registry.call("agents.list", {}, caller, {});
+    if (r.error) continue; // a label this fixture does not allow
+    assert.ok(r.data.length && "instructions" in r.data[0], `${caller}: the owner's own surface still gets the full row`);
+  }
+});
+
+test("the same unmarked device on a one-person home gets the list as before; the refusal starts when a second person joins", { timeout: 120_000 }, async t => {
+  const { tool, d } = await boot(t);
+  const OWNER = d.kernel.id.owner, BEN = "per_" + "c".repeat(26);
+  const full = await tool("agents.list", {});
+  const alone = await d.registry.call("agents.list", {}, "device:bcdefghijklmnopq", {});
+  assert.ok(Array.isArray(alone.data) && alone.data.length === full.length, `one person: the device gets the list: ${JSON.stringify(alone).slice(0, 160)}`);
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const team = await d.registry.call("agents.list", {}, "device:bcdefghijklmnopq", {});
+  assert.ok(!team.data && team.error && team.error.code === "denied" && /vyre relay mark/.test(team.error.message), `a member joined: the refusal with the next step: ${JSON.stringify(team).slice(0, 200)}`);
+});

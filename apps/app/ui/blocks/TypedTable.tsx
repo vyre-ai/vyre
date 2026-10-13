@@ -18,6 +18,7 @@ import { Stagger } from "../motion/Appear";
 import { useUiTheme } from "../theme";
 import { orderRows } from "../views/records-table.js";
 import type { Block, Handlers } from "./types";
+import { SpaceTag } from "../components/SpaceTag";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dayMonth = (v: any) => { const d = toDate(v); return d ? `${d.getDate()} ${MON[d.getMonth()]}` : ""; };
@@ -94,8 +95,9 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
             <View key={r.id}>
               {i > 0 ? <Divider /> : null}
               <Row className="py-s3" title={String(r.cells?._title?.v ?? "")} sub={lineOf(r) || undefined}
-                end={fee != null && fee !== "" || when ? (
-                  <View className="items-end">
+                end={fee != null && fee !== "" || when || r.tag ? (
+                  <View className="items-end gap-s1">
+                    {r.tag ? <SpaceTag text={String(r.tag)} /> : null}
                     {fee != null && fee !== "" ? <Text strong size="headline" style={TABULAR}>{fmtMoney(fee)}</Text> : null}
                     {when && dateCol ? <Text size="secondary" tone="label">{`${dateCol.title.toLowerCase()} ${when}`}</Text> : null}
                   </View>
@@ -110,7 +112,7 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
 
   const columns: Column<any>[] = shownCols.map((c): Column<any> => ({
     key: c.id, label: c.role === "title" ? c.title : c.title,
-    render: (r) => <TypedCell col={c} cell={r.cells?.[c.id]} openLink={h.openLink} />,
+    render: (r) => (c.role === "title" && r.tag ? <View className="flex-row items-center gap-s2"><TypedCell col={c} cell={r.cells?.[c.id]} openLink={h.openLink} /><SpaceTag text={String(r.tag)} /></View> : <TypedCell col={c} cell={r.cells?.[c.id]} openLink={h.openLink} />),
     sortValue: (r) => { const x = r.cells?.[c.id]; return String((x && typeof x === "object" ? x.s : x) ?? ""); },
   }));
   void title;

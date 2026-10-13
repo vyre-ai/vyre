@@ -18,6 +18,7 @@ import { advanceStage, approve, evidenceOf, isProof, makeStuck, move as moveTask
 import { SPACE, WHO, aliasUrn, digest, minted, parseUrn, seeded, urnOf } from "./mock-ids.js";
 import { actorValue, addr, file, money, ref } from "./mock-values.js";
 import { MATTER_STAGES, types as sampleTypes } from "./types.js";
+import { crmTypes, crmTypeSpace, seedCrm } from "./sample-crm.js";
 import { viewDefOf } from "./view-defs.js";
 import { REVEAL_MS as REVEAL, aid, signerWords, spaceOfUrn, stageFieldOf, stageNames } from "./kernel-view.js";
 
@@ -81,7 +82,7 @@ const refuse = (code, message) => Object.assign(new Error(message), { code });
 const validFormat = (cls, v) => (cls === "us-ssn" ? /^\d{3}-?\d{2}-?\d{4}$/.test(v) : true);
 
 /**
- * @param {{ world?: "morning"|"payday"|"empty", now?: () => number, me?: string }} [opts]
+ * @param {{ world?: "morning"|"payday"|"empty", now?: () => number, me?: string, crm?: boolean }} [opts]
  * @returns {Store & { kit: typeof ESTATE_KIT, world: string, transitions(): { task: string, from: string, to: string, by: string }[], snapshot(): any }}
  */
 export function createMockStore(opts = {}) {
@@ -103,6 +104,8 @@ export function createMockStore(opts = {}) {
   let nTask = 0, nRec = 0, nSeal = 0, prevHash = "genesis", seeding = true;
   /** @type {TypeDefinition[]} */
   const types = clone(sampleTypes);
+  // The made-up CRM (Organizations, Leads, Deals, Appointments), only where a build asks for it.
+  if (opts.crm) types.push(...clone(crmTypes));
   for (const t of types) for (const f of EXTRAS[t.name] || []) if (!t.fields.some(x => x.name === f.name)) /** @type {FieldDefinition[]} */ (/** @type {any} */ (t.fields)).push(f);
 
   const typeOf = (/** @type {string} */ name) => types.find(t => t.name === name);
@@ -215,7 +218,7 @@ export function createMockStore(opts = {}) {
     kit: ESTATE_KIT, world,
     async spaces() { return clone(SPACES); },
     async actors() { return clone(ACTORS); },
-    async types(space) { return clone(space ? types.filter(t => TYPE_SPACE[t.name] === space) : types); },
+    async types(space) { const where = { ...TYPE_SPACE, ...(opts.crm ? crmTypeSpace(SPACE.juniper) : {}) }; return clone(space ? types.filter(t => where[t.name] === space) : types); },
     async list(type, q = {}) {
       let rows = [...records.entries()].filter(([urn, r]) => r.type === type && (!q.space || spaceOfUrn(urn) === q.space));
       const flt = q.filter;
@@ -561,6 +564,10 @@ export function createMockStore(opts = {}) {
     log({ type: "record.updated", subject: urn("p1"), actor: WHO.kit, what: "fixed the intake form label", at: today(12, 6), data: { changed: ["title"] } });
   }
   seed();
+  if (opts.crm && world !== "empty") {
+    const day = new Date(clock()); day.setHours(0, 0, 0, 0);
+    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => { const t = new Date(day.getFullYear(), day.getMonth(), day.getDate() + d, h), p2 = (/** @type {number} */ n) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}T${p2(t.getHours())}:00`; });
+  }
   seeding = false;
   void MATTER_STAGES; void parseUrn;
   return store;

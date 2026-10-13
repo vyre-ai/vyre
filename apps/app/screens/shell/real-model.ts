@@ -11,7 +11,7 @@ const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", manager: 
 export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 
 export { spaceName, isPersonal } from "../../src/state/space-name.js";
-import { spaceName, isPersonal } from "../../src/state/space-name.js";
+import { spaceName, isPersonal, placeTag } from "../../src/state/space-name.js";
 
 /** The line under a space in the switcher: the person's role there (a Cloud space says so in its own name), or that it is still being set up. */
 export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
@@ -23,7 +23,7 @@ export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, 
 export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
 
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), tag: placeTag(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
   return own.length > 1 ? [ALL, ...own] : own.length ? own : [ALL];
 }
 

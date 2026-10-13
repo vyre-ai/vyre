@@ -254,3 +254,33 @@ export function dashboardCards(def, rows, vd = viewDefOf(def)) {
 }
 /** The width of a bar, 0 to 100. @param {number} n @param {number} max */
 export const barPct = (n, max) => Math.round((n / Math.max(max, 1)) * 100);
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dayOfKey = (/** @type {string} */ k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+/** The seven days (day keys, Monday first) of the week a day falls in. @param {string} key "2026-10-14" */
+export function weekDays(key) {
+  const d = dayOfKey(key), lead = (d.getDay() + 6) % 7;
+  return Array.from({ length: 7 }, (_, i) => isoDay(new Date(d.getFullYear(), d.getMonth(), d.getDate() - lead + i)));
+}
+/** The day n whole weeks away. @param {string} key @param {number} n */
+export function stepWeek(key, n) { const d = dayOfKey(key); return isoDay(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * n)); }
+/** The rows dated on any of the given days, grouped by day key and in time order within a day. @param {any[]} rows @param {string} dateName @param {string[]} keys @returns {Record<string, any[]>} */
+export function rowsInDays(rows, dateName, keys) {
+  /** @type {Record<string, any[]>} */ const out = {};
+  const want = new Set(keys);
+  for (const r of rows) {
+    const d = toDate(val(r, dateName));
+    const k = d ? isoDay(d) : "";
+    if (k && want.has(k)) (out[k] ||= []).push(r);
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => /** @type {Date} */ (toDate(val(a, dateName))).getTime() - /** @type {Date} */ (toDate(val(b, dateName))).getTime());
+  return out;
+}
+/** "12 to 18 Oct 2026": a week by its first and last day. @param {string[]} days */
+export function weekTitle(days) {
+  const a = dayOfKey(days[0]), b = dayOfKey(days[days.length - 1]);
+  const part = (/** @type {Date} */ d, /** @type {boolean} */ month, /** @type {boolean} */ year) => `${d.getDate()}${month ? ` ${SHORT_MONTHS[d.getMonth()]}` : ""}${year ? ` ${d.getFullYear()}` : ""}`;
+  if (a.getFullYear() !== b.getFullYear()) return `${part(a, true, true)} to ${part(b, true, true)}`;
+  if (a.getMonth() !== b.getMonth()) return `${part(a, true, false)} to ${part(b, true, true)}`;
+  return `${part(a, false, false)} to ${part(b, true, true)}`;
+}

@@ -11,10 +11,11 @@ import fs from "node:fs";
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const OFFER = "https://vyre.run/pair#eyJhIjoxfQ";
 
-test("readCode: a bare offer, a vyre:// link and plain text", { skip: !strip }, async () => {
+test("readCode: an old offer reads as the refusal text, plain text as text", { skip: !strip }, async () => {
   const { readCode, MAX_OTHER } = await import("./scan-model.ts");
-  assert.deepEqual(readCode(OFFER), { kind: "pair", offer: OFFER });
-  assert.deepEqual(readCode(`vyre://pair?offer=${encodeURIComponent(OFFER)}`), { kind: "pair", offer: OFFER });
+  const { SAY } = await import("../api/wink-code.ts");
+  assert.deepEqual(readCode(OFFER), { kind: "other", text: SAY.old_offer });
+  assert.deepEqual(readCode(`vyre://pair?offer=${encodeURIComponent(OFFER)}`), { kind: "other", text: SAY.old_offer });
   assert.deepEqual(readCode("  hello  "), { kind: "other", text: "hello" });
   assert.equal(readCode("   "), null);
   assert.equal(readCode(null), null);
@@ -29,7 +30,7 @@ test("onceEach: the same code inside the hold is read once, a different one at o
   const { onceEach } = await import("./scan-model.ts");
   let t = 0;
   const seen = [];
-  const read = onceEach((c) => seen.push(c.kind === "pair" ? c.offer : c.text), 1000, () => t);
+  const read = onceEach((c) => seen.push(c.kind === "other" ? c.text : ""), 1000, () => t);
   read(OFFER); read(OFFER); t = 500; read(OFFER);
   assert.equal(seen.length, 1);
   read("other"); assert.equal(seen.length, 2);

@@ -18,11 +18,11 @@ const listeners = new Set<(e: BoxEvent) => void>();
 const resets = new Set<(e: BoxEvent) => void>();
 
 /** A device paired to its server over the relay (device-first install) reaches it over the peer wire: every call and write goes there, answered in the same shapes. */
-export type PeerRoute = { wanted(): boolean; call(tool: string, input: Record<string, unknown>): Promise<unknown> };
+export type PeerRoute = { wanted(): boolean; call(tool: string, input: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<unknown> };
 
 export function makeBox(platform: () => Promise<Platform>, peer?: PeerRoute) {
-  const viaPeer = async <T>(tool: string, input: Record<string, unknown>): Promise<Result<T>> => {
-    try { return { data: (await peer!.call(tool, input)) as T }; }
+  const viaPeer = async <T>(tool: string, input: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<Result<T>> => {
+    try { return { data: (await peer!.call(tool, input, o)) as T }; }
     catch (e) { const x = e as { code?: string; message?: string }; return { error: { code: x.code ?? "error", message: x.message ?? "" } as never }; }
   };
   let clientP: Promise<Client> | null = null;
@@ -80,7 +80,7 @@ export function makeBox(platform: () => Promise<Platform>, peer?: PeerRoute) {
     },
     /** A read, now. */
     async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<Result<T>> {
-      if (peer?.wanted()) return viaPeer<T>(tool, input);
+      if (peer?.wanted()) return viaPeer<T>(tool, input, o);
       return (await client()).call<T>(tool, input, o);
     },
     /** A write: on screen as sending at once, delivered by the outbox, gone on the box's answer. */

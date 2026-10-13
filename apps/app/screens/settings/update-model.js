@@ -12,7 +12,7 @@ export function showNotice(s) {
 /** The card's words. @param {Status} s */
 export function noticeLines(s) {
   return {
-    title: `Vyre ${s.available} is out`,
+    title: `Update available: version ${s.available}`,
     detail: `You are on ${s.current}. ${s.canApply ? "Updating keeps your data, your vault and your sign-ins." : howToLine(s)}`.trim(),
   };
 }
@@ -29,7 +29,7 @@ export function howToLine(s) {
  */
 export function aboutButton(s) {
   if (!s || s.pending) return null;
-  if (s.available && s.available !== s.current) return s.canApply ? { label: `Update to ${s.available}`, action: "apply" } : null;
+  if (s.available && s.available !== s.current) return s.canApply ? { label: "Update", action: "apply" } : null;
   return { label: "Check for updates", action: "check" };
 }
 
@@ -38,8 +38,13 @@ export function aboutLine(s) {
   if (!s) return "";
   if (s.pending) return "An update is being installed. Vyre restarts when it is done.";
   if (s.error) return `The last look for a new version failed: ${s.error}`;
-  if (s.available && s.available !== s.current) return `Vyre ${s.available} is out. ${s.canApply ? "Updating keeps your data, your vault and your sign-ins." : howToLine(s)}`.trim();
+  if (s.available && s.available !== s.current) return `Update available: version ${s.available}. ${s.canApply ? "Updating keeps your data, your vault and your sign-ins." : howToLine(s)}`.trim();
   return "You are on the newest version.";
+}
+
+/** What the owner is asked before anything installs: nothing is installed without their yes. @param {Status} s */
+export function askLine(s) {
+  return `Install version ${s.available} now? Vyre restarts in a minute or two and keeps your data, your vault and your sign-ins. If the new version does not start, the old one comes back.`;
 }
 
 /** What the toast says after update.apply answered. @param {{ requested?: boolean, reason?: string } | null | undefined} r */

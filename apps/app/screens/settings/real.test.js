@@ -30,13 +30,13 @@ test("updates say where things stand in words, and never a time that was not giv
   const b = box();
   const s = await settingsSource(b.call).updateStatus();
   assert.equal(m.updateLine(s), "You are up to date.");
-  assert.equal(m.updateLine({ ...s, available: "0.3.0" }), "Vyre 0.3.0 is out. You are on 0.2.2.");
+  assert.equal(m.updateLine({ ...s, available: "0.3.0" }), "Update available: version 0.3.0. You are on 0.2.2.");
   assert.equal(m.updateLine({ ...s, error: "offline" }), "The last look failed: offline");
   assert.equal(m.checkedLine(null, 5), "Not checked yet.");
   assert.equal(m.checkedLine(1_000_000, 1_000_000 + 3 * 60_000), "Checked 3 minutes ago.");
   assert.equal(m.howLine(s), "To update, run vyre update on your home.");
   assert.equal(m.howLine({ ...s, canApply: true }), "");
-  assert.match(m.autoLine("notify"), /never installs one by itself/);
+  assert.match(m.autoLine("notify"), /never installs one without your yes/);
 });
 
 test("check and apply are one call each", { skip: !strip }, async () => {
@@ -45,6 +45,7 @@ test("check and apply are one call each", { skip: !strip }, async () => {
   const s = settingsSource(b.call);
   await s.updateCheck(); await s.updateApply();
   assert.deepEqual(b.seen.map((x) => x.tool), ["update.check", "update.apply"]);
+  assert.deepEqual(b.seen[1].input, { yes: true }, "the owner's yes goes with the call");
 });
 
 test("a notification kind or quiet hours is one push.settings call that changes only what is given", { skip: !strip }, async () => {

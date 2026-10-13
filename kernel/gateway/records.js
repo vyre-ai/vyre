@@ -35,7 +35,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
 }));
 
 /** The Space's set-up: a member reads these and never writes them. */
-const SETUP_TYPES = new Set(["agent", "template", "playbook"]);
+const SETUP_TYPES = new Set(["agent", "template", "playbook", "def-role"]);
 
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
@@ -707,7 +707,7 @@ export function createRecords(cfg) {
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
       const { trusted, actingFor } = judgeWriter(chain, doer, roleFor, space);
       if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
-        op, trusted, actingFor, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
+        op, trusted, actingFor, role: roleOfChain(chain), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }

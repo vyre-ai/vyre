@@ -268,3 +268,24 @@ export function nameAsOwner(d, id) {
   const identity = d.kernel.id.owner;
   d.registry.deps.db.prepare("INSERT OR REPLACE INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created, confirmed_by) VALUES (?, ?, 'phone', 'phone', 'identity', ?, 1, ?)").run(id, identity, identity, identity);
 }
+
+/**
+ * A pairing URL a test device can redeem, standing in for the classic bearer code (`relay.pair.start`, removed 13 Oct 2026). It mints a ring ticket (`relay.pair.ticket`), which the test switch
+ * `VYRE_TEST_UNGATED_RING` (set at the top of this file, never honoured in a packaged daemon) takes in one step like the confirmed ring, resolves it at the relay the way a phone does, and writes the
+ * result in the old offer shape, so a test's existing `phone(url)` / `pairOffer(parsePairUrl(url))` redeems it unchanged. The device it pairs is the owner's own (a ring ticket is), which is what the
+ * real approved paths make.
+ * @param {any} d the running vyred
+ * @param {string} [caller] @param {any} [meta] what the test passes as the call's proof
+ * @returns {Promise<string>}
+ */
+export async function offerUrl(d, caller = "cli", meta = { proof: { method: "passkey", id: "x" } }) {
+  const { resolveTicket } = await import("../relay/client/client.js");
+  const { nodeCrypto } = await import("../relay/client/nodecrypto.js");
+  const { fromBase64url } = await import("../relay/client/bytes.js");
+  const { pairUrl } = await import("../core/relay/pairing.js");
+  const minted = await d.registry.call("relay.pair.ticket", {}, caller, meta);
+  if (!minted.data) throw new Error(`relay.pair.ticket: ${JSON.stringify(minted.error)}`);
+  const status = (await d.registry.call("relay.status", {}, caller, meta)).data;
+  const r = await resolveTicket(fromBase64url(minted.data.ticket), { relay: status.url, crypto: nodeCrypto() });
+  return pairUrl({ relay: r.offer.relay, route: r.offer.route, box: Buffer.from(r.offer.box), secret: r.offer.secret, name: r.name });
+}

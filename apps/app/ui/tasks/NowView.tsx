@@ -13,7 +13,8 @@ import { ActorMark } from "./ActorMark";
 import { Section } from "./Section";
 import { TaskCard } from "./TaskCard";
 import { useNowScope } from "./scope";
-import { nameOf, nextEvent, nowModel, recordTitle, whenLabel, workingLine, who, type World } from "./model";
+import { nameOf, nextEvent, nowModel, recordTitle, spaceTag, whenLabel, workingLine, who, type World } from "./model";
+import { SpaceTag } from "../components/SpaceTag";
 import { Stagger } from "../motion/Appear";
 import { Pulse } from "../motion/Pulse";
 import { PressableScale } from "../motion/PressableScale";
@@ -49,7 +50,7 @@ export function DoingRow({ world, t, onOpen, swipe }: { world: World; t: any; on
       lead={<ActorMark who={who(world, aid(t.doer))} />}
       title={recordTitle(world, rec)}
       sub={workingLine(world, t)}
-      end={<><Pulse active><View className="rounded-full bg-ok" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
+      end={<>{spaceTag(world, t.space) ? <SpaceTag text={spaceTag(world, t.space)} /> : null}<Pulse active><View className="rounded-full bg-ok" style={{ width: 6, height: 6 }} /></Pulse>{rec ? <Avatar of={emblemOf(world, rec)} size={20} /> : null}</>}
       onPress={onOpen}
       swipe={swipe}
     />
@@ -143,7 +144,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
           {m.doneToday.map((t, i) => (
             <View key={t.id}>
               {i > 0 ? <Divider inset={60} /> : null}
-              <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={t.title} sub={`${nameOf(world, aid(t.doer))} · ${recordTitle(world, world.records.get(t.record))}`} end={<Icon name="check" size={16} tone="ok" />} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
+              <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={t.title} sub={`${nameOf(world, aid(t.doer))} · ${recordTitle(world, world.records.get(t.record))}`} end={<>{spaceTag(world, t.space) ? <SpaceTag text={spaceTag(world, t.space)} /> : null}<Icon name="check" size={16} tone="ok" /></>} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
             </View>
           ))}
         </Card>
