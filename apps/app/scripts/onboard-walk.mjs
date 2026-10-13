@@ -87,12 +87,12 @@ const makeSpace = async (t, { allow }) => {
 const invite = async (t) => {
   await t.press("Invite people"); await t.at("Invite people");
   await t.press("Make the invite"); await t.sees("Add a name");
-  await t.type("Name", "Sam"); await t.pick("Admin", true); await t.press("Make the invite"); await t.at("Send Sam the invite");
+  await t.type("Name", "Sam"); await t.press("Admin. "); await t.press("Make the invite"); await t.at("Send Sam the invite");
   await t.press("They have the link"); await t.at("Confirm four words");
   await t.type("Their four words", "one two"); await t.press("Check the words"); await t.sees("do not match");
   await t.type("Their four words", PHRASE); await t.press("Check the words"); await t.at("Sam is an admin");
   await t.press("Invite someone else"); await t.at("Invite people");
-  await t.type("Name", "Kim"); await t.pick("Member", true); await t.press("Make the invite"); await t.press("I sent it"); await t.at("Kim is invited");
+  await t.type("Name", "Kim"); await t.press("Member. "); await t.press("Make the invite"); await t.press("I sent it"); await t.at("Kim is invited");
   await t.press("Back to the space");
 };
 

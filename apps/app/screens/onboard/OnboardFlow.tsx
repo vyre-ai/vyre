@@ -9,7 +9,7 @@ import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } fr
 import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
 import type { Ctx, ScreenProps } from "./types";
 
-const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", master: "", reset: false, ai: {}, aiSkipped: false, spaceName: "", server: "cloud", created: false, runHere: false, role: "member", inviteName: "", inviteRole: "member" };
+const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", master: "", reset: false, ai: {}, aiSkipped: false, spaceName: "", server: "cloud", created: false, runHere: false, role: "member", inviteName: "", inviteRole: "member", inviteProjects: [], inviteDays: "7" };
 
 function Start({ ctx, set, go }: ScreenProps) {
   return (

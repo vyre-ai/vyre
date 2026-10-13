@@ -137,10 +137,10 @@ export async function lendThisComputer(space: string, on: boolean) {
 export type MadeInvite = { id: string; link: string; code: string | null; needsConfirm: boolean };
 
 /** Makes the invite the way the Invite screen does: this app when it keeps the name, else the box. The name is only for the inviter's list (the box takes none), so the link is for anyone who holds it. */
-export async function makeInvite(role: "member" | "admin"): Promise<MadeInvite> {
+export async function makeInvite(role: string, projects: string[] = [], days = 7): Promise<MadeInvite> {
   const s = active.get();
   if (!s?.id) throw Object.assign(new Error("There is no space to invite people to yet. Create or join one first."), { code: "no_space" });
-  const input = createInput({ space: s.id, role, anyone: true });
+  const input = createInput({ space: s.id, role, anyone: true, projects, days });
   const t = await import("../../src/real/team-join");
   const r = (await t.invitesHere()) ? await t.makeTeamInvite({ space: s.id, name: s.slug, role: input.role }) : await tool("spaces.invites.create", input);
   const n = madeNote(r);

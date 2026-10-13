@@ -19,7 +19,10 @@ export type Ctx = {
   runHere: boolean;
   role: "member" | "admin";
   inviteName: string;
-  inviteRole: "member" | "admin";
+  /** The wire role: admin, member, temp (a Guest) or a custom role id. */
+  inviteRole: string;
+  inviteProjects: string[];
+  inviteDays: string;
 };
 export type ScreenProps = {
   ctx: Ctx;
