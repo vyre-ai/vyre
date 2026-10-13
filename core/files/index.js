@@ -29,6 +29,8 @@ import { registerSpaceLinks } from "./space-links.js";
 import { registerLinked } from "./linked.js";
 import { googleDriveProvider } from "./linked-gdrive.js";
 import { driveClient } from "../google/drive-seam.js";
+import { dropboxProvider } from "./linked-dropbox.js";
+import { dropboxSeam, dropboxClient, strip as stripDropbox, NO_TOKEN as NO_DROPBOX } from "./dropbox-seam.js";
 import { dirs } from "./dirs.js";
 
 const run = promisify(execFile);
@@ -419,7 +421,40 @@ export default {
     // Google Drive is the first source. It is made as the calling person through the google module's modules-only tool google.drive.linked (google/drive-seam.js picks their account), the
     // same module-to-module route the calendar sync and the watchers already use, so files holds no Google credential and reads no Google table.
     const gdrive = googleDriveProvider({ client: driveClient(input => ctx.call("google.drive.linked", input)) });
-    const linked = registerLinked(ctx, { providers: [gdrive] });
+    // Dropbox is the second. Its token is the calling person's OWN Vault item named "dropbox" (field token): the owner's through the Vault's module release, a member's through vault.me.release, which
+    // resolves the person from the call's chain. There is no other fallback, so a member never reaches the owner's item. Only this module may call files.dropbox.linked (dropbox-seam.js holds the
+    // fixed host list, the 25 MB read cap and the refusal of delete_v2).
+    const dropboxTokenFor = async (/** @type {string} */ person) => {
+      const noItem = () => Object.assign(new Error(NO_DROPBOX), { code: "no_account" });
+      try {
+        const owner = ctx.kernel && ctx.kernel.owner;
+        if (owner !== undefined && String(person) === String(owner)) {
+          const v = await ctx.vault.fetch("dropbox", { field: "token" });
+          if (typeof v === "string" && v) return v;
+        } else {
+          const r = await ctx.call("vault.me.release", { name: "dropbox", field: "token" });
+          if (!r.error && r.data && r.data.person === String(person) && typeof r.data.value === "string" && r.data.value) return r.data.value;
+        }
+      } catch { /* no item, a locked vault or no grant: the same plain sentence */ }
+      throw noItem();
+    };
+    const dbx = dropboxSeam({ tokenFor: dropboxTokenFor });
+    ctx.tool("files.dropbox.linked", {
+      internal: true,
+      description: "One Dropbox file call (list_folder, get_metadata, download, upload, move_v2, create_folder_v2, list_revisions) made as one person with their own Vault token, for a linked folder: { person, path, args?, bodyB64?, raw? } -> { status, body | bytesB64 + result | message }. A Dropbox refusal comes back as its status. Never a permanent delete. Files module only.",
+      input: { type: "object", required: ["person", "path"], properties: { person: { type: "string" }, path: { type: "string" }, args: { type: "object" }, bodyB64: { type: "string" }, raw: { type: "boolean" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        try {
+          if (!meta || meta.caller !== "module:files") throw Object.assign(new Error("only the files module reaches Dropbox through here"), { code: "denied" });
+          return await dbx.run(String(i.person), i);
+        } catch (e) {
+          const err = /** @type {any} */ (e);
+          throw Object.assign(new Error(stripDropbox(err && err.message || err)), { code: typeof err?.code === "string" ? err.code : "failed" });
+        }
+      },
+    });
+    const dropbox = dropboxProvider({ client: dropboxClient(input => ctx.call("files.dropbox.linked", input)) });
+    const linked = registerLinked(ctx, { providers: [gdrive, dropbox] });
     // Each person's index of a linked folder is brought up to date on a timer, as that person (a pair is known once they have synced).
     const resync = setInterval(() => { linked.syncKnown().catch(() => {}); }, 10 * 60_000);
     resync.unref();

@@ -70,12 +70,13 @@
     {"name": "files.drive.mount", "effect": "write", "reach": "person"},
     {"name": "files.drive.unmount", "effect": "write", "reach": "person"},
     {"name": "files.drive.open", "effect": "write", "reach": "person"},
-    {"name": "files.drive.local", "effect": "read", "reach": "anyone"}
+    {"name": "files.drive.local", "effect": "read", "reach": "anyone"},
+    {"name": "files.dropbox.linked", "reach": "modules"}
   ] },
   "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}, {"kind": "linked", "label": "Linked files", "icon": "file", "search": "files.linked.mentions.search", "resolve": "files.linked.mentions.resolve"}],
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },
-  "needs": {},
+  "needs": { "vault": ["dropbox"] },
   "teaches": {
     "tips": [
       {"id": "send-drop", "text": "`vyre send report.pdf` sends a file to another of your computers. If it is asleep, the file waits on your server.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre send <file>", "docs": "reference/cli.md#vyre-send"},

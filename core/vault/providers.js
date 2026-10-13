@@ -85,6 +85,10 @@ const LIST = [
       { name: "username", label: "SMTP username (smtp only)", secret: false, optional: true },
       { name: "security", label: "SMTP security (tls or starttls)", secret: false, optional: true, pattern: "^(tls|starttls)$" }],
     capabilities: ["other"], help: null },
+  // Dropbox for Files > Linked: a pasted access token from the app's page in the Dropbox App Console (Generated access token). A token made there lasts about four hours, so it is a first step.
+  // LATER: a "Dropbox (sign in)" entry with how: "oauth" and a refresh token, so a link keeps working; until then a dead token answers "add a new one in the Vault".
+  { name: "dropbox", label: "Dropbox", kinds: ["api-key"], how: "field", fields: [{ name: "token", label: "Access token", secret: true }],
+    capabilities: ["files"], help: "https://www.dropbox.com/developers/apps" },
   { name: "mcp-bearer", label: "MCP server token", kinds: ["api-key"], how: "field", fields: [key("Bearer token")],
     capabilities: ["other"], help: null },
 ];
