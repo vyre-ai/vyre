@@ -132,3 +132,44 @@ test("a member cannot reach the key: the three tools are the owner's on the memb
   for (const n of ["comms.email", "comms.service.get", "comms.service.test"]) { assert.ok(OWNER_ONLY.has(n), `${n} is owner only`); assert.ok(!MEMBER_MAY.has(n), `${n} is not on a member's list`); }
   for (const n of ["vault.connect", "vault.delete", "vault.get", "vault.reveal"]) assert.ok(!MEMBER_ALLOWED.has(n), `${n} is refused to a member by the vault's own gate`);
 });
+
+// ---- SMS from the vault item, and the list a Flow's "Send with" picker shows ----
+const SMS_FIELDS = { value: "tok_secret", account: "AC" + "a".repeat(32), from: "+15555550000" };
+function smsRig(/** @type {any} */ fields, /** @type {any} */ rows = []) {
+  /** @type {Map<string, any>} */ const tools = new Map(); /** @type {any[]} */ const posted = [], calls = [];
+  const ctx = { config: {}, log: () => {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), events: { emit: () => {} },
+    vault: { fetch: async (/** @type {string} */ id, /** @type {any} */ o) => { if (id !== "comms-twilio" || !fields || !(o.field in fields)) throw new Error("no item named twilio"); return fields[o.field]; } },
+    call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); if (t === "gate.offer") return { data: {} }; if (t === "gate.request") return { data: { id: "gi_s" } }; if (t === "gate.get") return { data: { state: "sending", via: "comms:sms" } }; if (t === "vault.connections.list") return { data: rows }; return { error: { code: "x", message: t } }; } };
+  registerComms(ctx, { http: async (/** @type {string} */ u, /** @type {any} */ init) => { posted.push([u, init]); return new Response(JSON.stringify({ sid: "SM1" }), { status: 201 }); } });
+  return { run: (/** @type {string} */ n, /** @type {any} */ i, m = { caller: "cli" }) => tools.get(n).run(i, m), posted, calls };
+}
+
+test("a text takes the account and the from number from the Twilio vault item, with no config.json", async () => {
+  const r = smsRig(SMS_FIELDS);
+  const held = await r.run("comms.send", { via: "sms", to: "+15555550123", body: "Hi" });
+  assert.equal(held.held, "gi_s");
+  await r.run("comms.release", { id: "gi_s", to: ["+15555550123"], content: { body: "Hi" } }, { caller: "module:gate" });
+  assert.match(r.posted[0][0], new RegExp(`Accounts/AC${"a".repeat(32)}/Messages`));
+  assert.equal(new URLSearchParams(r.posted[0][1].body).get("From"), "+15555550000");
+});
+
+test("a text with no account or from number anywhere says where to put them", async () => {
+  const e = await fails(smsRig({ value: "tok" }).run("comms.send", { via: "sms", to: "+15555550123", body: "Hi" }));
+  assert.equal(e.code, "needs_setup"); assert.match(e.message, /Twilio/);
+});
+
+test("comms.credentials lists the suitable credentials for email and for sms by name and id, never a value", async () => {
+  const rows = [
+    { id: "cn_1", provider: "sending-service", label: "Harlow Resend", account: "hello@harlow.example", ref: "comms-sending", secret: "LEAK" },
+    { id: "cn_2", provider: "imap-smtp", label: "Alex mail", account: "alex@harlow.example", ref: "alex-mail" },
+    { id: "cn_3", provider: "twilio", label: "Firm Twilio", account: "", ref: "comms-twilio" },
+    { id: "cn_4", provider: "openai", label: "AI", account: "", ref: "oai" },
+  ];
+  const r = smsRig(SMS_FIELDS, rows);
+  const email = await r.run("comms.credentials", { kind: "email" });
+  assert.deepEqual(email.credentials.map((/** @type {any} */ c) => [c.id, c.provider, c.step]), [["cn_1", "sending-service", "comms.email"], ["cn_2", "imap-smtp", "comms.send"]]);
+  const sms = await r.run("comms.credentials", { kind: "sms" });
+  assert.deepEqual(sms.credentials.map((/** @type {any} */ c) => [c.id, c.provider, c.step]), [["cn_3", "twilio", "comms.send"]]);
+  assert.ok(!JSON.stringify([email, sms]).includes("LEAK"));
+  assert.equal((await fails(r.run("comms.credentials", { kind: "fax" }))).code, "bad_input");
+});

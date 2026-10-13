@@ -80,6 +80,14 @@ export function registerComms(ctx, o = {}) {
     return { provider, apiKey, from, domain: await field("domain"), region: await field("region"), smtpHost: await field("smtp_host"), ...(smtpPort ? { smtpPort } : {}), username: await field("username"), security: await field("security") };
   };
 
+  /** The Twilio account, from number and messaging service: the vault item's own plain fields first, config.json (comms.sms) as the older home. */
+  const twilioConf = async () => {
+    const c = cfg().sms || {};
+    /** @param {string} f */
+    const f = async f => { try { return String(await ctx.vault.fetch(TWILIO_ITEM, { field: f })).trim(); } catch { return ""; } };
+    return { account: (await f("account")) || String(c.account || ""), from: (await f("from")) || String(c.from || ""), service: (await f("service")) || String(c.service || "") };
+  };
+
   /** Where a held item is filed: the chat or agent that asked, as mail files its own. @param {any} meta */
   const onBehalf = meta => {
     const agent = agentClaim(String(meta.caller || "")) || (typeof meta.agent === "string" ? meta.agent : "");
@@ -102,8 +110,8 @@ export function registerComms(ctx, o = {}) {
       }
       if (body.length > SMS_MAX) throw fail(`a text is at most ${SMS_MAX} characters; this one is ${body.length}`, "bad_input");
       const to = numbers(i.to);
-      const c = cfg().sms || {};
-      if (!/^AC[0-9a-f]{32}$/i.test(String(c.account || "")) || !(c.from || c.service)) throw fail("texts need a Twilio account: set comms.sms in config.json to { account: \"AC…\", from: \"+1…\" } and connect your Twilio key in the Vault", "needs_setup");
+      const c = await twilioConf();
+      if (!/^AC[0-9a-f]{32}$/i.test(c.account) || !(c.from || c.service)) throw fail("texts need a Twilio account: connect Twilio for Comms in the Vault (Connections) with its account number (starts with AC), the number texts come from and the auth token", "needs_setup");
       await offer();
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       const agent = agentClaim(String(meta.caller || "")) || undefined;
@@ -162,6 +170,21 @@ export function registerComms(ctx, o = {}) {
     },
   });
 
+  ctx.tool("comms.credentials", {
+    description: "The credentials a Flow's Send step can use, by kind: { kind: email | sms } -> { credentials: [{ id, name, provider, step }] }. Names and ids only, never a value. step is the Flow step that uses it.",
+    input: obj({ kind: { type: "string", enum: ["email", "sms"] } }, ["kind"]),
+    callers: CALLERS,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+      const way = /** @type {Record<string, Record<string, string>>} */ ({
+        email: { "sending-service": "comms.email", "imap-smtp": "comms.send", "google-oauth": "comms.send", "google-dwd": "comms.send", "google-apps-script": "comms.send" },
+        sms: { twilio: "comms.send" } })[String(i.kind)];
+      if (!way) throw fail("kind is email or sms", "bad_input");
+      const rows = await use("vault.connections.list", { caller: String(meta.caller || "cli") });
+      const list = Array.isArray(rows) ? rows : (rows && rows.connections) || [];
+      return { credentials: list.filter((/** @type {any} */ r) => r && Object.hasOwn(way, String(r.provider))).map((/** @type {any} */ r) => ({ id: String(r.id), name: String(r.label || r.ref || r.id), provider: String(r.provider), ...(r.account ? { account: String(r.account) } : {}), step: way[String(r.provider)] })) };
+    },
+  });
+
   ctx.tool("comms.release", {
     internal: true,
     description: "The Gate's call once the person approved a held text or email: sends exactly the approved numbers and words through Twilio, one message each, or the approved email through the Space's sending service. Only the Gate.",
@@ -180,8 +203,8 @@ export function registerComms(ctx, o = {}) {
       if (it.via !== SENDER) throw fail(`${id} is not a held text`, "denied");
       const dest = numbers(to), body = String(content && content.body || "");
       if (!body.trim() || body.length > SMS_MAX) throw fail("the approved text is empty or too long", "bad_input");
-      const c = cfg().sms || {};
-      if (!/^AC[0-9a-f]{32}$/i.test(String(c.account || ""))) throw fail("texts need comms.sms.account in config.json", "needs_setup");
+      const c = await twilioConf();
+      if (!/^AC[0-9a-f]{32}$/i.test(c.account)) throw fail("texts need the Twilio account number: connect Twilio for Comms in the Vault (Connections)", "needs_setup");
       // The Twilio key is the person's own item in the Vault, named twilio and handed to Comms: its `value` is the auth token (or an API key's secret, with that key's id in `sid`). It is held for this send only.
       /** @type {string} */ let auth;
       try {
