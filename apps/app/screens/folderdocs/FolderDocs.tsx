@@ -5,7 +5,7 @@ import { Button, Card, Divider, ErrorState, Field, IconButton, LoadingState, Row
 import { PlainDocsEditor } from "./PlainDocs";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
-import { KEPT_NOTE, READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
+import { READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
