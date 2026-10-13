@@ -43,13 +43,19 @@ export function register({ ctx, vault, tool }) {
 
   tool("vault.access.set", PEOPLE, "Share an item with a person: Can use (uses it without seeing the value) or Can edit (also changes or replaces it). level null takes the access away.",
     obj({ name: str, kind: { type: "string", enum: ["person"] }, subject: str, level: { type: ["string", "null"], enum: ["use", "edit", null] } }, ["name", "kind", "subject"]),
-    async ({ name, kind, subject, level }) => {
+    async ({ name, kind, subject, level }, meta) => {
       item(name);
       if (kind !== "person") throw bad("an item is shared with a person for now; a role comes later");
       if (typeof subject !== "string" || !PERSON.test(subject)) throw bad("name the person to share with");
       if (level !== null && level !== undefined && !["use", "edit"].includes(level)) throw bad("level is use, edit or null");
       const m = mint();
       const n = String(name);
+      // A grant is made only for a current member of the Space (taking one away needs no check); a kernel that cannot say, or a name that is not a member, is refused.
+      if (level) {
+        let members = null;
+        try { const chain = await ctx.kernel.chain(meta); members = ctx.kernel.grants && ctx.kernel.grants.members ? await ctx.kernel.grants.members.list(chain) : null; } catch { members = null; }
+        if (!Array.isArray(members) || !members.some((/** @type {any} */ x) => String(x.person) === subject)) throw Object.assign(new Error("that person is not a member of this Space"), { code: "not_a_member" });
+      }
       await m.end({ source: sourceOf(n, subject), reason: "the sharing of this item changed" });
       if (level) await m.make({ subject: { kind: "actor", actor: { kind: "person", id: subject, space: ctx.kernel.space } }, actions: level === "edit" ? ["vault.use", "vault.edit"] : ["vault.use"], resource: { prefix: await urnOf(n) }, source: sourceOf(n, subject), reason: `shared by the owner: ${level}` });
       vault.audit(level ? "share" : "unshare", n, "owner", true, `${subject}${level ? ` (${level})` : ""}`);

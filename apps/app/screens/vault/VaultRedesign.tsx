@@ -131,6 +131,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
                 onChange={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))}
                 onRemove={(w) => data.setAccess!(cur, w, null).then(() => { showToast(`${w} no longer has ${cur.name}.`); return data.access!(cur).then(setAcc); }).catch((e) => fail(e, "That did not work."))}
                 onAdd={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))} empty="Not shared with a person." /> : null}
+              {data.access ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
             </View>
           ) : (
             <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
