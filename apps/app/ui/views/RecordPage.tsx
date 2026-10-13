@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Card, Divider } from "../components/Card";
+import { GroupedList } from "../components/GroupedList";
 import { Row } from "../components/Row";
 import { Chip } from "../components/Chip";
 import { Banner } from "../components/Banner";
@@ -139,11 +140,14 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
   const main = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
       {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
+      {def.groups?.length ? (
+        <GroupedList groups={def.groups} items={filled} itemNoun="fields" renderItems={(items) => <Card flush>{items.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}</Card>} />
+      ) : null}
       <Card flush>
-        {filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
+        {def.groups?.length ? null : filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
         {empty.length ? (
           <View>
-            {filled.length ? <Divider /> : null}
+            {filled.length && !def.groups?.length ? <Divider /> : null}
             <Pressable accessibilityRole="button" accessibilityState={{ expanded: showEmpty }} onPress={() => setShowEmpty(!showEmpty)} className="min-h-control flex-row items-center justify-between px-s4 py-s3">
               <Text tone="label">{`${empty.length} empty ${empty.length === 1 ? "field" : "fields"}`}</Text>
               <Icon name={showEmpty ? "chevron-up" : "chevron-down"} size={16} tone="label" />
