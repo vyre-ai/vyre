@@ -123,7 +123,7 @@ export function registerComms(ctx, o = {}) {
   });
 
   ctx.tool("comms.email", {
-    description: "Send an email from the Space's own sending service, held at the Gate for a person's yes: { to, subject, text or html, replyTo?, from? }.",
+    description: "Send an email from the Space's sending service, held for a person's yes: { to, subject, text or html, replyTo?, from? }.",
     input: obj({ to: { anyOf: [str, { type: "array", items: str }] }, subject: str, text: str, html: str, body: str, replyTo: str, from: str, why: str }, ["to"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
