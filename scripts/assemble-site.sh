@@ -8,7 +8,8 @@
 #   --tag TAG     the release to take the installers from (default v0.2.0). Its signed files come from the GitHub release assets:
 #                 SHA256SUMS, SHA256SUMS.sig, manifest.json, release.json, vyre.tgz, the box files and the Windows installer.
 #                 Everything else comes from the tag's own source, the way scripts/build-site.sh copies it.
-#   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte.
+#   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte. box/vyre.tgz, when it was
+#                 left out for its size and redirected to the release, is fetched through the redirect and compared with the release's copy.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
@@ -59,9 +60,14 @@ done
 (cd "$out/box" && sum -c --quiet SHA256SUMS) || { echo "assemble-site: the release files do not match their SHA256SUMS" >&2; exit 1; }
 # Cloudflare Pages takes no file over 25 MiB. The apps (the Mac dmg and zip, the Android APK) are linked from the GitHub release, not served here,
 # so a file over the limit is left out; one the installers fetch (the --check list below) must never be, so that refuses.
+# The one exception is vyre.tgz (32 MB since 0.5.0): it is not copied, /box/vyre.tgz is a 302 to the same file on the tag's GitHub release (a line
+# in _redirects, below), and the installers' fetch follows it (curl -L, wget follows by default). Nothing weakens: the installers still check the bytes
+# against the signed SHA256SUMS served from this site, and --check below follows the redirect and compares the bytes with the release's own copy.
+big=$(mktemp -d); trap 'rm -rf "$big"' EXIT; tgz_redirect=""
 for f in "$out"/box/*; do
   [ "$(wc -c <"$f")" -le 26214400 ] && continue
-  case " VERSION SHA256SUMS SHA256SUMS.sig manifest.json release.json vyre vyre.tgz compose.yml install-box.sh install-mac-server.sh " in
+  if [ "$(basename "$f")" = vyre.tgz ]; then mv "$f" "$big/vyre.tgz"; tgz_redirect=1; continue; fi
+  case " VERSION SHA256SUMS SHA256SUMS.sig manifest.json release.json vyre compose.yml install-box.sh install-mac-server.sh " in
     *" $(basename "$f") "*) echo "assemble-site: $(basename "$f") is over the 25 MiB Pages limit and the installers need it" >&2; exit 1 ;;
   esac
   rm -f "$f"
@@ -77,6 +83,7 @@ if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
   ipath=/i.sh
 else ipath=/install.sh; fi
 printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
+[ -z "$tgz_redirect" ] || printf '/box/vyre.tgz https://github.com/vyre-ai/vyre/releases/download/%s/vyre.tgz 302\n' "$tag" >>"$out/_redirects"
 
 # The docs, at /docs: docs/ plus ARCHITECTURE.md, DEVELOPMENT-RULES.md and roadmap/, from main's checkout (they follow main like the pages do), each page as HTML
 # and as its own Markdown. The build writes its redirects and header rules for the whole site's files, so they join the site's and its own copies go.
@@ -97,6 +104,12 @@ for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/Instrument
 done
 
 say "checks"
+if [ -n "$tgz_redirect" ]; then
+  [ ! -e "$out/box/vyre.tgz" ] && grep -qx "/box/vyre.tgz https://github.com/vyre-ai/vyre/releases/download/$tag/vyre.tgz 302" "$out/_redirects" || { echo "assemble-site: vyre.tgz is left out but the redirect to the release is missing" >&2; exit 1; }
+  (cd "$big" && grep " vyre.tgz\$" "$out/box/SHA256SUMS" | sum -c --quiet) || { echo "assemble-site: the release's vyre.tgz does not match its SHA256SUMS" >&2; exit 1; }
+else
+  [ -f "$out/box/vyre.tgz" ] || { echo "assemble-site: vyre.tgz is neither served nor redirected" >&2; exit 1; }
+fi
 cmp -s "$out/install.sh" "$out/box/install-box.sh" || { echo "assemble-site: install.sh is not install-box.sh" >&2; exit 1; }
 [ "$(cat "$out/box/VERSION")" = "${tag#v}" ] || echo "assemble-site: note: box/VERSION is $(cat "$out/box/VERSION"), the tag is $tag" >&2
 for f in site/setup/index.html site/setup/page.js site/setup/reserve.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
@@ -108,7 +121,8 @@ if [ -n "$check" ]; then
   bad=0
   for p in install.sh w box/VERSION box/SHA256SUMS box/SHA256SUMS.sig box/manifest.json box/release.json box/vyre box/vyre.tgz box/compose.yml box/install-box.sh box/install-mac-server.sh setup/tokens.css docs/index.html docs/llms.txt docs/project/ARCHITECTURE.md docs/for-agents/MAP-YOUR-BUSINESS.md; do
     f=$(mktemp); curl -fsSL "$check/$p" -o "$f" || { echo "MISSING $p"; bad=1; rm -f "$f"; continue; }
-    if cmp -s "$f" "$out/$p"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
+    want="$out/$p"; [ "$p" = box/vyre.tgz ] && [ -n "$tgz_redirect" ] && want="$big/vyre.tgz"
+    if cmp -s "$f" "$want"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
   done
   for p in i box; do
     want="$out/install.sh"; [ "$p" = i ] && [ -f "$out/i.sh" ] && want="$out/i.sh"

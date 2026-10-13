@@ -34,3 +34,24 @@ test("site-deploy: assembles from the tag, deploys with the production refusals,
 test("site-deploy: every action is pinned by commit sha", () => {
   for (const m of yml.matchAll(/uses: (\S+)/g)) assert.match(m[1], /@[0-9a-f]{40}$/, m[1]);
 });
+
+const assemble = fs.readFileSync(path.join(REPO, "scripts/assemble-site.sh"), "utf8");
+
+test("assemble-site: an over-limit vyre.tgz is redirected to the tag's release, every other needed file still refuses", () => {
+  assert.match(assemble, /basename "\$f"\)" = vyre\.tgz \]; then mv "\$f" "\$big\/vyre\.tgz"; tgz_redirect=1/, "vyre.tgz is set aside, not copied");
+  assert.match(assemble, /\/box\/vyre\.tgz https:\/\/github\.com\/vyre-ai\/vyre\/releases\/download\/%s\/vyre\.tgz 302/, "the 302 goes to the tag's own release asset");
+  const needed = (assemble.match(/case " (VERSION [^"]*) " in/) || [])[1] || "";
+  assert.doesNotMatch(needed, /vyre\.tgz/, "vyre.tgz is no longer on the refuse list");
+  for (const f of ["VERSION", "SHA256SUMS", "SHA256SUMS.sig", "manifest.json", "release.json", "vyre", "compose.yml", "install-box.sh", "install-mac-server.sh"]) assert.ok(needed.split(" ").includes(f), `${f} still refuses when over the limit`);
+  assert.match(assemble, /sum -c --quiet SHA256SUMS\) \|\| \{ echo "assemble-site: the release files do not match/, "the release's checksums are verified before the file is set aside");
+  assert.match(assemble, /want="\$big\/vyre\.tgz"/, "--check compares the redirected bytes with the release's copy");
+});
+
+test("install-box and the box wrapper follow a redirect when they fetch vyre.tgz", () => {
+  for (const f of ["scripts/install-box.sh", "box/vyre"]) {
+    const src = fs.readFileSync(path.join(REPO, f), "utf8");
+    assert.match(src, /curl -fsSL "\$/, `${f}: curl -L follows the redirect`);
+    assert.match(src, /wget -qO "/, `${f}: wget follows redirects by default`);
+    assert.doesNotMatch(src, /--max-redirect[= ]0|--no-location/, `${f}: nothing turns redirects off`);
+  }
+});
