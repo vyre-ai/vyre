@@ -12,7 +12,11 @@
     "reads": [
       "agents.history",
       "agents.list",
-      "agents.versions"
+      "agents.versions",
+      "agents.docs.get",
+      "agents.context.list",
+      "agents.vault.list",
+      "agents.used"
     ],
     "tools": [
       {
@@ -108,7 +112,9 @@
       },
       {
         "name": "agents.spawn",
-        "projectArg": ["project"],
+        "projectArg": [
+          "project"
+        ],
         "reach": "anyone",
         "effect": "write"
       },
@@ -116,6 +122,61 @@
         "name": "agents.mirror",
         "reach": "modules",
         "effect": "write"
+      },
+      {
+        "name": "agents.docs.get",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "agents.docs.set",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.context.list",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "agents.context.add",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.context.remove",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.context.link",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.context.unlink",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.vault.list",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "agents.vault.assign",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.vault.unassign",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.used",
+        "reach": "anyone",
+        "effect": "read"
       }
     ]
   },

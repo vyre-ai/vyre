@@ -28,6 +28,7 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
+import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -56,6 +57,8 @@ export const MIGRATIONS = [
   // this table is the one place that says a thread is one, so agents.scope can narrow it and the activity feed can nest it.
   `CREATE TABLE agents_subs (id TEXT PRIMARY KEY, parent TEXT NOT NULL, parent_thread TEXT NOT NULL, thread TEXT, label TEXT NOT NULL, only TEXT, project TEXT, state TEXT NOT NULL DEFAULT 'running', result TEXT, at INTEGER NOT NULL, ended INTEGER);
    CREATE INDEX agents_subs_thread ON agents_subs (thread)`,
+  // The configuration page (core/agents/config.js): folders linked as context, and the Vault item names put at an agent's disposal.
+  ...CONFIG_MIGRATIONS,
 ];
 
 /**
@@ -130,6 +133,8 @@ export default {
     const db = ctx.store.db;
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
+    /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
+    let config = /** @type {{ brief(a: any): string } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -299,7 +304,7 @@ export default {
         const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
         if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
       }
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
@@ -489,6 +494,9 @@ export default {
         return { agent: a.name, owner: a.owner, versions: versionsOf(a.name).slice(0, Math.min(Number(i.limit) || 20, 100)).map(v => ({ n: v.n, by: v.by, approved_by: v.approved_by, note: v.note, at: v.at, before: JSON.parse(String(v.before)), after: JSON.parse(String(v.after)) })) };
       },
     });
+
+    config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+      setWords: (a, text, by) => { writeVersion(a, { instructions: text.trim() || null }, { by, approved_by: by }); void mirror.schedule(); } });
 
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
