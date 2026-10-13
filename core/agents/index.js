@@ -136,7 +136,7 @@ export default {
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
-    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
+    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, sharesFor(meta: any, a: any, staff: boolean): Promise<{ made_by: string | null, shares: { person: string, level: string }[] }>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -561,7 +561,7 @@ export default {
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
-          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) }) : rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) }))));
+          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)), ...(config ? await config.sharesFor(meta, a, true) : {}) }) : { ...rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) }), ...(config ? await config.sharesFor(meta, a, false) : {}) })));
       },
     });
 

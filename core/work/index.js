@@ -38,7 +38,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 /** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
 const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 /** The modules that ask work.project.may-read: the memory module, and the module that runs a person's threads. */
-const MAY_READ_ASKERS = ["module:memory", "module:switchboard", "module:agents"];
+const MAY_READ_ASKERS = ["module:memory", "module:switchboard", "module:agents", "module:projects"];
 /** Followers (log subscriptions) one caller keeps for work.team.doing; the oldest is dropped past this. */
 const MAX_FOLLOWERS = 20;
 const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(s);
