@@ -12,7 +12,7 @@ import { isRecordTrigger } from "./logic.js";
 /** `{path}`, and for a date `{path - 1 day}`, `{path + 2 hours as date}`: a path, then an optional offset and an optional format (the engine's own grammar, logic.js). The path is group 1, the rest group 2. */
 export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}/gi;
 
-/** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string })[]} */
+/** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string, suffix: string })[]} */
 export function parseTemplate(text) {
   const s = String(text ?? "");
   /** @type {any[]} */ const out = [];
@@ -27,7 +27,7 @@ export function parseTemplate(text) {
 }
 
 /** Just the tokens, in order. @param {string} text */
-export const tokensOf = (text) => /** @type {{ token: string, path: string }[]} */ (parseTemplate(text).filter((p) => "token" in p));
+export const tokensOf = (text) => /** @type {{ token: string, path: string, suffix: string }[]} */ (parseTemplate(text).filter((p) => "token" in p));
 
 /** Helper values a message can use, by token. `engine` is true only for those the Flow engine resolves today; the rest are listed and marked. */
 export const HELPERS = /** @type {{ token: string, label: string, engine: boolean }[]} */ ([

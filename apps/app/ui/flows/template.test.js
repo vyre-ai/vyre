@@ -9,7 +9,7 @@ const draft = (steps, trigger = { kind: "form" }) => ({ name: "t", trigger, step
 const email = { id: "mail", kind: "email", sendStep: "comms.email", to: "{email}", subject: "Hi {name}", body: "Hello {name}", replyTo: "{email}" };
 
 test("a template splits into words and tokens", () => {
-  assert.deepEqual(parseTemplate("Hi {client.first_name}, see you {appointment.starts_at}."), [{ text: "Hi " }, { token: "{client.first_name}", path: "client.first_name" }, { text: ", see you " }, { token: "{appointment.starts_at}", path: "appointment.starts_at" }, { text: "." }]);
+  assert.deepEqual(parseTemplate("Hi {client.first_name}, see you {appointment.starts_at}."), [{ text: "Hi " }, { token: "{client.first_name}", path: "client.first_name", suffix: "" }, { text: ", see you " }, { token: "{appointment.starts_at}", path: "appointment.starts_at", suffix: "" }, { text: "." }]);
   assert.deepEqual(tokensOf("{a} and {b.c} and { nope } and {}").map((t) => t.path), ["a", "b.c"]);
   assert.deepEqual(parseTemplate(""), []);
 });
