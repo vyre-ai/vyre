@@ -245,6 +245,32 @@ export default {
       },
     });
 
+    // ---- a device the identity chain admitted (design B) ----------------------------------------------------------------------------------------------------------
+    // A device that came in on the person's identity chain has no wink record (the owner did not confirm a pairing with the words), so pair-grant cannot make its grant. The relay, which admitted it, asks here. The
+    // tool trusts nothing it is given but the device id: the relay's row says (after reading the chain again right now) that the device is still listed, which identity it is, and which presence key was enrolled for
+    // it, a key the entry key signed the hash of in the hello. The grant is the same one-use grant a pairing makes, software strength, and the device opens its session with start-paired as any paired device does.
+    // The role is the kernel's, read at each call; this grants no rank.
+    ctx.tool("presence.person.chain-grant", {
+      internal: true,
+      description: "For the relay: the one-use grant that lets a device the person's identity chain admitted open its person session. Only the relay may ask, and only for a device whose row says it is on the chain (read again now) with a presence key bound by the entry signature.",
+      input: obj({ device: str }, ["device"]),
+      run: async (input, meta = {}) => {
+        const denied = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "denied" });
+        if (String((meta && meta.caller) || "") !== "module:relay") throw denied("only the relay makes this grant");
+        const device = String(input.device);
+        const r = /** @type {any} */ (await ctx.call("relay.device.info", { id: device }).catch(() => null));
+        const info = r && r.data;
+        if (!info || info.removed || !info.viaChain || !info.presenceKey) throw denied("that device is not on the identity chain with a presence key");
+        if (people.holds(device)) return { granted: false, held: true };
+        const row = /** @type {any} */ (ctx.store.db.prepare("SELECT public_key FROM presence_keys WHERE id = ?").get(String(info.presenceKey)));
+        let jwk = null;
+        try { jwk = row ? crypto.createPublicKey({ key: Buffer.from(String(row.public_key), "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }) : null; } catch { jwk = null; }
+        if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256") throw denied("that device's presence key is not a P-256 key");
+        const g = people.grant({ device, keyId: String(info.presenceKey), deviceKey: jwk, software: true, strength: STRENGTHS[0], keepSession: true });
+        return { granted: true, expires: g.expires, challenge: g.challenge, software: true };
+      },
+    });
+
     ctx.tool("presence.person.start-paired", {
       effect: "write",
       description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",

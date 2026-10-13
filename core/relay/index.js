@@ -370,6 +370,8 @@ export default {
         if (st.state === "gone") { forget(id, "removed from your identity list"); throw new Error("device removed"); }
         // the chain cannot be read and the hour of grace is over: refused, not removed (the device is fine; it connects again when the chain can be read)
         if (st.state !== "ok") throw new Error("this device could not be checked against your identity list just now; try again in a few minutes");
+        // a lapsed session renews by reconnecting: the grant is made again unless the device holds one
+        await ctx.call("presence.person.chain-grant", { device: id }).catch(() => null);
       }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
@@ -411,6 +413,8 @@ export default {
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
         .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
       ctx.events.emit("device.paired", { kind: "relay", id, name, via: "chain" });
+      // the device opens its person session with its presence key, as any paired device does: the presence module makes the grant (it reads this row and the chain again)
+      await ctx.call("presence.person.chain-grant", { device: id }).catch(e => ctx.log(`relay: no session grant for chain device ${id}: ${String(e && e.message || e).slice(0, 120)}`));
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
