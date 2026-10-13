@@ -26,11 +26,11 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
   return (
     <View className="gap-s4">
       <Sec title="The template">
-        <Field name="Template name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
-        <Field name="What one project of it is called" value={body.noun?.one || ""} onChangeText={(v: string) => onChange(E.setNoun(body, v))} placeholder="Campaign" />
-        {body.noun ? <Field name="What several are called" value={body.noun.many} onChangeText={(v: string) => onChange(E.setNoun(body, body.noun!.one, v))} placeholder="Campaigns" /> : null}
+        <Field label="Template name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
+        <Field label="What one project of it is called" value={body.noun?.one || ""} onChangeText={(v: string) => onChange(E.setNoun(body, v))} placeholder="Campaign" />
+        {body.noun ? <Field label="What several are called" value={body.noun.many} onChangeText={(v: string) => onChange(E.setNoun(body, body.noun!.one, v))} placeholder="Campaigns" /> : null}
         <Text size="caption" tone="muted">{body.noun ? `The app says "New ${body.noun.one.toLowerCase()}" and "${body.noun.many}" wherever it names these. Leave it empty to call them projects.` : "An agency might say Campaign, a studio Job. Leave it empty to call them projects."}</Text>
-        <Field name="What it is for" value={body.description || ""} onChangeText={(v: string) => onChange(E.setDescription(body, v))} multiline lines={2} />
+        <Field label="What it is for" value={body.description || ""} onChangeText={(v: string) => onChange(E.setDescription(body, v))} multiline lines={2} />
         <Select label="A project of this template opens on" value={open} options={E.PAGES} onChange={(v: string) => onChange(E.setOpensOn(body, v))} />
       </Sec>
       <Sec title="Roles">
@@ -40,7 +40,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
             <View key={r.role}>{i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
                 <Text strong>{r.role}</Text>
-                <Field name="Assistant that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
+                <Field label="Assistant that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
                 <View className="flex-row items-center gap-s3"><Switch on={Boolean(r.lead)} onChange={(v: boolean) => onChange(E.setRoleLead(body, r.role, v))} label={`${r.role} is the project lead`} /><Text>The project lead</Text></View>
                 <View className="self-start"><Button kind="ghost" size="sm" label="Remove this role" onPress={() => onChange(E.removeRole(body, r.role))} /></View>
               </View>
@@ -48,24 +48,24 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
           ))}
         </Card>
         <View className="flex-row items-end gap-s2">
-          <View className="min-w-0 flex-1"><Field name="Add a role" value={role} onChangeText={setRole} placeholder="attorney" /></View>
+          <View className="min-w-0 flex-1"><Field label="Add a role" value={role} onChangeText={setRole} placeholder="attorney" /></View>
           <Button kind="ghost" size="sm" label="Add" disabled={!role.trim()} onPress={() => { onChange(E.addRole(body, role.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-"))); setRole(""); }} />
         </View>
       </Sec>
       {body.stages.map((s, si) => (
         <Sec key={si} title={`Stage ${si + 1}`}>
           <Card><View className="gap-s3 p-s3">
-            <Field name="Name" value={s.name} onChangeText={(v: string) => onChange(E.renameStage(body, si, v))} />
+            <Field label="Name" value={s.name} onChangeText={(v: string) => onChange(E.renameStage(body, si, v))} />
             <Select label="Who may move a project on early" value={s.owner || ""} options={owners} onChange={(v: string) => onChange(E.setStageOwner(body, si, v))} />
-            <Field name="It moves on when (optional)" value={s.moves_on_when || ""} onChangeText={(v: string) => onChange(E.setMovesOn(body, si, v))} placeholder="the tasks are done" />
+            <Field label="It moves on when (optional)" value={s.moves_on_when || ""} onChangeText={(v: string) => onChange(E.setMovesOn(body, si, v))} placeholder="the tasks are done" />
             <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an assistant when a project enters it."}</Text>
             {(s.tasks || []).map((t, ti) => (
               <View key={ti} className="gap-s2 rounded-field border border-edge p-s3">
-                <Field name={`Task ${ti + 1}`} value={t.title} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { title: v }))} placeholder="Gather documents" />
-                <Field name="Details (optional)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
+                <Field label={`Task ${ti + 1}`} value={t.title} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { title: v }))} placeholder="Gather documents" />
+                <Field label="Details (optional)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
                 <Select label="Assigned to" value={t.doer} options={doers.some(([v]) => v === t.doer) ? doers : [...doers, [t.doer, E.assigneeWords(t.doer, people, agents)]]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { doer: v }))} />
-                <Field name="Due after (days, optional)" value={E.dueDays(t)} onChangeText={(v: string) => onChange(E.setDueDays(body, si, ti, v))} placeholder="3" />
-                {E.kindOfDoer(t.doer) === "agent" ? <Field name="Needs a person's yes before it (optional)" value={E.approvalOf(t)} onChangeText={(v: string) => onChange(E.setApproval(body, si, ti, v))} placeholder="sending anything to the client" /> : null}
+                <Field label="Due after (days, optional)" value={E.dueDays(t)} onChangeText={(v: string) => onChange(E.setDueDays(body, si, ti, v))} placeholder="3" />
+                {E.kindOfDoer(t.doer) === "agent" ? <Field label="Needs a person's yes before it (optional)" value={E.approvalOf(t)} onChangeText={(v: string) => onChange(E.setApproval(body, si, ti, v))} placeholder="sending anything to the client" /> : null}
                 <Select label="Checked by" value={t.checker || ""} options={[["", "No one"], ...doers.filter(([v]) => v.startsWith("role:") || v.startsWith("person:"))]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { checker: v }))} />
                 <Select label="It ends with" value={t.output.kind} options={E.OUTPUTS} onChange={(v: string) => onChange(E.setTask(body, si, ti, { output_kind: v }))} />
                 <View className="flex-row items-center gap-s3"><Switch on={t.required !== false} onChange={(v: boolean) => onChange(E.setTask(body, si, ti, { required: v ? undefined : false }))} label="The stage waits for this task" /><Text>The stage waits for this task</Text></View>
