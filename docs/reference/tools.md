@@ -6986,14 +6986,13 @@ Find and index this machine's Claude Code sessions, in the background.
 
 ### `onboard.join`
 
-Adding a second device or a server: status says whether the relay is ready to pair with and where the pair step stands; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to "device" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.
+Adding a second device or a server: status says whether the relay is ready to pair with and where the pair step stands; relay is gone (the classic pairing code; it answers with how a device joins now); verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to "device" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry.
 
 - Input:
   - `action` one of "status", "relay", "verify"
   - `becomeDevice` boolean
   - `node` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `onboard.link`
 
@@ -8978,18 +8977,17 @@ Turn the relay on: the box connects out to the relay so paired devices can reach
 
 ### `relay.join`
 
-This Vyre becomes a device of another box, redeeming a one-time pairing code minted there (relay.pair.start or onboard.join{action:"relay"}). One redemption: the channel closes once paired, then this tool returns what the other box said (its name, this device's id, whether presence enrolled). becomeDevice, when true, flips this machine to "device" once paired (onboard.machine): the same flag onboard.join{action:"verify",becomeDevice} takes. Does not keep a connection open; that is not built yet. A pasted URL that is not a real Vyre pairing code is refused before any prompt. Not available on a Mac yet: see vyre-core (ADR 0040).
+Gone: redeeming a classic bearer pairing code to become a device of another box. Refuses and says how to join now (sign in by name and approve on another device, or a space code plus the same words).
 
 - Input:
   - `url` string, required
   - `becomeDevice` boolean
   - `name` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `relay.pair.first`
 
-During onboarding only, before this box has any person on a device: make the QR code for the first device. Refused once a device is paired or a tailnet owner exists.
+Gone: the classic bearer pairing code for the first device. Refuses and says how to add a device now (a space code plus the same words, or sign in by name).
 
 - Input: none
 - Callers: `onboard`
@@ -9005,11 +9003,10 @@ The yes for a waiting pairing (a gated ticket, X-1): enrols the device that rede
 
 ### `relay.pair.start`
 
-Make a QR code that pairs one more device with this box through the relay. The code works once, for 10 minutes; making a new one voids the last.
+Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
-- Needs a person present.
 
 ### `relay.pair.ticket`
 
