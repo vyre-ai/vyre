@@ -139,7 +139,8 @@
         "name": "work.project.level",
         "summary": "set a person's level on a project: lead, contributor or viewer (a level only narrows their Space role)",
         "reach": "person",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project"
       },
       {
         "name": "work.chat.serve",

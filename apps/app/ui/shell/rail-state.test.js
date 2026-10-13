@@ -41,6 +41,8 @@ test("opening a place, or a path inside it, drills the sidebar into that place's
   assert.equal(panelFor("/u/records/contact"), "records");
   assert.equal(panelFor("/u/record/r1"), "records");
   assert.equal(panelFor("/u/drive/folder-1"), "drive");
+  assert.equal(panelFor("/u/vault"), "vault");
+  assert.equal(panelFor("/u/vault-more"), null, "a page whose path only starts with the same letters is not inside the Vault");
   assert.equal(panelFor("/u/flows/f1"), "flows");
   assert.equal(panelFor("/u/assistants/a1"), "agents");
   assert.equal(panelFor("/u/settings/devices"), "settings");

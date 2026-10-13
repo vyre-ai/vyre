@@ -1165,6 +1165,10 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
+  "publish.domain.status": {
+   "module": "publish",
+   "reason": "read-only: the caller must be an active member (checked through spaces.membership in code); lists a site's domains and the public DNS record still to set, never a secret"
+  },
   "publish.edge": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
@@ -1180,6 +1184,10 @@
   "publish.flow": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.holds": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); lists the publishing acts held at the Gate for a person with their plans, and only publish.decide, which a model cannot call, settles one"
   },
   "publish.list": {
    "module": "publish",
@@ -2516,6 +2524,42 @@
   "comms.service.get": {
    "module": "comms",
    "reason": "read-only: one comms service's settings, never a secret"
+  },
+  "files.linked.list": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.ls": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.read": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.search": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.tree": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.status": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.versions": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.mentions.search": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "google.find": {
+   "module": "google",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
   }
  }
 }

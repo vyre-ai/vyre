@@ -59,6 +59,8 @@ import { chipLine, defaultWords } from "./attach-model.js";
 import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
+import { useChats } from "../state/chats";
+import { canFork } from "../../screens/chats/chats-model.js";
 import { findLabel, findMatches, headerParts, keyAction, lastOwnMessage, stepMatch } from "./polish.js";
 
 export type ChatScreenProps = {
@@ -156,6 +158,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const prefs = useChatPrefs();
   const muted = prefs.muted.includes(p.sessionId);
   const pinned = prefs.pinned.includes(p.sessionId);
+  const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
   const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
@@ -334,7 +337,7 @@ export function ChatScreen(p: ChatScreenProps) {
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={sharedChat} replyMode={store.group.replyMode()}
-        thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
+        thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} noFork={noFork} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
   );

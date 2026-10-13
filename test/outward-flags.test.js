@@ -30,6 +30,8 @@ const NOT_OUTWARD = {
   "computers.checkout": "gives an agent a screen on your own computer",
   "files.send": "Taildrop from your Mac to your own box",
   "github.session.review": "reads comments on open pull requests; a read",
+  "google.members.email": "\"email\" is the noun: the owner records which work address the firm key may act as for a member; a record inside the Space, owner only, and nothing is sent (sending as that mailbox is google.mail.send, which is outward and held)",
+  "microsoft.members.email": "\"email\" is the noun: the owner records which work address the firm app may act as for a member; a record inside the Space, owner only, and nothing is sent (the firm app only reads mail)",
   "glass.files.upload": "a one-use path for a file into a folder on your own target",
   "chrome.op.call": "one learned READ in the person's own Chrome for the box: it refuses an operation that submits and points to chrome.op.send, which is marked outward",
   "link.call": "a Mac calls a tool on its own box",

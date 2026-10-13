@@ -139,7 +139,7 @@ export default {
     });
 
     ctx.tool("mcpconn.guide", {
-      description: "The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): look, propose per client, confirm, make it, bring the sessions in. Read it first, then follow it.",
+      description: "The walk-through for setting Vyre up from the work on this computer: look, propose, confirm, make it, bring the sessions in. Read it first.",
       input: obj(), callers: [...PEOPLE, "mcp", "harness"],
       run: async () => ({ guide: fs.readFileSync(new URL("../../harness/mcp/setup-vyre.md", import.meta.url), "utf8") }),
     });
@@ -199,6 +199,7 @@ export default {
       const env = { ...process.env, VYRE_HOME: root, VYRE_MCP_ID: id, VYRE_MCP_KEY: key };
       delete env.VYRE_SOCKET; delete env.VYRE_AGENT;
       const child = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "ignore"] });
+      child.stdin?.on("error", () => {});
       /** @type {Map<any, (m: any) => void>} */ const waiting = new Map();
       let buf = "";
       child.stdout.on("data", d => { buf += d; for (let i; (i = buf.indexOf("\n")) >= 0;) { const line = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(line); if (m && m.id !== undefined && waiting.has(m.id)) { const w = waiting.get(m.id); waiting.delete(m.id); w?.(m); } } catch { /* not a reply */ } } });

@@ -19,6 +19,7 @@ export const CAPABILITIES = /** @type {const} */ (["send_mail", "read_mail", "ca
 
 import { valuePattern } from "../../lib/credential-shapes.js";
 
+/** @param {string} label @param {string} [pattern] */
 const key = (label, pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
 
 /** @type {Provider[]} */
@@ -85,6 +86,10 @@ const LIST = [
       { name: "username", label: "SMTP username (smtp only)", secret: false, optional: true },
       { name: "security", label: "SMTP security (tls or starttls)", secret: false, optional: true, pattern: "^(tls|starttls)$" }],
     capabilities: ["other"], help: null },
+  // Dropbox for Files > Linked: a pasted access token from the app's page in the Dropbox App Console (Generated access token). A token made there lasts about four hours, so it is a first step.
+  // LATER: a "Dropbox (sign in)" entry with how: "oauth" and a refresh token, so a link keeps working; until then a dead token answers "add a new one in the Vault".
+  { name: "dropbox", label: "Dropbox", kinds: ["api-key"], how: "field", fields: [key("Access token")],
+    capabilities: ["files"], help: "https://www.dropbox.com/developers/apps" },
   { name: "mcp-bearer", label: "MCP server token", kinds: ["api-key"], how: "field", fields: [key("Bearer token")],
     capabilities: ["other"], help: null },
 ];
@@ -96,7 +101,7 @@ export const PROVIDERS = Object.freeze(Object.fromEntries(LIST.map(p => [p.name,
 export const provider = name => (Object.prototype.hasOwnProperty.call(PROVIDERS, name) ? PROVIDERS[name] : null);
 
 /** What a surface needs to draw a form: names, labels and the secret flag. Never a pattern's value. */
-export const formFields = p => (p ? p.fields.map(f => ({ name: f.name, label: f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) : []);
+export const formFields = (/** @type {Provider|null} */ p) => (p ? p.fields.map(f => ({ name: f.name, label: f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) : []);
 
 /**
  * Check fields a person gave against a provider. Returns the cleaned fields, or throws in words

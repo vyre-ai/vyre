@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
+import { PROVIDER_GROUP, ALL, inNav, navCounts, navEmpty, groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
 
 const v = (o) => ({ id: "x", sp: "juniper", group: "Logins", name: "Gmail", detail: "a@b", secret: "s", usedBy: [], shared: [], lastUsedDays: 1, ...o });
 
@@ -29,8 +29,8 @@ test("scope and search: Mine is the member's own, Space is the rest", () => {
 });
 
 test("groups follow the fixed order and skip empty ones", () => {
-  assert.deepEqual(groupsOf([v({ group: "Logins" }), v({ group: "Firm keys" })]).map((g) => g.name), ["Firm keys", "Logins"]);
-  assert.equal(GROUPS.length, 7);
+  assert.deepEqual(groupsOf([v({ group: "Logins" }), v({ group: "AI models" })]).map((g) => g.name), ["AI models", "Logins"]);
+  assert.equal(GROUPS.length, 10);
 });
 
 test("delete warns what would break", () => {
@@ -53,13 +53,16 @@ test("health: not known yet is not unused; known never used is", () => {
 
 test("a stored item is placed in a group by kind and name", () => {
   assert.equal(groupOf("login", "Gmail"), "Logins");
-  assert.equal(groupOf("api-key", "Stripe"), "API keys");
-  assert.equal(groupOf("secret", "resend-main"), "Sending services");
-  assert.equal(groupOf("secret", "twilio-auth"), "Phone");
-  assert.equal(groupOf("mcp-connection", "x"), "MCP keys");
-  assert.equal(groupOf("ssh-key", "nas"), "SSH and notes");
-  assert.equal(groupOf("secret", "firm-signing"), "Firm keys");
-  assert.equal(groupOf("ai-signin", "claude"), "API keys");
+  assert.equal(groupOf("api-key", "Stripe"), "Any API key");
+  assert.equal(groupOf("secret", "resend-main"), "Email and sending");
+  assert.equal(groupOf("secret", "twilio-auth"), "Phone and texts");
+  assert.equal(groupOf("mcp-connection", "x"), "Code and hosting");
+  assert.equal(groupOf("ssh-key", "nas"), "SSH keys");
+  assert.equal(groupOf("note", "wifi"), "Secure notes");
+  assert.equal(groupOf("secret", "firm-signing"), "Any API key");
+  assert.equal(groupOf("ai-signin", "claude"), "AI models");
+  assert.equal(groupOf("api-key", "whatever", "telegram"), "Messaging", "the provider an item was added from wins over its name");
+  assert.equal(groupOf("cloud", "x", "google-dwd"), "Google and Microsoft");
 });
 
 test("days left and the field to reveal", () => {
@@ -68,4 +71,30 @@ test("days left and the field to reveal", () => {
   assert.equal(daysLeftOf("2026-10-10", Date.parse("2026-10-13")), -3);
   assert.equal(valueField(["username", "password"]), "password");
   assert.equal(valueField(["x"]), "x");
+});
+
+test("every group a provider sits in is one of the groups the list shows", () => {
+  for (const g of Object.values(PROVIDER_GROUP)) assert.ok(GROUPS.includes(g), g);
+});
+
+test("the panel: a group, expiring, and shared with me narrow the list; counts match what each shows", () => {
+  const items = [v({ id: "a", group: "Logins" }), v({ id: "b", group: "AI models", daysLeft: 3 }), v({ id: "c", group: "AI models", daysLeft: -2, sharedWithMe: true }), v({ id: "d", group: "Phone and texts", sharedWithMe: true })];
+  assert.deepEqual(visible(items, "space", "", ALL).map((i) => i.id), ["a", "b", "c", "d"]);
+  assert.deepEqual(visible(items, "space", "", { kind: "group", group: "AI models" }).map((i) => i.id), ["b", "c"]);
+  assert.deepEqual(visible(items, "space", "", { kind: "expiring" }).map((i) => i.id), ["b", "c"], "expired counts as needing a look");
+  assert.deepEqual(visible(items, "space", "", { kind: "shared" }).map((i) => i.id), ["c", "d"]);
+  const n = navCounts(items);
+  assert.equal(n.all, 4); assert.equal(n.groups["AI models"], 2); assert.equal(n.groups["Messaging"], 0); assert.equal(n.expiring, 2); assert.equal(n.shared, 2);
+  assert.equal(inNav(items[0], { kind: "group", group: "Logins" }), true);
+});
+
+test("a search narrows inside a panel pick", () => {
+  const items = [v({ id: "a", group: "AI models", name: "Anthropic" }), v({ id: "b", group: "AI models", name: "OpenAI" })];
+  assert.deepEqual(visible(items, "space", "open", { kind: "group", group: "AI models" }).map((i) => i.id), ["b"]);
+});
+
+test("an empty pick says why", () => {
+  assert.equal(navEmpty({ kind: "group", group: "Messaging" }), "Nothing in Messaging yet.");
+  assert.equal(navEmpty({ kind: "shared" }), "Nobody has shared an item with you.");
+  assert.equal(navEmpty(ALL), "");
 });

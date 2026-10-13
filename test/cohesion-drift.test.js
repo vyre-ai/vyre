@@ -32,6 +32,9 @@ const ALLOWED = {
   models: {
     // The Capsule's one fallback pair when sessions.models.get is missing (ModelFallback; CapsuleModel.models).
     "local/capsule/native/Sources/Vyred/Route.swift": 2,
+    // Mock data for the design gallery and the mock store: sample agents carry a model name, nothing reads it as the box's list.
+    "apps/app/app/gallery.tsx": 4,
+    "apps/app/src/real/mock-agents.ts": 4,
   },
   // (the app's and the Deck's copies of the box's presence lists are gone: no client mirrors the floor's list any more, the box names the moment in its refusal)
   policy: {},
