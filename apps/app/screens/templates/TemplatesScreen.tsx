@@ -5,7 +5,7 @@ import { Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, Loading
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
-import { StartSheet } from "../projects/StartSheet";
+import { StartSheet, type StartExtras } from "../projects/StartSheet";
 import { errWords, projectIdOf, startWords, type Body, type Row as TemplateRow } from "./model";
 import { blank } from "./edit";
 import { cardOf, filterRows, playbookPath, PLAYBOOK, TEMPLATES_LABEL } from "./board";
@@ -44,7 +44,7 @@ export default function TemplatesScreen() {
   const create = () => act("new", async () => { const v = await templates.define(draft!, undefined, "made in the studio"); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
   const install = (id: string) => act(id, async () => { const v = await templates.install(id); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
   const copy = (r: TemplateRow) => act(r.template, async () => { const v = await templates.get(r.template); const c = await templates.define(duplicateBody(v.body!), undefined, `a copy of ${r.name}`); showToast(`${c.name} is a draft.`); router.push(playbookPath(c.template) as never); });
-  const start = (name: string) => act("start", async () => { const r = await templates.start(starting!.template, name); setStarting(null); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); });
+  const start = (name: string, extras: StartExtras) => act("start", async () => { const r = await templates.start(starting!.template, name, extras); setStarting(null); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); });
   const have = new Set((rows || []).map((r) => r.name));
   const card = (r: TemplateRow, c: ReturnType<typeof cardOf>) => (
     <MenuRow items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
@@ -100,7 +100,7 @@ export default function TemplatesScreen() {
           </Card>
         </Sec>
       ) : showKits ? <Card><EmptyState title="No Kits to add from" body="None of your Kits ships a playbook yet." /></Card> : null}
-      <StartSheet noun={starting ? (bodies[starting.template]?.noun?.one || starting.noun?.one || "project") : "project"} open={starting !== null} busy={busy === "start"} onClose={() => setStarting(null)} onStart={(n) => void start(n)} />
+      <StartSheet noun={starting ? (bodies[starting.template]?.noun?.one || starting.noun?.one || "project") : "project"} open={starting !== null} busy={busy === "start"} onClose={() => setStarting(null)} onStart={(n, x) => void start(n, x)} />
     </Frame>
   );
 }

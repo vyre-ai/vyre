@@ -56,3 +56,8 @@ test("starting a project says where the tasks are, or which could not be made an
     "Rivera is started, but 2 of its first tasks could not be made: research is not in this space yet. Add the assistant in Settings, Assistants, and start again.");
   assert.match(startWords("Rivera", { tasks_made: 1, tasks_skipped: [{ task: "Check", why: "drafting is not in this space yet" }] }), /1 of its first tasks could not be made: drafting is not in this space yet\. The others are in Now\./);
 });
+
+test("a person who could not be seated is said, with the reason, and the project is still started", () => {
+  assert.equal(startWords("Rivera", { tasks_made: 2, seats_failed: [{ person: "Bob Reyes", why: "he is not in this space" }] }), "Rivera is started. Its first tasks are in Now. Bob Reyes could not be added to the team: he is not in this space.");
+  assert.equal(startWords("Rivera", { tasks_made: 2, seats_failed: [] }), "Rivera is started. Its first tasks are in Now.");
+});

@@ -5,7 +5,7 @@ import { Button, Card, Chip, ErrorState, LoadingState, Switch, Text, showToast, 
 import { Frame, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { useMembers } from "../spaces/state";
-import { StartSheet } from "../projects/StartSheet";
+import { StartSheet, type StartExtras } from "../projects/StartSheet";
 import { errWords, projectIdOf, startWords, stateWord, type Body, type Version } from "./model";
 import { changeCount, playbookPath, TEMPLATES_LABEL, versionBar } from "./board";
 import { Board } from "./PipelineBoard";
@@ -67,9 +67,9 @@ export default function TemplateScreen() {
     setTesting(true);
     try { const r = await templates.test(template, cur!.version); setTest(r.ok ? r.lines || [] : (r.errors || []).map((x) => `${x.path}: ${x.message}`)); } catch (e) { showToast(errWords(e)); } finally { setTesting(false); }
   };
-  const start = async (name: string) => {
+  const start = async (name: string, extras: StartExtras) => {
     setStarting(true);
-    try { const r = await templates.start(template, name); setStartOpen(false); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); } catch (e) { showToast(errWords(e)); } finally { setStarting(false); }
+    try { const r = await templates.start(template, name, extras); setStartOpen(false); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); } catch (e) { showToast(errWords(e)); } finally { setStarting(false); }
   };
   const flowName = (fid: string) => flows.find((f) => f.id === fid)?.name || fid;
   const title = draft?.name || cur?.name || TEMPLATES_LABEL;
@@ -99,14 +99,14 @@ export default function TemplateScreen() {
           <Sec title="Connected">
             <Card><View className="gap-s2 p-s3">
               <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" strong tone="label">Flows</Text>{(draft.automations || []).length ? (draft.automations || []).map((a) => <Chip key={`${a.when}|${a.flow}`}>{`${flowName(a.flow)}: ${a.when === "start" ? "when it starts" : `in ${a.when}`}`}</Chip>) : <Text size="caption" tone="muted">None run on its stages.</Text>}</View>
-              <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" strong tone="label">Running</Text><Text size="caption" tone="muted">{`${running} open ${running === 1 ? noun.toLowerCase() : (draft.noun?.many || "projects").toLowerCase()}`}</Text><Button kind="ghost" size="sm" label="See them in Projects" onPress={() => router.push("/u/projects" as never)} /></View>
+              <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" strong tone="label">Running</Text><Text size="caption" tone="muted">{`${running} open ${running === 1 ? noun.toLowerCase() : (draft.noun?.many || "projects").toLowerCase()}`}</Text><Button kind="ghost" size="sm" label="See them in Projects" onPress={() => router.push(`/u/projects?playbook=${template}` as never)} /></View>
             </View></Card>
           </Sec>
           {test ? <Sec title="Test mode"><Card><View className="gap-s1 p-s3">{test.map((l, i) => <Text key={i} size="caption">{l}</Text>)}</View></Card></Sec> : null}
           {mayMake ? <Sec title="Settings"><TemplateEditor body={draft} onChange={setDraft} part="settings" /></Sec> : null}
         </>
       ) : null}
-      <StartSheet noun={noun} playbook={title} open={startOpen} busy={starting} onClose={() => setStartOpen(false)} onStart={(n) => void start(n)} />
+      <StartSheet noun={noun} playbook={title} open={startOpen} busy={starting} onClose={() => setStartOpen(false)} onStart={(n, x) => void start(n, x)} />
     </Frame>
   );
 }
