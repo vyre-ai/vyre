@@ -312,10 +312,8 @@ export function ChatScreen(p: ChatScreenProps) {
   ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   const paneOpen = usePreviewPane();
-  const body = (
-    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
-      <ChatPanel
+  const panelEl = (
+    <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
@@ -327,6 +325,10 @@ export function ChatScreen(p: ChatScreenProps) {
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
+  );
+  const body = (
+    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
 
@@ -469,5 +471,7 @@ export function ChatScreen(p: ChatScreenProps) {
     </View>
   );
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
-  return paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
+  return phone ? <>{main}{panelEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}</View>;
 }
