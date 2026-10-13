@@ -115,3 +115,16 @@ test("a job thread that ends with its task still open marks it stuck; one that h
   await w.threadEnded("th2");
   assert.equal(stuck.length, 1);
 });
+
+test("a named agent is lent its task before it is woken, the lend repeats safely, and the task's end takes it back", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const gw = { ask: { get: async () => task(), edit: async () => {} } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), clock: () => NOW, log: () => {},
+    lend: async t => { calls.push(`lend ${t.id} ${t.doer.id}`); }, reclaim: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async () => { calls.push("wake"); return { thread: "th", already: false }; } });
+  await onEvent(created("t1"));
+  assert.deepEqual(calls, ["lend t1 juno", "wake"], "the use is lent first, then the agent is woken");
+  await onEvent(created("t1", "task.completed"));
+  await onEvent(created("t1", "task.voided"));
+  assert.deepEqual(calls.slice(2), ["reclaim t1", "reclaim t1"]);
+});
