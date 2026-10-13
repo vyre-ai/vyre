@@ -48,6 +48,8 @@ test("a file lands where the ask says, else the project's folder, else the recor
 
 test("Open chat goes to the chat that made the ask, else its record, else its Flow, else nowhere", () => {
   assert.deepEqual(openTarget({ session: "c1", record: "vyre://s/matter/m1" }), { route: "/u/chats/c1", label: "Open chat" });
+  assert.deepEqual(openTarget({ form: { thread: "t9" }, session: "c1" }), { route: "/u/chats/t9", label: "Open chat" }, "the chat that works the task comes first");
+  assert.equal(openTarget({ form: {} }), null, "no thread, no button");
   assert.deepEqual(openTarget({ record: "vyre://s/matter/m1", flow: "f" }), { route: "/u/record/m1", label: "Open record" });
   assert.deepEqual(openTarget({ flow: "Large refunds" }), { route: "/u/flows/Large%20refunds", label: "Open Flow" });
   assert.equal(openTarget({ title: "Pack" }), null);
