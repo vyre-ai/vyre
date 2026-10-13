@@ -149,6 +149,7 @@ try {
     return said.slice(0, 220);
   });
 } finally {
+  if (srv) for (const l of srv.logs.filter((/** @type {string} */ x) => /chain|hello|relay|admit|bad_proof|box/i.test(x)).slice(-25)) console.log("SERVERLOG " + l.slice(0, 260));
   console.log(`DONE ${passed} passed, ${failed} failed`);
   try { mac.close(); } catch { /* closed */ }
   try { await srv?.stop?.(); } catch { /* stopped */ }
