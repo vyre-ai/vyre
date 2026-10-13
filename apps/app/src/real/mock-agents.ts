@@ -40,7 +40,9 @@ const refunds = (): State => ({
   instructions: REFUNDS_MD,
   lent: [],
 });
-let access: { kind: string; subject: string; level: string; by: string | null }[] = [{ kind: "person", subject: "per_dana", level: "edit", by: "per_you" }, { kind: "role", subject: "paralegal", level: "use", by: "per_you" }];
+let access: { kind: string; subject: string; level: string; by: string | null }[] = [{ kind: "person", subject: "per_dana", level: "edit", by: "per_you" }];
+let projectDoc = "# Harlow Legal\n\nEvery chat here works for the Harlow matters.\n\n- Never send an email without the lawyer's yes.\n- Cite the file number in every draft.\n";
+let projectRefs: { name: string; kind: string; size: number; files?: string }[] = [{ name: "Fee schedule.md", kind: "note", size: 420 }, { name: "Intake form.link", kind: "link", size: 60, files: "Clients/Harlow/intake.pdf" }, { name: "engagement-letter.docx", kind: "file", size: 52000 }];
 const W: Record<string, State> = { intake: intake(), refunds: refunds() };
 const w = (i: any): State => W[String(i?.agent ?? i?.name ?? "intake")] ?? W.intake;
 const accounts = [
@@ -78,5 +80,10 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "agents.access.get": () => ({ access: access.slice(), people: [{ id: "per_dana", name: "Dana Reyes", role: "member" }, { id: "per_sam", name: "Sam Okafor", role: "admin" }, { id: "per_lee", name: "Lee Park", role: "member" }], roles: [{ id: "member", name: "Members" }, { id: "paralegal", name: "Paralegals" }] }),
   "agents.access.set": (i) => { access = access.filter((a) => !(a.kind === i.kind && a.subject === i.subject)); if (i.level) access.push({ kind: i.kind, subject: i.subject, level: i.level, by: "per_you" }); return { ok: true }; },
   "tasks.list": (i) => i.checker ? { tasks: [{ id: "t_ref_2", title: "Check the refund draft for order 4471", state: "needs_check" }] } : { tasks: [{ id: "t_int_1", title: "Draft the first reply to Priya Shah", state: "working" }, { id: "t_int_2", title: "Check the conflict list", state: "ready" }] },
+  "projects.docs.get": () => ({ files: { "AGENTS.md": projectDoc, "CLAUDE.md": projectDoc }, kept_same: true }),
+  "projects.docs.set": (i) => { projectDoc = i.text; return { ok: true, file: i.file }; },
+  "projects.refs.list": () => ({ items: projectRefs.slice() }),
+  "projects.refs.add": (i) => { projectRefs = [...projectRefs.filter((r) => !r.name.startsWith(i.name)), i.files ? { name: `${i.name}.link`, kind: "link", size: 60, files: i.files } : i.text ? { name: `${i.name}.md`, kind: "note", size: i.text.length } : { name: i.name, kind: "file", size: 1000 }]; return { ok: true }; },
+  "projects.refs.remove": (i) => { projectRefs = projectRefs.filter((r) => r.name !== i.name); return { ok: true }; },
   "agents.used": (i) => i.agent === "refunds" ? ({ chats: [{ id: "thr_ref_1", title: "Refund request, order 4471" }], flows: [{ id: "flw_refunds", name: "Refund requests" }] }) : ({ chats: [{ id: "thr_intake_1", title: "Priya Shah: first inquiry" }, { id: "thr_intake_2", title: "Weekly intake review" }], flows: [{ id: "flw_new_client", name: "New client intake" }] }),
 };
