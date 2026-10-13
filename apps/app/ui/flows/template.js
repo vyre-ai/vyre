@@ -41,7 +41,7 @@ export const HELPERS = /** @type {{ token: string, label: string, engine: boolea
 
 /** Sealed field names come as `sealed: true` on a field. @param {{ name: string, label: string, sealed?: boolean }} f */
 const sealedOf = (f) => f.sealed === true;
-/** Whether a field holds an email address: its type says so, or its name ends in email. @param {{ name: string, type?: string }} f */
+/** Whether a field holds an email address: its type says so, or its name ends in email. @param {{ name: string, type?: string, kind?: string }} f */
 const isAddress = (f) => (f.kind ?? f.type) === "email" || /(^|_)email$/i.test(f.name);
 
 /**

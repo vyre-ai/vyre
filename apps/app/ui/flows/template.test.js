@@ -33,7 +33,7 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
   const help = g[g.length - 1];
-  assert.deepEqual(help.items, []);
+  assert.deepEqual(help.items.map((i) => i.token), ["{today}", "{now}"]);
   assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false && i.note === "Not available yet"));
 });
 
