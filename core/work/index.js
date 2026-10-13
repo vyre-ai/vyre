@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { readers, personOf as personOfChain, shareFile, unshareFile } from "./shares.js";
 import { createTimeline } from "./timeline.js";
 import { createToolSurface } from "../../kernel/tools/surface.js";
@@ -964,6 +965,7 @@ export default {
         const kept = e.lines.ingest(String(input.session), lines, record ? { record } : {});
         const seqs = lines.map((/** @type {{ seq: number }} */ l) => l.seq);
         const indexed = await e.index({ kind: "lines", session: String(input.session), ...(seqs.length ? { from: Math.min(...seqs), to: Math.max(...seqs) } : {}) });
+        collectIfHeavy();
         return { kept, indexed };
       },
     });
