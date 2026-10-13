@@ -7,6 +7,8 @@ export type Screen = { v: 2; kind?: string; id?: string; title?: string; from?: 
 /** What a block can ask of its host. Ids and typed values only. */
 export type Handlers = {
   open?: (block: string, row: any) => void;
+  /** A list row's own menu (a "..." on hover or focus, a right-click): the items for this row, or none. */
+  rowMenu?: (block: string, row: any) => { label: string; onPress: () => void; danger?: boolean; selected?: boolean }[];
   act?: (block: string, action: string, id?: string) => void;
   move?: (block: string, row: any, to: string) => void;
   filter?: (block: string, q: string, pill: string) => void;

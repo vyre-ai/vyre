@@ -30,6 +30,7 @@ import { ChatHeader } from "./ChatHeader";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { useChatProject } from "./useChatProject";
+import { chatPrefs, useChatPrefs } from "../state/chat-prefs";
 import { SelectionAsk } from "./SelectionAsk";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
@@ -150,8 +151,11 @@ export function ChatScreen(p: ChatScreenProps) {
     tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
     return () => { live = false; };
   }, [toolsOpen, p.sessionId, here.thread]);
-  const [muted, setMuted] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const prefs = useChatPrefs();
+  const muted = prefs.muted.includes(p.sessionId);
+  const pinned = prefs.pinned.includes(p.sessionId);
+  const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
+  const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
   const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
   // Tapping a quote goes to the original and lights it up for a moment.

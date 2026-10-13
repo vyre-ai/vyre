@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, LoadingState, Row, Text, markRef } from "@vyre/ui";
+import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, Field, LoadingState, Row, Sheet, Text, markRef, showToast } from "@vyre/ui";
+import { callT } from "../../src/real/call-tool";
+import { chatPrefs, useChatPrefs } from "../../src/state/chat-prefs";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
 import { useGap } from "../../src/state/setup-gap";
@@ -35,11 +37,41 @@ export default function ChatsScreen() {
     asked.current = true;
     void ensurePersistent("assistant").then((r) => { if ("chat" in r) void refresh(); }).catch(() => { asked.current = false; });
   }, [chats.from, chats.rows]);
-  const rows = chatsOrdered(chatsShown(chats.rows));
+  const prefs = useChatPrefs();
+  // Your own pins go first (after your assistant's chat), in the order the list already has.
+  const ordered = chatsOrdered(chatsShown(chats.rows));
+  const rows = [...ordered.filter((c) => c.pinned === "assistant"), ...ordered.filter((c) => c.pinned !== "assistant" && prefs.pinned.includes(c.id)), ...ordered.filter((c) => c.pinned !== "assistant" && !prefs.pinned.includes(c.id))];
+  // The row menu: Move to a project, Rename (the box's work.chat.move and work.chat.rename), and your own Pin and Mute.
+  const [moving, setMoving] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const [projects, setProjects] = useState<{ slug: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!moving) return;
+    void callT<{ projects?: { slug?: string; name?: string }[] }>("projects.list", {}).then((r) => setProjects((r.data?.projects ?? []).filter((x) => x.slug).map((x) => ({ slug: String(x.slug), name: String(x.name || x.slug) }))));
+  }, [moving]);
+  const menu = (id: string) => [
+    { label: "Open", onPress: () => router.push({ pathname: "/u/chats/[id]", params: { id } }) },
+    { label: "Move to a project", onPress: () => setMoving(id) },
+    { label: "Rename", onPress: () => setRenaming({ id, title: chats.rows.find((c) => c.id === id)?.title ?? "" }) },
+    { label: prefs.pinned.includes(id) ? "Unpin" : "Pin", onPress: () => chatPrefs.setPinned(id, !prefs.pinned.includes(id)) },
+    { label: prefs.muted.includes(id) ? "Unmute" : "Mute", onPress: () => chatPrefs.setMuted(id, !prefs.muted.includes(id)) },
+  ];
+  const done = async (r: { error?: { message: string } }, ok: string) => { if (r.error) showToast(r.error.message || "That did not go through."); else { showToast(ok); void refresh(); } };
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
       <PlaceTag of="showing" />
+      <Sheet open={!!moving} onClose={() => setMoving(null)} title="Move to a project">
+        {projects.length ? projects.map((x) => <Row key={x.slug} dense title={x.name} onPress={async () => { const id = moving as string; setMoving(null); await done(await callT("work.chat.move", { chat: id, project: x.slug }), "Moved to the project."); }} />) : <Text tone="muted">No projects yet.</Text>}
+      </Sheet>
+      <Sheet open={!!renaming} onClose={() => setRenaming(null)} title="Rename chat">
+        {renaming ? (
+          <View className="gap-s3">
+            <Field name="Chat name" value={renaming.title} onChangeText={(t) => setRenaming({ ...renaming, title: t })} />
+            <View className="self-start"><Button kind="primary" size="sm" label="Save" onPress={async () => { const r0 = renaming; setRenaming(null); if (r0.title.trim()) await done(await callT("work.chat.rename", { chat: r0.id, title: r0.title.trim() }), "Renamed."); }} /></View>
+          </View>
+        ) : null}
+      </Sheet>
       {view.banner && gap ? (
         <Banner icon="info">
           <View className="gap-s2">
@@ -55,7 +87,7 @@ export default function ChatsScreen() {
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
-          <ChatsList tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+          <ChatsList menu={menu} tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
         )}
     </Page>
   );
