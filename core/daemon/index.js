@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -829,6 +830,8 @@ async function startLocked(opts, root, p, release) {
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
+    // A device that came in on the identity chain and is limited right now (a newcomer, a relay-held key, an unconfirmed GitHub device) is refused the device-admin tools at the registry's entry (core/modules/device-admin.js).
+    registry.deps.limitedGate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => { const r = /** @type {any} */ (await registry.call("relay.device.info", { id }, "module:vyred")); return Boolean(r && r.data && r.data.viaChain && r.data.viaChain.limited === true); } });
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the

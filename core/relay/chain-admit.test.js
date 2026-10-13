@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createChainAdmit, chainHelloMessage, CHAIN_HELLO_TAG } from "./chain-admit.js";
+import { createChainAdmit, chainHelloMessage, limitedOf, CHAIN_HELLO_TAG } from "./chain-admit.js";
 
 const IDENT = "per_" + "a".repeat(26), OTHER = "per_" + "b".repeat(26), BOX = "BOXKEY".repeat(8), CH = "c".repeat(16);
 const T0 = 1_700_000_000_000, DAY = 86_400_000;
@@ -34,7 +34,8 @@ function rig(/** @type {{ entries?: any[], seq?: number, head?: string, role?: s
 test("the hello message names the box, the identity, the entry, the time, the nonce and the channel, under its own tag", () => {
   const m = chainHelloMessage("bx", { identity: "i", entry: "e", ts: 1, nonce: "n", channel: "c" }).toString();
   assert.equal(CHAIN_HELLO_TAG, "vyre-chain-hello-v1");
-  assert.equal(m, "vyre-chain-hello-v1\nbx\ni\ne\n1\nn\nc");
+  assert.equal(m, "vyre-chain-hello-v1\nbx\ni\ne\n1\nn\nc\n-", "no presence key offered");
+  assert.equal(chainHelloMessage("bx", { identity: "i", entry: "e", ts: 1, nonce: "n", channel: "c", pk: "ab" }).toString().endsWith("\nab"), true, "the presence key hash is part of what is signed");
 });
 
 test("a chain-listed device of the owner is admitted, with the person's role and the chain position it was admitted at", async () => {
@@ -80,7 +81,57 @@ test("a device not on the chain, a removed one, or a signature by another key is
   assert.equal((await gone.admit.check(gone.hello(), CH)).why, "bad_proof");
 });
 
-test("a newcomer under 24 hours, and a relay-held device, are admitted but marked limited", async () => {
+test("the relay's own key on the chain is never admitted as a device", async () => {
+  const k = key();
+  const relayKey = { eid: EID("d"), kind: "device", pub: k.pub, since: T0 - 9 * DAY, addedBy: EID("o"), founder: false, held: "relay" };
+  const a = rig({ entries: [relayKey] });
+  const h = { identity: IDENT, entry: EID("d"), ts: T0, nonce: "r".repeat(20), channel: CH };
+  const r = await a.admit.check({ ...h, sig: k.sign(chainHelloMessage(BOX, h)) }, CH);
+  assert.deepEqual([r.ok, r.why], [false, "bad_proof"]);
+  assert.equal((await a.admit.status(IDENT, EID("d"))).state, "gone", "and an admitted entry that turns out to be the relay's is gone");
+});
+
+test("a GitHub-added device nobody confirmed is limited; confirming it, or 24 hours, lifts that, read from the current chain each time", async () => {
+  const t = T0;
+  assert.equal(limitedOf({ since: t - 9 * DAY, via: "github", confirmed: false }, t), true);
+  assert.equal(limitedOf({ since: t - 9 * DAY, via: "github" }, t), true, "no confirmed flag is unconfirmed");
+  assert.equal(limitedOf({ since: t - 9 * DAY, via: "github", confirmed: true }, t), false);
+  assert.equal(limitedOf({ since: t - 9 * DAY }, t), false);
+  assert.equal(limitedOf({ since: t - 1000 }, t), true, "a newcomer");
+  assert.equal(limitedOf({ since: "x" }, t), true, "an age nobody knows is young");
+  const a = rig();
+  assert.equal((await a.admit.check(a.hello(), CH)).limited, false);
+  a.r.state.entries[0] = { ...a.r.state.entries[0], via: "github", confirmed: false };
+  a.r.clock += 6 * 60_000;
+  a.r.state = { ...a.r.state, seq: 6, head: "h6" };
+  assert.deepEqual(await a.admit.status(IDENT, EID("d")), { state: "ok", limited: true }, "limited now, though it was not when it came in");
+  a.r.state.entries[0] = { ...a.r.state.entries[0], confirmed: true };
+  a.r.clock += 6 * 60_000;
+  a.r.state = { ...a.r.state, seq: 7, head: "h7" };
+  assert.deepEqual(await a.admit.status(IDENT, EID("d")), { state: "ok", limited: false }, "and full again once it is confirmed");
+});
+
+test("with the chain unreadable past the hour of grace, status is unknown and the caller refuses", async () => {
+  const a = rig();
+  assert.equal((await a.admit.status(IDENT, EID("d"))).state, "ok");
+  a.r.reachable = false;
+  a.r.clock += 30 * 60_000;
+  assert.equal((await a.admit.status(IDENT, EID("d"))).state, "ok", "inside the hour it is still admitted");
+  a.r.clock += 40 * 60_000;
+  assert.equal((await a.admit.status(IDENT, EID("d"))).state, "unknown", "past the hour it is refused");
+});
+
+test("the presence key a hello offers is bound by its hash", async () => {
+  const a = rig();
+  const h = a.hello({ pk: "a".repeat(64) });
+  const r = await a.admit.check(h, CH);
+  assert.equal(r.ok, true);
+  assert.equal(r.pk, "a".repeat(64));
+  const swapped = a.hello();
+  assert.equal((await a.admit.check({ ...swapped, pk: "b".repeat(64) }, CH)).why, "bad_proof", "a hash swapped in after signing fails the signature");
+});
+
+test("a newcomer under 24 hours, and a held web key, are admitted but marked limited", async () => {
   const k = key();
   const young = { eid: EID("d"), kind: "device", pub: k.pub, since: T0 - 3_600_000, addedBy: EID("o"), founder: false };
   const y = rig({ entries: [young] });
@@ -88,7 +139,7 @@ test("a newcomer under 24 hours, and a relay-held device, are admitted but marke
   const ay = await y.admit.check({ ...hy, sig: k.sign(chainHelloMessage(BOX, hy)) }, CH);
   assert.deepEqual([ay.ok, ay.limited], [true, true]);
   const held = rig();
-  held.r.state.entries[0] = { ...held.r.state.entries[0], held: "relay" };
+  held.r.state.entries[0] = { ...held.r.state.entries[0], held: "web" };
   const ah = await held.admit.check(held.hello(), CH);
   assert.deepEqual([ah.ok, ah.limited], [true, true]);
 });

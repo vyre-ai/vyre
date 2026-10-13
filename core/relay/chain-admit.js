@@ -19,8 +19,17 @@ export const REFRESH_MS = 300_000;
 export const GRACE_MS = 3_600_000;
 const NONCE_MAX = 4096;
 
-/** The bytes the entry key signs. @param {string} box @param {{ identity: string, entry: string, ts: number | string, nonce: string, channel: string }} h */
-export const chainHelloMessage = (box, h) => Buffer.from(`${CHAIN_HELLO_TAG}\n${box}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`, "utf8");
+/**
+ * Is this chain entry LIMITED right now? A newcomer (under 24 hours on the list, or an age that is unknown), a held-web key, or a device added by signing in with GitHub that nobody has confirmed from a device already
+ * trusted. Read from the current chain every time, never remembered: it stops when the 24 hours pass or a confirm lands. @param {any} entry @param {number} t
+ */
+export const limitedOf = (entry, t) => !Number.isFinite(Number(entry.since)) || youngAt({ founder: entry.founder === true, since: Number(entry.since) }, t) || entry.held === "web" || (entry.via === "github" && entry.confirmed !== true);
+
+/** The relay's own key sits on the chain (held: "relay") so a person can sign in by GitHub. It is never a device: whoever holds the relay must not connect to a server as the owner. @param {any} entry */
+const isRelayKey = entry => entry && entry.held === "relay";
+
+/** The bytes the entry key signs. @param {string} box @param {{ identity: string, entry: string, ts: number | string, nonce: string, channel: string, pk?: string }} h `pk` is the sha256 (hex) of the presence public key the hello offers, or "-": the key is bound to the entry's signature. */
+export const chainHelloMessage = (box, h) => Buffer.from(`${CHAIN_HELLO_TAG}\n${box}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}\n${h.pk || "-"}`, "utf8");
 
 /**
  * @param {{ boxId: () => Promise<string | null>, roleOf: (identity: string) => string | null | undefined | Promise<string | null | undefined>, fetchState: (identity: string, name?: string) => Promise<any>, now?: () => number }} o
@@ -65,7 +74,7 @@ export function createChainAdmit(o) {
     async check(h, channelId) {
       const t = clock();
       const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-      if (!h || typeof h !== "object" || Array.isArray(h) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(Number(h.ts)) || typeof h.sig !== "string" || (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/))) return { ok: false, why: "bad_input" };
+      if (!h || typeof h !== "object" || Array.isArray(h) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(Number(h.ts)) || typeof h.sig !== "string" || (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) || (h.pk !== undefined && !str(h.pk, /^[a-f0-9]{64}$/))) return { ok: false, why: "bad_input" };
       if (h.channel !== channelId) return { ok: false, why: "wrong_channel" };
       if (Math.abs(t - Number(h.ts)) > WINDOW_MS) return { ok: false, why: "stale" };
       for (const [n, exp] of nonces) { if (exp > t) break; nonces.delete(n); }
@@ -80,7 +89,7 @@ export function createChainAdmit(o) {
       const c = await chainOf(h.identity, known, h.name);
       if ("why" in c) return { ok: false, why: c.why };
       const entry = (c.state.entries || []).find((/** @type {any} */ e) => e && e.eid === h.entry && e.kind === "device" && typeof e.pub === "string");
-      if (!entry) return refuse;
+      if (!entry || isRelayKey(entry)) return refuse;
       let good = false;
       try { good = await verifyWith(entry.pub, chainHelloMessage(box, h), h.sig, entry); } catch { good = false; }
       if (!good) return refuse;
@@ -88,19 +97,23 @@ export function createChainAdmit(o) {
       nonces.set(h.nonce, t + 2 * WINDOW_MS);
       while (nonces.size > NONCE_MAX) nonces.delete(/** @type {string} */ (nonces.keys().next().value));
       admitted.add(`${h.identity}/${h.entry}`);
-      const limited = youngAt({ founder: entry.founder === true, since: Number(entry.since) }, t) || !Number.isFinite(Number(entry.since)) || entry.held === "relay" || entry.held === "web";
-      return { ok: true, identity: h.identity, entry: entry.eid, pub: entry.pub, role: String(role), limited, seq: c.state.seq, head: c.state.head, stale: c.stale };
+      return { ok: true, identity: h.identity, entry: entry.eid, pub: entry.pub, role: String(role), limited: limitedOf(entry, t), pk: h.pk || "-", seq: c.state.seq, head: c.state.head, stale: c.stale };
     },
 
     /**
-     * Is a chain-admitted device still on its person's list? Checked against the chain, fetched again at most every 5 minutes, so a removed device is refused at its next call after that. A chain that cannot be
-     * read keeps an admitted device for the grace and says "unknown" past it. @param {string} identity @param {string} entry @returns {Promise<"ok" | "gone" | "unknown">}
+     * Where a chain-admitted device stands NOW, read from the chain (fetched again at most every 5 minutes): "ok" (still listed, with `limited` recomputed from the current entry), "gone" (taken off the list, or the
+     * relay's own key), or "unknown" (the chain cannot be read and the 1 hour grace is over: the caller refuses). @param {string} identity @param {string} entry
+     * @returns {Promise<{ state: "ok" | "gone" | "unknown", limited: boolean }>}
      */
-    async stillListed(identity, entry) {
+    async status(identity, entry) {
       // a row exists for this device, so it was admitted before (maybe by an earlier run of this server): the grace applies
       const c = await chainOf(identity, true);
-      if ("why" in c) return "unknown";
-      return (c.state.entries || []).some((/** @type {any} */ e) => e && e.eid === entry && e.kind === "device") ? "ok" : "gone";
+      if ("why" in c) return { state: "unknown", limited: true };
+      const e = (c.state.entries || []).find((/** @type {any} */ x) => x && x.eid === entry && x.kind === "device");
+      if (!e || isRelayKey(e)) return { state: "gone", limited: true };
+      return { state: "ok", limited: limitedOf(e, clock()) };
     },
+    /** @param {string} identity @param {string} entry @returns {Promise<"ok" | "gone" | "unknown">} */
+    async stillListed(identity, entry) { return (await this.status(identity, entry)).state; },
   };
 }

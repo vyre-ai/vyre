@@ -38,3 +38,13 @@ test("two hellos never share a nonce", async () => {
   const b = await chainHello({ sha256, devicePub: crypto.randomBytes(32), box: BOX, identity: IDENT, entry: EID, now: 1, sign: async (m) => crypto.sign(null, m, privateKey) });
   assert.notEqual(a.nonce, b.nonce);
 });
+
+test("the presence key offered in the hello is bound by its hash, and the server's check agrees", async () => {
+  const devicePub = crypto.randomBytes(32);
+  const presencePublicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE-example-key";
+  const h = await chainHello({ sha256, devicePub, box: BOX, identity: IDENT, entry: EID, now: 1_700_000_000_000, sign: async (m) => crypto.sign(null, m, privateKey), presencePublicKey });
+  assert.equal(h.pk, crypto.createHash("sha256").update(presencePublicKey).digest("hex"));
+  const admit = createChainAdmit({ boxId: async () => BOX, now: () => 1_700_000_000_000, roleOf: async () => "owner", fetchState: async () => ({ id: IDENT, seq: 1, head: "h", entries: [{ eid: EID, kind: "device", pub: chainPub, since: 0, founder: true }] }) });
+  const r = await admit.check(h, h.channel);
+  assert.deepEqual([r.ok, r.pk], [true, h.pk]);
+});
