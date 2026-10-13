@@ -94,3 +94,10 @@ test("exporting a list writes the shown columns by label and the shown rows, wit
   const out = tableToCsv(content);
   assert.equal(out, 'Contact,Client since,Worth,SSN,Owner\r\n"Doe, Jane",2026-03-05,1250 USD,"SSN on file, sealed",Sam\r\nRoe,,,,');
 });
+
+test("a cell that would run as a formula in Excel gets a leading quote; plain numbers and ordinary text do not", async () => {
+  const { toCsv } = await import("./csv.js");
+  assert.equal(toCsv([["=1+1", "+cmd", "-cmd", "@SUM(A1)", "\tx", "-5", "+1.5", "a=b", "x"]]), "'=1+1,'+cmd,'-cmd,'@SUM(A1),'\tx,-5,+1.5,a=b,x");
+  assert.equal(toCsv([["=HYPERLINK(\"http://x\",\"y\")"]]), '"\'=HYPERLINK(""http://x"",""y"")"');
+  assert.equal(toCsv([["\r=x"]]), "\"'\r=x\"");
+});

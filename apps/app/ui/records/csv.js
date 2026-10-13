@@ -82,8 +82,11 @@ export function parseGrid(grid) {
   return { headers, rows: lines.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""]))) };
 }
 
-/** One value as a CSV cell: quoted when it holds a comma, a quote or a line break, with quotes doubled. @param {string} s */
-const csvCell = (s) => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+/** One value as a CSV cell: quoted when it holds a comma, a quote or a line break, with quotes doubled. A text that starts with =, +, - or @ (or a tab or carriage return) would run as a formula when a firm opens the file in Excel, so it gets a leading single quote (OWASP); a plain number such as -5 is not text and is left alone. @param {string} s */
+const csvCell = (s) => {
+  const safe = /^[=+\-@\t\r]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s) ? `'${s}` : s;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
 
 /** Rows of text as CSV: CRLF between lines, no trailing break. @param {string[][]} lines */
 export function toCsv(lines) {
