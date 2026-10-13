@@ -300,6 +300,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers join the tailnet as their own tagged nodes"
  },
  {
+  "tool": "connectors.calendar.today",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.calendar.today opened to a model or a module in e611302f3 (1 Oct 2026); the body decides: a read of today's events from the connected calendars; an agent reads within its person's own reach, the read is judged on the chain"
+ },
+ {
+  "tool": "connectors.catalog",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.catalog opened to a model or a module in 949aacc9f (30 Sep 2026); the body decides: a read of the catalogue of apps that can be connected; an agent reads within its person's own reach, the read is judged on the chain"
+ },
+ {
   "tool": "connectors.connection.check",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.check opened to a model or a module in 3e523101d (4 Oct 2026); the body decides: read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
  },
@@ -328,8 +336,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
  },
  {
+  "tool": "connectors.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.list opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: a read of the apps already connected; an agent reads within its person's own reach, the read is judged on the chain"
+ },
+ {
   "tool": "connectors.logging",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+ },
+ {
+  "tool": "connectors.mention.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.mention.search opened to a model or a module in 951147830 (30 Sep 2026); the body decides: a read that searches the connected apps for what an @ mention could name; an agent reads within its person's own reach, the read is judged on the chain"
  },
  {
   "tool": "connectors.operation.run",
@@ -644,6 +660,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): makes sure each connected GitHub account has GitHub's hosted MCP server in the hub, using a token already in the vault"
  },
  {
+  "tool": "github.mentions.resolve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.mentions.resolve opened to a model or a module in 729bdb750 (30 Sep 2026); the body decides: read-only: one repo, PR or issue as context, marked outside text; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+ },
+ {
+  "tool": "github.mentions.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.mentions.search opened to a model or a module in 729bdb750 (30 Sep 2026); the body decides: read-only: repo, PR and issue names and short hints; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+ },
+ {
   "tool": "github.project",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): makes a new project from a repo by cloning it into the projects folder"
  },
@@ -654,6 +678,42 @@
  {
   "tool": "github.project.detect",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads, per workspace folder, whether it is a git repo"
+ },
+ {
+  "tool": "github.project.issue.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.issue.get opened to a model or a module in 122e4240d (30 Sep 2026); the body decides: read-only: one issue with comments marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+ },
+ {
+  "tool": "github.project.issue.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.issue.list opened to a model or a module in 122e4240d (30 Sep 2026); the body decides: read-only: a repo's issues, titles marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+ },
+ {
+  "tool": "github.project.local-init",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.local-init opened to a model or a module in 7bd4a038e (30 Sep 2026); the body decides: guard: callers list (person, agents, first-party projects/sessions/threads) and a project-grant check (inGrant); only a folder with no history becomes a repo, secret-looking files stay out of the first commit, nothing is overwritten"
+ },
+ {
+  "tool": "github.project.of",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.of opened to a model or a module in 3a72ea7fc (28 Sep 2026); the body decides: read-only: which account and repo a project came from; callers are the person's surfaces and first-party sessions and threads (checkModuleCaller)"
+ },
+ {
+  "tool": "github.project.pr.comments",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.pr.comments opened to a model or a module in 122e4240d (30 Sep 2026); the body decides: read-only: a PR's comments marked person or outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+ },
+ {
+  "tool": "github.project.pr.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.pr.get opened to a model or a module in 29b864fe2 (30 Sep 2026); the body decides: read-only: one PR shaped for the review card; the project-grant check (inGrant) bounds an agent to its granted projects; text from others is marked outside"
+ },
+ {
+  "tool": "github.project.pr.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.project.pr.status opened to a model or a module in 122e4240d (30 Sep 2026); the body decides: read-only: checks, reviews and a ready verdict, no text from others; the project-grant check (inGrant) bounds an agent to its granted projects"
+ },
+ {
+  "tool": "github.repos",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.repos opened to a model or a module in 3a72ea7fc (28 Sep 2026); the body decides: read-only: the repos an account can see; callers are the person's surfaces and module:sessions only (checkModuleCaller)"
+ },
+ {
+  "tool": "github.session.history",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.session.history opened to a model or a module in 9de43db0d (30 Sep 2026); the body decides: read-only: a session's own commits and uncommitted count; the project-grant check (inGrant) bounds an agent to its granted projects"
  },
  {
   "tool": "github.star",
@@ -682,6 +742,62 @@
  {
   "tool": "glass.targets",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what Glass can open: each agent's computer and the box's files"
+ },
+ {
+  "tool": "google.accounts",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.accounts opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.calendar.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.create opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: an invite with attendees is held at the Gate; a solo event is written only on a connected account (forWrite) and tells nobody"
+ },
+ {
+  "tool": "google.calendar.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.list opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.calendar.next",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.next opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.calendar.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.search opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.calendar.today",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.today opened to a model or a module in e611302f3 (1 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.calendar.update",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.calendar.update opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: an invite with attendees is held at the Gate; a change with no attendees is written only on a connected account (forWrite) and tells nobody"
+ },
+ {
+  "tool": "google.drive.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.drive.read opened to a model or a module in a92b5741e (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "google.drive.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.drive.search opened to a model or a module in a92b5741e (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "google.mail.draft",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.mail.draft opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
+ },
+ {
+  "tool": "google.mail.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.mail.read opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.mail.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.mail.search opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "google.mail.send",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.mail.send opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: held at the Gate: always held until the person approves the final content; nothing sends from here"
+ },
+ {
+  "tool": "google.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; google.test opened to a model or a module in e3cd9b295 (27 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
  },
  {
   "tool": "hands.act",
@@ -730,6 +846,54 @@
  {
   "tool": "link.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired Mac or device, the person's own label"
+ },
+ {
+  "tool": "mail.accounts",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mail.accounts opened to a model or a module in a55772c09 (27 Sep 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "mail.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mail.find opened to a model or a module in a55772c09 (27 Sep 2026); the body decides: callers list in code (capsule, cli, deck, local, module): no model caller"
+ },
+ {
+  "tool": "mail.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mail.read opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "mail.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mail.search opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "mcp.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.add opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "mcp.call",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.call opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: calls a tool on one of the person's MCP servers; the server judges the call; an agent acts within its person's reach, judged on the chain"
+ },
+ {
+  "tool": "mcp.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.remove opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "mcp.servers",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.servers opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: a read of the MCP servers set up; an agent acts within its person's reach, judged on the chain"
+ },
+ {
+  "tool": "mcp.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.test opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "mcp.tools",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.tools opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: a read of the tools an MCP server offers; an agent acts within its person's reach, judged on the chain"
+ },
+ {
+  "tool": "mcp.update",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcp.update opened to a model or a module in 2725eaba8 (27 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "mcpconn.guide",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; mcpconn.guide opened to a model or a module in 0c039595e (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
  },
  {
   "tool": "memory.curate",
@@ -786,6 +950,26 @@
  {
   "tool": "mentions.search",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): names matching what was typed in the # picker, grouped by kind"
+ },
+ {
+  "tool": "microsoft.calendar.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.calendar.list opened to a model or a module in 5a247f8d1 (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "microsoft.drive.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.drive.read opened to a model or a module in 5a247f8d1 (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "microsoft.drive.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.drive.search opened to a model or a module in 5a247f8d1 (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "microsoft.mail.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.mail.read opened to a model or a module in 5a247f8d1 (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
+ },
+ {
+  "tool": "microsoft.mail.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.mail.search opened to a model or a module in 5a247f8d1 (13 Oct 2026); the body decides: a read within the person's own reach, judged on the chain"
  },
  {
   "tool": "models.eval-queue",
@@ -1372,12 +1556,32 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): marks the release notes of the running version as seen by this person; the only thing written is that mark"
  },
  {
+  "tool": "vault.account.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.account.status opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
   "tool": "vault.agent.fill",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.agent.fill opened to a model or a module in ddbf4e500 (27 Sep 2026); the body decides: guard: a vouched agent signs in on its own computer only, with a login lent to it at that exact origin (a grant or a # tag in this conversation); the value is typed by vyred and never returned; Vyre Computer alone may call it for an agent (callers list, check, owner)"
  },
  {
   "tool": "vault.agent.grant",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.agent.grant opened to a model or a module in 29f68e293 (10 Oct 2026); the body decides: callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
+ },
+ {
+  "tool": "vault.agent.grants",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.agent.grants opened to a model or a module in ddbf4e500 (27 Sep 2026); the body decides: read-only: names and states, never a value"
+ },
+ {
+  "tool": "vault.caps",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.caps opened to a model or a module in f45911fd9 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.connections.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.connections.list opened to a model or a module in 4a8e15400 (27 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.connections.revoke",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.connections.revoke opened to a model or a module in 4a8e15400 (27 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
  {
   "tool": "vault.delete",
@@ -1388,12 +1592,36 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads where an emergency request to an owner stands"
  },
  {
+  "tool": "vault.fingerprint",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.fingerprint opened to a model or a module in 4abf43b58 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.generate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.generate opened to a model or a module in 381a6fbf6 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
   "tool": "vault.grant",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.grant opened to a model or a module in 29f68e293 (10 Oct 2026); the body decides: callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
  },
  {
+  "tool": "vault.grants.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.grants.status opened to a model or a module in 10bfd00c2 (27 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
   "tool": "vault.health.summary",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.health.summary opened to a model or a module in bda28f976 (10 Oct 2026); the body decides: read-only: counts of items needing attention, never a name or a value; callers list in code (surfaces and modules, no model caller)"
+ },
+ {
+  "tool": "vault.history",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.history opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.identity",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.identity opened to a model or a module in 381a6fbf6 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.item",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.item opened to a model or a module in 77868b367 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
  {
   "tool": "vault.link",
@@ -1404,12 +1632,32 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.links opened to a model or a module in b1efe5dd1 (10 Oct 2026); the body decides: callers list in code (capsule, cli, deck, device, local): no model caller; read-only: item names and record addresses, never a value"
  },
  {
+  "tool": "vault.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.list opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
   "tool": "vault.mcp.pass.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.mcp.pass.list opened to a model or a module in 75159556c (9 Oct 2026); the body decides: read-only: names and states, never a token or a value"
  },
  {
   "tool": "vault.mcp.pass.revoke",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.mcp.pass.revoke opened to a model or a module in 75159556c (9 Oct 2026); the body decides: callers list: no caller list narrows it because it only ever takes access away (ends a pass), and it names a pass by id; a pass cannot be made or widened here"
+ },
+ {
+  "tool": "vault.me.store.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.me.store.get opened to a model or a module in e1ef361b6 (13 Oct 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "vault.me.store.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.me.store.list opened to a model or a module in e1ef361b6 (13 Oct 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "vault.me.store.put",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.me.store.put opened to a model or a module in e1ef361b6 (13 Oct 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "vault.me.store.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.me.store.remove opened to a model or a module in e1ef361b6 (13 Oct 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
  },
  {
   "tool": "vault.pass.accept",
@@ -1424,8 +1672,32 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): returns which provider tokens are stored and when each was added, never a value; the person's own assistant chains only, and guests, anonymous, plain mcp and named agents without the grant stay refused"
  },
  {
+  "tool": "vault.relay",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.relay opened to a model or a module in 381a6fbf6 (26 Sep 2026); the body decides: the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+ },
+ {
+  "tool": "vault.request",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.request opened to a model or a module in 237c3ca60 (30 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
   "tool": "vault.revoke",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.revoke opened to a model or a module in 59980bf43 (4 Oct 2026); the body decides: callerKind check inside: a named agent or a module can only withdraw its own pending request; only the person's surfaces and an unnamed session revoke freely (G-MV4)"
+ },
+ {
+  "tool": "vault.rotation",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.rotation opened to a model or a module in b526f928e (27 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.search opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.session.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.session.status opened to a model or a module in c8d66bc29 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.ssh.keys",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.ssh.keys opened to a model or a module in 77868b367 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
  {
   "tool": "vault.unlink",
