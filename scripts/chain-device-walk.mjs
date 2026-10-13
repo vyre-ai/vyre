@@ -75,7 +75,7 @@ try {
 
   await step("0. setup: the owner paired this server by the app; its box string and the chain key's form", async () => {
     const p = mac.pairing;
-    return `pairing.box=${String(p.box).length} chars (${/^[A-Za-z0-9_-]+$/.test(String(p.box)) ? "base64url" : "other"}), identity ${mac.identity.id}, chain founder entry ${mac.identity.key.eid}`;
+    return `pairing.box starts ${String(p.box).slice(0, 6)} (${typeof p.box}), pairing keys ${Object.keys(p).join(",")}; pairing.box=${String(p.box).length} chars (${/^[A-Za-z0-9_-]+$/.test(String(p.box)) ? "base64url" : "other"}), identity ${mac.identity.id}, chain founder entry ${mac.identity.key.eid}`;
   });
 
   await step("0b. diagnostics: the server's owner claim, and the same hello checked offline against the live chain with box = pairing.box", async () => {
