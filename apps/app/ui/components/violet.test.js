@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const UI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (f) => fs.readFileSync(path.join(UI, f), "utf8");
-const NEUTRAL = ["components/Switch.tsx", "components/Menu.tsx", "components/PickerList.tsx", "components/RolePicker.tsx", "components/ChoiceList.tsx", "components/Meter.tsx", "components/PasswordField.tsx", "components/StageSteps.tsx", "components/Tabs.tsx", "components/Field.tsx", "components/Composer.tsx", "shell/SidebarRow.tsx", "tasks/ProjectsList.tsx", "views/DashboardView.tsx", "views/CalendarView.tsx", "blocks/BlockViews.tsx", "blocks/BlockViews2.tsx", "fields/display.tsx", "fields/editors.tsx", "components/Markdown.tsx"];
+const NEUTRAL = ["components/Switch.tsx", "components/Menu.tsx", "components/PickerList.tsx", "components/RolePicker.tsx", "components/ChoiceList.tsx", "components/Meter.tsx", "components/PasswordField.tsx", "components/StageSteps.tsx", "components/Tabs.tsx", "components/Field.tsx", "components/Composer.tsx", "shell/SidebarRow.tsx", "tasks/ProjectsList.tsx", "views/DashboardView.tsx", "views/CalendarView.tsx", "blocks/BlockViews.tsx", "blocks/BlockViews2.tsx", "fields/display.tsx", "fields/editors.tsx", "components/Markdown.tsx", "tasks/NowView.tsx", "tasks/ProjectView.tsx", "tasks/TaskDetail.tsx"];
 
 test("the on, selected, checked, progress and focus states do not use the accent", () => {
   const bad = NEUTRAL.filter((f) => /color\.accent\b|color\["accent|bg-accent|border-accent|tone="accent"|tone=\{[^}]*"accent"/.test(read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
