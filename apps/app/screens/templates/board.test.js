@@ -41,7 +41,7 @@ test("a task card says who does it, who approves, who follows, when it is due, a
   const a = taskCard(b.stages[0].tasks[0], b, people, agents);
   assert.deepEqual([a.title, a.assignee.label, a.assignee.kind, a.approver.label, a.followers.map((f) => f.label), a.due, a.group, a.optional], ["Conflict check", "The paralegal", "role", "The attorney", ["Alex Rivera"], "1 day", "Documents", false]);
   const c = taskCard(b.stages[0].tasks[1], b, people, agents);
-  assert.deepEqual([c.assignee.label, c.assignee.kind, c.approver, c.needsYes, c.optional, c.due], ["Research (assistant)", "agent", null, "sending anything to the family", true, ""]);
+  assert.deepEqual([c.assignee.label, c.assignee.kind, c.approver, c.needsYes, c.optional, c.due], ["Research (agent)", "agent", null, "sending anything to the family", true, ""]);
   assert.equal(taskCard(b.stages[1].tasks[0], b, people, agents).assignee.label, "The project lead");
 });
 
@@ -73,7 +73,7 @@ test("the version bar: what is live, what changed, whether there is anything to 
 test("initials for an avatar", () => {
   assert.equal(initialsOf("Alex Rivera"), "AR");
   assert.equal(initialsOf("The paralegal"), "P");
-  assert.equal(initialsOf("Research (assistant)"), "R");
+  assert.equal(initialsOf("Research (agent)"), "R");
   assert.equal(initialsOf(""), "?");
 });
 
