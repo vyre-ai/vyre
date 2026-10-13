@@ -767,7 +767,8 @@ test("publish: a job's runs and its failure card are the project's people's, not
 });
 
 test("publish: a model puts a site live end to end with one held yes, and cannot give it", async t => {
-  const b = await boxRegistry(t);
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "work"] });
+  b.pf.projectPeople = { bakery: { people: ["per_alex"], personal_of: null } };
   const juno = "mcp:agent:juno";
   for (const caller of [juno, "mcp:agent:kai"]) {
     const { deployment } = await b.ok("publish.create", { ...DRAFT, name: "site-" + caller.replace(/\W/g, "") }, caller);
@@ -833,4 +834,19 @@ test("publish: a call on an MCP key does the steps, is held at go, and cannot de
   const no = await viaKey("publish.decide", { task: held.data.task, approve: true });
   assert.ok(no.error, "a key never decides");
   assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Preview");
+});
+
+test("publish: a member does not see a hold on a site they cannot read", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "work"] });
+  b.pf.projectPeople = { acme: { people: ["per_alex"], personal_of: null } };
+  const as = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => { b.pf.actAs["*"] = who; return b.call(tool, input); };
+  b.pf.actAs["*"] = "per_alex";
+  const acme = await previewed(b, { name: "acme-site", project: "acme" });
+  const open = await previewed(b, { name: "space-site", project: undefined });
+  const mine = await b.ok("publish.go", { deployment: acme }, "mcp:agent:juno");
+  const theirs = await b.ok("publish.go", { deployment: open }, "mcp:agent:juno");
+  const seen = async (/** @type {string} */ who) => (await as(who, "publish.holds")).data.holds.map((/** @type {any} */ h) => h.task);
+  assert.deepEqual((await seen("per_alex")).sort(), [mine.task, theirs.task].sort(), "the project's people see both");
+  assert.deepEqual(await seen("per_sam"), [theirs.task], "a member off the project sees only the Space's site");
+  assert.deepEqual((await seen("per_kit")).sort(), [mine.task, theirs.task].sort(), "a Space admin sees any project's hold");
 });

@@ -38,7 +38,7 @@ export function PublishHold({ need, who }: { need: Need; who?: string }) {
   if (step.kind === "declined") return <Text tone="label">Not published. Nothing changed.</Text>;
   return (
     <View style={{ gap: 8 }}>
-      <AskCard title={hold.title} why={[who ? `${who} asked for this.` : "", ...hold.lines].filter(Boolean).join(" ")}
+      <AskCard title={hold.title} why={[who ? `${who} asked for this.` : "", ...hold.lines].filter(Boolean).join("\n")}
         actions={[
           { label: step.kind === "deciding" ? "Putting it live" : presenceText("Put it on the internet"), kind: "primary", icon: "faceid", onPress: step.kind === "deciding" ? () => {} : () => decide(true) },
           { label: "Not now", kind: "ghost", onPress: () => decide(false) },

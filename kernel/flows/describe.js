@@ -2,12 +2,12 @@
 // kernel/flows/describe: a Flow or a run in a few lines, for an agent that should not read the whole document (flows.describe). Pure. One line a step with the policy it carries (time limit, tries, failure path,
 // check), the trigger in words, and, for a run, where it is and what happens next.
 import { timelineOf, stepIndex } from "./timeline.js";
-import { whyRan } from "./triggers.js";
+import { whyRan, eventPatterns } from "./triggers.js";
 
 /** @param {any} t */
 function triggerWords(t) {
   if (!t) return "no trigger";
-  if (t.on === "event") return `when ${t.event}${t.where ? ` and ${t.where}` : ""}`;
+  if (t.on === "event") return `when ${eventPatterns(t).join(" or ")}${t.field ? ` and ${t.field} changes` : ""}${t.where ? ` and ${t.where}` : ""}`;
   if (t.on === "time") return t.cron ? `on schedule ${t.cron}${t.tz ? ` (${t.tz})` : ""}` : t.every_ms ? `every ${Math.round(t.every_ms / 1000)} s` : "once at a set time";
   if (t.on === "web") return `when ${t.path} is called`;
   if (t.on === "manual") return "when started by hand";

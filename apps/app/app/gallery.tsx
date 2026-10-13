@@ -24,6 +24,10 @@ import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
+import { RunSteps } from "../screens/flows/RunSteps";
+import { FlowBuilder } from "../ui/flows/FlowBuilder";
+import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
+import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
@@ -190,6 +194,16 @@ function Sample({ name }: { name: string }) {
       </View>
     );
   }
+  if (name === "flow-trigger") return <FlowBuilder draft={REMINDER_DRAFT} onChange={() => {}} options={SAMPLE_OPTIONS as any} />;
+  if (name === "run-steps") {
+    const t0 = Date.UTC(2026, 9, 13, 9, 0, 0);
+    const painted = [{ id: "trigger", kind: "trigger", label: "A new appointment is booked" }, { id: "a", label: "Look up the client" }, { id: "b", label: "Text the client" }, { id: "c", label: "Wait until a day before" }, { id: "d", label: "Ask the partner to approve" }, { id: "e", label: "File the notes" }];
+    const steps = { a: { status: "done", started_at: t0, finished_at: t0 + 1800, input: { email: "pat@example.com", ssn: "{{field:ssn}}" }, output: { found: true, client: "Pat Lopez" } },
+      b: { status: "started", tries: 1, started_at: t0 + 2000, error: { code: "timeout", message: "The text service did not answer." }, input: { to: "+1 555 0100", api_key: "sk-live-123" } },
+      c: { status: "waiting", wait: { kind: "time", until: t0 + 86_400_000 } }, d: { status: "waiting", wait: { kind: "task", task: "tsk_1" } },
+      e: { status: "failed", error: { code: "timeout", message: "The notes folder did not answer." }, started_at: t0, finished_at: t0 + 30_000 } };
+    return <Card flush><RunSteps painted={painted} steps={steps} max={{ b: 3 }} fmt={dayTimeOf} /></Card>;
+  }
   if (name === "away-card") return <AwayView lines={["3 new things need you", "1 Flow run did not finish", "2 Flow runs finished", "1 document was signed", "1 new member joined"]} onSeen={() => {}} />;
   if (name === "notice-answered") {
     return <View style={{ gap: 8 }}><NoticeAnswered kind="approved" say="Approved: An assistant (kit) wants to send an email: Northwind" onClose={() => {}} /><NoticeAnswered kind="denied" say="Denied: An assistant (kit) wants to send an email: Oakline" onClose={() => {}} /><NoticeAnswered kind="gone" say="That request ended before you answered." onClose={() => {}} /><NoticeAnswered kind="failed" say="Face ID or Touch ID did not work. Nothing was approved." onClose={() => {}} /></View>;
@@ -315,6 +329,7 @@ export default function Gallery() {
   }
   if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "file-viewer") return <ThemeProvider><Page><View nativeID="fixture"><FileViewerFixture kind={q.kind} /></View></Page></ThemeProvider>;
+  if (q.f === "run-steps" || q.f === "flow-trigger") return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;

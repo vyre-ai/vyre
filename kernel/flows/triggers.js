@@ -64,12 +64,15 @@ export const TRIGGER_REGISTRY = Object.freeze({
   },
   record: {
     kind: "record", on: ["event", "stage"], label: "Record event", icon: "bolt", armed: "runner.onEvent(env)",
-    scope: ["trigger", "event"], keys: ["on", "event", "where", "type", "stage"],
-    words: t => (t.on === "stage" ? `When a ${t.type} enters ${t.stage}` : `When ${t.event} happens${t.where ? " and the condition holds" : ""}`),
+    scope: ["trigger", "event"], keys: ["on", "event", "where", "field", "when_record_changes", "type", "stage"],
+    words: t => (t.on === "stage" ? `When a ${t.type} enters ${t.stage}` : `When ${eventPatterns(t).join(" or ")} happens${t.field ? ` and ${t.field} changes` : ""}${t.where ? " and the condition holds" : ""}`),
     check(t, out, h) {
       if (t.on === "event") {
-        h.onlyKeys(t, ["on", "event", "where"], "trigger", out);
-        if (typeof t.event !== "string" || !h.EVENT_RE.test(t.event)) out.push({ path: "trigger.event", message: "an event pattern is noun.past-verb or noun.*" });
+        h.onlyKeys(t, ["on", "event", "where", "field", "when_record_changes"], "trigger", out);
+        const evs = Array.isArray(t.event) ? t.event : [t.event];
+        if (!evs.length || evs.length > 4 || !evs.every(e => typeof e === "string" && h.EVENT_RE.test(e))) out.push({ path: "trigger.event", message: "an event pattern is noun.past-verb or noun.*, or a list of up to four of them" });
+        if (t.field !== undefined && (typeof t.field !== "string" || !h.NAME_RE.test(t.field))) out.push({ path: "trigger.field", message: "name the field to watch (a field name)" });
+        if (t.when_record_changes !== undefined && !["replace", "keep"].includes(t.when_record_changes)) out.push({ path: "trigger.when_record_changes", message: "when_record_changes is replace (start over) or keep (keep both)" });
         if (t.where !== undefined) h.checkExpr(t.where, "trigger.where", out);
       } else {
         h.onlyKeys(t, ["on", "type", "stage"], "trigger", out);
@@ -77,7 +80,7 @@ export const TRIGGER_REGISTRY = Object.freeze({
         if (typeof t.stage !== "string" || !t.stage) out.push({ path: "trigger.stage", message: "name the stage" });
       }
     },
-    source: t => (t.on === "stage" ? `record:${t.type} enters ${t.stage}` : `record:${t.event}`),
+    source: t => (t.on === "stage" ? `record:${t.type} enters ${t.stage}` : `record:${eventPatterns(t).join("|")}`),
   },
   form: {
     kind: "form", on: ["web"], label: "Form or hook", icon: "inbox", armed: "runner.handleWeb(path, { body, trust })",
@@ -97,6 +100,26 @@ export const TRIGGER_REGISTRY = Object.freeze({
     source: () => "manual",
   },
 });
+
+/** The event patterns of a record trigger: `event` is one pattern or a short list. @param {any} t @returns {string[]} */
+export function eventPatterns(t) { return Array.isArray(t && t.event) ? t.event : t && typeof t.event === "string" ? [t.event] : []; }
+
+/** Does a record event pass the trigger's `field` filter? Only a change (`noun.updated`) is filtered: a creation always passes. @param {any} t @param {any} env */
+export function fieldPasses(t, env) {
+  if (!t || !t.field || !/\.updated$/.test(String(env.type))) return true;
+  return Array.isArray(env.data && env.data.changed) && env.data.changed.includes(t.field);
+}
+
+/**
+ * What happens to an earlier run for the same record when the record changes again: `replace` (start over: its waiting run is cancelled) or `keep` (both go on, as before). The default is
+ * `replace` only for a trigger that says "created or updated"; every other trigger keeps today's behaviour. @param {any} t @returns {"replace" | "keep"}
+ */
+export function onRecordChange(t) {
+  if (!t || t.on !== "event") return "keep";
+  if (t.when_record_changes) return t.when_record_changes;
+  const ev = eventPatterns(t);
+  return ev.some(e => /\.created$/.test(e)) && ev.some(e => /\.updated$/.test(e)) ? "replace" : "keep";
+}
 
 /** The stored `on` values, in registry order: what a Flow's trigger may say. */
 export const TRIGGER_ONS = Object.freeze(Object.values(TRIGGER_REGISTRY).flatMap(k => [...k.on]));

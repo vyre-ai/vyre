@@ -68,11 +68,12 @@ export function landing(task, o = {}) {
 export const fileNameOf = (name) => clean(String(name).split(/[\\/]/).pop() || "file") || "file";
 
 /**
- * Where "Open chat" goes for a card, from what the task carries: the chat that made it (`session`), else its record, else the Flow that gave it. null when the
+ * Where "Open chat" goes for a card, from what the task carries: the chat that works it (`form.thread`, written when the agent is woken), the chat that made it (`session`), else its record, else the Flow that gave it. null when the
  * task names none of them (a manual to-do).
  * @param {any} task @returns {{ route: string, label: string } | null}
  */
 export function openTarget(task) {
+  if (typeof task?.form?.thread === "string" && task.form.thread) return { route: `/u/chats/${encodeURIComponent(task.form.thread)}`, label: "Open chat" };
   if (typeof task?.session === "string" && task.session) return { route: `/u/chats/${encodeURIComponent(task.session)}`, label: "Open chat" };
   if (typeof task?.record === "string" && task.record) return { route: `/u/record/${encodeURIComponent(idOf(task.record))}`, label: "Open record" };
   if (typeof task?.flow === "string" && task.flow) return { route: `/u/flows/${encodeURIComponent(task.flow)}`, label: "Open Flow" };
