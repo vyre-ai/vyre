@@ -19,7 +19,7 @@ module.exports = {
   theme: {
     // Nothing from Tailwind's default scale: only the token names exist.
     colors: { transparent: "transparent", ...colors },
-    spacing: { 0: "0px", px: "1px", ...space },
+    spacing: { 0: "0px", px: "1px", ...space, gutter: "var(--gutter)" },
     borderRadius: { none: "0px", ...radii },
     fontSize: Object.fromEntries(sizes.map((s) => [s, ["var(--fs-" + s + ")", { lineHeight: "var(--lh-" + s + ")" }]])),
     extend: {
