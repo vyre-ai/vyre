@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
 - fix(tests): core/sessions/credential-scan.test.js no longer pins two holes the launch has closed: Vyre's launch hands a setup token over on file descriptor 3 (env, environ and fd all 0), and the owner's bwrap agent thread shows neither the picked token nor the machine login to its tools; the BAR test is unchanged.
 - fix(ci): the heap after a full GC is back under its 60 MB budget (59.1 to 55.8 MB on Node 22): a source file with one character outside Latin-1 (a dash or ellipsis) is held by V8 at two bytes a character, so 130 daemon-loaded files now use ASCII in comments and unicode escapes in code; and the pairing test count is recorded as 1 (the three offerFrom tests went with the classic pairing code in aa0a8ba1).
 - fix(tests): test/peer-race.test.js keeps its fake chain unreadable for all 12 reads of a call (three reads a look, four looks) now that an unreadable chain is retried; assertions unchanged.
