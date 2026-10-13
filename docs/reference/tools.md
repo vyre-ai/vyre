@@ -7626,7 +7626,7 @@ A device its owner paired opens its person session: it signs `paired-start`, its
 
 ### `presence.person.status`
 
-Whether this request is signed in as the person (a person session), and until when.
+Whether this request is signed in as the person (a person session), and until when. With a session: its id and kind, and the person it acts as and their role here (the caller's own).
 
 - Input: none
 - Callers: any caller
