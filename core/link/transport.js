@@ -167,7 +167,7 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
     } });
     await ended;
     let parsed;
-    try { parsed = JSON.parse(raw); } catch { parsed = { error: { code: "bad_response", message: `the box answered ${status} with something that is not JSON` } }; }
+    try { parsed = JSON.parse(raw); } catch { parsed = { error: { code: "bad_response", message: "Vyre could not read your server's answer. Try again.", detail: `the box answered ${status} with something that is not JSON` } }; }
     return { body: parsed, status, who };
   }
 

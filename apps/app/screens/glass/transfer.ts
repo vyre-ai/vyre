@@ -38,7 +38,7 @@ export function putBytes(path: string, file: File, progress: (sent: number, tota
       let b: { error?: { code?: string; message?: string } } | null = null;
       try { b = JSON.parse(x.responseText); } catch { /* not JSON */ }
       if (x.status >= 200 && x.status < 300 && !b?.error) resolve();
-      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `your server answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
+      else reject(Object.assign(new Error(b?.error?.message || x.statusText || "Your server did not answer as expected. Try again."), { code: b?.error?.code || `http_${x.status}` }));
     };
     x.onerror = () => reject(Object.assign(new Error("the upload did not reach your server"), { code: "offline" }));
     x.onabort = () => reject(Object.assign(new Error("upload cancelled"), { code: "aborted" }));
