@@ -39,7 +39,7 @@ export function GithubCard() {
     showToast("GitHub is unlinked and your stored key is deleted.");
   };
   return (
-    <Group title="GitHub" note="On a new device, signing in with GitHub and then your master password gets you in. Anyone who controls your GitHub account can add a device the same way, so protect it with two-factor sign-in.">
+    <Group title="GitHub" note="On a new device, signing in with GitHub and then your master password gets you in. Anyone who controls your GitHub account can add a device the same way, so protect it with two-factor sign-in. Update every server of yours before linking. Unlinking also deletes the stored key; remove any device below that you do not know.">
       <Card className="gap-s3">
         {linked === undefined ? <Text tone="muted">Checking.</Text> : linked
           ? <Row title={`Linked to ${linked.login}`} sub={`Since ${new Date(linked.since).toLocaleDateString()}`} end={<Button size="sm" kind="secondary" label="Unlink" loading={busy} disabled={busy} onPress={() => { void unlink(); }} />} className="px-0" />
