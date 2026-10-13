@@ -10,7 +10,8 @@ import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { StepCard } from "./StepCard";
-import { EVERY_CHOICES, isRecordTrigger, STEP_CHOICES, TRIGGERS, choiceOf, firstStageTasks, flowSentence, moveStep, newStep, removeStep, stepProblem, stepSummary, triggerOf, triggerPhrase, whoChoices } from "./logic.js";
+import { ContextBox } from "./ContextBox";
+import { EVERY_CHOICES, isRecordTrigger, STEP_CHOICES, TRIGGERS, choiceOf, firstStageTasks, flowSentence, moveStep, newStep, removeStep, stepProblem, stepSummary, triggerOf, triggerPhrase, whoChoices, whoWords, approverChoices } from "./logic.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
 export type { Draft, DraftStep, Options };
@@ -98,8 +99,8 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
                 <>
                   <Select label="Agent" value={s.agent ?? ""} options={pick(options.agents)} placeholder="Choose an agent" onChange={(agent) => setStep(s.id, { agent })} />
                   <Field label="Task title" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Handle this refund request" />
-                  <Field label="Your instructions" multiline lines={5} value={s.instructions ?? ""} onChangeText={(instructions) => setStep(s.id, { instructions })} placeholder="What to do with this case"
-                    help="They add to the agent's own instructions, which say who to escalate to and which email alias to use outside." />
+                  <ContextBox label="Instructions for the agent" value={s.instructions ?? ""} onChange={(instructions) => setStep(s.id, { instructions })} options={options} placeholder="What to do with this case"
+                    help="They go into the prompt that wakes the agent for this task, after its own instructions (who to escalate to, which email alias to use outside)." />
                   <Select label="The record to hand over" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
                 </>
@@ -108,8 +109,18 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
                 <>
                   <Select label="Who gets the task (a person, a team or role, or an agent)" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
+                  <ContextBox label="Brief for them" value={s.brief ?? ""} onChange={(brief) => setStep(s.id, { brief })} options={options} placeholder="What they need to know" />
                   <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
                 </>
+              ) : null}
+              {s.kind === "agent" || s.kind === "assign" ? (
+                <View className="gap-s3 border-t border-edge pt-s3">
+                  <Text strong>Who checks it and who follows it</Text>
+                  <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
+                  {s.checker ? <ContextBox label="Note for the approver" value={s.approverNote ?? ""} onChange={(approverNote) => setStep(s.id, { approverNote })} options={options} placeholder="What to check" /> : null}
+                  <Followers s={s} options={options} onChange={(patch) => setStep(s.id, patch)} />
+                  <Text size="caption" tone="label">All of them see it in their Now: to do, to approve, following. An agent cannot approve yet.</Text>
+                </View>
               ) : null}
               {s.kind === "email" ? (
                 <>
@@ -170,5 +181,19 @@ function Tasks({ tpl, o }: { tpl: Options["templates"][number] | undefined; o: O
       <View className="px-s4 pt-s3 pb-s1"><Text size="caption" tone="label" strong>{`When it starts, ${t.stage} hands out`}</Text></View>
       {t.tasks.length ? t.tasks.map((k) => <Row key={k.title} dense title={k.title} sub={`Goes to ${k.who}`} />) : <View className="px-s4 pb-s3"><Text tone="muted">No tasks in this stage yet.</Text></View>}
     </Card>
+  );
+}
+
+/** The followers of a step: each a person, a team or role, or an agent, with one note they all get. */
+function Followers({ s, options, onChange }: { s: DraftStep; options: Options; onChange: (patch: Partial<DraftStep>) => void }) {
+  const list: string[] = s.followers ?? [];
+  const choices = whoChoices(options).filter(([v]) => !list.includes(v));
+  return (
+    <View className="gap-s2">
+      <Text size="caption" strong tone="label">Followers (optional)</Text>
+      {list.map((f) => <View key={f} className="flex-row items-center gap-s2"><Chip icon="person">{whoWords(f, options)}</Chip><Button kind="ghost" size="sm" icon="x" label={`Stop following: ${whoWords(f, options)}`} onPress={() => onChange({ followers: list.filter((x) => x !== f) })} /></View>)}
+      {choices.length ? <Select value="" options={choices} placeholder="Add a follower" onChange={(v) => onChange({ followers: [...list, v] })} /> : null}
+      {list.length ? <ContextBox label="Note for the followers" value={s.followerNote ?? ""} onChange={(followerNote) => onChange({ followerNote })} options={options} placeholder="What they should know" /> : null}
+    </View>
   );
 }

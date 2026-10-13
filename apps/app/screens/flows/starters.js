@@ -4,7 +4,12 @@
 
 /** @type {import("../../ui/flows/logic.js").Options} */
 export const SAMPLE_OPTIONS = {
-  types: [{ name: "refund_requests", label: "RefundRequests" }, { name: "client", label: "Client" }, { name: "matter", label: "Matter" }],
+  types: [
+    { name: "refund_requests", label: "RefundRequests", fields: [{ name: "client", label: "Client" }, { name: "email", label: "Email" }, { name: "amount", label: "Amount" }, { name: "reason", label: "Reason" }] },
+    { name: "client", label: "Client", fields: [{ name: "name", label: "Name" }, { name: "email", label: "Email" }, { name: "plan", label: "Plan" }] },
+    { name: "matter", label: "Matter", fields: [{ name: "client", label: "Client" }, { name: "stage", label: "Stage" }] },
+  ],
+  recordsOf: async (type) => [{ urn: `vyre://sample/${type}/r1`, label: "Pat Lopez" }, { urn: `vyre://sample/${type}/r2`, label: "Sam Ortiz" }],
   agents: [{ name: "refunds", label: "Refunds" }, { name: "intake", label: "Intake" }, { name: "research", label: "Research" }],
   templates: [
     { id: "tpl_atp", name: "ATP", stages: [

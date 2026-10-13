@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -91,4 +91,15 @@ test("braces take a value from what started the Flow and come back as braces", (
   assert.deepEqual(def.steps[0].input.to, { expr: "trigger.email" });
   assert.equal(def.steps[0].input.body, "Hi {name}");
   assert.equal(fromDefinition(def).steps[0].to, "{email}");
+});
+
+test("an approver, followers and their notes round-trip, and an agent cannot approve yet", () => {
+  const d = { name: "People", trigger: { kind: "manual" }, steps: [{ id: "assign1", kind: "assign", to: "role:attorney", title: "Review", brief: "Look at [[record:this]]", checker: "role:manager", followers: ["person:ana", "agent:research"], approverNote: "Check the sums", followerNote: "FYI" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0].followers, ["person:ana", "teammate:research"]);
+  assert.deepEqual(def.steps[0].notes, { approver: "Check the sums", followers: "FYI" });
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+  assert.match(stepSummary(d.steps[0], O), /checked by the Manager team, followed by 2 others/);
+  assert.equal(approverChoices(O).some(([v]) => v.startsWith("agent:")), false);
 });
