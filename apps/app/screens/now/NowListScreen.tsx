@@ -14,7 +14,7 @@ export default function NowListScreen({ kind }: { kind: "needs" | "doing" }) {
     <ScrollView contentContainerClassName="pb-s12 max-w-page w-full self-center">
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <SkeletonRows rows={4} />
-        : kind === "needs" ? <NeedsPage world={q.data} onAction={(t, id, input) => void run(t, id, input)} onOpen={open} onBack={back} />
+        : kind === "needs" ? <NeedsPage world={q.data} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={open} onBack={back} />
         : q.data.tasks ? <DoingPage world={q.data} onOpen={open} onBack={back} /> : <EmptyState title="Nothing is running" />}
       {sheets}
     </ScrollView>

@@ -5,14 +5,16 @@ import { Card } from "../components/Card";
 import { DoingList, NeedsList } from "./NowView";
 import { useNowScope } from "./scope";
 import { nowModel, type World } from "./model";
+import { useSnoozed } from "../../src/state/snooze";
 import type { SwipeSet } from "../motion/SwipeActions";
 
-type Props = { world: World; onAction: (task: any, id: string, input?: string) => void; onOpen: (task: any) => void; onBack: () => void };
+type Props = { world: World; onAction: (task: any, id: string, input?: string, extra?: unknown) => void | Promise<void>; onOpen: (task: any) => void; onBack: () => void };
 
 /** The page "5 more waiting" pushes on a phone: every Needs you card past the two hero cards, as standard cards. */
 export function NeedsPage({ world, onAction, onOpen, onBack }: Props) {
   const { scope } = useNowScope();
-  const m = nowModel(world, scope);
+  const later = useSnoozed(world.now);
+  const m = nowModel(world, scope, later);
   const rest = m.needs.slice(2);
   return (
     <View className="gap-s4">

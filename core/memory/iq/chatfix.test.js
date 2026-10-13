@@ -152,8 +152,14 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   const no = await heard(4, { project: "northwind" }, "Fly", JUNO);
   assert.equal(no.data.filed, null);
   // The person's typed turn applies at once, as theirs, with its source and the decision updated.
-  const ok = await heard(3);
+  const ok = await heard(3, { project: "harlow" });
   assert.equal(ok.data.applied, true, JSON.stringify(ok));
+  // The applied correction is also a lesson: filed in the project the chat is in, with the chat and the turn it came from.
+  assert.ok(ok.data.filed?.id, JSON.stringify(ok.data));
+  const lesson = (await call("memory.writes", { project: "harlow" }, "deck")).data.writes.find(x => x.id === ok.data.filed.id);
+  assert.equal(lesson.kind, "correction");
+  assert.equal(lesson.from.thread, THREAD);
+  assert.equal(lesson.from.seq, 3);
   assert.equal(ok.data.fix.source, `chat:${THREAD}`);
   assert.equal((await call("memory.decisions", { project: "harlow" }, "deck")).data.decisions[0].value, "Render");
   assert.equal((await call("memory.corrections", { answers: true }, "deck")).data.fixes[0].source, `chat:${THREAD}`);

@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "expo-router";
-import { View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Platform, View, useWindowDimensions } from "react-native";
 import { AccessList, Avatar, Banner, Button, IconButton, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
-import { HEALTH_WORDS, breakage, groupsOf, healthOf, share, summaryOf, unshare, visible, type VItem } from "./redesign.js";
+import { HEALTH_WORDS, breakage, groupsOf, healthOf, navCounts, navEmpty, share, summaryOf, unshare, visible, type VItem } from "./redesign.js";
 import { SAMPLE_PEOPLE, type Event } from "./sample-redesign";
-import type { NewItem, Scope, VaultData } from "./redesign-data";
+import type { Scope, VaultData } from "./redesign-data";
+import { AddSheet, type Call } from "./AddSheet";
+import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
+import ImportPage from "./ImportPage";
+import { claimBlocked } from "../shell/rc";
+import { ON_PHONE } from "../../src/real/on-phone.js";
+import { putRefusal } from "./real-model";
 
-const ICON: Record<string, IconName> = { "Firm keys": "key", "Sending services": "mail", "API keys": "key", Phone: "phone", Logins: "key", "MCP keys": "link", "SSH and notes": "file" };
+const ICON: Record<string, IconName> = { "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
 
@@ -16,7 +22,8 @@ const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as 
 export default function VaultRedesign({ data }: { data: VaultData }) {
   const phone = usePhone();
   const router = useRouter();
-  const [scope, setScope] = useState<Scope>("mine");
+  // which vault and which group are open live in a store, so the sidebar's Vault panel and this page agree
+  const { scope, nav, setScope, setNav, setCounts } = useVaultNav();
   const [q, setQ] = useState("");
   const [items, setItems] = useState<VItem[] | null>(null);
   const [locked, setLocked] = useState(false);
@@ -28,7 +35,13 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [local, setLocal] = useState<Event[]>([]);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
-  const [adding, setAdding] = useState<NewItem | null>(null);
+  const [adding, setAdding] = useState(false);
+  // A Needs you card for a stuck password or key opens the Add sheet for that item: /u/vault?add=<name>&kind=<login|api-key>.
+  const want = useLocalSearchParams<{ add?: string; kind?: string }>();
+  const wanted = want.add ? { name: want.add === "1" ? "" : String(want.add), kind: String(want.kind || "api-key") } : null;
+  useEffect(() => { if (want.add) setAdding(true); }, [want.add]);
+  const [addProblem, setAddProblem] = useState("");
+  const [importing, setImporting] = useState(false);
   const [acc, setAcc] = useState<{ rows: { who: string; level: Level }[]; people: { id: string; name: string }[] }>({ rows: [], people: [] });
 
   const load = useCallback(() => {
@@ -37,7 +50,8 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   }, [data, scope]);
   useEffect(load, [load]);
 
-  const shown = useMemo(() => (items ? visible(items, scope, q) : []), [items, scope, q]);
+  const shown = useMemo(() => (items ? visible(items, scope, q, nav) : []), [items, scope, q, nav]);
+  useEffect(() => { if (items) setCounts(navCounts(visible(items, scope))); }, [items, scope, setCounts]);
   const cur = shown.find((v) => v.id === sel) ?? (phone ? undefined : shown[0]);
   useEffect(() => {
     setEvents([]);
@@ -49,7 +63,11 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
   const fail = (e: unknown, fallback: string) => showToast(String((e as Error)?.message || fallback));
   const doLock = () => data.lock().then(() => { setLocked(true); }).catch((e) => fail(e, "That did not lock it."));
-  const startAdd = () => setAdding({ name: "", kind: scope === "mine" ? "secret" : "api-key", value: "" });
+  const startAdd = () => { setAddProblem(""); setAdding(true); };
+  const doAdd = (c: Call, name: string) => {
+    setBusy(true); setAddProblem("");
+    data.add(scope, c).then(() => { setAdding(false); showToast(`${name} added.`); load(); }).catch((e) => setAddProblem(putRefusal((e as { code?: string }).code, String((e as Error)?.message || "")))).finally(() => setBusy(false));
+  };
   const setShare = (fn: (xs: VItem[]) => VItem[]) => setItems((xs) => (xs ? fn(xs) : xs));
 
   if (scope === "mine" && noAccount) {
@@ -102,11 +120,12 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const list = err ? <ErrorState title="The vault did not answer" reason={err} retry={load} /> : items === null ? <LoadingState /> : (
     <View className="gap-s3">
+      {nav.kind !== "all" ? <View className="flex-row items-center justify-between gap-s2"><Text tone="label">{nav.kind === "group" ? nav.group : nav.kind === "expiring" ? "Expiring" : "Shared with me"}</Text><Button kind="ghost" size="sm" label="Show everything" onPress={() => setNav({ kind: "all" })} /></View> : null}
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (
         <GroupedList groups={groupsOf(shown)} items={shown.map((v) => ({ ...v }))} itemNoun="items"
           renderItems={(xs) => <Card flush>{(xs as VItem[]).map(row)}</Card>} />
-      ) : <EmptyState title="Nothing here" body={q ? "No item matches that search." : scope === "mine" ? "Your own vault is empty. Add a sign-in or a key." : "The Space has no items yet."} />}
+      ) : <EmptyState title="Nothing here" body={q ? "No item matches that search." : nav.kind !== "all" ? navEmpty(nav) : scope === "mine" ? "Your own vault is empty. Add a sign-in or a key." : "The Space has no items yet."} />}
     </View>
   );
 
@@ -164,19 +183,17 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   );
 
   const addSheet = (
-    <Sheet open={!!adding} onClose={() => setAdding(null)} title={scope === "mine" ? "Add to your vault" : "Add to the Space vault"}>
-      {adding ? (
-        <View className="gap-s3">
-          <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder="For example Stripe" />
-          <Segmented label="Kind" options={[["api-key", "Key"], ["login", "Login"], ["note", "Note"]]} value={["api-key", "login", "note"].includes(adding.kind) ? adding.kind : "api-key"} onChange={(kind) => setAdding({ ...adding, kind })} />
-          <Field label="Value" kind="password" value={adding.value} onChangeText={(value) => setAdding({ ...adding, value })} />
-          <View className="flex-row gap-s2"><Button kind="primary" label="Add" disabled={busy || !/^[A-Za-z0-9._-]{1,128}$/.test(adding.name) || !adding.value}
-            onPress={() => { setBusy(true); data.add(scope, adding).then(() => { setAdding(null); showToast(`${adding.name} added.`); load(); }).catch((e) => fail(e, "That did not save.")).finally(() => setBusy(false)); }} /><Button kind="ghost" label="Cancel" onPress={() => setAdding(null)} /></View>
-          <Text size="caption" tone="label">A name is letters, digits, dot, dash and underscore.</Text>
-        </View>
-      ) : null}
-    </Sheet>
+    <AddSheet want={wanted} open={adding} scope={scope} busy={busy} problem={addProblem} onClose={() => setAdding(false)} onSave={doAdd}
+      onImport={() => setImporting(true)} onSignIn={() => { setAdding(false); router.push("/u/connections" as never); }} />
   );
+
+  if (importing) {
+    return (
+      <Frame title="Bring in passwords and keys" sub="From another password manager or your project files." onBack={() => { setImporting(false); load(); }}>
+        {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Import")}</Text> : <ImportPage reload={load} />}
+      </Frame>
+    );
+  }
 
   if (phone && cur && sel) return <Frame title={cur.name} sub={cur.detail} onBack={() => setSel(null)}>{detail}{sheet}{addSheet}</Frame>;
 
@@ -194,6 +211,9 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   );
 }
 
+/** Mine or Space. On a wide web screen the sidebar's Vault panel has it, so the page does not repeat it. */
 function Scoper({ scope, onScope }: { scope: Scope; onScope: (s: Scope) => void }) {
+  const { width } = useWindowDimensions();
+  if (Platform.OS === "web" && width >= VAULT_PANEL_MIN) return null;
   return <Segmented<Scope> label="Which vault" options={[["mine", "Mine"], ["space", "Space"]]} value={scope} onChange={onScope} />;
 }

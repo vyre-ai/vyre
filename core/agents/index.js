@@ -64,6 +64,8 @@ export const MIGRATIONS = [
   ...CONFIG_MIGRATIONS,
   // One thread per (agent, person) for a person who chats on their own AI account: her words never ride on another person's sign-in.
   `CREATE TABLE agents_person_threads (agent TEXT NOT NULL, person TEXT NOT NULL, thread TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, person))`,
+  // A task given to an agent wakes it once: the row is the claim, written before the job starts, so a restart or a repeated event finds it and starts nothing (core/daemon/flows-host.js sends the wake).
+  `CREATE TABLE agents_wakes (task TEXT NOT NULL, agent TEXT NOT NULL, thread TEXT, at INTEGER NOT NULL, PRIMARY KEY (task, agent))`,
 ];
 
 /**
@@ -717,10 +719,10 @@ export default {
         // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
         // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
         // A thread on the chatter's own account is the agents module's: her words go in as this module (the thread's account is hers already), not as a chat she was never put in.
-        let ownThread = false;
+        let herAccountThread = false;
         const sendWords = async thread => {
           await capNotice(thread);
-          if (!byPerson || ownThread) return use("threads.send", { thread, text: i.text, surface });
+          if (!byPerson || herAccountThread) return use("threads.send", { thread, text: i.text, surface });
           const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
@@ -745,7 +747,7 @@ export default {
         try {
           // a person with her own AI sign-in talks to the agent on a thread of her own, on her own account
           const own = a.kind === "agent" ? await ownAccount(a, forPerson) : null;
-          ownThread = Boolean(own);
+          herAccountThread = Boolean(own);
           const mineRow = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(forPerson))) : null;
           const curId = own ? (mineRow ? String(mineRow.thread) : null) : a.thread;
           const cur = curId ? (await ctx.call("threads.get", { thread: curId, limit: 1 })).data?.thread : null;
@@ -800,6 +802,33 @@ export default {
         if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         const t = await launch(a, { prompt: i.prompt, job: true, project: i.project });
         return { agent: a.name, thread: t.id };
+      },
+    });
+
+    // A task given to an agent: wake it with the task as the prompt. Once per (task, agent); the claim is written first. The job is for the approver (the asker gate judges them, so it is never wider than
+    // they may use) and sits in the task's project only when the agent reaches it. It is not marked done here: the agent starts and submits the task itself.
+    ctx.tool("agents.wake", {
+      description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" });
+        const a = must(i.agent);
+        const task = String(i.task);
+        const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
+        if (!claim.changes) { const row = /** @type {any} */ (db.prepare("SELECT thread FROM agents_wakes WHERE task = ? AND agent = ?").get(task, a.name)); return { agent: a.name, thread: row ? row.thread : null, already: true }; }
+        try {
+          const prompt = [
+            `You were given a task: ${String(i.title).slice(0, 200)}`,
+            i.instructions ? `Instructions for this task:\n${String(i.instructions).slice(0, 4000)}` : "",
+            i.record ? `Record: ${String(i.record)}` : "",
+            `Task id: ${task}. Start it with tasks.start, do the work, then hand in what you made with tasks.submit. If you cannot finish, say why in a note and leave it open.`,
+          ].filter(Boolean).join("\n\n");
+          const project = i.project && (a.projects === "*" || a.projects.includes(String(i.project))) ? String(i.project) : undefined;
+          const t = await launch(a, { prompt, job: true, project, ...(i.approver ? { forPerson: String(i.approver) } : {}) });
+          db.prepare("UPDATE agents_wakes SET thread = ? WHERE task = ? AND agent = ?").run(t.id, task, a.name);
+          return { agent: a.name, thread: t.id, already: false };
+        } catch (e) { db.prepare("DELETE FROM agents_wakes WHERE task = ? AND agent = ? AND thread IS NULL").run(task, a.name); throw e; }
       },
     });
 

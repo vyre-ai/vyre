@@ -305,7 +305,7 @@ function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: P
 }
 
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string }>();
+  const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string; door?: string; tab?: string; grant?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
@@ -313,9 +313,14 @@ export default function Gallery() {
     // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.
     const dep = (id: string, name: string, version: number, stage: string, url: string | null, domains: { host: string; status: string }[] = []) => ({ id, name, version, stage, url, domains });
     const deps = [dep("d1", "client-intake", 3, "Preview", "https://preview-3.client-intake.example.vyre.run"), dep("d2", "client-intake", 2, "Production", "https://client-intake.example.vyre.run", [{ host: "intake.firm.example", status: "verified" }]), dep("d3", "fee-calculator", 1, "Approved", "https://preview-1.fee-calculator.example.vyre.run"), dep("d4", "menu-site", 4, "Production", null, [{ host: "menu.example.com", status: "waiting" }])];
-    setBoxOverride(async (tool) => {
+    setBoxOverride(async (tool, input) => {
       if (tool === "publish.list") return { deployments: deps };
-      if (tool === "publish.status") return { ...deps[0], previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: null, published_at: null, sealed_check: "no sealed values found" };
+      if (tool === "publish.status") { const d = deps.find((x) => x.id === input.deployment) ?? deps[0]; const live = d.stage === "Production"; return { ...d, previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: d.stage === "Preview" ? null : "per_4f2a9c", published_at: live ? Date.now() - 86400000 * (d.version === 4 ? 1 : 2) : null, sealed_check: "no sealed values found" }; }
+      if (tool === "records.actors") return { actors: [{ id: "per_4f2a9c", name: "Dana Wine" }] };
+      if (tool === "records.me") return { person: "per_me" };
+      if (tool === "names.status") return { listening: q.door === "on" };
+      if (tool === "publish.edge.up") throw Object.assign(new Error("this box has no way to start containers"), { code: "not_available" });
+      if (tool === "publish.domain.verify") return { verified: false, reason: "No TXT record found yet.", domain: { host: String(input.host), status: "pending" }, challenge: { type: "TXT", name: `_vyre-challenge.${input.host}`, value: "vyre-publish=Kq3x9TnV0mZp.7f3a9c1e2b", expires_at: Date.now() + 86400000 } };
       if (tool === "publish.job.attention") return { jobs: [{ deployment: "d4", name: "menu-site", at: Date.now() - 600000, message: "the nightly sync exited 1" }] };
       if (tool === "publish.job.runs") return { runs: [{ at: Date.now() - 3600000, ok: true, seconds: 4 }, { at: Date.now() - 90000000, ok: false, code: 1, message: "the nightly sync exited 1" }] };
       if (tool === "vault.list") return { items: [{ name: "Stripe", kind: "api", fields: ["key"] }] };

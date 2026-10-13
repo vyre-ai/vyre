@@ -1780,7 +1780,7 @@ export class FlowRunner {
           const f = await this.#actor(ctx, ref, { record });
           const mine = await tagFor(s.notes && s.notes.followers, [f.doer]);
           const text = [mine, `Task: ${title}`].filter(Boolean).join("\n\n");
-          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text }, flow: run.flow }, { idem: `${idem}:follow${i}` });
+          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text, fyi: true }, flow: run.flow }, { idem: `${idem}:follow${i}` });
         } catch (e) { this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
       }
       // The approver's box is theirs alone: it is never put on the doer's task (the doer, and anyone helping, would read a record through the approver's reach). Each person who checks gets a note task of
@@ -1790,7 +1790,7 @@ export class FlowRunner {
           try {
             const mine = await tagFor(s.notes.approver, [who]);
             const text = [mine, `Task to check: ${title}`].filter(Boolean).join("\n\n");
-            await this.k.ask.request(this.#chain(ctx), { title: `To check: ${title}`, doer: who, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text }, flow: run.flow }, { idem: `${idem}:check${i}` });
+            await this.k.ask.request(this.#chain(ctx), { title: `To check: ${title}`, doer: who, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text, fyi: true }, flow: run.flow }, { idem: `${idem}:check${i}` });
           } catch (e) { this.#note(ctx, s, `the approver was not told: ${/** @type {Error} */ (e).message}`); }
         }
       }

@@ -11,6 +11,7 @@
 //   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
 //   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
 import crypto from "node:crypto";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
 import { linkedDir } from "../../lib/files/layout.js";
 import { assertProvider } from "./linked-provider.js";
@@ -21,7 +22,7 @@ import { registerLinkedIO } from "./linked-read.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = [...PERSON_SURFACES, "device"];
 /** A model working a team chat's turn may read what the asking member can read; writing stays the person's. */
 const READ_CALLERS = [...CALLERS, "mcp"];
 export const LINK_NAME = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
@@ -67,7 +68,7 @@ export function registerLinked(ctx, o) {
       if (json.length > 2000) throw refuse("source is too large", "bad_input");
       const row = { id: `lnk_${crypto.randomBytes(9).toString("base64url")}`, space: d.space, name, provider: String(i.provider), source: json, linked_by: who, at: now() };
       try { db().prepare("INSERT INTO files_linked (id, space, name, provider, source, linked_by, at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(row.id, row.space, row.name, row.provider, row.source, row.linked_by, row.at); }
-      catch (e) { if (/UNIQUE/i.test(String(/** @type {any} */ (e).message))) throw refuse(`Linked/${name} is already a linked folder`, "conflict"); throw e; }
+      catch (e) { if (/UNIQUE/i.test(String(/** @type {any} */ (e).message))) throw refuse(`Linked/${name} is already a linked folder: pick another name`, "conflict"); throw e; }
       return view(row);
     });
 
@@ -88,7 +89,7 @@ export function registerLinked(ctx, o) {
     { presence: { summary: async () => "Unlink a linked folder" } },
     async (i, d, who) => {
       const r = db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(String(i.id ?? ""), d.space);
-      if (!r) throw refuse("no such linked folder", "not_found");
+      if (!r) throw refuse("no such linked folder: list your linked folders and pick one", "not_found");
       if (r.linked_by !== who && who !== String(ctx.kernel.owner)) throw refuse("only who linked this folder, or the Space owner, can unlink it", "denied");
       db().prepare("UPDATE files_linked SET removed_at = ? WHERE id = ?").run(now(), r.id);
       index().forget(r.id);
@@ -97,7 +98,7 @@ export function registerLinked(ctx, o) {
 
   const linkOf = (/** @type {any} */ i, /** @type {any} */ d) => {
     const r = db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(String(i.id ?? ""), d.space);
-    if (!r) throw refuse("no such linked folder", "not_found");
+    if (!r) throw refuse("no such linked folder: list your linked folders and pick one", "not_found");
     return r;
   };
   const asLink = (/** @type {any} */ r) => ({ id: r.id, provider: r.provider, source: JSON.parse(r.source) });

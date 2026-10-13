@@ -8,7 +8,9 @@
   "requires": [],
   "does": {
     "reads": [
+      "publish.domain.status",
       "publish.domain.verify",
+      "publish.holds",
       "publish.list",
       "publish.preview",
       "publish.status"
@@ -22,7 +24,6 @@
       },
       {
         "name": "publish.preview",
-        "outward": true,
         "reach": "anyone",
         "effect": "write"
       },
@@ -79,15 +80,23 @@
       },
       {
         "name": "publish.domain.add",
-        "outward": true,
         "reach": "anyone",
         "effect": "write"
       },
       {
         "name": "publish.domain.verify",
-        "outward": true,
         "reach": "anyone",
         "effect": "write"
+      },
+      {
+        "name": "publish.domain.status",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "publish.holds",
+        "reach": "anyone",
+        "effect": "read"
       },
       {
         "name": "publish.secret.grant",
@@ -169,7 +178,9 @@
       "deployment.restarted",
       "deployment.job-ran",
       "deployment.rolled-back",
-      "deployment.retired"
+      "deployment.retired",
+      "deployment.held",
+      "deployment.decided"
     ]
   },
   "shows": {

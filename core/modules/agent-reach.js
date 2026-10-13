@@ -52,7 +52,6 @@ export const PERSON_ONLY = new Map([
   ["releases.cert", "makes a release signing certificate: the person's own act, never an agent's"],
   ["releases.sign", "signs a release: the person's own act, never an agent's"],
   ["google.remove", "removes a Google account: the person's own act"],
-  ["google.find", "finds across the person's Google accounts: the person's own view"],
   ["google.connect.cancel", "cancels connecting a Google account: the person's own act"],
   ["google.connect.finish", "finishes connecting a Google account: the person's own act"],
   ["mail.compose", "composes mail from the person's accounts: the person's own act"],
@@ -93,21 +92,13 @@ export const PERSON_ONLY = new Map([
   ["google.members.email", "sets which Google account sends a member's mail: the person's own act on the account"],
   ["vault.access.get", "reads who holds access to the Vault: the person's own view; an agent never sees a value"],
   ["files.linked.link", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.list", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.providers", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.pick", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.unlink", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.sync", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.status", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.search", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.tree", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.mentions.search", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.ls", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.read", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.write", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.rename", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["files.linked.delete", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
-  ["files.linked.versions", "a linked folder follows the member's reach: the person's own act or view, and a member may use it; an agent, MCP or guest caller never does"],
   ["comms.service.test", "tests a comms service with the person's own settings: the person's own act"],
   ["vault.audit", "reads the Vault's audit trail: the person's own view"],
   ["projects.sync", "hands every project's folders under /work to the project's own group on a team server: the owner's own act on a quiet box, and an assistant has no reason to resync project folders"],
@@ -693,7 +684,7 @@ export const SETUP_REACH = new Map([...SETUP_REASONS]);
  * person-only setup tools work for it as they do in the app. It is still a model, not a face: outward acts stay held, and what a person proves with a face or a key, or does to the doors themselves,
  * stays out of its reach. This is that list: a tool in PERSON_ONLY whose reason is the person's presence, devices, sign-in or secrets, the human-only tools, and these families.
  */
-export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity."]);
+export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "publish.decide"]);
 const NEVER_REASON = /face id|presence|device|pairing|sign[- ]?in|secret|passkey|identity|key/i;
 /** May a call that came in on a person's MCP connection use this tool as the person? @param {string} tool */
 export function mcpPersonMay(tool) {
