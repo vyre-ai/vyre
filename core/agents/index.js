@@ -814,7 +814,7 @@ export default {
       internal: true, callers: ["module"],
       input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
       run: async (i, { caller }) => {
-        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" });
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
         const a = must(i.agent);
         const task = String(i.task);
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());

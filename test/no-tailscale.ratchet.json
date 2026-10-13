@@ -11,6 +11,8 @@
   "apps/app/perf/README.md",
   "apps/app/screens/chat-tools/more.test.js",
   "apps/app/screens/settings/keys-system.test.js",
+  "apps/app/screens/vault/redesign.js",
+  "apps/app/screens/vault/add-model.js",
   "apps/app/src/api/client.test.js",
   "apps/app/src/api/client.ts",
   "apps/app/src/api/native-open.test.js",
