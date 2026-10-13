@@ -73,3 +73,10 @@ test("every surface label is known, and so is the first word of every label the 
   }
   assert.deepEqual([...new Set(unknown)].sort(), [], "a label the code builds has a first word the registry would refuse; add it to KNOWN_LABELS in core/modules/index.js");
 });
+
+test("a bare mobile caller is refused on a tool whose callers list still names mobile; the phone's device:<id> passes", () => {
+  const callers = ["cli", "mobile", "device"];
+  assert.equal(callerAllowed(callers, "mobile", "vault.account.unlock-phone"), false, "any caller can claim the bare label");
+  assert.equal(callerAllowed(["mobile"], "mobile", "vault.account.unlock-phone"), false);
+  assert.equal(callerAllowed(callers, "device:abcdefghijklmnop", "vault.account.unlock-phone"), true, "the phone arrives as its paired device");
+});
