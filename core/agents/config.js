@@ -5,13 +5,14 @@
 // Model sign-ins are not here at all: the order an agent tries them in is sessions.routes (scope agent:<name>), and the credentials sit in the Vault.
 import fs from "node:fs";
 import path from "node:path";
-import { agentDir, agentPart } from "../../lib/files/layout.js";
+import { Access, accessMigration } from "../../lib/access.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
    CREATE TABLE agents_vault_items (agent TEXT NOT NULL, item TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, item))`,
-  // Who added each folder link is kept, because a link is judged against the person adding it. Who else may use or edit an agent is a kernel grant (below), not a table.
-  `ALTER TABLE agents_context_links ADD COLUMN by TEXT`,
+  // Who else may use or edit an agent, besides its creator, the owner and the admins: a person or a role, at one of two levels. Who added each folder link is kept, because a link is judged against the person adding it.
+  `${accessMigration("agents_access")};
+   ALTER TABLE agents_context_links ADD COLUMN by TEXT`,
 ];
 
 export const DOC_FILES = Object.freeze(["AGENTS.md", "CLAUDE.md"]);
@@ -45,16 +46,9 @@ export function contextBrief(c) {
  */
 export function register(ctx, h) {
   const { db } = h;
-  /** The agent's address in the kernel, and the one source its sharing grants carry. */
-  const urnOf = (/** @type {any} */ a) => `vyre://${ctx.kernel.space}/agent/${a.uid}`;
-  const sourceOf = (/** @type {any} */ a, /** @type {string} */ person) => `agents:access:${a.uid}:${person}`;
-  /** Who an agent is shared with, read live from the kernel: [{ kind: "person", subject, level, by }]. @param {any} a */
-  const sharedWith = async a => {
-    const gs = (ctx.kernel && ctx.kernel.mint ? await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` }) : []) || [];
-    return gs.filter((/** @type {any} */ g) => g.subject && g.subject.actor).map((/** @type {any} */ g) => ({ kind: "person", subject: String(g.subject.actor.id), level: g.actions.includes("agents.edit") ? "edit" : "use", by: /^shared by (\S+):/.exec(String(g.reason || ""))?.[1] ?? null }));
-  };
-  const home = (/** @type {any} */ a) => path.join(h.root, agentDir(String(a.uid)));
-  const ctxDir = (/** @type {any} */ a) => path.join(h.root, agentPart(String(a.uid), "context"));
+  const shared = new Access(db, "agents_access");
+  const home = (/** @type {any} */ a) => path.join(h.root, "agents", String(a.uid));
+  const ctxDir = (/** @type {any} */ a) => path.join(home(a), "context");
   const only = (/** @type {any} */ meta, what) => {
     const { caller } = meta;
     h.guard(caller, what);
@@ -64,27 +58,20 @@ export function register(ctx, h) {
    * What the caller may do with this agent: "edit" (its creator, the owner, an admin, or anyone given Can edit, by name or by role), "use" (given Can use), or "none".
    * @param {any} meta @param {any} a @returns {Promise<"edit" | "use" | "none">}
    */
-  const levelOf = async (/** @type {any} */ meta, /** @type {any} */ a) => {
+  const levelOf = async (meta, a) => {
     if (await h.mayChange(meta, a)) return "edit";
-    if (!ctx.kernel || typeof ctx.kernel.authorize !== "function" || typeof ctx.kernel.chain !== "function") return "none";
-    const chain = await ctx.kernel.chain(meta).catch(() => null);
-    if (!chain) return "none";
-    // the kernel's authorize is the only place this is decided: a grant on this agent for this person, or nothing
-    for (const [action, level] of /** @type {const} */ ([["agents.edit", "edit"], ["agents.use", "use"]])) {
-      const d = await ctx.kernel.authorize({ chain, action, resource: urnOf(a) }).catch(() => null);
-      if (d && d.effect === "allow") return level;
-    }
-    return "none";
+    const me = await h.chainPerson(meta);
+    if (!me) return "none";
+    return shared.level(a.name, { person: me, role: await h.roleOf(me).catch(() => null) });
   };
   const readOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("reads its files (Can edit)"); };
   const writeOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "change another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("changes its files (Can edit)"); };
   const useOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's use"); if ((await levelOf(meta, a)) === "none") throw h.notYours("sees where it is used (Can use)"); };
   const shareOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "share another agent"); if (!(await h.mayChange(meta, a))) throw h.notYours("shares it"); };
   // The folder layout (lib/files/layout.js, files-layout): agents/<id>/ with instructions/, context/, memory/ and work/.
-  const claudeFile = (/** @type {any} */ a) => path.join(h.root, agentPart(String(a.uid), "instructions"), "CLAUDE.md");
-  const oldClaudeFile = (/** @type {any} */ a) => path.join(home(a), "CLAUDE.md");   // where an earlier build kept it: still read, never written
-  const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(h.root, agentPart(String(a.uid), part)), { recursive: true, mode: 0o700 }); };
-  const readClaude = (/** @type {any} */ a) => { for (const f of [claudeFile(a), oldClaudeFile(a)]) { try { return fs.readFileSync(f, "utf8"); } catch { /* the next place */ } } return ""; };
+  const claudeFile = (/** @type {any} */ a) => path.join(home(a), "instructions", "CLAUDE.md");
+  const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(home(a), part), { recursive: true, mode: 0o700 }); };
+  const readClaude = (/** @type {any} */ a) => { try { return fs.readFileSync(claudeFile(a), "utf8"); } catch { return ""; } };
   const listFiles = (/** @type {any} */ a) => {
     try { return fs.readdirSync(ctxDir(a), { withFileTypes: true }).filter(e => e.isFile()).map(e => { const s = fs.statSync(path.join(ctxDir(a), e.name)); return { name: e.name, size: s.size, at: Math.round(s.mtimeMs) }; }).sort((x, y) => x.name.localeCompare(y.name)); }
     catch { return []; }
@@ -213,7 +200,7 @@ export function register(ctx, h) {
     run: async ({ agent }, meta) => {
       const a = h.must(agent);
       await writeOk(meta, a);
-      const access = await sharedWith(a);
+      const access = shared.list(a.name);
       const sp = ctx.kernel && ctx.kernel.space ? await ctx.call("spaces.members.list", { space: ctx.kernel.space }).catch(() => null) : null;
       const people = sp && !sp.error && sp.data && Array.isArray(sp.data.members) ? sp.data.members.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.person), role: String(m.role || "") })) : [];
       const rl = await ctx.call("roles.list", {}).catch(() => null);
@@ -224,18 +211,12 @@ export function register(ctx, h) {
   });
   ctx.tool("agents.access.set", {
     description: "Share an agent with a person or a role: Can use (chat with it, assign it, use it in flows) or Can edit (change its instructions, context, models and links). level null takes the access away. Only its creator, the owner or an admin shares it.",
-    input: { type: "object", required: ["agent", "kind", "subject"], properties: { agent: { type: "string" }, kind: { type: "string", enum: ["person"] }, subject: { type: "string" }, level: { type: ["string", "null"], enum: ["use", "edit", null] } } },
+    input: { type: "object", required: ["agent", "kind", "subject"], properties: { agent: { type: "string" }, kind: { type: "string", enum: ["person", "role"] }, subject: { type: "string" }, level: { type: ["string", "null"], enum: ["use", "edit", null] } } },
     run: async ({ agent, kind, subject, level }, meta) => {
       const a = h.must(agent);
       await shareOk(meta, a);
       if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
-      if (kind !== "person") throw bad("an agent is shared with a person for now; a role comes later");
-      if (typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name the person to share with");
-      if (level !== null && level !== undefined && !["use", "edit"].includes(level)) throw bad("level is use, edit or null");
-      if (!ctx.kernel || !ctx.kernel.mint) throw Object.assign(new Error("sharing an agent needs the kernel"), { code: "unavailable" });
-      const by = await h.personOf(meta);
-      await ctx.kernel.mint.end({ source: sourceOf(a, subject), reason: "the sharing of this agent changed" });
-      if (level) await ctx.kernel.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: subject, space: ctx.kernel.space } }, actions: level === "edit" ? ["agents.use", "agents.edit"] : ["agents.use"], resource: { prefix: urnOf(a) }, source: sourceOf(a, subject), reason: `shared by ${by || "the owner"}: ${level === "edit" ? "Can edit" : "Can use"}` });
+      shared.set(a.name, { kind, subject, level: level ?? null }, await h.personOf(meta));
       if (h.changed) h.changed();
       return { ok: true };
     },
@@ -262,9 +243,5 @@ export function register(ctx, h) {
       return { chats, flows };
     },
   });
-  /** The sharing as short lines for the agent record: "per_x (edit)". @param {any} a */
-  const sharedLine = async a => (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => `${g.subject} (${g.level})`);
-  /** An agent that is gone takes its sharing with it. @param {any} a */
-  const clearShared = async a => { if (ctx.kernel && ctx.kernel.mint) for (const g of await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` })) await ctx.kernel.mint.end({ id: g.id, reason: "the agent was removed" }); };
-  return { brief, levelOf, sharedLine, clearShared };
+  return { brief, levelOf };
 }

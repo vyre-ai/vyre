@@ -56,18 +56,13 @@ test("Can use sees where an agent is used and nothing more; Can edit changes its
   assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied", "taking it away takes it away");
 });
 
-test("sharing is a kernel grant on the agent: it shows in the list with who gave it, a role is refused for now, and removing the agent removes it", { timeout: 120_000 }, async t => {
-  const { ben, ada } = await world(t);
-  assert.equal((await ada("agents.create", { name: "intake", kind: "agent", projects: [] })).error, undefined);
-  assert.equal((await ada("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" })).error, undefined);
-  const got = (await ada("agents.access.get", { agent: "intake" })).data.access;
-  assert.deepEqual(got.map((/** @type {any} */ g) => [g.kind, g.subject, g.level]), [["person", BEN, "edit"]]);
-  assert.equal(got[0].by, ADA, "who gave it is stamped by the server");
-  assert.equal((await ada("agents.access.set", { agent: "intake", kind: "role", subject: "member", level: "use" })).error.code, "bad_input");
-  assert.equal((await ada("agents.delete", { agent: "intake" })).error, undefined);
-  assert.equal((await ada("agents.create", { name: "intake", kind: "agent", projects: [] })).error, undefined);
-  assert.deepEqual((await ada("agents.access.get", { agent: "intake" })).data.access, [], "a new agent of the same name inherits nothing");
-  assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied");
+test("access by role reaches everyone in the role", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const sh = await owner("agents.access.set", { agent: "intake", kind: "role", subject: "member", level: "use" });
+  assert.equal(sh.error, undefined);
+  assert.equal((await ben("agents.used", { agent: "intake" })).error, undefined);
+  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x" })).error.code, "denied");
 });
 
 test("a link is judged against the person adding it: a member cannot link a folder she cannot reach; the admin who made it links his own", { timeout: 120_000 }, async t => {

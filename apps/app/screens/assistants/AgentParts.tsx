@@ -230,7 +230,8 @@ export function Sharing({ name }: { name: string }) {
   if (!q.data) return null;
   const { access, people, roles } = q.data;
   const set = (kind: "person" | "role", subject: string, level: "use" | "edit" | null) => config.setAccess(name, kind, subject, level).then(q.reload).catch((e) => showToast(say(e)));
-  const open = [...people.filter((p) => !access.some((a) => a.kind === "person" && a.subject === p.id)).map((p) => ({ kind: "person" as const, id: p.id, title: p.name, sub: p.role ? `Person, ${p.role}` : "Person" })) ];
+  const open = [...people.filter((p) => !access.some((a) => a.kind === "person" && a.subject === p.id)).map((p) => ({ kind: "person" as const, id: p.id, title: p.name, sub: p.role ? `Person, ${p.role}` : "Person" })),
+    ...roles.filter((r) => !access.some((a) => a.kind === "role" && a.subject === r.id)).map((r) => ({ kind: "role" as const, id: r.id, title: r.name, sub: "Everyone with this role" }))];
   return (
     <>
       <Sec title="Who can use it">
@@ -246,10 +247,10 @@ export function Sharing({ name }: { name: string }) {
               );
             })}
           </Card>
-        ) : <Card><Text tone="muted">{`Only you, the owner and the admins can use ${name}. Add people.`}</Text></Card>}
-        <View className="flex-row"><Button size="sm" kind="secondary" label="Add people" onPress={() => setAdding(true)} /></View>
+        ) : <Card><Text tone="muted">{`Only you, the owner and the admins can use ${name}. Add people or a role.`}</Text></Card>}
+        <View className="flex-row"><Button size="sm" kind="secondary" label="Add people or a role" onPress={() => setAdding(true)} /></View>
       </Sec>
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Add people">
+      <Sheet open={adding} onClose={() => setAdding(false)} title="Add people or a role">
         {open.length ? <Card flush>{open.map((o, i) => <View key={`${o.kind}:${o.id}`}>{i ? <Divider /> : null}<Row title={o.title} sub={o.sub} onPress={() => { setAdding(false); void set(o.kind, o.id, "use"); }} /></View>)}</Card> : <Text tone="muted">Everyone is already on the list.</Text>}
       </Sheet>
     </>

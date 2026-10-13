@@ -5,7 +5,6 @@
 // drift from the roster. Reconciling writes only a difference, so the events it causes end it.
 
 import { TAGS } from "../../records/core-types.js";
-import { agentDir } from "../../lib/files/layout.js";
 
 /** The Agent record type, declared in the module's manifest too (needs.kernel.types), which is where the Space gets it. */
 export const AGENT = Object.freeze({
@@ -25,10 +24,10 @@ export const AGENT = Object.freeze({
 });
 
 /** What a roster row looks like as a record. @param {any} a a shaped agent */
-export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a.owner || "", builtin: Boolean(a.builtin), model: a.model || "", folder: a.uid ? agentDir(String(a.uid)) : "", projects: a.projects === "*" ? "*" : Array.isArray(a.projects) ? a.projects.join(", ") : "", users: Array.isArray(a.users) ? a.users.join(", ") : "", tags: a.tags || "" });
+export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a.owner || "", builtin: Boolean(a.builtin), model: a.model || "", folder: a.uid ? `agents/${a.uid}` : "", projects: a.projects === "*" ? "*" : Array.isArray(a.projects) ? a.projects.join(", ") : "", users: Array.isArray(a.users) ? a.users.join(", ") : "", tags: a.tags || "" });
 
 /**
- * @param {{ kernel: () => any, rows: () => any[] | Promise<any[]>, log?: (m: string) => void, retryMs?: number }} o
+ * @param {{ kernel: () => any, rows: () => any[], log?: (m: string) => void, retryMs?: number }} o
  * @returns {{ schedule: () => Promise<any>, reconcile: () => Promise<{ created: number, updated: number, removed: number }> }}
  */
 export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) {
@@ -38,7 +37,7 @@ export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) 
     const k = kernel();
     if (!k || !k.records || typeof k.serviceChain !== "function") return { created: 0, updated: 0, removed: 0 };
     const chain = k.serviceChain("agents");
-    const want = new Map((await rows()).map(a => [String(a.uid), recordOf(a)]));
+    const want = new Map(rows().map(a => [String(a.uid), recordOf(a)]));
     const have = (await k.records.query(chain, "agent", { page: { limit: 1000 } })).rows;
     const seen = new Set();
     let created = 0, updated = 0, removed = 0;
