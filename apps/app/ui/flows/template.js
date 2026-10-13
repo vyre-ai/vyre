@@ -56,14 +56,25 @@ export function insertList(d, stepId, o, opt = {}) {
   const t = d.trigger;
   const fieldsOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.fields || [];
   const labelOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.label || type;
+  const isLink = (/** @type {any} */ f) => (f.kind === "link" || f.kind === "ref") && typeof f.to === "string";
+  /** The fields of an object as items, and through each link field the fields of the object it points to, up to three links deep: {after.spouse.name}. A link to several reads as its names joined by commas. */
+  const fieldItems = (/** @type {string} */ type, /** @type {string} */ path, /** @type {string} */ words, /** @type {number} */ hops) => {
+    /** @type {Item[]} */ const rows = [];
+    for (const f of fieldsOf(type)) {
+      if (isLink(f)) {
+        if (hops < 3 && rows.length < 300) rows.push(...fieldItems(f.to, `${path}.${f.name}`, `${words}${f.label} \u00b7 `, hops + 1).map((i) => (f.many ? { ...i, note: i.note ?? "Several: the names are joined with commas" } : i)));
+      } else rows.push(item(`{${path}.${f.name}}`, `${words}${f.label}`, f));
+    }
+    return rows;
+  };
   const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}), ...(f && (f.type === "date" || f.type === "datetime") ? { date: true } : {}) });
-  if (isRecordTrigger(t) && t.type) out.push({ object: labelOf(t.type), title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
+  if (isRecordTrigger(t) && t.type) out.push({ object: labelOf(t.type), title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldItems(t.type, "after", "", 0) });
   else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, { name: f })) });
   /** @type {Item[]} */ const steps = [];
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
     if (s.kind === "create" || s.kind === "upsert") {
-      out.push({ object: labelOf(s.type), title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldsOf(s.type).map((f) => item(`{steps.${s.id}.record.data.${f.name}}`, f.label, f))] });
+      out.push({ object: labelOf(s.type), title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldItems(s.type, `steps.${s.id}.record.data`, "", 0)] });
     }
     if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null));
     if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null));

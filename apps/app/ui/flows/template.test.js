@@ -123,3 +123,19 @@ test("insert a date reads back in words and inserts the plain field for now", ()
   assert.equal(datePending(d, { engineDates: true }), null);
   assert.match(datePending({ ...d, ref: "" }), /Now/);
 });
+
+test("link fields nest the target object's fields, up to three links", () => {
+  const o = { ...O, types: [
+    { name: "contact", label: "Contact", fields: [{ name: "name", label: "Name" }, { name: "spouse", label: "Spouse", kind: "link", to: "contact" }, { name: "kids", label: "Children", kind: "link", to: "kid", many: true }] },
+    { name: "kid", label: "Kid", fields: [{ name: "name", label: "Name" }] },
+  ] };
+  const g = insertList(draft([email], { kind: "created", type: "contact" }), "mail", o);
+  const toks = g[0].items.map((i) => i.token);
+  assert.ok(toks.includes("{after.name}"));
+  assert.ok(toks.includes("{after.spouse.name}"));
+  assert.ok(toks.includes("{after.spouse.spouse.spouse.name}"));
+  assert.ok(!toks.includes("{after.spouse.spouse.spouse.spouse.name}"));
+  const kid = g[0].items.find((i) => i.token === "{after.kids.name}");
+  assert.match(kid.note, /joined with commas/);
+  assert.equal(tokenLabel("after.spouse.name", g), "Contact \u00b7 Spouse \u00b7 Name");
+});
