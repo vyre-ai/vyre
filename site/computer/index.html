@@ -1,0 +1,200 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre Computer: agents that work on real computers</title>
+  <meta name="description" content="Vyre Computer lets agents work in your Chrome, on your Mac and on computers of their own. Logins come from the Vault and every send waits at the Gate for a person.">
+  <link rel="canonical" href="https://vyre.run/computer/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/computer/">
+  <meta property="og:title" content="Vyre Computer: agents that work on real computers">
+  <meta property="og:description" content="Vyre Computer lets agents work in your Chrome, on your Mac and on computers of their own. Logins come from the Vault and every send waits at the Gate for a person.">
+  <meta property="og:image" content="https://vyre.run/og/computer.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Agents that work on real computers.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre Computer: agents that work on real computers">
+  <meta name="twitter:description" content="Vyre Computer lets agents work in your Chrome, on your Mac and on computers of their own. Logins come from the Vault and every send waits at the Gate for a person.">
+  <meta name="twitter:image" content="https://vyre.run/og/computer.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Computer","item":"https://vyre.run/computer/"}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=2c016c2186">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/computer/" aria-current="page">Computer</a><a href="/architecture/">Architecture</a><a href="/downloads/">Downloads</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-sm nav-login" href="https://web.vyre.run">Log in</a>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Computer</p>
+    <p class="eyebrow">Vyre Computer.</p>
+    <h1 class="display">Agents that work <b>on real computers.</b></h1>
+    <p class="lead">Some work has no API: a portal, a court site, a practice-management page, a desktop app. Vyre Computer is how an agent does that work. It tries the site’s own interface first, uses the screen last, signs in without seeing a password, and stops at anything that sends, posts or pays until a person approves it.</p>
+    <div class="btn-row"><a class="btn btn-fill" href="/computer/chrome/">Install Vyre for Chrome</a><a class="btn" href="/computer/architecture/">Read how it works</a></div>
+  </div>
+</section>
+
+<section class="sec" id="places" aria-labelledby="places-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">One front door.</p>
+      <h2 id="places-h" class="h2">Three places to work, <b>named the way you would say them.</b></h2>
+      <p class="lead">An agent asks for a computer by name: “on my Mac”, “on the office computer”. With no name it uses its own. If a name fits two computers or none, it asks you, with the real names as choices. It never guesses.</p>
+    </div>
+    <div class="cp-cards rv">
+      <div class="piece cp-piece"><h3>Your Chrome</h3><p>The Chrome you already have open, signed in as you. <b>Vyre for Chrome</b> reads a page in one call, fills forms, runs a whole workflow build as one batch and reads DevTools. It works in Chrome, Brave, Edge, Chromium, Arc and Dia.</p><p><a class="cp-more" href="/computer/chrome/">Install it and see what it does</a></p></div>
+      <div class="piece cp-piece"><h3>Your Mac</h3><p>Computer use on macOS reads and presses controls in any app through the accessibility tree. An agent on your server works on your Mac only for the kinds of work you allow there: <code>look</code>, <code>act</code> and <code>files</code>. Each is off until you turn it on and one command takes it back.</p><p><a class="cp-more" href="https://github.com/vyre-ai/vyre/blob/main/docs/using/computer.md">Read Vyre Computer in the docs</a></p></div>
+      <div class="piece cp-piece"><h3>An agent’s own computer</h3><p>A container on your server with a desktop, Chrome and a terminal. Each agent has its own, with its own home folder and Chrome profile. A few screens are shared: a computer runs only while someone is looking at it, and is frozen when idle.</p><p><a class="cp-more" href="https://github.com/vyre-ai/vyre/blob/main/docs/using/agents.md">Give an agent a computer</a></p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="ladder" aria-labelledby="ladder-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Interface first, screen last.</p>
+      <h2 id="ladder-h" class="h2">Five ways to do a thing, <b>cheapest and surest first.</b></h2>
+      <p class="lead">Clicking pixels is slow and breaks when a page changes. Vyre Computer climbs down a ladder instead. A failure on one rung names the next. When the same target fails twice on the page rungs, the error comes back with a fresh screenshot and the next step already named.</p>
+    </div>
+    <ol class="cp-ladder rv">
+      <li><span class="ar-n">1</span><b>The site’s own API call</b><span>Learned from the page’s traffic and called from inside the page with your login. A read tries this first.</span></li>
+      <li><span class="ar-n">2</span><b>The page’s controls</b><span>Found by role, name and identifier on a fresh look at the page, in every frame.</span></li>
+      <li><span class="ar-n">3</span><b>DevTools</b><span>DOM, console, network and scripts, to see why a control did not answer.</span></li>
+      <li><span class="ar-n">4</span><b>The accessibility tree</b><span>The control by its role and name, where the page markup is unhelpful.</span></li>
+      <li><span class="ar-n">5</span><b>The screen</b><span>A screenshot and a point in it. The last rung, for a canvas or a frame it cannot read.</span></li>
+    </ol>
+    <p class="cp-foot rv">Before any of this, <code>computer.use</code> checks for a Connection you made or an operation Vyre learned from the site. If one covers the job, the screen is not touched. Say “do it on screen” and it goes straight there.</p>
+  </div>
+</section>
+
+<section class="sec" id="plugs" aria-labelledby="plugs-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Part of Vyre, not beside it.</p>
+      <h2 id="plugs-h" class="h2">It plugs into the Vault, <b>Agents, Flows, Needs you and the Gate.</b></h2>
+    </div>
+    <div class="cp-cards cp-cards5 rv">
+      <div class="piece cp-piece"><h3>Vault</h3><p>Logins are filled without the model seeing them. Tag a login with <code>#Name</code> and the Vault types the username, password and one-time code into the agent’s computer. While it does, the agent’s hands refuse every read and input, and the fill ends on its own within a minute. Your own Chrome is never typed into by Vyre: you type, or the Vault’s fill extension does, with Touch ID.</p></div>
+      <div class="piece cp-piece"><h3>Agents</h3><p>Each agent has its own computer and can start, stop and read only that one. A named agent holds a grant from you. In Chrome it posts its plan before its first action, and you can interject, edit a step that has not started, or stop it.</p></div>
+      <div class="piece cp-piece"><h3>Flows</h3><p>Teach Vyre a site once and make it a Connection. A Flow’s “Call a service” step then runs the site’s operations with no model in the loop, and anything that is not a read is held. A court docket search can run on a schedule this way.</p></div>
+      <div class="piece cp-piece"><h3>Needs you</h3><p>A held act is a card with the site, the control and the field values it would send. When a site’s login runs out, one quiet card says “Sign in to the site again” and closes itself when the site answers.</p></div>
+      <div class="piece cp-piece"><h3>The Gate</h3><p>A send, a post, a payment or a delete made through a computer waits at the Gate. An agent can ask and cannot approve. If the page changed since the act was held, the release is refused and nothing happens.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="today" aria-labelledby="today-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">What is built.</p>
+      <h2 id="today-h" class="h2">Today, <b>in code and under test.</b></h2>
+    </div>
+    <ul class="list rv">
+      <li><b>Vyre for Chrome, two ways to run it</b><span>Standalone for Claude Code, and native inside Vyre. CI drives a real Chrome on macOS, Windows and Linux. <a href="/computer/chrome/">Install steps and capabilities</a>. <a href="/computer/architecture/">The architecture</a>.</span></li>
+      <li><b>Computer use on a Mac</b><span>Accessibility-tree control of any app. A visible indicator shows while it acts and no setting removes it. An agent’s send is held for your yes.</span></li>
+      <li><b>A computer for each agent</b><span>A container with a desktop, Chrome and a terminal. Its home folder and Chrome profile survive a restart. Limits are set per agent: <code>vyre agents computer kit limits --cpus 2 --memory 4</code>.</span></li>
+      <li><b>Take-over</b><span>A person takes the keyboard and the agent’s hands refuse input until the person gives it back. A person signing in privately also blinds the agent: its reads are refused too.</span></li>
+      <li><b>Lending a computer to a Space</b><span>A member lends a Mac or Linux computer. The Space’s sessions run there inside a sandbox (macOS seatbelt, Linux bubblewrap) whose network reaches only the AI provider and the Space, in an encrypted workspace that opens while the Space leases its key (one hour, renewed while access holds). Either side takes it back in one tap. A session moves to the server when the lid closes.</span></li>
+      <li><b>Sign-in handed to the Vault</b><span>The agent says <code>computer.use { do: "signin", login }</code> and never receives the login. When you turn egress on, chosen sites (a bank, a court) leave through your own Mac so they see your address, and fail closed if the Mac is away.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="next" aria-labelledby="next-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where it goes.</p>
+      <h2 id="next-h" class="h2">Drive any connected computer, <b>from wherever you are.</b></h2>
+      <p class="lead">The pieces for this are already in place: a Space’s server that holds the Gate and the Vault, computers that join it, a phone that approves with Face ID or a fingerprint, and a placement step that decides where work runs. The next steps extend that picture. They are direction, not dates.</p>
+    </div>
+
+    <div class="cp-pool rv" role="group" aria-label="The device pool. On the left, where you ask from: the Vyre app on a Mac or Windows PC, and a phone. In the middle, your Space’s server, which holds the Gate, Needs you, the Vault, agents and Flows, the pool of screens and placement. On the right, the computers that do the work: agent computers, your Mac, a computer you lend, and, Next, any connected device that is awake.">
+      <div class="cp-col">
+        <p class="ar-tag">Where you ask from</p>
+        <div class="ar-box"><b>The Vyre app</b><span>Mac and Windows. Ask an agent, watch its plan, approve at the Gate.</span></div>
+        <div class="ar-box"><b>Your phone</b><span>Approve with Face ID or a fingerprint. Answer Needs you.</span></div>
+        <div class="ar-box ar-dash"><span class="ar-chip">Next</span><b>Drive a computer from your phone</b><span>Ask for a screen of any awake connected device and work in it.</span></div>
+      </div>
+      <i class="cp-arrow" aria-hidden="true"></i>
+      <div class="cp-col cp-mid">
+        <p class="ar-tag ar-tag-acc">Your Space’s server</p>
+        <div class="ar-box"><b>The Gate and Needs you</b><span>Every send, post and payment waits here.</span></div>
+        <div class="ar-box"><b>Vault</b><span>Logins filled without the model seeing them.</span></div>
+        <div class="ar-box"><b>Agents and Flows</b><span>Who asks, and the steps that run with no model.</span></div>
+        <div class="ar-box"><b>Pool of screens</b><span>A few screens, shared by every agent’s computer.</span></div>
+        <div class="ar-box"><b>Placement</b><span>Decides where work runs from signed descriptions: here, the server, or wait.</span></div>
+      </div>
+      <i class="cp-arrow" aria-hidden="true"></i>
+      <div class="cp-col">
+        <p class="ar-tag">Computers that do the work</p>
+        <div class="ar-box"><b>Agent computers</b><span>One per agent: desktop, Chrome, terminal.</span></div>
+        <div class="ar-box"><b>Your Mac</b><span>Chrome and apps, by the classes you allow.</span></div>
+        <div class="ar-box"><b>A computer you lend</b><span>Runs the Space’s sessions in a sandbox.</span></div>
+        <div class="ar-box ar-dash"><span class="ar-chip">Next</span><b>Any connected device that is awake</b><span>Full Chrome and computer control, on the same grants and the same Gate.</span></div>
+        <div class="ar-box ar-dash"><span class="ar-chip">Next</span><b>Borrow from the pool</b><span>An agent uses a computer a member has lent, as well as its own.</span></div>
+      </div>
+    </div>
+    <p class="demo-tag">Solid boxes are built. Dashed boxes are Next.</p>
+
+    <ul class="list rv" style="margin-top:36px">
+      <li><b>One Chrome extension <span class="ar-chip">Next &middot; 0.5.2</span></b><span>The password and passkey extension, the Chrome control extension and the standalone server become one. It signs in like a device of yours: its own key, listed in Devices, removable there, with no typed address. Roadmap items R052-15 and R052-16 (vault unlock in the extension).</span></li>
+      <li><b>Chrome control for chats <span class="ar-chip">Next &middot; 0.5.2</span></b><span>A chat asks to use this Chrome. You allow it once and it is hands-free on that browser until you take it back. Esc or the toolbar stops everything, and sends, posts and payments stay held. No native host and no local port. R052-17.</span></li>
+      <li><b>A chat in the browser side panel <span class="ar-chip">Next &middot; 0.5.2</span></b><span>Every chat there is an ordinary Vyre thread saved in the Space, openable from the app and the phone. The agent sees the current tab only when you turn sharing on. R052-18.</span></li>
+      <li><b>Screen Share <span class="ar-chip">Next</span></b><span>Watch and take over your agents’ computers and Chrome on every device. The take-over rules it needs (keyboard ownership, a shield for private sign-in) are already built in the computers module.</span></li>
+      <li><b>Drive your computer from your phone <span class="ar-chip">Next</span></b><span>The phone is already a paired device that approves with Face ID. The direction is a request from it to a connected computer that is awake, under the same grants as an agent’s.</span></li>
+      <li><b>Agents borrow a computer from the Space’s pool <span class="ar-chip">Next</span></b><span>Placement already decides where a Space’s sessions run: on a computer lent to it, on the server, or wait. The direction is the same decision for an agent’s computer use.</span></li>
+      <li><b>A Chrome profile for each agent <span class="ar-chip">Next</span></b><span>Each agent’s own computer already has its own Chrome profile. The direction is the same inside one person’s Chrome: a tab group and profile per agent, so several agents work there at once.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec cp-conn" aria-labelledby="conn-h"><div class="wrap">
+    <div class="note rv"><p class="lbl" id="conn-h" style="margin-bottom:10px">Connects to</p>
+    <ul class="cp-links"><li><a href="/computer/chrome/"><b>Vyre for Chrome</b></a><span>Install it and see what each way can do.</span></li><li><a href="/computer/architecture/"><b>Chrome control, architecture</b></a><span>The control loop, the hold-and-approve path and the Esc stop.</span></li><li><a href="/architecture/"><b>Vyre architecture</b></a><span>The Gate, the Vault and the layers Vyre Computer plugs into.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/computer.md"><b>Vyre Computer, in the docs</b></a><span>The tool, the Mac classes and Vault sign-in.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/local-runner.md"><b>Lend a computer to a Space</b></a><span>The sandbox, the encrypted workspace and the leased key.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md"><b>Map your business onto Vyre</b></a><span>Where computer work fits in a firm’s Flows and agents.</span></li></ul></div>
+  </div></section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Give your agents <b>a computer.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/computer/chrome/">Install Vyre for Chrome</a><a class="btn" href="/start/">Set up Vyre</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>

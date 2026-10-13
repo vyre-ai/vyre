@@ -70,4 +70,19 @@
     <lastmod>2026-10-13</lastmod>
     <priority>0.5</priority>
   </url>
+  <url>
+    <loc>https://vyre.run/computer/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/computer/chrome/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/computer/architecture/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
 </urlset>

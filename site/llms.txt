@@ -22,6 +22,11 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Phone](https://vyre.run/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 - [Downloads](https://vyre.run/downloads/): every file and install line, from the latest GitHub release
 
+## Vyre Computer
+- [Vyre Computer](https://vyre.run/computer/): how agents work on real computers: your Chrome, your Mac and computers of their own, with logins from the Vault and every send held at the Gate
+- [Vyre for Chrome](https://vyre.run/computer/chrome/): what it does today and how to install it, standalone for Claude Code or native inside Vyre, plus the Vault fill extension
+- [Chrome control, architecture](https://vyre.run/computer/architecture/): how it drives a site through the site's own API calls, remembers how each site works, plans, holds sends for approval, stops on Esc and logs
+
 ## Machine-readable
 - [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full
 - [agents.md](https://vyre.run/agents.md): guidance for AI agents that install or operate Vyre

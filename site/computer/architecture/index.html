@@ -1,0 +1,256 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chrome control architecture: API-first, plans, holds, Esc</title>
+  <meta name="description" content="How Vyre for Chrome works: it calls a site’s own API from inside your page, remembers each site, plans first, holds sends for approval, stops on Esc and logs locally.">
+  <link rel="canonical" href="https://vyre.run/computer/architecture/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/computer/architecture/">
+  <meta property="og:title" content="Chrome control architecture: API-first, plans, holds, Esc">
+  <meta property="og:description" content="How Vyre for Chrome works: it calls a site’s own API from inside your page, remembers each site, plans first, holds sends for approval, stops on Esc and logs locally.">
+  <meta property="og:image" content="https://vyre.run/og/computer-architecture.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Driving a site the way the site drives itself.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Chrome control architecture: API-first, plans, holds, Esc">
+  <meta name="twitter:description" content="How Vyre for Chrome works: it calls a site’s own API from inside your page, remembers each site, plans first, holds sends for approval, stops on Esc and logs locally.">
+  <meta name="twitter:image" content="https://vyre.run/og/computer-architecture.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Computer","item":"https://vyre.run/computer/"},{"@type":"ListItem","position":3,"name":"Chrome control, architecture","item":"https://vyre.run/computer/architecture/"}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=2c016c2186">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/computer/" aria-current="page">Computer</a><a href="/architecture/">Architecture</a><a href="/downloads/">Downloads</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-sm nav-login" href="https://web.vyre.run">Log in</a>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/computer/">Computer</a> / Chrome control, architecture</p>
+    <p class="eyebrow">How Chrome control is built.</p>
+    <h1 class="display">Driving a site <b>the way the site drives itself.</b></h1>
+    <p class="lead">Vyre for Chrome does not click pixels when the site already has a call that does the job. It calls the site’s own API from inside your signed-in page, remembers how each site works, plans before it acts, holds anything that sends, and stops when you press Esc. This page explains each mechanism and names the file that holds it.</p>
+  </div>
+</section>
+
+<section class="sec" id="stack" aria-labelledby="stack-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The path of a call.</p>
+      <h2 id="stack-h" class="h2">One extension, one connector, <b>a module that decides.</b></h2>
+      <p class="lead">Decision record: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/adr/0049-deep-chrome-control.md">ADR 0049</a>. No debugging port and no browser relaunch. The extension attaches Chrome’s debugger to a tab once and keeps it.</p>
+    </div>
+    <div class="cp-stack rv" role="group" aria-label="The path of a call, top to bottom: the agent, the Chrome module with its checks, a local socket, the native host, the extension service worker with its capabilities, and the person’s tabs.">
+      <div class="ar-box"><b>The agent</b><span>A Claude Code session, or a named agent in Vyre. Calls <code>chrome_snapshot</code>, <code>chrome_api</code>, <code>chrome_act</code> and the rest.</span></div>
+      <i class="ar-down" aria-hidden="true"></i>
+      <div class="ar-door"><b>The Chrome module</b><span>Decides before anything is sent: the grant, the plan, the stop, the URL floor, redaction of the result. Source: <code>local/hands-chrome-mac/index.js</code> and <code>oversight.js</code>.</span></div>
+      <i class="ar-down" aria-hidden="true"></i>
+      <div class="ar-box"><b>A local socket, then the native host</b><span>A Unix socket (mode 0600, in a 0700 folder; a named pipe on Windows). Chrome starts the host, which relays framed JSON and reads nothing.</span></div>
+      <i class="ar-down" aria-hidden="true"></i>
+      <div class="ar-door"><b>The extension’s service worker</b><span>Re-checks the floor, runs the operation in a capability, redacts the result again. Capabilities: tabs, page, devtools, net, api, ghl, batch, ops, recipe, login.</span></div>
+      <i class="ar-down" aria-hidden="true"></i>
+      <div class="ar-box"><b>Your tabs, through Chrome’s debugger</b><span>One attach per tab, kept until the tab closes or you detach it.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="api" aria-labelledby="api-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Through the site’s own API.</p>
+      <h2 id="api-h" class="h2">A call is cheaper and surer <b>than a click.</b></h2>
+      <p class="lead">A page is a front end for calls to a back end. Vyre Computer watches those calls, learns their shapes and makes the same call itself, from inside the page, so your cookies sign it.</p>
+    </div>
+    <div class="cp-doc rv">
+      <h3>1. Capture</h3>
+      <p>The extension keeps a bounded ring buffer of the tab’s network events, from every frame including a cross-origin iframe such as GoHighLevel’s workflow builder. Reading the buffer costs no round trip.</p>
+      <h3>2. Learn</h3>
+      <p><code>chrome_api learn</code> reduces the buffered XHR and fetch traffic to a catalog: method, path template, query and body shape, the kind of credential (cookie, bearer or a named header), and a sample status. Values are never stored. Each entry records the frame it was learned in.</p>
+      <h3>3. Route</h3>
+      <p><code>chrome_api route</code> takes a hint such as “contacts” and picks the best matching GET entry. It calls it from inside the page and checks for a 2xx. The reply says which way it went:</p>
+      <pre class="cp-pre"><code>{ "route": "api", "entryId": "...", "pathTemplate": "/contacts/{id}", "status": 200, ... }
+{ "route": "ui",  "why": "no learned read matches the hint" }</code></pre>
+      <p>On <code>"ui"</code> the agent drives the page as before. A tie between two entries, a missing path parameter, a held or refused call and an answer that is not 2xx all return <code>"ui"</code> with the reason. An entry that fails twice is dropped, so a changed app stops being tried.</p>
+      <h3>4. Call</h3>
+      <p><code>chrome_api call</code> runs one entry inside the page, in the frame it was learned in unless you name another, so that frame’s cookies and auth sign it. For a bearer or header credential, the worker takes the value from the newest captured request and hands it to the page’s own fetch. It is never returned or logged, and the response comes back through the redactor.</p>
+      <h3>5. Writes ask</h3>
+      <p>A GET passes. A write passes only when the person asked for that call or a plan they approved covers it. A request that sends something as you (a message, a post, a payment, judged by method and endpoint) waits for approval whatever else is true.</p>
+    </div>
+    <div class="cp-rungs rv">
+      <p class="lbl">When the API route does not answer</p>
+      <p>Each tool has a rung: API 1, page controls 2, DevTools 3, accessibility tree 4, screenshot and point 5. A failure says which rung it was on and what the next is. When the same target fails twice on rungs 2 to 4 in one chain, the error carries a small fresh screenshot and names <code>chrome_point</code>, so the model does not have to remember the ladder.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="loop" aria-labelledby="loop-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The control loop.</p>
+      <h2 id="loop-h" class="h2">Plan, call, check, <b>remember.</b></h2>
+      <p class="lead">Each pass through the loop leaves the next one cheaper. The highlight moves through the stages as the loop runs.</p>
+    </div>
+    <ol class="ar-flow cp-seq cp-seq5 rv" aria-label="The control loop in five stages">
+      <li class="ar-node"><span class="ar-n">01</span><b>Agent</b><span>Asks in words: “list the contacts tagged estate plan.” A named agent must hold your grant.</span></li>
+      <li class="ar-node"><span class="ar-n">02</span><b>Plan</b><span>Posts its steps first. You see them, can interject, and can stop it.</span></li>
+      <li class="ar-node"><span class="ar-n">03</span><b>Site API call</b><span>The best learned read, called from inside your page with your login.</span></li>
+      <li class="ar-node"><span class="ar-n">04</span><b>Result</b><span>Checked for a 2xx and redacted. If it fails, the page is driven instead.</span></li>
+      <li class="ar-node"><span class="ar-n">05</span><b>Memory</b><span>The endpoint’s confidence moves up or down. What worked is kept for next time.</span></li>
+    </ol>
+    <div class="cp-return rv" aria-hidden="true"><span>what memory kept starts the next call</span></div>
+  </div>
+</section>
+
+<section class="sec" id="memory" aria-labelledby="memory-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">It remembers how each site works.</p>
+      <h2 id="memory-h" class="h2">Structure is kept. <b>A value never is.</b></h2>
+      <p class="lead">This is how it does long, complex tasks without relearning a site every time. Memory has three layers, from short-lived to lasting.</p>
+    </div>
+    <div class="cp-cards rv">
+      <div class="piece cp-piece"><h3>Session memory</h3><p>The API catalog and the recipes live in the browser’s session storage and are gone when it closes. A recipe is a flow that worked: <code>chrome_batch</code> with <code>saveAs</code> and every step succeeding. Only its parameters are kept. What you typed never is. <code>chrome_recipe run</code> replays it as one call with no model turn between steps.</p></div>
+      <div class="piece cp-piece"><h3>The site record</h3><p>One record per origin: the frame layout, stable controls and how to find them, the site’s API endpoints, how to tell the page is ready or that you must sign in, and the operations you taught. Learning is on by default and one setting turns it off. In Vyre you see and forget a record under Memory, Sites; each forget can be undone for a day. Standalone, a record is a file at <code>~/.vyre-chrome/sites/&lt;hash&gt;.json</code>, mode 0600.</p></div>
+      <div class="piece cp-piece"><h3>Taught operations</h3><p><code>chrome_op</code> turns a page’s request into a named, typed call. It runs the trigger twice with two different example inputs, diffs the traffic and drafts the operation. A read is kept only after it answers on an input that was not an example. Credentials are stored as references such as <code>cookie:name</code> and resolved inside the worker. A drift is repaired once and kept only if a replay answers. Each kept version can be rolled back.</p></div>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>An allowlist, failing closed</b>Only named fields survive, with types and length limits. A string shaped like a credential, a pairing code or a key, or carrying an email, makes the whole patch refused. The refusal names the field and never the text.</li>
+      <li><b>Labels need two visits</b>A control’s label is stored only when it was seen on two separate visits, outside a row or list of records, without an email, phone or long number. Otherwise the control is found by identifier or by structure.</li>
+      <li><b>Facts heal</b>A stored fact that worked moves its confidence up. One that missed moves it down and is quarantined after repeated misses, so a redesigned page stops being trusted instead of failing silently.</li>
+      <li><b>Arrival cards</b>On a revisit the extension has a small card for the origin from memory, never waiting on a server, and the same record format serves Vyre Memory and the standalone files.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="long" aria-labelledby="long-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Long and complex tasks.</p>
+      <h2 id="long-h" class="h2">One round trip for a <b>whole job.</b></h2>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>Batch inside the browser</b><code>chrome_batch</code> runs its steps in the extension’s worker with no hop to the host between steps. It halts at the first failure, on stop, or on a floor refusal, and says which step.</li>
+      <li><b>Waits that match the page</b>Every step waits for spinners, drawers and toasts, and a page counts as settled when there is no spinner, a quiet DOM and a quiet network in every readable frame.</li>
+      <li><b>Stale controls retried</b>A control that went stale is looked up again inside a retry budget. Harmless popups (what’s new, tours, cookies) are closed. Anything else, such as unsaved changes or a confirm, stops the run rather than guessing.</li>
+      <li><b>Saves verified</b>A save is confirmed by a toast, a disabled Save, a URL change or a list item. One that cannot be confirmed is an error that names the step.</li>
+      <li><b>Frames are first class</b>Snapshot, act, fill and wait look in every readable frame, top first. A frame it cannot read is listed with its origin and the reason, and never left out silently.</li>
+      <li><b>One approval for many changes</b><code>chrome_approve</code> lists what a job will create, edit or publish. You approve it once. That many creates and edits then go through, and the page shows “step N of M”. A delete, a message to a contact and a payment are never covered. A publish is covered only when your own words asked for it. The plan ends after an hour or when you stop it.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="hold" aria-labelledby="hold-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Holds for sends, posts and payments.</p>
+      <h2 id="hold-h" class="h2">Nothing leaves until <b>you say yes.</b></h2>
+      <p class="lead">An agent can ask for a send and cannot approve it. The extension decides what counts as outward from the page itself, not from a label an agent chose.</p>
+    </div>
+    <ol class="ar-flow ar-flow6 cp-seq cp-seq6 rv" aria-label="The hold-and-approve path in six stages">
+      <li class="ar-node"><span class="ar-n">01</span><b>Agent acts</b><span>Presses a control, or makes an API write, that might send.</span></li>
+      <li class="ar-node"><span class="ar-n">02</span><b>Extension decides</b><span>A real submit, or a Send, Pay or Post control read from the DOM. For an API write, the method and endpoint.</span></li>
+      <li class="ar-node"><span class="ar-n">03</span><b>Held</b><span>Nothing is sent. The agent gets <code>held: true</code>, an id, the field values and a signature of the page.</span></li>
+      <li class="ar-node"><span class="ar-n">04</span><b>You see it</b><span>A card in Needs you, or a question from Claude Code, with the site, the button and the fields.</span></li>
+      <li class="ar-node"><span class="ar-n">05</span><b>You approve</b><span>Only a person’s yes releases it. The server asks you itself when your client can show a question.</span></li>
+      <li class="ar-node"><span class="ar-n">06</span><b>Released</b><span>The page is hashed again. Same signature: it runs. Changed: refused, nothing done.</span></li>
+    </ol>
+    <div class="cp-hold rv">
+      <div class="cp-card" aria-hidden="true"><p class="lbl">Needs you</p><b>kit wants to press Send on app.example.com</b><small>Control: button Send &middot; To: dana@example.com &middot; Subject: Engagement letter</small><div class="cp-btns"><span class="cp-yes">Approve</span><span>Decline</span></div></div>
+      <div class="ar-outcomes">
+        <div class="ar-out-card ar-allow"><p class="lbl">Approved, page unchanged</p><p>The act runs once, with the page’s own login.</p></div>
+        <div class="ar-out-card ar-ask"><p class="lbl">Page changed since the hold</p><p>Refused with code <code>changed</code>. Look again and ask again.</p></div>
+        <div class="ar-out-card ar-deny"><p class="lbl">Declined, or no answer</p><p>Nothing is sent. A held act with no answer yet stays held and can be asked again.</p></div>
+      </div>
+    </div>
+    <div class="cp-doc rv">
+      <h3>Four layers decide what is held</h3>
+      <p><b>The send classifier</b> (<code>extension/shared/outbound.js</code>) judges an API write by method and endpoint: messages, campaigns, invoices and payments, social posts, and any write to an endpoint whose name says it sends, posts or pays. GraphQL and RPC bodies are read for the action.</p>
+      <p><b>The write gate</b> holds every other change made with your login (a create, an edit, a delete) unless you asked for that call or a plan you approved covers it. The request function refuses a write that did not pass through it.</p>
+      <p><b>The page act</b> holds an outward control chosen from the DOM. The held result carries the form’s non-secret values and a signature of the page. The release re-hashes the page and refuses with <code>changed</code> on any difference.</p>
+      <p><b>The script guard</b> wraps a script an agent runs with <code>chrome_eval</code>. It may read with your login and cannot write. A send it tries is held, and it cannot reach a site the page does not already talk to. The browser enforces that for HTTP and HTTPS requests, navigation, WebSockets and beacons, in every frame of the tab, and CI proves it in a real Chrome.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="stop" aria-labelledby="stop-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Esc stops everything.</p>
+      <h2 id="stop-h" class="h2">You press it. <b>Only you undo it.</b></h2>
+      <p class="lead">While an agent works in a tab, a dark pill in that tab says “Step 12 of 20”, the step in plain words, and “Esc to stop”.</p>
+    </div>
+    <div class="cp-pillwrap rv" aria-hidden="true"><div class="cp-pill"><span class="cp-p1"><i class="cp-live"></i>Step 3 of 8 &middot; Filling 4 fields &middot; Esc to stop</span><span class="cp-p2"><i class="cp-halt"></i>You pressed Esc. Continue from Vyre or the toolbar icon.</span></div></div>
+    <ul class="ar-facts rv">
+      <li><b>Four ways in</b>Esc in the tab, the Stop button on the pill, the shortcut Cmd+Shift+E (Ctrl+Shift+E elsewhere), and the toolbar icon. A person’s stop and an agent’s <code>chrome_stop</code> are the same state.</li>
+      <li><b>Set before anything is awaited</b>The stopped flag is set first, so the very next call is refused with code <code>stopped</code>. The extension is told in the same breath, so a running batch halts within a step. Each stop’s latency is recorded.</li>
+      <li><b>It waits for you</b>Nothing continues until the person answers and <code>chrome_resume</code> is called. A model cannot lift your stop. In the standalone version the server asks you itself before it carries on, and if the client cannot ask, the resume is refused.</li>
+      <li><b>Pause and interject</b>You can pause from the panel, which holds exactly like Esc, or tell the agent something by typing or voice. It reaches the agent on its very next call, once, so it can change course.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="floor" aria-labelledby="floor-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The floor, redaction and logs.</p>
+      <h2 id="floor-h" class="h2">Some pages are off limits. <b>Everything is written down.</b></h2>
+    </div>
+    <div class="cp-cards rv">
+      <div class="piece cp-piece"><h3>The URL floor</h3><p>One list, checked by the module before anything is sent and again in the worker. <b>Blind</b> pages return nothing and refuse every operation: banks, password-manager web vaults, sign-in pages, Vyre’s own surfaces, the browser’s own pages and the Web Store. <b>Hands</b>-only pages are readable and not actable. A hostname that says “bank” is caught too, and you can add your own entries.</p></div>
+      <div class="piece cp-piece"><h3>Redaction</h3><p>Cookies, tokens, session ids, CSRF tokens, API keys and passwords are removed before the model sees them. Names and lengths stay, values never. It runs in the extension on every result and again in the module. There is no argument that asks for a raw value. A page with a visible password field never runs a script, in any frame.</p></div>
+      <div class="piece cp-piece"><h3>Logs</h3><p>Every session writes one trace file on your computer only. Each call records its masked arguments, queue, run and page time, success, the failing step, retries, which selector strategy matched, the page’s host and path without the query, the rung used, and a small masked snippet of the page on failure. Typed values are logged as their length, except on GoHighLevel builder pages. Old logs are removed to stay under 100 MB. <code>vyre-chrome report</code> bundles the last sessions, masked.</p></div>
+    </div>
+    <p class="cp-foot rv">Tests: the Chrome control suite runs against a fake extension on every change, and a real-Chrome job installs the connector with its own <code>install</code> command, starts the server and drives it like Claude Code on macOS, Windows and Linux.</p>
+  </div>
+</section>
+
+<section class="sec cp-conn" aria-labelledby="conn-h"><div class="wrap">
+    <div class="note rv"><p class="lbl" id="conn-h" style="margin-bottom:10px">Connects to</p>
+    <ul class="cp-links"><li><a href="/computer/"><b>Vyre Computer</b></a><span>Chrome control is one of three places an agent can work.</span></li><li><a href="/computer/chrome/"><b>Install Vyre for Chrome</b></a><span>The two ways to run this, step by step.</span></li><li><a href="/architecture/"><b>Vyre architecture</b></a><span>The Gate and Needs you that hold a send, and the Vault.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/adr/0049-deep-chrome-control.md"><b>ADR 0049: Deep Chrome control</b></a><span>The decision record with the frame model and the speed design.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/local/hands-chrome-mac/standalone/GHL-PLAYBOOK.md"><b>GoHighLevel playbook</b></a><span>How the flows, waits and verified saves apply to one real product.</span></li></ul></div>
+  </div></section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Try it on <b>your own Chrome.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/computer/chrome/">Install Vyre for Chrome</a><a class="btn" href="/computer/">Back to Vyre Computer</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>
