@@ -23,6 +23,12 @@ test("connect once, then the client is the person: setup tools work, the person'
   const noted = /** @type {any[]} */ ([]);
   d.registry.deps.events?.on?.("mcpconn.did", (/** @type {any} */ e) => noted.push(e));
 
+  // The mark is the daemon's alone: a plain meta { viaMcp } on an in-process call changes nothing, whatever the label.
+  for (const forged of [{ viaMcp: "mcn_x" }, { viaMcp: true }, { "viaMcp": "mcn_x", person: { id: "x" } }]) {
+    const f = await d.registry.call("projects.create", { name: "Forged", home: path.join(work, "forged") }, "mcp", forged);
+    assert.ok(f.error, "a forged viaMcp is refused: " + JSON.stringify(f).slice(0, 160));
+  }
+  assert.ok(!(d.registry.listTools("mcp", { viaMcp: "mcn_x" }).some((/** @type {any} */ x) => x.name === "projects.create")), "and the listing ignores it too");
   // Not connected: a plain mcp caller has no setup tools; a forged key is refused outright.
   assert.ok((await call("projects.create", { name: "Harlow Legal", home: path.join(work, "harlow") }, { root, caller: "mcp" })).error, "a plain mcp caller has no setup tools");
   assert.equal((await call("projects.list", {}, { root, caller: "mcp", headers: { "x-vyre-mcp-id": "mcn_x", "x-vyre-mcp-key": "nope" } })).error.code, "denied");
@@ -51,6 +57,18 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.ok((types.data.types || []).some((/** @type {any} */ x) => x.name === "client"), JSON.stringify(types).slice(0, 200));
   assert.ok(!(await call("import.sessions.list", {}, as)).error, "the sessions scan is the person's");
   assert.match((await call("mcpconn.guide", {}, as)).data.guide, /import_sessions_run/);
+
+  // Bringing sessions in: filed in the project as the person (relay), and taken back when the upload cannot start (no server here), so a project never keeps sessions that did not go.
+  const tr = path.join(root, "claude", "projects", "-x-Work-harlow");
+  fs.mkdirSync(tr, { recursive: true });
+  const sid = "44444444-0000-4000-8000-000000000001";
+  fs.writeFileSync(path.join(tr, `${sid}.jsonl`), JSON.stringify({ type: "user", cwd: "/home/alex/Work/harlow-site", message: { content: "hello" } }) + "\n");
+  const sc = await call("import.sessions.list", { folders: [tr] }, as);
+  assert.ok(!sc.error && sc.data.sessions.some((/** @type {any} */ x) => x.id === sid), "the scan sees a session in a folder it is given: " + JSON.stringify(sc).slice(0, 200));
+  const run = await call("import.sessions.run", { sessions: [{ id: sid, project: "Harlow Legal" }], confirmed: true }, as);
+  assert.match(String(run.error && run.error.message), /no paired device|cannot send to a server|not a paired/i, "the relay was allowed (consent ran as the person) and the upload could not start: " + JSON.stringify(run).slice(0, 240));
+  const th = await call("projects.threads", { project: "Harlow Legal" }, as);
+  assert.ok(!JSON.stringify(th.data || "").includes(sid), "the pick was taken back: " + JSON.stringify(th).slice(0, 200));
 
   // What stays the person's: connecting and revoking themselves, their keys, pairing, the vault, a face.
   for (const [tool, input] of [["mcpconn.connect", {}], ["mcpconn.revoke", { id }], ["pluginagent.grant", {}], ["vault.provider.set", { provider: "x" }], ["presence.keys", {}]]) {

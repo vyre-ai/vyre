@@ -121,6 +121,8 @@ export const PERSON_ONLY = new Map([
   ["files.drive.link.revoke", "takes an outsider's link away: the person's own decision about who reaches a file"],
   ["wink.server.probe", "the person's own device calls out to a server it paired: a network call as the person's device"],
   ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
+  ["import.sessions.list", "reads the sessions on the person's computer, nothing else: the person's own view, which their connected AI reaches through its own door"],
+  ["import.sessions.run", "sends the person's chosen coding sessions to their Vyre: the person's own act, which their connected AI does with the person's yes"],
   ["mcpconn.connect", "needs the person's Face ID or presence: it widens an AI's authority to the person's own, the person's own yes"],
   ["mcpconn.list", "the person's own connections of their AI: the person's own view"],
   ["mcpconn.activity", "what the person's own connected AI changed: the person's own view"],

@@ -16,6 +16,7 @@ import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assistantLimit } from "./assistant-limit.js";
+import { isViaMcp, viaMcpId, VIA_MCP } from "./via-mcp.js";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH, mcpPersonMay } from "./agent-reach.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -657,6 +658,8 @@ const RELAY_ALLOWED = Object.freeze({
   term: ["threads.get"],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
+  // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
+  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
 });
 
 export class Registry {
@@ -1239,7 +1242,7 @@ export class Registry {
           const cur = currentCall();
           if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
           const origin = captureOrigin();
-          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token } });
+          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token, ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp } : {}) } });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
@@ -1520,6 +1523,8 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
+    // `meta.viaMcp` is the key's id, set here and only here, from the symbol the daemon's route put on the call after it vouched the key (core/modules/via-mcp.js). Whatever a caller put under that name is dropped.
+    { const key = viaMcpId(meta); delete meta.viaMcp; delete meta[VIA_MCP]; if (key && callerKind(caller) === "mcp") meta.viaMcp = key; }
     delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
@@ -1528,7 +1533,7 @@ export class Registry {
     // A relayed call is the RELAYED PERSON's call (reviewer-5): it is judged as that person with firstParty false everywhere, so a gate that lets first-party callers through (the switchboard chat gate) never lets
     // a relayed person into what they are not in. The module's name stays on the call for audit only (`relayedBy`).
     let relayed = false;
-    { const relay = meta[RELAY]; delete meta[RELAY]; if (relay && String(caller).startsWith("module:")) { relayed = true; meta.relayedBy = String(caller); delete meta.kernelFacts; delete meta.token; if (relay.kernelFacts) meta.kernelFacts = relay.kernelFacts; if (typeof relay.token === "string") meta.token = relay.token; } }
+    { const relay = meta[RELAY]; delete meta[RELAY]; if (relay && String(caller).startsWith("module:")) { relayed = true; meta.relayedBy = String(caller); delete meta.kernelFacts; delete meta.token; if (relay.kernelFacts) meta.kernelFacts = relay.kernelFacts; if (typeof relay.token === "string") meta.token = relay.token; if (typeof relay.viaMcp === "string" && relay.viaMcp && callerKind(String(meta.origin || "")) === "mcp") meta.viaMcp = relay.viaMcp; } }
     { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
@@ -2012,7 +2017,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((meta && meta.viaMcp && mcpPersonMay(name)) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((isViaMcp(meta) && mcpPersonMay(name)) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

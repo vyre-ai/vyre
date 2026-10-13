@@ -17,7 +17,7 @@ import { scan, notSuggested } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
 import { folderName } from "./formats/shared.js";
 import { newPrefixedId } from "../../lib/id.js";
-import { isCredentialFile } from "../runner/credfiles.js";
+import { isCredentialFile } from "../../lib/credfiles.js";
 
 /** Only the person's own surfaces read what is on their disk. "onboard" is the onboarding page on the machine's own loopback, reached only with the one-time link the person was given: its history step is this module's first screen. */
 const PEOPLE = ["cli", "local", "deck", "capsule", "onboard"];
@@ -132,9 +132,10 @@ export default {
      * importing its own sessions has the tool itself.)
      */
     const consent = async input => {
-      const r = await ctx.call("sync.consent", input);
+      // As the person who started or stopped the import (relay): sync.consent is the person's own surface, never a module's (core/sync).
+      const r = await ctx.call("sync.consent", input, { relay: true });
       if (r?.error?.code !== "no_such_tool" || ctx.config.role === "box") return r;
-      return ctx.call("link.call", { tool: "sync.consent", input });
+      return ctx.call("link.call", { tool: "sync.consent", input }, { relay: true });
     };
     /** @type {{ id: string, stop: boolean, done: Promise<void>|null }|null} */
     let current = null;
@@ -267,7 +268,7 @@ export default {
     });
     ctx.tool("import.sessions.run", {
       effect: "write",
-      description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Say plainly to the person what goes (count, size, which folders) and get their yes before calling; confirmed: true says you did.",
+      description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Say plainly to the person what goes (count, size, which folders) and get their yes before calling; confirmed: true says you did (it is your word, so do not set it without that yes).",
       input: { type: "object", required: ["sessions", "confirmed"], properties: { sessions: { type: "array", maxItems: ROWS, items: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } } }, confirmed: { type: "boolean" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
       callers: PEOPLE,
       run: async ({ sessions, confirmed, mode = "once", pace = "gentle" }, meta = {}) => {
@@ -286,9 +287,17 @@ export default {
         }
         if (unknown.length) throw Object.assign(new Error(`not in the last scan: ${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ""}; scan again`), { code: "not_found" });
         if (noProject.size) throw Object.assign(new Error(`no such project: ${[...noProject].slice(0, 5).join(", ")}; make it with projects.create first`), { code: "not_found" });
-        const r = await begin(makePlan(chosen), mode, pace);
+        // Filed first, as the person (relay), and taken back if the upload cannot start: a project never keeps sessions that did not go.
         const filed = {};
-        for (const [slug, ids] of picks) { const a = await ctx.call("projects.add-threads", { project: slug, threads: ids }); filed[slug] = a?.error ? { error: a.error.message } : ids.length; }
+        const undo = [];
+        for (const [slug, ids] of picks) {
+          const a = await ctx.call("projects.add-threads", { project: slug, threads: ids }, { relay: true });
+          if (a?.error) throw Object.assign(new Error(`could not file the sessions in ${slug}: ${a.error.message}`), { code: a.error.code || "failed" });
+          filed[slug] = ids.length; undo.push([slug, a?.data?.added || []]);
+        }
+        let r;
+        try { r = await begin(makePlan(chosen), mode, pace); }
+        catch (e) { for (const [slug, added] of undo) if (added.length) await ctx.call("projects.remove-threads", { project: slug, threads: added }, { relay: true }).catch(() => null); throw e; }
         return { ...r, filed };
       },
     });

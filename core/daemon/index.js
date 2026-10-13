@@ -22,6 +22,7 @@ import { assertDaemonHost, assertNotWindowsHome } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, ownerOverTailnet, currentCall } from "../modules/index.js";
+import { markViaMcp, isViaMcp, viaMcpId } from "../modules/via-mcp.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { devAllowedPorts } from "./dev-ports.js";
 import { build, htmlWithBuild } from "./build.js";
@@ -113,7 +114,7 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (!k || !k.id) return null;
   // The person's own connected client (core/mcpconn): the daemon vouched its key (via.viaMcp) on the plain `mcp` label, and the call is the owner's, on the chain a person's own terminal here carries (the linkBoxFacts shape), its session the connection the person made with presence. It is
   // still labelled `mcp`, so the registry holds an outward act for it like a model's, and agent-reach.mcpPersonMay names what stays out of its reach.
-  if (!policy.caller && caller === "mcp" && via && typeof via.viaMcp === "string" && via.viaMcp && !via.thread && !via.agent) return { kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false, session: `mcp:${via.viaMcp}` };
+  if (!policy.caller && caller === "mcp" && isViaMcp(via) && !via.thread && !via.agent) return { kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false, session: `mcp:${viaMcpId(via)}` };
   // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
@@ -1432,7 +1433,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const v = id && key && caller === "mcp" ? await registry.call("mcpconn.vouch", { id, key }, "module:vyred").catch(() => null) : null;
     if (!(v && v.data && v.data.ok === true)) return send(res, 403, { error: { code: "denied", message: "this connection is not one the person made, or it was revoked: connect again with vyre mcp connect" } });
     mcpConn = id;
-    Object.assign(via, { viaMcp: id });
+    markViaMcp(via, id);
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.

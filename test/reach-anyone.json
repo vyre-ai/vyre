@@ -1057,6 +1057,10 @@
    "module": "planner",
    "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
   },
+  "mcpconn.guide": {
+   "module": "mcpconn",
+   "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
+  },
   "pluginagent.ask": {
    "module": "pluginagent",
    "reason": "callers list in code (the person's surfaces, mcp and harness); it only files one pending request for the person to approve with presence (pluginagent.grant), one at a time, and changes nothing else"

@@ -218,7 +218,8 @@ export default {
       const v = b ? vouch(b.id, b.key) : { ok: false };
       if (!b || !v.ok) {
         misses.set(q.source, [...recent, t]);
-        if (b) stopChild(b.id);
+        // Only a revoked key's server is stopped here: a wrong secret for a known id must not let a stranger kill a live key's server.
+        if (b) { const row = /** @type {any} */ (db.prepare("SELECT revoked_at FROM mcpconn_connections WHERE id = ?").get(b.id)); if (row && row.revoked_at != null) stopChild(b.id); }
         return { status: 401, body: { error: "this key is not valid or was revoked" }, headers: { "www-authenticate": 'Bearer realm="vyre"' } };
       }
       let msg; try { msg = JSON.parse(q.body); } catch { return { status: 400, body: { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } } }; }
