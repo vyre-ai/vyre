@@ -8,6 +8,7 @@ import { boxOrigin } from "../../src/api/box";
 import { bytesOf, textOf } from "./real-model";
 import { children, itemLine, linkAddress, linkAsk, linkRefusal, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
 import { linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
+import { Breadcrumb } from "./Breadcrumb";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
 
@@ -71,20 +72,17 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
   const parts = prefix.split("/").filter(Boolean);
   return (
     <>
-      <View className="flex-row flex-wrap items-center gap-s1">
-        <Button kind="ghost" size="sm" label="Drive" onPress={() => setPrefix("")} />
-        {parts.map((p, i) => <View key={p + i} className="flex-row items-center"><Text tone="faint">/</Text><Button kind="ghost" size="sm" label={p} onPress={() => setPrefix(parts.slice(0, i + 1).join("/"))} /></View>)}
-        {Platform.OS === "web" ? <View className="ml-auto"><Button size="sm" kind="primary" icon="plus" label={busy ? "Sending" : "Add a file"} onPress={busy ? () => {} : pick} /></View> : null}
-      </View>
-      {err ? <Card flush><EmptyState title="The space's Drive did not open" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      <Breadcrumb crumbs={[{ name: "Files", key: "" }, ...parts.map((p, i) => ({ name: p, key: parts.slice(0, i + 1).join("/") }))]} onPress={setPrefix}
+        end={Platform.OS === "web" ? <Button size="sm" kind="primary" icon="plus" label={busy ? "Sending" : "Add a file"} onPress={busy ? () => {} : pick} /> : undefined} />
+      {err ? <Card flush><EmptyState title="The space's Files did not open" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && items === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
       {!err && items ? (
         <Card flush>
           {items.length ? items.map((i, k) => (
             <View key={i.path}>{k ? <Divider inset={60} /> : null}
-              <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} end={spaceTag ? <SpaceTag text={spaceTag} /> : undefined} onPress={i.locked ? undefined : () => show(i)} /></View>
+              <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "folder" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} end={spaceTag ? <SpaceTag text={spaceTag} /> : undefined} onPress={i.locked ? undefined : () => show(i)} /></View>
             </View>
-          )) : <EmptyState title={prefix ? "Nothing here" : "The Drive is empty"} body={prefix ? "This folder has no file you may read." : "Files you add, or that assistants save, appear here with their versions."} />}
+          )) : <EmptyState title={prefix ? "Nothing here" : "There are no files yet"} body={prefix ? "This folder has no file you may read." : "Files you add, or that assistants save, appear here with their versions."} />}
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}
         </Card>
       ) : null}
@@ -93,7 +91,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
           <View className="gap-s3">
             {open.text != null ? <Text mono size="caption" selectable>{open.text}</Text> : null}
             {asking ? (
-              <AskCard lead={<IconTile name="share" tone="accent" />} {...linkAsk(open.item.name)}
+              <AskCard lead={<IconTile name="share" />} {...linkAsk(open.item.name)}
                 actions={[{ label: busy ? "Making it" : "Make the link", kind: "primary", onPress: busy ? () => {} : share }, { label: "Not now", kind: "ghost", onPress: () => setAsking(false) }]} />
             ) : <View className="self-start"><Button kind="ghost" size="sm" icon="share" label="Share a link" onPress={() => setAsking(true)} /></View>}
             <Text size="caption" strong tone="label">Versions</Text>

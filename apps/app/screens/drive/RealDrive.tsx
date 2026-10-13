@@ -7,6 +7,7 @@ import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
 import { SpaceDrive } from "./SpaceDrive";
+import { Breadcrumb } from "./Breadcrumb";
 import { SharedLinks } from "./SharedLinks";
 import { LinkedFiles } from "./LinkedFiles";
 import { SharedArtifacts } from "../chat-tools";
@@ -57,22 +58,15 @@ export default function RealDrive() {
         </View>
       ) : null}
       {share ? (
-        <View className="flex-row flex-wrap items-center gap-s1">
-          {crumbs(share, path).map((c, i, all) => (
-            <View key={c.path} className="flex-row items-center">
-              <Button kind="ghost" size="sm" label={c.name} disabled={i === all.length - 1} onPress={() => setPath(c.path)} />
-              {i < all.length - 1 ? <Text tone="faint">/</Text> : null}
-            </View>
-          ))}
-        </View>
+        <Breadcrumb crumbs={crumbs(share, path).map((c) => ({ name: c.name, key: c.path }))} onPress={setPath} />
       ) : null}
-      {err ? <Card flush><ErrorState title="Drive did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Files did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
       {!err && share && list === null ? <LoadingState rows={3} /> : null}
       {!err && list ? (
         <Card flush>
           {entries.length ? entries.map((e, i) => (
             <View key={e.name}>{i ? <Divider inset={60} /> : null}
-              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} end={driveTag ? <SpaceTag text={driveTag} /> : undefined} onPress={() => show(e)} />
+              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "folder" : "file"} />} title={e.name} sub={entryLine(e)} end={driveTag ? <SpaceTag text={driveTag} /> : undefined} onPress={() => show(e)} />
             </View>
           )) : <EmptyState title="Nothing here yet" body="This folder is empty, or everything in it is kept away from the app." />}
           {list.next != null ? <View className="p-s3"><Button kind="ghost" size="sm" label={`Show more (${entries.length} of ${list.total})`} onPress={() => share && load(share, path, list.next)} /></View> : null}
@@ -93,7 +87,7 @@ export default function RealDrive() {
   ) : <LoadingState rows={3} />;
 
   return (
-    <Frame title="Files" sub="The space's files with their versions, linked folders, and the box's own folders.">
+    <Frame title="Files" sub="The space's files with their versions, linked folders, and your server's folders.">
       <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
       {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}

@@ -8,10 +8,10 @@ import assert from "node:assert/strict";
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const NOW = 1_800_000_000_000;
 
-test("the roots are Space, Shared, Linked (with a child per linked folder), Box folders and On your computer", { skip: !strip }, async () => {
+test("the roots are Space, Shared, Linked (with a child per linked folder), On your server and On your computer", { skip: !strip }, async () => {
   const m = await import("./files-model.ts");
   const roots = m.rootsOf({ linked: [{ id: "l1", name: "Client-docs" }], shares: [{ name: "Documents" }] });
-  assert.deepEqual(roots.map((r) => [r.id, r.label]), [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "Box folders"], ["computer", "On your computer"]]);
+  assert.deepEqual(roots.map((r) => [r.id, r.label]), [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "On your server"], ["computer", "On your computer"]]);
   assert.deepEqual(roots[2].kids.map((k) => [k.id, k.label]), [["linked:l1", "Client-docs"]]);
   assert.deepEqual(roots[3].kids.map((k) => k.label), ["Documents"]);
   assert.equal(roots[0].kids, undefined, "the Space's folders load when it is opened");
@@ -72,7 +72,7 @@ test("breadcrumbs name the root, then each step, and tapping one goes there", { 
   const c = m.crumbsFor({ root: "linked", link: "l1", path: "a/b" }, { linked: { l1: "Docs" } });
   assert.deepEqual(c.map((x) => [x.name, x.place]), [["Linked", "linked"], ["Docs", "linked:l1"], ["a", "linked:l1:a"], ["b", "linked:l1:a/b"]]);
   assert.deepEqual(m.crumbsFor({ root: "space", path: "Clients/A" }, {}).map((x) => x.name), ["Space", "Clients", "A"]);
-  assert.deepEqual(m.crumbsFor({ root: "box", share: "Documents", path: "/x" }, {}).map((x) => x.name), ["Box folders", "Documents", "x"]);
+  assert.deepEqual(m.crumbsFor({ root: "box", share: "Documents", path: "/x" }, {}).map((x) => x.name), ["On your server", "Documents", "x"]);
 });
 
 test("what a source lets you do is stated, so the bar offers only real things", { skip: !strip }, async () => {

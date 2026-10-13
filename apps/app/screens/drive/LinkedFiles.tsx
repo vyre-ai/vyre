@@ -8,6 +8,7 @@ import { bytesOf, textOf } from "./real-model";
 import { toBase64 } from "./space-model";
 import { crumbsOf, editable, linkedRefusal, nameProblem, pathIn, providerLabel, suggestName, syncLine, type LinkedEntry, type LinkedFolder, type LinkedVersion, type PickFolder, type ProviderInfo, type SyncState } from "./linked-model";
 import { linked } from "./real";
+import { Breadcrumb } from "./Breadcrumb";
 
 const say = (e: unknown) => linkedRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 const utf8 = (s: string) => new TextEncoder().encode(s);
@@ -70,18 +71,15 @@ export function LinkedFiles() {
     const parts = crumbsOf(at.link.name, at.path);
     return (
       <>
-        <View className="flex-row flex-wrap items-center gap-s1">
-          <Button kind="ghost" size="sm" label="Linked" onPress={() => setAt(null)} />
-          {parts.map((c, i) => <View key={c.path + i} className="flex-row items-center"><Text tone="faint">/</Text><Button kind="ghost" size="sm" label={c.name} disabled={i === parts.length - 1} onPress={() => browse(at.link, c.path)} /></View>)}
-          <View className="ml-auto"><Button kind="ghost" size="sm" label="Sync now" onPress={() => syncNow(at.link)} /></View>
-        </View>
+        <Breadcrumb crumbs={[{ name: "Linked", key: "\u0000" }, ...parts.map((c) => ({ name: c.name, key: c.path }))]} onPress={(k) => (k === "\u0000" ? setAt(null) : browse(at.link, k))}
+          end={<Button kind="ghost" size="sm" label="Sync now" onPress={() => syncNow(at.link)} />} />
         {browseErr ? <Card flush><ErrorState title="This folder did not open" reason={browseErr} retry={() => browse(at.link, at.path)} /></Card> : null}
         {!browseErr && entries === null ? <LoadingState rows={3} /> : null}
         {!browseErr && entries ? (
           <Card flush>
             {entries.length ? entries.map((e, i) => (
               <View key={e.path}>{i ? <Divider inset={60} /> : null}
-                <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={e.dir ? "" : [`${Math.max(1, Math.round(e.size / 1024))} KB`].join("")} onPress={() => show(e)} />
+                <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "folder" : "file"} />} title={e.name} sub={e.dir ? "" : [`${Math.max(1, Math.round(e.size / 1024))} KB`].join("")} onPress={() => show(e)} />
               </View>
             )) : <EmptyState title="Nothing here" body="This folder is empty, or your account at the source cannot see anything in it." />}
           </Card>
@@ -127,7 +125,7 @@ export function LinkedFiles() {
         <Card flush>
           {folders.length ? folders.map((f, i) => (
             <View key={f.id}>{i ? <Divider inset={60} /> : null}
-              <Row dense chevron lead={<IconTile name="drive" tone="accent" />} title={f.name} sub={`${providerLabel(providers, f.provider)}. ${syncLine(syncs[f.id] ?? null, now)}`} onPress={() => browse(f, "")}
+              <Row dense chevron lead={<IconTile name="folder" />} title={f.name} sub={`${providerLabel(providers, f.provider)}. ${syncLine(syncs[f.id] ?? null, now)}`} onPress={() => browse(f, "")}
                 end={<View className="flex-row items-center"><Button kind="ghost" size="sm" label="Sync" onPress={() => syncNow(f)} /><Button kind="holdText" size="sm" label="Unlink" onPress={() => unlink(f)} /></View>} />
             </View>
           )) : <EmptyState title="No linked folders" body={providers.length ? "Link a folder from Google Drive and it shows up here, live. You see inside it only what your own account allows." : "No source is set up on this box yet."} />}
@@ -170,13 +168,10 @@ function LinkSheet({ open, providers, taken, onClose, onLinked }: { open: boolea
         {providers.length > 1 ? <View className="flex-row flex-wrap gap-s2">{providers.filter((p) => p.pick).map((p) => <Chip key={p.id} selected={provider === p.id} onPress={() => { setProvider(p.id); setStack([]); }}>{p.label}</Chip>)}</View> : null}
         {!provider ? <Text tone="muted">No source is set up on this box yet.</Text> : (
           <>
-            <View className="flex-row flex-wrap items-center gap-s1">
-              <Button kind="ghost" size="sm" label={providerLabel(providers, provider)} onPress={() => setStack([])} />
-              {stack.map((s, i) => <View key={s.id} className="flex-row items-center"><Text tone="faint">/</Text><Button kind="ghost" size="sm" label={s.name} onPress={() => setStack(stack.slice(0, i + 1))} /></View>)}
-            </View>
+            <Breadcrumb crumbs={[{ name: providerLabel(providers, provider), key: "-1" }, ...stack.map((x, k) => ({ name: x.name, key: String(k) }))]} onPress={(k) => setStack(Number(k) < 0 ? [] : stack.slice(0, Number(k) + 1))} />
             {kids === null ? <LoadingState rows={3} /> : (
               <Card flush>
-                {kids.length ? kids.map((k, i) => <View key={k.id}>{i ? <Divider inset={60} /> : null}<Row dense chevron lead={<IconTile name="drive" />} title={k.name} onPress={() => setStack([...stack, k])} /></View>) : <EmptyState title="No folders here" body={here ? "This folder has no folders inside it. You can link it as it is." : "Your account has no folders at the top of this source."} />}
+                {kids.length ? kids.map((k, i) => <View key={k.id}>{i ? <Divider inset={60} /> : null}<Row dense chevron lead={<IconTile name="folder" />} title={k.name} onPress={() => setStack([...stack, k])} /></View>) : <EmptyState title="No folders here" body={here ? "This folder has no folders inside it. You can link it as it is." : "Your account has no folders at the top of this source."} />}
               </Card>
             )}
             {here && !asking ? (
@@ -186,7 +181,7 @@ function LinkSheet({ open, providers, taken, onClose, onLinked }: { open: boolea
               </View>
             ) : null}
             {here && asking ? (
-              <AskCard lead={<IconTile name="drive" tone="accent" />} title={`Link ${here.name} as Linked/${name}?`}
+              <AskCard lead={<IconTile name="folder" />} title={`Link ${here.name} as Linked/${name}?`}
                 why="The folder shows live in this Space's Files. Everyone sees that it is linked and its name. What each person sees inside is what their own account allows. Nothing is copied, and unlinking never touches the source."
                 actions={[{ label: busy ? "Linking" : "Link the folder", kind: "primary", onPress: busy ? () => {} : make }, { label: "Not now", kind: "ghost", onPress: () => setAsking(false) }]} />
             ) : null}

@@ -11,7 +11,7 @@ export type Kind = "folder" | "pdf" | "doc" | "sheet" | "image" | "video" | "aud
 export type FileRow = { key: string; place: string; root: Root; name: string; dir: boolean; kind: Kind; size: number; modified: number; by?: string; ver?: number; rev?: string | null; link?: string; share?: string; path: string };
 export type TreeNode = { id: string; label: string; root: Root; kids?: TreeNode[] };
 
-const ROOTS: [Root, string][] = [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "Box folders"], ["computer", "On your computer"]];
+const ROOTS: [Root, string][] = [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "On your server"], ["computer", "On your computer"]];
 export const rootLabel = (r: Root): string => ROOTS.find((x) => x[0] === r)![1];
 
 /** The roots, with a child per linked folder and per box share. A root with nothing in it is still there (it says so when opened); the Space's own folders load when it is opened. */

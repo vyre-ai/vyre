@@ -48,6 +48,7 @@ export type IconName =
   | "file"
   | "filter"
   | "flows"
+  | "folder"
   | "font"
   | "globe"
   | "hand"
@@ -162,6 +163,7 @@ const SET = {
   file: [{ el: "path", d: "M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" }, { el: "path", d: "M14 3.5V8h4" }],
   filter: [{ el: "path", d: "M4 6h16M7 12h10M10 18h4" }],
   flows: [{ el: "circle", cx: 6, cy: 6, r: 2 }, { el: "circle", cx: 18, cy: 12, r: 2 }, { el: "circle", cx: 6, cy: 18, r: 2 }, { el: "path", d: "M8 6h4a2 2 0 0 1 2 2v2M8 18h4a2 2 0 0 0 2-2v-2" }],
+  folder: [{ el: "path", d: "M3.5 7.5A1.5 1.5 0 0 1 5 6h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19.2H5a1.5 1.5 0 0 1-1.5-1.5z" }],
   font: [{ el: "path", d: "M5 19L11 5l6 14M7.2 14.5h7.6" }],
   globe: [{ el: "circle", cx: 12, cy: 12, r: 8.5 }, { el: "path", d: "M3.5 12h17" }, { el: "path", d: "M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5S9.6 5.9 12 3.5z" }],
   hand: [{ el: "path", d: "M8.5 12V6.8a1.4 1.4 0 0 1 2.8 0V11" }, { el: "path", d: "M11.3 10.5V5.4a1.4 1.4 0 0 1 2.8 0v5.1" }, { el: "path", d: "M14.1 6.8a1.4 1.4 0 0 1 2.8 0V13a6.5 6.5 0 0 1-6.5 6.5H10a5.5 5.5 0 0 1-4.3-2L3.8 15a1.4 1.4 0 0 1 2.1-1.8l2.6 2.3" }],
@@ -229,7 +231,7 @@ const SET = {
 } as const satisfies Record<string, readonly IconElement[]>;
 
 /** The family's own drawings, without the old names (for the gallery). */
-export const ICON_NAMES = ["access","agents","assistants","back","bell","board","bolt","budget","cable","cal","camera","card","cfg","chart","chat","check","chev","chevron","chevron-down","chevron-left","chevron-up","clip","clock","contacts","copy","devices","download","drive","edit","error","external","eye","eye-off","face","file","filter","flows","font","globe","hand","hash","history","info","key","kits","laptop","link","list","lock","mail","memory","mention","menu","mic","minus","moon","more","now","offline","ok","pause","person","phone","pin","play","plus","projects","publish","qr","records","recovery","recovery-code","refresh","scan","sealed","search","send","server","settings","share","shield","sites","sort","space","spark","star","stop","storage","sun","task","term","trash","trip","undo","unlock","upload","users","vault","warning","wink","x"] as const;
+export const ICON_NAMES = ["access","agents","assistants","back","bell","board","bolt","budget","cable","cal","camera","card","cfg","chart","chat","check","chev","chevron","chevron-down","chevron-left","chevron-up","clip","clock","contacts","copy","devices","download","drive","edit","error","external","eye","eye-off","face","file","filter","flows","folder","font","globe","hand","hash","history","info","key","kits","laptop","link","list","lock","mail","memory","mention","menu","mic","minus","moon","more","now","offline","ok","pause","person","phone","pin","play","plus","projects","publish","qr","records","recovery","recovery-code","refresh","scan","sealed","search","send","server","settings","share","shield","sites","sort","space","spark","star","stop","storage","sun","task","term","trash","trip","undo","unlock","upload","users","vault","warning","wink","x"] as const;
 
 export const ICONS: Record<IconName, readonly IconElement[]> = {
   ...SET,

@@ -1,4 +1,4 @@
-// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked, Box folders, On your computer), the open folder in the middle as a list or a grid
+// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked, On your server, On your computer), the open folder in the middle as a list or a grid
 // (@tanstack/react-table for the columns, @tanstack/react-virtual for the rows), breadcrumbs and a search above it, multi-select with a bulk bar, and a detail panel on the right. Every read
 // and write is an existing files.* tool (files-real.ts); what a source cannot do is not offered (files-model.ts abilities). The detail panel's preview is a slot: native-mount's FileViewer
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
@@ -11,6 +11,8 @@ import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile,
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
+import { Breadcrumb } from "./Breadcrumb";
+import { MenuRow } from "../../ui/blocks/RowMenu";
 import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, rootsOf, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort, type TreeNode } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
 import { linked, spaceRead, spaceRestore, spaceVersions, statusReal, linkCreate } from "./real";
@@ -21,7 +23,7 @@ import { dayOf, spaceDriveRefusal, type Version } from "./space-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
 const ROW_H = 40, TREE_H = 560;
-const ICON: Record<string, string> = { folder: "drive", pdf: "file", doc: "file", sheet: "file", image: "file", video: "file", audio: "file", archive: "file", text: "file", file: "file" };
+const ICON: Record<string, string> = { folder: "folder", pdf: "file", doc: "file", sheet: "file", image: "file", video: "file", audio: "file", archive: "file", text: "file", file: "file" };
 const KIND_WORD: Record<string, string> = { folder: "Folder", pdf: "PDF", doc: "Document", sheet: "Spreadsheet", image: "Image", video: "Video", audio: "Audio", archive: "Archive", text: "Text", file: "File" };
 /** What the shared list header filters on: a file as a record with a name and a kind. */
 const FILE_DEF = { name: "file", fields: [{ name: "name", label: "Name", kind: "text" }, { name: "kind", label: "Kind", kind: "text" }] };
@@ -46,7 +48,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [view, setView] = useState<"list" | "grid">("list");
   const [sel, setSel] = useState<Selection>({ set: new Set(), anchor: null });
   const [focus, setFocus] = useState(-1);
-  const [dialog, setDialog] = useState<{ kind: "move" | "delete"; rows: FileRow[] } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
 
   // the roots: linked folders and box shares
   const loadRoots = useCallback(() => {
@@ -135,6 +137,17 @@ function Manager({ wide }: { wide: boolean }) {
 
   const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames }) : [];
   const bar = bulkActions(root, picked.length);
+  /** The "..." of a row: only what its source really does. */
+  const menuFor = (r: FileRow) => {
+    const a = abilities(r.root);
+    const items: { label: string; onPress: () => void; danger?: boolean }[] = [{ label: r.dir ? "Open" : "Details", onPress: () => { setSel(selectOnly(r.key)); if (r.dir) go(r.place); } }];
+    if (!r.dir && a.download && (r.root === "space" || r.root === "linked")) items.push({ label: "Download", onPress: () => { download(r).catch((e) => showToast(say(e))); } });
+    if (!r.dir && a.share && r.root === "space") items.push({ label: "Share a link", onPress: () => { linkCreate(undefined, r.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); } });
+    if (a.edit && r.root === "linked") items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
+    if (a.move) items.push({ label: "Move", onPress: () => setDialog({ kind: "move", rows: [r] }) });
+    if (a.remove && r.root === "linked") items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
+    return items;
+  };
   const runBulk = (id: string) => {
     if (id === "download") picked.filter((r) => !r.dir).forEach((r) => download(r).catch((e) => showToast(say(e))));
     else if (id === "move" || id === "delete") setDialog({ kind: id, rows: picked });
@@ -150,7 +163,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
         {shown.map((r, i) => (
           <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 12, padding: 12, border: "1px solid var(--edge, rgba(128,128,128,.25))", outline: sel.set.has(r.key) ? "2px solid var(--accent, #6b5cff)" : "none" }}>
-            <IconTile name={ICON[r.kind] as never} tone={r.dir ? "accent" : "text-2"} />
+            <IconTile name={ICON[r.kind] as never}  />
             <div style={{ marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
           </div>
@@ -173,11 +186,13 @@ function Manager({ wide }: { wide: boolean }) {
               return (
                 <div key={row.id} onClick={(e) => click(r, v.index, e)} onDoubleClick={() => open(r)}
                   style={{ position: "absolute", top: 0, left: 0, right: 0, height: ROW_H, transform: `translateY(${v.start}px)`, display: "flex", alignItems: "center", padding: "0 16px", cursor: "pointer", background: on ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", outline: v.index === focus ? "1px solid var(--accent, #6b5cff)" : "none" }}>
+                  <MenuRow items={menuFor(r)}>{(menu) => (<>
                   {row.getVisibleCells().map((c) => (
                     <div key={c.id} style={{ flex: c.column.id === "name" ? 1 : "none", width: c.column.id === "name" ? undefined : c.column.getSize(), minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {c.column.id === "name" ? flexRender(c.column.columnDef.cell, c.getContext()) : <Text size="caption" tone="muted">{String(c.getValue() ?? "")}</Text>}
                     </div>
                   ))}
+                  <div style={{ flex: "none", width: 36 }}>{menu}</div></>)}</MenuRow>
                 </div>
               );
             })}
@@ -187,7 +202,7 @@ function Manager({ wide }: { wide: boolean }) {
     );
 
   return (
-    <Frame title="Files" sub="The space's files with their versions, linked folders, and the box's own folders.">
+    <Frame title="Files" sub="The space's files with their versions, linked folders, and your server's folders.">
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
         <div style={{ width: 252, flex: "none" }}>
           <Card flush>
@@ -202,10 +217,7 @@ function Manager({ wide }: { wide: boolean }) {
           <View className="gap-s3">
             <ListHeader noun="items" shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}}
               title={
-                <View className="flex-row flex-wrap items-center gap-s1">
-                  {crumbs.map((c, i) => <View key={c.place} className="flex-row items-center">{i ? <Text tone="faint">/</Text> : null}<Button kind="ghost" size="sm" label={c.name} disabled={i === crumbs.length - 1} onPress={() => go(c.place)} /></View>)}
-                  <View className="ml-auto"><Segmented<"list" | "grid"> value={view} onChange={setView} options={[["list", "List"], ["grid", "Grid"]]} /></View>
-                </View>
+                <Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} end={<Segmented<"list" | "grid"> value={view} onChange={setView} options={[["list", "List"], ["grid", "Grid"]]} />} />
               } />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
@@ -225,7 +237,7 @@ function Manager({ wide }: { wide: boolean }) {
 }
 
 function Cell({ r }: { r: FileRow }) {
-  return <View className="flex-row items-center gap-s2"><IconTile name={ICON[r.kind] as never} tone={r.dir ? "accent" : "text-2"} /><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></View>;
+  return <View className="flex-row items-center gap-s2"><IconTile name={ICON[r.kind] as never}  /><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></View>;
 }
 
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
@@ -289,11 +301,11 @@ function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: Ret
 }
 
 /** Move (linked folders) and delete (linked folders): the person says where, or says yes. */
-function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "delete"; rows: FileRow[] } | null; onClose: () => void; onDone: () => void }) {
+function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "delete" | "rename"; rows: FileRow[] } | null; onClose: () => void; onDone: () => void }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setTo(""); setErr(""); }, [dialog]);
+  useEffect(() => { setTo(dialog?.kind === "rename" ? dialog.rows[0].name : ""); setErr(""); }, [dialog]);
   if (!dialog) return <Sheet open={false} onClose={onClose} title="" children={null} />;
   const run = () => {
     setBusy(true); setErr("");
@@ -301,18 +313,20 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
       if (r.root !== "linked" || !r.link) return Promise.reject(new Error("Only linked folders do that."));
       if (dialog.kind === "delete") return linked.remove(r.link, r.path);
       const dest = to.trim().replace(/^\/+|\/+$/g, "");
+      if (dialog.kind === "rename") { const up = r.path.includes("/") ? r.path.slice(0, r.path.lastIndexOf("/") + 1) : ""; return linked.rename(r.link, r.path, `${up}${dest}`); }
       return linked.rename(r.link, r.path, dest ? `${dest}/${r.name}` : r.name);
     })).then(onDone).catch((e) => setErr(say(e))).finally(() => setBusy(false));
   };
   const n = dialog.rows.length;
   return (
-    <Sheet open onClose={onClose} title={dialog.kind === "move" ? `Move ${n} ${n === 1 ? "item" : "items"}` : `Delete ${n} ${n === 1 ? "item" : "items"}`}>
+    <Sheet open onClose={onClose} title={dialog.kind === "rename" ? "Rename" : dialog.kind === "move" ? `Move ${n} ${n === 1 ? "item" : "items"}` : `Delete ${n} ${n === 1 ? "item" : "items"}`}>
       <View className="gap-s3">
-        {dialog.kind === "move"
+        {dialog.kind === "rename" ? <Field label="New name" value={to} onChangeText={setTo} />
+          : dialog.kind === "move"
           ? <Field label="Move into this folder" value={to} onChangeText={setTo} placeholder="Folder path inside the linked folder, empty for its top" />
           : <Text>It is deleted at the source, which keeps it in its own trash where it has one. Nothing else changes.</Text>}
         {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
-        <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : dialog.kind === "move" ? "Move" : "Delete"} onPress={busy ? () => {} : run} /><Button kind="ghost" size="sm" label="Cancel" onPress={onClose} /></View>
+        <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : dialog.kind === "rename" ? "Rename" : dialog.kind === "move" ? "Move" : "Delete"} onPress={busy ? () => {} : run} /><Button kind="ghost" size="sm" label="Cancel" onPress={onClose} /></View>
       </View>
     </Sheet>
   );
