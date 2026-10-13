@@ -403,7 +403,6 @@ export default {
         throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
       }
       const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: "device", owner: (ctx.config.onboard || {}).pe });
-      const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now() });
       // The presence key is part of what the entry key signed (the hello's `pk` is its sha256): a key that does not match is not enrolled, so nobody can attach a key of their own to a chain device's hello.
       let presenceKey = null;
       const pk = hello.presenceKey;
@@ -411,6 +410,8 @@ export default {
         const e = await ctx.call("presence.enroll", { kind: "device", name: `${name} (chain ${r.entry})`, public_key: pk.public_key, alg: pk.alg ?? -7 });
         if (e && e.data && (e.data.keyId || e.data.id)) presenceKey = String(e.data.keyId || e.data.id);
       }
+      // the presence key enrolled at admission is part of the fact: a key put on this row by any other route later is not the one the entry key signed for, and gets no session
+      const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now(), ...(presenceKey ? { presenceKey } : {}) });
       db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
         .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
@@ -1381,7 +1382,7 @@ export default {
           const st = await chains().status(String(via.identity), String(via.entry));
           if (st.state === "gone") { forget(String(input.id), "removed from your identity list"); return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false }; }
           if (st.state !== "ok") return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false };
-          now_ = { identity: String(via.identity), limited: st.limited };
+          now_ = { identity: String(via.identity), limited: st.limited, ...(via.presenceKey ? { presenceKey: String(via.presenceKey) } : {}) };
         }
         return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null, ...(now_ ? { viaChain: now_ } : {}) } : null;
       },

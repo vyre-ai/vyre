@@ -250,6 +250,8 @@ export default {
     // tool trusts nothing it is given but the device id: the relay's row says (after reading the chain again right now) that the device is still listed, which identity it is, and which presence key was enrolled for
     // it, a key the entry key signed the hash of in the hello. The grant is the same one-use grant a pairing makes, software strength, and the device opens its session with start-paired as any paired device does.
     // The role is the kernel's, read at each call; this grants no rank.
+    /** @type {Map<string, number>} */ const chainGrants = new Map();
+    /** @type {Map<string, number[]>} */ const chainByIdentity = new Map();
     ctx.tool("presence.person.chain-grant", {
       internal: true,
       description: "For the relay: the one-use grant that lets a device the person's identity chain admitted open its person session. Only the relay may ask, and only for a device whose row says it is on the chain (read again now) with a presence key bound by the entry signature.",
@@ -261,7 +263,16 @@ export default {
         const r = /** @type {any} */ (await ctx.call("relay.device.info", { id: device }).catch(() => null));
         const info = r && r.data;
         if (!info || info.removed || !info.viaChain || !info.presenceKey) throw denied("that device is not on the identity chain with a presence key");
+        // the key on the row must be the one enrolled at admission, the one the entry key signed the hash of: a key put there by any other route since is refused
+        if (info.viaChain.presenceKey !== info.presenceKey) throw denied("that device's presence key is not the one its identity signed for");
         if (people.holds(device)) return { granted: false, held: true };
+        // a device reconnecting in a loop does not mint grants without end: one per device per half minute, and a ceiling per identity per minute
+        const t = Date.now();
+        if (t - (chainGrants.get(device) || 0) < 30_000) throw denied("this device asked for a session just now; wait half a minute");
+        const ident = String(info.viaChain.identity), recent = (chainByIdentity.get(ident) || []).filter(x => t - x < 60_000);
+        if (recent.length >= 20) throw denied("too many devices asked for a session just now; wait a minute");
+        chainGrants.set(device, t); chainByIdentity.set(ident, [...recent, t]);
+        if (chainGrants.size > 2000) chainGrants.delete(chainGrants.keys().next().value);
         const row = /** @type {any} */ (ctx.store.db.prepare("SELECT public_key FROM presence_keys WHERE id = ?").get(String(info.presenceKey)));
         let jwk = null;
         try { jwk = row ? crypto.createPublicKey({ key: Buffer.from(String(row.public_key), "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }) : null; } catch { jwk = null; }
@@ -285,12 +296,18 @@ export default {
         // the enclave key counts only while it still stands on the identity's directory list (a revoked phone's entry no longer does): wink checks it, cached for 10 minutes
         const live = typeof input.esig === "string" ? await ctx.call("wink.device.enclave-live", { device }).catch(() => null) : null;
         const enclaveStands = Boolean(live && live.data && live.data.ok === true);
-        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: enclaveStands && wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
+        // a device the identity chain admitted is judged on the chain again right now (the grant lives ten minutes; a removed entry must not get a session in that window), and its session is short
+        const chainInfo = /** @type {any} */ ((await ctx.call("relay.device.info", { id: device }).catch(() => null)) || {}).data;
+        if (chainInfo && chainInfo.removed) throw refuse();
+        const s0 = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: enclaveStands && wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
+        const s = s0;
         if ("refused" in s) {
           if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
         if (s.replaced) { ctx.log(`presence: ${device} signed in again with its own key; its earlier session (${s.replaced}) is ended`); ctx.events.emit("presence.session-replaced", { device, ended: s.replaced, id: s.id }); }
+        // a chain-born session is short (an hour, renewed by reconnecting, which re-reads the chain), so removal bites even if the device's removal was missed
+        if (chainInfo && chainInfo.viaChain) { const cap = people.now() + 3_600_000; ctx.store.db.prepare("UPDATE presence_people SET max = MIN(max, ?) WHERE id = ?").run(cap, s.id); s.expires = Math.min(s.expires, cap); }
         ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
         return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
       },
