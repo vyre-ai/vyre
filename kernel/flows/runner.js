@@ -1749,8 +1749,8 @@ export class FlowRunner {
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
           const f = await this.#actor(ctx, ref, { record });
-          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_follow", ...(record ? { record } : {}), note: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n").slice(0, 400), form: { brief: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n") }, flow: run.flow }, { idem: `${idem}:follow${i}` });
-        } catch (e) { console.error("FOLLOW", e); this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
+          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n").slice(0, 400), form: { brief: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n") }, flow: run.flow }, { idem: `${idem}:follow${i}` });
+        } catch (e) { this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
       }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
