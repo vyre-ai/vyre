@@ -80,7 +80,7 @@ test("what a source lets you do is stated, so the bar offers only real things", 
   const can = (/** @type {string} */ root) => m.abilities(root);
   assert.deepEqual(can("space"), { upload: true, versions: true, move: false, remove: false, download: true, share: true, edit: false });
   assert.deepEqual(can("linked"), { upload: true, versions: true, move: true, remove: true, download: true, share: false, edit: true });
-  assert.deepEqual(can("box"), { upload: false, versions: false, move: false, remove: false, download: true, share: false, edit: false });
+  assert.deepEqual(can("box"), { upload: false, versions: false, move: false, remove: false, download: false, share: false, edit: false });
   assert.deepEqual(can("shared"), { upload: false, versions: false, move: false, remove: true, download: false, share: false, edit: false });
   assert.equal(m.bulkActions("space", 2).map((a) => a.id).join(), "download,share");
   assert.equal(m.bulkActions("linked", 2).map((a) => a.id).join(), "move,download,delete");
@@ -118,4 +118,24 @@ test("the keyboard moves the focus row and opens, selects or goes up", { skip: !
   assert.equal(m.parentPlace("linked:l1:a"), "linked:l1");
   assert.equal(m.parentPlace("linked:l1"), "linked");
   assert.equal(m.parentPlace("space"), null);
+});
+
+test("the loader lists a place from the right source, and its folders alone for the tree", { skip: !strip }, async () => {
+  const { filesLoader } = await import("./files-source.ts");
+  /** @type {any[]} */ const seen = [];
+  const L = filesLoader({
+    space: { list: async (_s, prefix) => { seen.push(["space", prefix]); return { entries: [{ path: "Clients/A/x.pdf", size: 5, ver: 2, at: 9 }, { path: "Clients/B/y.txt", size: 1 }, { path: "top.md", size: 2 }], names: {}, folders: [], more: false }; } },
+    linked: { ls: async (id, path) => { seen.push(["linked", id, path]); return { path: "Linked/Docs", entries: [{ name: "a", path: "Linked/Docs/a", dir: true, size: 0, modified: null, rev: null }, { name: "b.txt", path: "Linked/Docs/b.txt", dir: false, size: 3, modified: 1, rev: "1" }] }; } },
+    box: { list: async (share, path) => { seen.push(["box", share, path]); return { share, path, entries: [{ name: "n.txt", dir: false, kind: "text", mime: "text/plain", size: 1, mtime: "" }, { name: "sub", dir: true, kind: "", mime: "", size: 0, mtime: "" }], total: 2 }; } },
+    linkedNames: () => ({ l1: "Docs" }),
+  });
+  assert.deepEqual((await L.rows("space:Clients")).map((r) => r.name), ["A", "B"]);
+  assert.deepEqual((await L.rows("linked:l1:")).map((r) => [r.name, r.place]), [["a", "linked:l1:a"], ["b.txt", "linked:l1:b.txt"]]);
+  assert.deepEqual((await L.rows("box:Documents:/")).map((r) => r.name), ["n.txt", "sub"]);
+  assert.deepEqual(seen, [["space", "Clients"], ["linked", "l1", ""], ["box", "Documents", "/"]]);
+  assert.deepEqual((await L.dirs("linked:l1")).map((n) => [n.id, n.label]), [["linked:l1:a", "a"]]);
+  assert.deepEqual((await L.dirs("box:Documents")).map((n) => n.id), ["box:Documents:/sub"]);
+  assert.deepEqual((await L.dirs("space")).map((n) => n.id), ["space:Clients", ]);
+  await assert.rejects(L.rows("nonsense"), /place/);
+  assert.deepEqual(await L.rows("shared"), [], "shared and computer have their own panes, not rows");
 });

@@ -84,7 +84,7 @@ export function filterRows<T extends { name: string }>(rows: readonly T[], q: st
 
 /** Each step from the root to the place, with the place id tapping it opens. `names.linked` names a linked folder by id. */
 export function crumbsFor(p: Place, names: { linked?: Record<string, string> }): { name: string; place: string }[] {
-  const out = [{ name: rootLabel(p.root), place: p.root }];
+  const out: { name: string; place: string }[] = [{ name: rootLabel(p.root), place: p.root }];
   const slash = p.root === "box" && p.path.startsWith("/");
   if (p.root === "linked" && p.link) out.push({ name: names.linked?.[p.link] ?? p.link, place: `linked:${p.link}` });
   if (p.root === "box" && p.share) out.push({ name: p.share, place: `box:${p.share}` });
@@ -111,9 +111,12 @@ export type Abilities = { upload: boolean; versions: boolean; move: boolean; rem
 /** What each source offers, from the tools that exist: the Space's Drive has upload, versions, restore and links but no move or delete; a linked folder writes, renames and deletes at its source; box folders are read only. */
 export function abilities(root: string): Abilities {
   const none: Abilities = { upload: false, versions: false, move: false, remove: false, download: false, share: false, edit: false };
+  // native-mount (work/rc4-native-mount) adds files.drive.space.move, .trash, a ranged read and chunked upload. When it lands: move and remove become true here, the Space's Move and Delete
+  // call those tools in FilesManager.web.tsx (MoveDelete), and Download reads in ranges. Nothing of those tools is built here.
   if (root === "space") return { ...none, upload: true, versions: true, download: true, share: true };
   if (root === "linked") return { ...none, upload: true, versions: true, move: true, remove: true, download: true, edit: true };
-  if (root === "box") return { ...none, download: true };
+  // A box share is read in chunks (files.drive.read) and there is no whole-file download yet, so none is offered.
+  if (root === "box") return { ...none };
   if (root === "shared") return { ...none, remove: true };
   return none;
 }

@@ -23,6 +23,8 @@ export function linkedSource(call: Call) {
     write: (id: string, path: string, base64: string, baseRev?: string) => ask<{ path: string; rev: string }>("files.linked.write", { id, path, base64, ...(baseRev ? { base_rev: baseRev } : {}) }),
     /** Every file in this person's index of each linked folder, for the # picker. */
     tree: async (): Promise<{ id: string; name: string; files: { path: string }[] }[]> => (await ask<{ folders?: { id: string; name: string; files: { path: string }[] }[] }>("files.linked.tree"))?.folders ?? [],
+    rename: (id: string, path: string, to: string) => ask<{ path: string; rev: string }>("files.linked.rename", { id, path, to }),
+    remove: (id: string, path: string) => ask<{ deleted: boolean }>("files.linked.delete", { id, path }),
     versions: async (id: string, path: string): Promise<LinkedVersion[]> => (await ask<{ versions?: LinkedVersion[] }>("files.linked.versions", { id, path }))?.versions ?? [],
   };
 }
