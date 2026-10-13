@@ -184,3 +184,18 @@ test("a vault that cannot be read is never written over", async () => {
   await flow.added(pairing("b"));
   assert.equal(v.writes(), 0);
 });
+
+test("mock walk: a fresh device opens the vault and lists both servers under Found on your other devices, then connects them with no code", async () => {
+  const { FOUND, foundRows } = await import("../../screens/settings/servers-model.js");
+  const v = vault(list(5, [srv("a"), srv("b")]));
+  const { d, flow } = device(v);
+  const r = await flow.sync();
+  const rows = foundRows({ found: r.found, confirm: r.confirm, failed: [] });
+  const shown = [FOUND.title, ...rows.map((x) => `${x.name} [${x.action}]`)];
+  assert.deepEqual(shown, ["Found on your other devices", "server a [Connect]", "server b [Connect]"]);
+  const out = await flow.connectAll(r.found);
+  assert.equal(out.done.length, 2);
+  assert.deepEqual(d.saved, [KEY("a"), KEY("b")]);
+  assert.equal(v.writes(), 0);
+  assert.deepEqual(foundRows({ found: [], confirm: [], failed: out.failed }), []);
+});
