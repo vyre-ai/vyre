@@ -80,7 +80,7 @@ test("surfaces: only people reach reveal, copy, fill and sessions; Claude and mo
     assert.equal((await mcp(tool, { name: "site-login", surface: "deck", session: "x", app: { bundle: "com.apple.Safari", pid: 1 } })).error.code, "denied", tool);
     assert.equal((await cli("snoop.try", { tool, name: "site-login" })).data.code, "denied", `a module reached ${tool}`);
   }
-  assert.ok(!offered.includes("vault.session.close"), "closing a session is the person's own act");
+  assert.ok(offered.includes("vault.session.close"), "closing a session takes access away, so anyone may");
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO, "core", "vault", "module.json"), "utf8"));
   for (const tool of [...PERSON_ONLY, "vault.session.close"]) assert.ok(manifest.does.tools.map(t => (typeof t === "string" ? t : t.name)).includes(tool), tool);
   // An object in the order the Capsule lists them; "#..." names a second action on one tool.
@@ -101,8 +101,7 @@ test("surfaces: a session opens, reports, and closes; its token is in no event",
   const st = (await local("vault.session.status", { session: o.session })).data;
   assert.equal(st.unlocked, true);
   assert.equal(st.surface, "deck");
-  assert.equal((await as("mcp")("vault.session.close", { session: o.session })).error.code, "denied");
-  assert.deepEqual((await local("vault.session.close", { session: o.session })).data, { closed: true });
+  assert.deepEqual((await as("mcp")("vault.session.close", { session: o.session })).data, { closed: true });
   assert.equal((await local("vault.session.status", { session: o.session })).data.unlocked, false);
   assert.match((await local("vault.session.open", { surface: "browser" })).error.message, /surface|enum|one of/);
   const ev = d.events.since(0, { limit: 1000 });
@@ -241,8 +240,7 @@ test("surfaces: the Deck and the Capsule reveal behind presence; without a proof
   await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
   for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login" })).data.value, pw);
   const cleared = await as("mcp")("vault.clipboard.clear");
-  assert.equal(cleared.error.code, "denied", "clearing the clipboard is the person's own act");
-  assert.deepEqual((await as("local")("vault.clipboard.clear")).data, { cleared: true });
+  assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
 });
 
 test("surfaces: reveal is on in vault.caps, and with vyred's real presence check nothing is shown without a proof", async t => {

@@ -198,12 +198,11 @@ test("vault tools: the ssh agent signs for vault keys after approval; private ke
   let answer = true;
   b.handle.ssh.setApprover(async req => { asked.push(req); return answer; });
 
-  // Only a person generates a key (public half back), never into an existing name; Claude is refused.
-  assert.equal((await mcp("vault.ssh.generate", { name: "deploy", type: "ed25519" })).error.code, "denied");
-  const gen = (await cli("vault.ssh.generate", { name: "deploy", type: "ed25519" })).data.key;
+  // Claude may generate a key (public half back), never into an existing name.
+  const gen = (await mcp("vault.ssh.generate", { name: "deploy", type: "ed25519" })).data.key;
   assert.match(gen.fingerprint, /^SHA256:/);
   assert.match(gen.public, /^ssh-ed25519 \S+ deploy$/);
-  assert.match((await cli("vault.ssh.generate", { name: "deploy" })).error.message, /already exists/);
+  assert.match((await mcp("vault.ssh.generate", { name: "deploy" })).error.message, /already exists/);
   assert.equal((await mcp("vault.ssh.add", { name: "x", file: "/dev/null" })).error.code, "denied");
 
   // Add an existing key from a file vyred reads itself.

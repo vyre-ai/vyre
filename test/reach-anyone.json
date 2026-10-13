@@ -2492,6 +2492,18 @@
   "vault.me.store.remove": {
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.ssh.generate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mcp): the private key is never returned and using it needs a person's approval (vault.ssh.approve)"
+  },
+  "vault.session.close": {
+   "module": "vault",
+   "reason": "taking access away is always allowed: it closes a fill session and grants nothing (surfaces.test.js pins it offered to Claude); the session id is the guard"
+  },
+  "vault.clipboard.clear": {
+   "module": "vault",
+   "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
   }
  }
 }

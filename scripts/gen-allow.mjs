@@ -223,6 +223,12 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  "vault.ssh.generate": "77868b367@26 Sep 2026",
+  "vault.session.close": "c8d66bc29@26 Sep 2026",
+  "vault.clipboard.clear": "c8d66bc29@26 Sep 2026",
+  "comms.email": "2c1ab0efa@13 Oct 2026",
+  "comms.credentials": "2c1ab0efa@13 Oct 2026",
+  "comms.service.get": "2c1ab0efa@13 Oct 2026",
   "vault.me.store.get": "e1ef361b6@13 Oct 2026",
   "vault.me.store.put": "e1ef361b6@13 Oct 2026",
   "vault.me.store.list": "e1ef361b6@13 Oct 2026",
@@ -352,6 +358,12 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "vault.ssh.generate": "grant-judged like vault.generate: an agent makes its own ssh key and the private half never leaves the vault",
+  "vault.session.close": "closing a session only takes access away, so an agent may",
+  "vault.clipboard.clear": "clearing the clipboard only reduces exposure, so an agent may",
+  "comms.email": "sends an email through the Space's mail; an agent acts within its person's reach and the send is held at the Gate",
+  "comms.credentials": "a read of which mail credentials are set up, never a value; an agent reads within its person's reach",
+  "comms.service.get": "a read of one comms service's settings, never a secret; an agent reads within its person's reach",
   "vault.me.store.get": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
   "vault.me.store.put": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
   "vault.me.store.list": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
