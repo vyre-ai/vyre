@@ -6,12 +6,13 @@ import type { Body } from "./model";
 import * as E from "./edit";
 import { templates } from "./templates";
 import { useMembers } from "../spaces/state";
+import { TaskForm } from "./TaskForm";
 
 /**
  * The template studio's visual editor: the name, the page projects open on, the roles, and the stages with their tasks, each a field or a choice, no JSON. Every change goes through edit.ts (pure, tested);
  * Save makes a new DRAFT version, and nothing changes for a running project until someone puts it live.
  */
-export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { body: Body; onChange: (b: Body) => void; onSave: () => void; onCancel: () => void; saving: boolean }) {
+export function TemplateEditor({ body, onChange, onSave, onCancel, saving, part = "all" }: { body: Body; onChange: (b: Body) => void; onSave?: () => void; onCancel?: () => void; saving?: boolean; /** "settings": only the template-level parts (name, what its projects are called, roles, how they move, automations), for the board screen that shows the stages itself */ part?: "all" | "settings" }) {
   const [role, setRole] = useState("");
   const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
   useEffect(() => { templates.flows().then(setFlows).catch(() => setFlows([])); }, []);
@@ -56,7 +57,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
         <Segmented label="How do projects move?" value={E.stageModeOf(body)} onChange={(v: string) => onChange(E.setStageMode(body, v))} options={E.STAGE_MODES} />
         <Text tone="muted">{E.stageModeOf(body) === "ordered" ? "A project goes through the stages one after another." : E.stageModeOf(body) === "any" ? "A person moves a project to any stage; finishing the tasks does not move it." : "No stages: a project is just its tasks."}</Text>
       </Sec>
-      {(E.stageModeOf(body) === "none" ? body.stages.slice(0, 1) : body.stages).map((s, si) => (
+      {part === "settings" ? null : (E.stageModeOf(body) === "none" ? body.stages.slice(0, 1) : body.stages).map((s, si) => (
         <Sec key={si} title={E.stageModeOf(body) === "none" ? "Tasks" : `Stage ${si + 1}`}>
           <Card><View className="gap-s3 p-s3">
             {E.stageModeOf(body) === "none" ? null : <Field label="Name" value={s.name} onChangeText={(v: string) => onChange(E.renameStage(body, si, v))} />}
@@ -70,27 +71,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
             <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an assistant when a project enters it."}</Text>
             <GroupedList groups={E.groupsOf(s)} items={s.tasks || []} itemNoun="tasks" onChange={(n) => onChange(E.setStageGroups(body, si, n))} renderItems={(list) => (<View className="gap-s2">{list.map((t) => { const ti = (s.tasks || []).indexOf(t); return (
               <View key={ti} className="gap-s2 rounded-field border border-edge p-s3">
-                <Field label={`Task ${ti + 1}`} value={t.title} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { title: v }))} placeholder="Gather documents" />
-                <Field label="Details (optional)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
-                {E.groupsOf(s).length ? <Select label="Group" value={t.group || ""} options={[["", "No group"], ...E.groupsOf(s).map((g): [string, string] => [g.name, g.name])]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { group: v }))} /> : null}
-                <Select label="Assigned to (a person, a team or role such as Paralegals or Intake, the project lead, or an assistant)" value={t.doer} options={doers.some(([v]) => v === t.doer) ? doers : [...doers, [t.doer, E.assigneeWords(t.doer, people, agents)]]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { doer: v }))} />
-                <Field label="Due after (days, optional)" value={E.dueDays(t)} onChangeText={(v: string) => onChange(E.setDueDays(body, si, ti, v))} placeholder="3" />
-                {E.kindOfDoer(t.doer) === "agent" ? <Field label="Needs a person's yes before it (optional)" value={E.approvalOf(t)} onChangeText={(v: string) => onChange(E.setApproval(body, si, ti, v))} placeholder="sending anything to the client" /> : null}
-                <Select label="Approver (optional)" value={t.checker || ""} options={[["", "No approver"], ...doers.filter(([v]) => v.startsWith("role:") || v.startsWith("person:"))]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { checker: v }))} />
-                {t.checker ? <Field label="What the approver is told" value={E.noteOf(t, "approver")} onChangeText={(v: string) => onChange(E.setNote(body, si, ti, "approver", v))} multiline lines={2} /> : null}
-                <View className="gap-s1">
-                  <Text size="caption" strong tone="label">Followers (optional)</Text>
-                  <View className="flex-row flex-wrap gap-s2">{(t.followers || []).map((f) => <Button key={f} kind="ghost" size="sm" icon="x" label={E.assigneeWords(f, people, agents)} onPress={() => onChange(E.removeFollower(body, si, ti, f))} />)}</View>
-                  <Select label="Add a follower" value="" options={doers.filter(([v]) => v !== "lead" && !(t.followers || []).includes(v))} placeholder="Choose someone" onChange={(v: string) => v && onChange(E.addFollower(body, si, ti, v))} />
-                </View>
-                {(t.followers || []).length ? <Field label="What followers are told" value={E.noteOf(t, "followers")} onChangeText={(v: string) => onChange(E.setNote(body, si, ti, "followers", v))} multiline lines={2} /> : null}
-                <Select label="It ends with" value={t.output.kind} options={E.OUTPUTS} onChange={(v: string) => onChange(E.setTask(body, si, ti, { output_kind: v }))} />
-                {E.stageModeOf(body) !== "none" && E.doneWhenOf(s) === "needed" ? <View className="flex-row items-center gap-s3"><Switch on={t.required !== false} onChange={(v: boolean) => onChange(E.setTask(body, si, ti, { required: v ? undefined : false }))} label="Needed to finish" /><Text>Needed to finish</Text></View> : null}
-                <View className="flex-row gap-s2">
-                  <Button kind="ghost" size="sm" label="Up" disabled={ti === 0} onPress={() => onChange(E.moveTask(body, si, ti, -1))} />
-                  <Button kind="ghost" size="sm" label="Down" disabled={ti === (s.tasks || []).length - 1} onPress={() => onChange(E.moveTask(body, si, ti, 1))} />
-                  <Button kind="ghost" size="sm" label="Remove task" onPress={() => onChange(E.removeTask(body, si, ti))} />
-                </View>
+                <TaskForm body={body} si={si} ti={ti} onChange={onChange} people={people} agents={agents} />
               </View>
             ); })}</View>)} />
             <View className="flex-row flex-wrap gap-s2">
@@ -102,7 +83,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
           </View></Card>
         </Sec>
       ))}
-      {E.stageModeOf(body) === "none" ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Add a stage" onPress={() => onChange(E.addStage(body))} /></View>}
+      {part === "settings" || E.stageModeOf(body) === "none" ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Add a stage" onPress={() => onChange(E.addStage(body))} /></View>}
       <Sec title="Automations">
         <Text tone="muted">A Flow of this Space the template runs for each project: when it starts, or when it enters a stage. The Flow keeps its own approval and limits; only a running Flow runs.</Text>
         <Card flush>
@@ -122,7 +103,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
         </View>
       </Sec>
       {todo.length ? <View className="gap-s1">{todo.map((m) => <Text key={m} size="caption" tone="label">{m}</Text>)}</View> : null}
-      <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save as a draft version" loading={saving} disabled={todo.length > 0} onPress={onSave} /><Button kind="ghost" size="sm" label="Cancel" onPress={onCancel} /></View>
+      {part === "settings" ? null : <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save as a draft version" loading={Boolean(saving)} disabled={todo.length > 0} onPress={() => onSave?.()} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => onCancel?.()} /></View>}
     </View>
   );
 }
