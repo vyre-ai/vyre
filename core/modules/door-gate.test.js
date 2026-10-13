@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, pairDevice } from "../../test/helpers.js";
 import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { refusal } from "./door-gate.js";
 import { request } from "../daemon/client.js";
@@ -266,7 +266,9 @@ test("every label the daemon builds for a remote caller is a member's until proo
   }
   // a label the daemon proved for the owner (facts on the call) is served; the gate does not meet it
   const OWNER = d.kernel.id.owner;
-  const facts = { kind: "device", device_key_id: "d-owner", person: OWNER, path: "relay", session: "s" };
+  // the owner's device is a paired one (a real owner device always has its row; an unpaired id is refused since 13 Oct: devices enrol per Space)
+  pairDevice(d, id, OWNER);
+  const facts = { kind: "device", device_key_id: id, person: OWNER, path: "relay", session: "s" };
   for (const label of [`device:${id}`, "tailnet:owner@example.com"]) {
     const r = await d.registry.call("mail.accounts", {}, label, { kernelFacts: facts });
     assert.ok(!(r.error && r.error.message === refusal("mail.accounts")), `${label}: the owner's proven device or node is served`);
