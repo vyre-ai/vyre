@@ -5,7 +5,8 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, LoadingState, Row, Text } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
-import { useMembers } from "../spaces/state";
+import { tool } from "../../src/real/box";
+import { approverName } from "../sites/real-model";
 import { dayTimeOf } from "../../src/time/show.js";
 import { callT } from "../../src/real/call-tool";
 import { getReal, runReal, runsReal, explainReal } from "./real";
@@ -19,8 +20,11 @@ const when = (ms: number | null | undefined) => (ms ? dayTimeOf(ms) : "");
 
 export function RunPage({ flow, run }: { flow: string; run: string }) {
   const router = useRouter();
-  const members = useMembers((s) => s.members) as { id: string; name?: string }[];
-  const name = (id: string) => members.find((m) => m.id === id || m.id === id.replace(/^person:/, ""))?.name || "a person in this Space";
+  // names and the viewer come from records.actors and records.me, as Sites History does
+  const [actors, setActors] = useState<unknown>(null);
+  const [me, setMe] = useState<string | null>(null);
+  useEffect(() => { tool("records.actors", {}).then(setActors).catch(() => setActors(null)); tool<{ person?: string }>("records.me", {}).then((r) => setMe(r?.person ?? null)).catch(() => setMe(null)); }, []);
+  const name = (id: string) => approverName(actors, id.replace(/^person:/, ""), me);
   const [d, setD] = useState<{ run: any; painted: any[] | null; def: any; title: string; approver: unknown; number: number | null; explain: string } | null>(null);
   const [err, setErr] = useState("");
   const [n, setN] = useState(0);
@@ -51,14 +55,14 @@ export function RunPage({ flow, run }: { flow: string; run: string }) {
         <View className="gap-s2">
           <View className="flex-row items-center gap-s2"><Chip tone={h.tone}>{h.status}</Chip>{h.started ? <Text size="secondary" tone="muted">{h.started}</Text> : null}</View>
           {h.approver ? <Text size="secondary" tone="muted">{h.approver}</Text> : null}
-          {h.recordId ? <View className="self-start"><Button kind="ghost" size="sm" label="Open the record" onPress={() => router.push(`/u/record/${h.recordId}` as never)} /></View> : null}
+          {h.recordId ? <View className="self-start"><Button kind="ghost" size="sm" label="Open the record" onPress={() => router.push(`/u/record/${encodeURIComponent(h.recordId)}` as never)} /></View> : null}
         </View>
       </Card>
       {d.explain ? <ExplainCard text={d.explain} /> : null}
       {d.run?.cancelled?.reason ? <Banner><Text>{`This run was stopped: ${d.run.cancelled.reason}.`}</Text></Banner> : null}
       <Sec title="Step by step">
         {shrunk ? <Card><Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /></Card>
-          : d.painted ? <Card flush><RunSteps rail painted={d.painted} steps={d.run?.steps} max={retryLimits(d.def)} fmt={when} name={name} threads={threads} openThread={(t) => router.push(`/u/chats/${t}` as never)} /></Card>
+          : d.painted ? <Card flush><RunSteps rail painted={d.painted} steps={d.run?.steps} max={retryLimits(d.def)} fmt={when} name={name} threads={threads} openThread={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} /></Card>
           : <Card><EmptyState title="No steps to show" body="This run has no record of its steps." /></Card>}
         {canRetry(d.run?.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={async () => { setBusy(true); try { await retryReal(run); setN((x) => x + 1); } finally { setBusy(false); } }} /></View> : null}
       </Sec>
