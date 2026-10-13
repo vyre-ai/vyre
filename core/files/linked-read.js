@@ -30,7 +30,7 @@ export function registerLinkedIO({ t, linkOf, asLink, index, providers }) {
   /** The link, its provider and the person's index, synced once if this person has never synced it. */
   async function open(/** @type {any} */ i, /** @type {any} */ d, /** @type {string} */ who) {
     const r = linkOf(i, d), link = asLink(r), provider = providers.get(r.provider);
-    if (!provider) throw refuse(`the source ${r.provider} is not installed: link the folder again from a source you have`, "unavailable");
+    if (!provider) throw refuse(`the source ${r.provider} is not installed here. Try a folder from a source you have, or ask the owner to add it`, "unavailable");
     const ix = index();
     if (!ix.status(r.id, who)) await ix.sync(link, who);
     return { r, link, provider, ix };
