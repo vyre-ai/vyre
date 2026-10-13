@@ -26,7 +26,7 @@ export const disabled = (rules: Rule[]): Rule[] => rules.filter((r) => r.status 
 export function proposer(p: Rule): string {
   const b = p.by;
   if (!b || typeof b === "string") return "someone";
-  return b.kind === "person" ? "a member" : b.kind === "agent" ? `the assistant ${b.id}` : `${b.kind} ${b.id}`;
+  return b.kind === "person" ? "a member" : b.kind === "agent" ? `the agent ${b.id}` : `${b.kind} ${b.id}`;
 }
 
 const ACTION = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
@@ -39,7 +39,7 @@ export function parseActions(text: string): { actions: string[]; bad: string[] }
 /** The rule the kernel is sent, or the first thing wrong with the draft in words. */
 export function build(d: Draft): { rule: Omit<Rule, "id" | "view" | "status"> } | { error: string } {
   const { actions, bad } = parseActions(d.actions);
-  if (!d.binds.length) return { error: "Choose who it binds: assistants, members, or both." };
+  if (!d.binds.length) return { error: "Choose who it binds: agents, members, or both." };
   if (bad.length) return { error: `${bad[0]} is not an action name. Actions look like mail.send, in lower case.` };
   if (!actions.length) return { error: "Name at least one action, like mail.send." };
   if (!d.label.trim()) return { error: "Give the rule a short name." };

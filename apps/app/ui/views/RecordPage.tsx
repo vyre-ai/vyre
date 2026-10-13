@@ -224,7 +224,7 @@ function AddFieldSheet({ open, onClose, def, env, onAdd }: { open: boolean; onCl
   const sample = sampleFor(draft, env);
   return (
     <Sheet open={open} onClose={onClose} title={`Add a field to ${vd.plural}`}>
-      <Text tone="muted">{`Every ${def.label.toLowerCase()} gets it. The list, board, record page and the assistant's view pick it up with no new screen.`}</Text>
+      <Text tone="muted">{`Every ${def.label.toLowerCase()} gets it. The list, board, record page and the agent's view pick it up with no new screen.`}</Text>
       <Field label="Name" value={label} placeholder="For example Preferred contact time" onChangeText={setLabel} />
       <View className="gap-s1">
         <Text size="caption" strong tone="label">Kind</Text>

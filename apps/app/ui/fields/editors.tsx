@@ -95,7 +95,7 @@ export function ActorEdit({ p, env, emit }: EditProps) {
   const [v, setV] = useState(actorIdOf(p.value));
   const kernelKind = (f: string) => (f === "person" ? "person" : f === "service" ? "service" : "agent");
   const space = env.space || p.value?.actor?.space || "";
-  const opts: [string, string][] = [[NONE, "None"], ...actors.map((a) => [a.id, a.name + (a.family === "person" ? "" : a.family === "service" ? " (service)" : " (assistant)")] as [string, string])];
+  const opts: [string, string][] = [[NONE, "None"], ...actors.map((a) => [a.id, a.name + (a.family === "person" ? "" : a.family === "service" ? " (service)" : " (agent)")] as [string, string])];
   return (
     <Select label={p.definition.label} value={v} options={opts} placeholder="None" onChange={(x) => {
       setV(x);

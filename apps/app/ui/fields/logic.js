@@ -14,7 +14,7 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 
 /** The fifteen kinds a person picks from in Add a field, as [kind the kernel stores, label]. phone, email and rich text are the kernel's phones, emails and rich_text. */
 export const PICKABLE_KINDS = [
-  ["text", "Text"], ["number", "Number"], ["money", "Money"], ["date", "Date"], ["choice", "Choice"], ["stage", "Stage"], ["actor", "Person or assistant"],
+  ["text", "Text"], ["number", "Number"], ["money", "Money"], ["date", "Date"], ["choice", "Choice"], ["stage", "Stage"], ["actor", "Person or agent"],
   ["link", "Link"], ["file", "File"], ["address", "Address"], ["phones", "Phone"], ["emails", "Email"], ["rich_text", "Rich text"], ["rating", "Rating"], ["sealed", "Sealed"],
 ];
 
@@ -234,7 +234,7 @@ export const KIND_LOGIC = {
   rating: { label: "Rating", ops: [{ id: "gte", label: "at least", operand: "number" }], test: (_op, a, v) => Number(v) >= Number(a), sort: numOf },
   link: { label: "Link", ops: [{ id: "is", label: "is", operand: "option" }], test: refTest, sort: refSort },
   ref: { label: "Reference", ops: [{ id: "is", label: "is", operand: "option" }], test: refTest, sort: refSort },
-  actor: { label: "Person or assistant", ops: isOps, test: (_op, a, v) => actorIdOf(v) === actorIdOf(a), sort: (v, ctx) => (isEmpty(v) ? null : (((ctx?.actors || []).find((/** @type {any} */ x) => x.id === actorIdOf(v))?.name) || actorIdOf(v)).toLowerCase()) },
+  actor: { label: "Person or agent", ops: isOps, test: (_op, a, v) => actorIdOf(v) === actorIdOf(a), sort: (v, ctx) => (isEmpty(v) ? null : (((ctx?.actors || []).find((/** @type {any} */ x) => x.id === actorIdOf(v))?.name) || actorIdOf(v)).toLowerCase()) },
   file: { label: "File", ops: hasOps("a file"), test: hasTest, sort: lower },
   address: { label: "Address", ops: containsOps, test: textTest, sort: lower },
   phones: { label: "Phone", ops: containsOps, test: textTest, sort: lower },

@@ -65,7 +65,7 @@ export default function RealDrive() {
           ))}
         </View>
       ) : null}
-      {err ? <Card flush><ErrorState title="Drive did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Files did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
       {!err && share && list === null ? <LoadingState rows={3} /> : null}
       {!err && list ? (
         <Card flush>
