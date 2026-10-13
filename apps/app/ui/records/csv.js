@@ -98,7 +98,8 @@ export function cellText(cell, col) {
   if (cell.link?.title) return String(cell.link.title);
   if (cell.who?.name) return String(cell.who.name);
   const v = cell.v;
-  const text = (/** @type {any} */ x) => {
+  /** @param {any} x @returns {string} */
+  const text = (x) => {
     if (x === null || x === undefined) return "";
     if (x instanceof Date) return x.toISOString();
     if (typeof x === "boolean") return x ? "Yes" : "No";
