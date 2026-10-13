@@ -133,6 +133,7 @@ test("a question with answers carries them as choices; one with several question
   assert.deepEqual(ask({ id: "a2", kind: "question", questions: [{ question: "A?", options: ["x"] }, { question: "B?", options: ["y"] }] }).options, []);
   assert.deepEqual(ask({ id: "a3", kind: "question", questions: [{ question: "Many?", options: ["x", "y"], multiSelect: true }] }).options, []);
   assert.equal(ask({ id: "a4", kind: "permission", tool: "Bash" }).options, undefined);
+});
 
 const hold = (o = {}) => ({ task: "tsk_1", action: "goLive", title: "Put version 1 of northwind on the internet", deployment: "dep_abc", thread: "t2", plan: { action: "publish", goes_public: true, urls: ["https://northwind.example.com"], deployment: { id: "dep_abc", name: "northwind", version: 1 }, secrets: [], ungranted_env: [], replaces: null, hash: "h".repeat(64) },
   plan_hash: "h".repeat(64), requested_by: ["person:per_a", "agent:juno"], at: 1500, ...o });
