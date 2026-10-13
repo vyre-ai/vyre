@@ -2504,6 +2504,18 @@
   "vault.clipboard.clear": {
    "module": "vault",
    "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
+  },
+  "comms.email": {
+   "module": "comms",
+   "reason": "outward send: held at the Gate for the person's yes before anything leaves; an agent acts within its person's reach"
+  },
+  "comms.credentials": {
+   "module": "comms",
+   "reason": "read-only: which mail credentials are set up, never a value"
+  },
+  "comms.service.get": {
+   "module": "comms",
+   "reason": "read-only: one comms service's settings, never a secret"
   }
  }
 }
