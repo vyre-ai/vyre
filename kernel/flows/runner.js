@@ -1687,7 +1687,7 @@ export class FlowRunner {
     if (ctx.dry) return { dry: true };
     /** @type {any} */ let wait;
     if (s.for_ms !== undefined) wait = { kind: "time", until: now + Math.min(s.for_ms, this.limits.wait_max_ms) };
-    else if (s.until !== undefined) { const t = toMs(val(s.until)); if (t === null) throw new StepFail("bad_input", `step ${s.id}: until is not a time`); wait = { kind: "time", until: Math.min(t, now + this.limits.wait_max_ms) }; }
+    else if (s.until !== undefined) { const t = toMs(val(s.until)); if (t === null) throw new StepFail("bad_input", `step ${s.id}: until is not a time`); wait = { kind: "time", until: Math.min(t + (s.offset_ms || 0), now + this.limits.wait_max_ms) }; }
     else wait = { kind: "event", event: s.event, where: s.where, deadline: now + Math.min(s.timeout_ms, this.limits.wait_max_ms) };
     if (wait.kind === "time" && wait.until <= now) return { waited_ms: 0 };
     await this.#mark(ctx, key, { status: "waiting", wait });

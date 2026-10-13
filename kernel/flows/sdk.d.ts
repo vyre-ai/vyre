@@ -32,7 +32,7 @@ export const step: Policy & {
   remove(id: string, p: Policy & { type: string; record: Value; label?: string }): Step;
   decide(id: string, p: Policy & { if: string; then: readonly Step[]; else?: readonly Step[]; label?: string }): Step;
   repeat(id: string, p: Policy & { over: string; as: string; steps: readonly Step[]; max?: number; label?: string }): Step;
-  wait(id: string, p: ({ for_ms: number } | { until: Value } | { event: string; where?: string }) & Omit<Policy, 'timeout_ms'> & { timeout_ms?: number; on_timeout?: 'continue' | 'fail'; label?: string }): Step;
+  wait(id: string, p: ({ for_ms: number } | { until: Value; offset_ms?: number } | { event: string; where?: string }) & Omit<Policy, 'timeout_ms'> & { timeout_ms?: number; on_timeout?: 'continue' | 'fail'; label?: string }): Step;
   ask(id: string, p: Policy & { to: string; title: Value; form?: readonly { name: string; [k: string]: unknown }[]; label?: string }): Step;
   assign(id: string, p: Policy & { to: string; title: Value; output: { kind: 'fields' | 'note' | 'draft' | 'sent' | 'decision' | 'file'; target?: string | readonly string[] }; how?: 'template' | 'tailor' | 'assistant' | 'person'; template?: string; checker?: string; record?: Value; await?: boolean; label?: string }): Step;
   agent(id: string, p: Policy & { assistant: string; title: Value; instructions: Value; output: { kind: string; target?: string | readonly string[] }; record?: Value; await?: boolean; label?: string }): Step;
