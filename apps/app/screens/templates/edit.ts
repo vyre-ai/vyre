@@ -53,6 +53,29 @@ export function setStageGroups(b: Body, si: number, next: { groups: Group[]; ite
     return { ...rest, ...(next.groups.length ? { groups: next.groups } : {}), ...(tasks.length ? { tasks } : {}) } as Stage;
   }) };
 }
+/** A task dropped at a place (the index it takes in the stage it lands in), in its own stage or another. A task that changes stage leaves its group behind, since groups belong to a stage. */
+export function moveTaskTo(b: Body, from: { si: number; ti: number }, to: { si: number; ti: number }): Body {
+  const task = (b.stages[from.si]?.tasks || [])[from.ti];
+  if (!task || !b.stages[to.si]) return b;
+  if (from.si === to.si && from.ti === to.ti) return b;
+  const moved: Task = from.si === to.si ? task : (({ group: _g, ...rest }) => rest as Task)(task);
+  const withTasks = (s: Stage, tasks: Task[]): Stage => { const { tasks: _t, ...rest } = s; return (tasks.length ? { ...rest, tasks } : rest) as Stage; };
+  const stages = b.stages.map((s, i) => {
+    if (i !== from.si && i !== to.si) return s;
+    let list = (s.tasks || []);
+    if (i === from.si) list = list.filter((_, n) => n !== from.ti);
+    if (i === to.si) { const at0 = Math.min(Math.max(to.ti, 0), list.length); list = [...list.slice(0, at0), moved, ...list.slice(at0)]; }
+    return withTasks(s, list);
+  });
+  return { ...b, stages };
+}
+/** A stage dropped at a place (the index it takes). */
+export function moveStageTo(b: Body, from: number, to: number): Body {
+  if (from === to || !b.stages[from]) return b;
+  const rest = b.stages.filter((_, i) => i !== from);
+  const at0 = Math.min(Math.max(to, 0), rest.length);
+  return { ...b, stages: [...rest.slice(0, at0), b.stages[from], ...rest.slice(at0)] };
+}
 export const STAGE_MODES: [string, string][] = [["ordered", "Stages in order"], ["any", "Stages in any order"], ["none", "No stages"]];
 export const stageModeOf = (b: Body): "ordered" | "any" | "none" => b.stage_mode || "ordered";
 /** How projects move; in order is the default and is not written. */

@@ -124,7 +124,7 @@ test("chats list: each chat is one list-block row with faces, provider marks, it
   assert.equal(rows[0].subtitle, "Always here. Lumen talks to this chat too.");
   assert.deepEqual(rows[1].faces, [{ kind: "person", name: "alex" }, { kind: "assistant", name: "kit" }]);
   assert.deepEqual(rows[1].providers, ["claude", "codex"]);
-  assert.deepEqual(rows[1].accessories.map((a) => [a.label, a.tone, a.as]), [["Needs you", "accent", undefined], ["99+", "accent", undefined], ["6m", undefined, "text"]]);
+  assert.deepEqual(rows[1].accessories.map((a) => [a.label, a.tone, a.as]), [["Needs you", "accent", undefined], ["99+", "plain", undefined], ["6m", undefined, "text"]]);
   assert.match(rows[1].subtitle, /^1 waiting on you · On Dana's MacBook · alex, kit · Northwind/);
   assert.deepEqual(rows[2].accessories.map((a) => a.label), ["Failed"], "no age when it never moved");
   assert.equal(rows[3].dim, true);
