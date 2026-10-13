@@ -10,6 +10,7 @@ import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
 import { MOCK, tool } from "../../src/real/box";
+import { BUILD_SECTIONS } from "../build/sections.js";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -48,6 +49,9 @@ function FlowsLoader() {
   return null;
 }
 
+/** Build: Playbooks, Objects and Kits, one footer place instead of a section of three. Drilled into like Settings; the old routes are these sections' own. */
+const BUILD: PanelItem[] = BUILD_SECTIONS.map(([id, label, icon, href]) => ({ id, label, href, icon: icon as PanelItem["icon"] }));
+
 /** The sections of Settings: what the owner moved under it (sidebar-ia). */
 const SETTINGS: PanelItem[] = [
   { id: "spaces", label: "Space", href: "/u/spaces", icon: "space", group: "Space" },
@@ -75,6 +79,7 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
   records: { title: "Records", icon: "records", empty: "" },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
+  build: { title: "Build", icon: "kits", empty: "" },
 };
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
@@ -102,11 +107,11 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     id,
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
-      items: id === "settings" ? SETTINGS : id === "records" ? [] : loaded[id] ?? [],
+      items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
-      after: id === "records" ? <><SidebarRow label="All record types" icon="records" tone="label" onPress={() => onNavigate("/u/record-types")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
+      after: id === "records" ? <><SidebarRow label="All record types" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
     },
   };
 }

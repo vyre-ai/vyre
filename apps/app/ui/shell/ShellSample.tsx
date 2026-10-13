@@ -27,7 +27,6 @@ const NAV: NavDef = {
   ],
   groups: [
     { name: "AI", items: [{ id: "assistants", label: "Agents", icon: "assistants", href: "/u/assistants" }, { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" }] },
-    { name: "Build", items: [{ id: "templates", label: "Templates", icon: "file", href: "/u/templates" }, { id: "record-types", label: "Record types", icon: "list", href: "/u/record-types" }, { id: "kits", label: "Kits", icon: "box", href: "/u/kits" }] },
   ],
   more: [],
   bottom: [{ id: "settings", label: "Settings", icon: "settings", href: "/u/settings" }],
