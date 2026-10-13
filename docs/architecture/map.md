@@ -217,6 +217,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
 | `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
+| `escrow/` | (not described yet) |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
 | `kernel/` | The trusted core: identity, grants, the event log, records, tasks, the sealing process. See the next section. |
