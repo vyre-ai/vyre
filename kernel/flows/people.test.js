@@ -117,5 +117,5 @@ test("an agent's approval never satisfies a human gate: the outward step after i
   const [run] = await w.runner.listRuns({ flow: id });
   assert.equal(run.steps.go.status, "done", "the agent's approval finished the internal task");
   assert.equal(run.state, "waiting", JSON.stringify(run.error || run.steps.send));
-  assert.equal(run.steps.send && run.steps.send.status, "waiting", "the send waits for a person at the Gate");
+  assert.equal(run.steps["send?ask"] && run.steps["send?ask"].status, "waiting", "the send waits for a person at the Gate: " + Object.keys(run.steps).join(","));
 });
