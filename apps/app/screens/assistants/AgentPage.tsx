@@ -43,12 +43,13 @@ export default function AgentPage() {
 }
 
 function Header({ a }: { a: AgentFull }) {
+  // The page title above is the name; this line is the face and the state, once.
   return (
     <View className="flex-row items-center gap-s3">
-      <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={56} />
-      <View className="min-w-0 flex-1 gap-s1">
-        <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{a.kind === "assistant" ? <Chip>Assistant</Chip> : null}</View>
+      <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={40} />
+      <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-s2">
         <Text size="caption" tone="label">{a.status === "working" ? "Working now." : a.status === "stopped" ? "Paused." : "Idle. Nothing is running."}</Text>
+        {a.kind === "assistant" ? <Chip>Assistant</Chip> : null}
       </View>
     </View>
   );
