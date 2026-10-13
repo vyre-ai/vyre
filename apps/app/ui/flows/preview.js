@@ -1,6 +1,7 @@
 // @ts-check
+// ui/flows/expr.js is a copy of kernel/flows/expr.js (the app bundle cannot reach outside its folders); a test fails if the two differ.
 // A live preview of a formula or a condition, against made-up sample data, using the engine's own expression language (kernel/flows/expr.js), so what the preview says is what the Flow will do.
-import { FUNCTIONS, parse, run, ExprError } from "../../../../kernel/flows/expr.js";
+import { FUNCTIONS, parse, run, ExprError } from "./expr.js";
 
 /** The functions a formula may call, with a one-line example each, for the "Functions" help. */
 export const FUNCTION_HELP = /** @type {[string, string][]} */ ([
