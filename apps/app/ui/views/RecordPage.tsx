@@ -127,7 +127,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew 
               {shown}
               <View className="flex-row flex-wrap items-center gap-s2">
                 <Button size="sm" kind="ghost" icon="key" label={isEmpty(val(rec, f.name)) ? "Fill" : "Replace"} onPress={() => { setEditing(f.name); setDraft(undefined); }} />
-                <Text size="caption" tone="label">Hidden from AI; your assistant sees a placeholder</Text>
+                <Text size="caption" tone="label">Hidden from AI; your agent sees a placeholder</Text>
               </View>
             </View>
           ) : shown}
@@ -188,13 +188,13 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew 
     <View className="gap-s4">
       {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => change(sf, s)} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
-        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your assistant sees"]]} />
+        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} />
         <View className="flex-1" />
         {ai ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
       </View>
       {ai ? (
         <Banner tone="warn">
-          <Text strong>This is what an assistant sees.</Text>
+          <Text strong>This is what an agent sees.</Text>
           <Text size="caption" tone="muted">{assistantNote(sealedNow)}</Text>
         </Banner>
       ) : null}
