@@ -15,11 +15,15 @@ const slow = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const noBox = "Vyre cannot reach your vault yet, so nothing was saved. Check your connection, then try again.";
 const unreachable = (c: string | undefined) => !c || ["offline", "unreachable", "bad_response", "error", "timeout"].includes(c);
 
+/** The vault is open: read the person's space list once and connect the servers this device lacks. Never blocks or fails the sign-in; a list that cannot be read is simply not applied. */
+const opened = (): void => { void import("../../src/real/space-list-app").then((m) => m.onVaultOpened()).catch(() => {}); };
+
 /** Create the personal vault with the master password (`reset`: it is the new one after a recovery kit). Nothing but the password is sent; the Secret Key the box answers with is not read. */
 export async function createVault(password: string, reset = false): Promise<Outcome> {
   if (MOCK) { await slow(600); return { ok: true }; }
   try {
     await tool("vault.account.create", { password });
+    opened();
     return { ok: true };
   } catch (e) {
     const c = fail(e).code;
@@ -39,6 +43,7 @@ export async function openVault(password: string, expected?: string): Promise<Ou
   if (MOCK) { await slow(400); return masterStatus(password, expected) === "ok" ? { ok: true } : { ok: false, say: "That is not your master password. Try again, or use your recovery kit to set a new one." }; }
   try {
     await tool(Platform.OS === "ios" || Platform.OS === "android" ? "vault.account.unlock-phone" : "vault.account.unlock", { password });
+    opened();
     return { ok: true };
   } catch (e) {
     const f = fail(e);
