@@ -42,6 +42,7 @@ async function world(t) {
   const hooks = { during: null };
   const names = async (url, init = {}) => {
     const u = new URL(url);
+    if (u.pathname === "/health") return new Response(JSON.stringify({ ok: true, chain: { relayKey: true } }));
     if (u.pathname === "/v1/ids/resolve") { if (hooks.during) { const h = hooks.during; hooks.during = null; await h(); } }
     if (u.pathname === "/v1/ids/resolve") return new Response(JSON.stringify({ data: { name: "alex", kind: "person", id: chain.state.id, ops: chain.ops } }));
     if (u.pathname === "/v1/ids/append") {

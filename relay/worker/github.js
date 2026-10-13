@@ -185,6 +185,16 @@ async function me(request, _url, env) {
   return json(200, { github: { id: rec.ghid, login: rec.login, name: rec.name, avatarUrl: rec.avatarUrl, twofa: rec.twofa }, linked: l ? { name: l.name, since: l.since } : null });
 }
 
+/** Does the names directory run the chain rules that know the relay's key? Linking waits until it does: an older directory would refuse the relay's entry. @param {any} env */
+async function directoryReady(env) {
+  const f = typeof env.NAMES_FETCH === "function" ? env.NAMES_FETCH : globalThis.fetch.bind(globalThis);
+  try {
+    const r = await f(`${String(env.NAMES_ORIGIN || "https://names.vyre.run").replace(/\/+$/, "")}/health`, { headers: { accept: "application/json" } });
+    const j = /** @type {any} */ (await r.json());
+    return Boolean(r.ok && j && j.chain && j.chain.relayKey === true);
+  } catch { return false; }
+}
+
 /** The identity chain at the directory, verified here, and the device entry that signed. Refuses a directory that does not answer or an answer that does not verify. @param {any} env @param {string} name @param {string} eid */
 async function chainOf(env, name, eid) {
   if (!NAME_RE.test(name) || !C.EID_RE.test(eid)) return { code: 400, say: "bad request" };
@@ -220,6 +230,7 @@ async function link(request, url, env) {
   const h = await holding(env, b, who(request));
   if (h.res) return h.res;
   const name = String(b.name || ""), eid = String(b.eid || "");
+  if (!(await directoryReady(env))) return json(503, { error: "the names directory has not been updated for sign-in with GitHub yet; try again later" });
   const c = await chainOf(env, name, eid);
   if (!c.state) return json(c.code, { error: c.say });
   const msg = `${GH_TAG_LINK}\n${h.rec.ghid}\n${c.state.id}\n${h.tid}\n${Number(b.ts)}\n${url.host}`;

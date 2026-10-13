@@ -38,6 +38,7 @@ async function person(clock, withSecond = false) {
   return { first, second, ops, state };
 }
 
+const w_ready = { v: true };
 function world(t, { names = {}, user = { id: 4242, login: "alex-gh", name: "Alex", avatar_url: "https://avatars.githubusercontent.com/u/4242?v=4", two_factor_authentication: true } } = {}) {
   const clock = { t: T0 };
   const calls = [];
@@ -54,6 +55,7 @@ function world(t, { names = {}, user = { id: 4242, login: "alex-gh", name: "Alex
   };
   const directory = new Map(Object.entries(names));
   const namesFetch = async (/** @type {string} */ url) => {
+    if (new URL(url).pathname === "/health") return new Response(JSON.stringify({ ok: true, chain: { relayKey: w_ready.v } }));
     const name = new URL(url).searchParams.get("name") || "";
     const p = directory.get(name);
     if (!p) return new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 });
@@ -200,6 +202,18 @@ test("link: signed by a device that is on the chain now and a day old; one GitHu
   assert.equal((await w.post("/v1/github/link", { ticket: again.ticket, cv: again.cv, name: "bob", eid: bob.first.eid, ts, sig: bob.first.sig(linkMsg(4242, bob.state.id, t2, ts)) })).status, 409);
   const w2 = world(t, { user: { id: 999, login: "other" } });
   void w2;
+});
+
+test("link waits until the names directory runs the rules that know the relay's key", async t => {
+  const w = world(t);
+  const p = await person(w.clock);
+  w.directory.set("alex", p);
+  const r = await signIn(w);
+  const ts = w.clock.t, tid = tidOf(r.ticket);
+  const body = { ticket: r.ticket, cv: r.cv, name: "alex", eid: p.first.eid, ts, sig: p.first.sig(linkMsg(4242, p.state.id, tid, ts)) };
+  w_ready.v = false;
+  try { assert.equal((await w.post("/v1/github/link", body)).status, 503); } finally { w_ready.v = true; }
+  assert.equal((await w.post("/v1/github/link", body)).status, 200, "the same ticket links once the directory is ready");
 });
 
 test("link: a newcomer device (under a day) cannot link, and a missing name or a directory that is down is refused", async t => {

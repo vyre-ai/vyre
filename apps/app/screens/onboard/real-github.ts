@@ -176,3 +176,9 @@ export async function githubAccount(action: "status" | "unlink" | "refresh"): Pr
   }
   return { ok: true, linked: r.json.linked ?? null };
 }
+
+/** After the vault's Secret Key changed (vault.secretkey.changed): store the new one with the escrow if GitHub is linked. Silent when it is not, or when this build cannot do it. */
+export async function reEscrowSecretKey(): Promise<void> {
+  if (MOCK) return;
+  try { await githubAccount("refresh"); } catch { /* the next change or Settings tries again */ }
+}

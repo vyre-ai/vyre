@@ -231,6 +231,7 @@ function corsHeaders(request, env, op) {
 
 import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 import { hostOps } from "./hosts.js";
+import * as ChainRules from "./chain.js";
 
 const ROUTES = {
   "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
@@ -270,7 +271,8 @@ export default {
 /** @param {Request} request @param {any} env @param {URL} url */
 async function route(request, env, url) {
   {
-    if (url.pathname === "/health") return new Response('{"ok":true}', { headers: headers() });
+    // `chain.relayKey` says this directory runs the chain rules that know the relay's key (kernel/identity/chain.js RELAY_ADDS): sign-in with GitHub refuses to link until it does.
+    if (url.pathname === "/health") return new Response(JSON.stringify({ ok: true, chain: { relayKey: typeof ChainRules.RELAY_ADDS === "number" } }), { headers: headers() });
     const op = /** @type {Record<string, string>} */ (ROUTES)[`${request.method} ${url.pathname}`];
     if (!op) return new Response(null, { status: url.pathname.startsWith("/v1/names/") ? 405 : 404 });
     const changes = request.method !== "GET";
