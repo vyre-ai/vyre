@@ -251,13 +251,19 @@ async function handle(msg) {
   const { id, method, params } = msg;
   switch (method) {
     case "initialize":
-      return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
+      return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
         instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Only a short core is listed. Every other tool you may use is reached in two steps: tools_find with what you are about to do (it returns the best three with a ready call), then tools_call with the name. A tool you were told to run with tools_call is not missing. When several calls depend on each other, send them in one tools_run (later steps read earlier results by expression); a large result comes back as a handle and a summary, and results_read gets the part you need. Facts from memory come with their source; say where a fact came from when you use one. " +
           "When the user asks what you know about them or their work, ask memory_ask, when it is offered, before saying you do not know. " +
           "A memory_search result names a session and a turn; memory_turn reads the turns around it word for word, so quote a past turn from there, not from a summary. " +
           "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +
           "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
+    // The person's own AI sets Vyre up from the work on this computer: one prompt, the same words as the pluginagent.setup.guide tool (Codex and others that ignore prompts read the tool).
+    case "prompts/list": return { prompts: [{ name: "setup-vyre", description: "Set up Vyre from the work on this computer: projects per client, instructions, agents, Records, templates, Flows, and your old sessions." }] };
+    case "prompts/get": {
+      if (params?.name !== "setup-vyre") throw Object.assign(new Error(`no prompt ${String(params?.name).slice(0, 40)}`), { code: -32602 });
+      return { description: "Set up Vyre", messages: [{ role: "user", content: { type: "text", text: fs.readFileSync(new URL("./setup-vyre.md", import.meta.url), "utf8") } }] };
+    }
     case "tools/list": return { tools: await loadTools() };
     case "tools/call": {
       if (!names.size) await loadTools();

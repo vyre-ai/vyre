@@ -254,7 +254,7 @@ export default {
       effect: "write",
       description: "List the coding-agent sessions on this computer (Claude Code, Codex, Gemini CLI; Grok is not supported yet) one per line: { id, agent, cwd, bytes, modified, project?, suggested }. Reads file names, sizes, dates and the folder each ran in, never what was said; nothing leaves the computer. Group them by cwd to propose one project per client, then call import.sessions.run with the ones the person confirmed. since: only sessions modified after this time (ms). folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } }, since: { type: "number" } } },
-      callers: [...PEOPLE, "mcp"],
+      callers: PEOPLE,
       run: async ({ folders, since } = {}, meta = {}) => {
         await mayRun(meta);
         const ps = await projects().catch(() => []);
@@ -269,7 +269,7 @@ export default {
       effect: "write",
       description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Say plainly to the person what goes (count, size, which folders) and get their yes before calling; confirmed: true says you did.",
       input: { type: "object", required: ["sessions", "confirmed"], properties: { sessions: { type: "array", maxItems: ROWS, items: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } } }, confirmed: { type: "boolean" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
-      callers: [...PEOPLE, "mcp"],
+      callers: PEOPLE,
       run: async ({ sessions, confirmed, mode = "once", pace = "gentle" }, meta = {}) => {
         await mayRun(meta);
         if (confirmed !== true) throw Object.assign(new Error("tell the person what will go and get their yes, then call again with confirmed: true"), { code: "bad_input" });
@@ -296,7 +296,7 @@ export default {
       effect: "read",
       description: "How far the import has got, stage by stage: search (sessions indexed), meaning (turns embedded), graph (people, orgs and facts so far) and personal facts (turns read and waiting). Each { done, total }. Counts only, read when asked.",
       input: { type: "object", properties: {} },
-      callers: [...PEOPLE, "mcp", "module"],
+      callers: [...PEOPLE, "module"],
       run: async (_, meta = {}) => { if (meta.caller !== "module") await mayRun(meta); return statusNow(); },
     });
     /**

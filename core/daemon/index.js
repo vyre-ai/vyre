@@ -1490,11 +1490,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
     // A member's own session is shown the tools it may call and no others (core/modules/door-gate.js).
     if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null) { const show = await registry.deps.doorGate.visible(String(caller), typeof tok === "string" ? { token: tok } : {}); if (show) data = data.filter(t => show(t.name)); } }
-    // The plugin agent is offered only what its grant names.
+    // The plugin agent is offered only what its grant names. Set up mode's tools are shown to it though their callers lists name only the person: the grant, not the list, decides those.
     if (pluginAgent) {
-      const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
+      const have = new Set(data.map(t => t.name));
+      const wide = registry.listTools(caller, { ...via, pluginSetup: true }).filter(t => !policy.tool || policy.tool(t.name));
+      const ask = await registry.call("pluginagent.allows", { tools: wide.map(t => t.name) }, "module:vyred").catch(() => null);
       const ok = new Set(ask && ask.data && Array.isArray(ask.data.allowed) ? ask.data.allowed : []);
-      data = data.filter(t => ok.has(t.name));
+      const setupOnly = new Set(ask && ask.data && Array.isArray(ask.data.setup) ? ask.data.setup : []);
+      data = wide.filter(t => ok.has(t.name) && (have.has(t.name) || setupOnly.has(t.name)));
     }
     return send(res, 200, { data });
   }

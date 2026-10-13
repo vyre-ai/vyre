@@ -28,7 +28,7 @@ export const ALLOWED = Object.freeze(new Set([
   "recall.search", "recall.sessions", "recall.thread", "recall.turn", "recall.links", "recall.transcript", "recall.related", "recall.status",
   "projects.list", "projects.context", "projects.catalog", "projects.of", "projects.threads", "projects.history",
   "threads.list", "threads.get", "threads.history", "threads.lineage",
-  "pluginagent.ask", "pluginagent.status", "pluginagent.setup.status",
+  "pluginagent.ask", "pluginagent.status", "pluginagent.setup.status", "pluginagent.setup.guide",
 ]));
 /**
  * What Set up mode adds while it is on (the lead's ruling, 13 Oct): the tools that set a space up and the two that bring old sessions in. Granted by the person once, with presence, for a few hours;
@@ -221,6 +221,12 @@ export default {
       description: "Whether Set up mode is on for Claude Code on this computer, and until when.",
       input: obj(), callers: [...PEOPLE, "mcp", "harness", "module"],
       run: async () => { const u = setupUntil(); return { on: u > 0, ...(u ? { until: u } : {}) }; },
+    });
+
+    ctx.tool("pluginagent.setup.guide", {
+      description: "The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): scan, propose per client, confirm, make it, bring the sessions in. Read it first, then follow it.",
+      input: obj(), callers: [...PEOPLE, "mcp", "harness"],
+      run: async () => ({ guide: fs.readFileSync(new URL("../../harness/mcp/setup-vyre.md", import.meta.url), "utf8") }),
     });
 
     ctx.tool("pluginagent.allows", {

@@ -14960,6 +14960,61 @@
    "review": true,
    "description": "Change work (records).",
    "was": "List the tools this caller may use in this Space: name, what it does and risk. Give tool or schemas for input shapes."
+  },
+  {
+   "old": "import.sessions.list",
+   "name": "spaces.import.sessions.list",
+   "area": "spaces",
+   "object": "import.sessions",
+   "verb": "list",
+   "effect": "read",
+   "review": false,
+   "description": "List import sessions (spaces).",
+   "was": "List the coding-agent sessions on this computer (Claude Code, Codex, Gemini CLI; Grok is not supported yet) one per line: { id, agent, cwd, "
+  },
+  {
+   "old": "import.sessions.run",
+   "name": "spaces.import.sessions.run",
+   "area": "spaces",
+   "object": "import.sessions",
+   "verb": "run",
+   "effect": "write",
+   "review": false,
+   "description": "Run import sessions (spaces). Needs: sessions, confirmed.",
+   "was": "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list f"
+  },
+  {
+   "old": "pluginagent.setup.begin",
+   "name": "spaces.pluginagent.setup.start",
+   "area": "spaces",
+   "object": "pluginagent.setup",
+   "verb": "start",
+   "effect": "write",
+   "review": false,
+   "description": "Start pluginagent setup (spaces).",
+   "was": "The person lets Claude Code on this computer set their space up for a few hours (projects, agents, record types, flows, templates, roles) an"
+  },
+  {
+   "old": "pluginagent.setup.end",
+   "name": "spaces.pluginagent.setup.stop",
+   "area": "spaces",
+   "object": "pluginagent.setup",
+   "verb": "stop",
+   "effect": "write",
+   "review": false,
+   "description": "Stop pluginagent setup (spaces).",
+   "was": "Ends Set up mode now. Claude Code goes back to reading memory and sessions; what it set up stays."
+  },
+  {
+   "old": "pluginagent.setup.status",
+   "name": "spaces.pluginagent.setup.get",
+   "area": "spaces",
+   "object": "pluginagent.setup",
+   "verb": "get",
+   "effect": "read",
+   "review": false,
+   "description": "Get pluginagent setup (spaces).",
+   "was": "Whether Set up mode is on for Claude Code on this computer, and until when."
   }
  ]
 }

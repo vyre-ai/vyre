@@ -17,6 +17,7 @@
       { "name": "pluginagent.setup.begin", "reach": "person", "effect": "write" },
       { "name": "pluginagent.setup.end", "reach": "anyone", "effect": "write" },
       { "name": "pluginagent.setup.status", "reach": "anyone", "effect": "read" },
+      { "name": "pluginagent.setup.guide", "reach": "anyone", "effect": "read" },
       { "name": "pluginagent.allows", "reach": "modules", "effect": "read" },
       { "name": "pluginagent.note", "reach": "modules", "effect": "write" },
       { "name": "pluginagent.vouch", "reach": "modules", "effect": "read" }
