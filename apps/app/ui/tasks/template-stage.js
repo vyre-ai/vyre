@@ -12,3 +12,10 @@ export function templateStage(data) {
     return stages.length ? { stages, at: stages.indexOf(String(data.template_stage ?? "")) } : null;
   } catch { return null; }
 }
+
+/** What a project of a template is called ("Matter"): the template's noun, else its name, else null for a project that started from none. @param {any} data a project's fields @returns {string | null} */
+export function templateNoun(data) {
+  const text = data && typeof data.template_snapshot === "string" ? data.template_snapshot : "";
+  if (!text) return null;
+  try { const j = JSON.parse(text); const w = String((j && j.noun && j.noun.one) || (j && j.name) || ""); return w || null; } catch { return null; }
+}
