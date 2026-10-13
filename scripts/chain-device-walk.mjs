@@ -43,8 +43,15 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
 }
 /** One tool call as that device: { status, text }. */
 async function callAs(/** @type {any} */ conn, /** @type {string} */ tool, /** @type {any} */ input = {}) {
-  const r = await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
-  return { status: r.status, text: String(await r.text()).slice(0, 300) };
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 20_000);
+  try {
+    const r = await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input), signal: ac.signal });
+    return { status: r.status, text: String(await r.text()).slice(0, 300) };
+  } catch (e) {
+    // a refused hello makes the client dial again and again; the server's last word is on the connection
+    throw new Error(`no answer in 20 s; the connection's last error: ${String(conn.lastError && conn.lastError.message || /** @type {any} */ (e).message).slice(0, 220)}`);
+  } finally { clearTimeout(timer); try { if (ac.signal.aborted) conn.close(); } catch { /* closed */ } }
 }
 const rowsOf = () => String(srv.logs.length) && srv.registry.call("relay.devices", {}, "cli").then((/** @type {any} */ r) => r && r.data);
 async function appendOp(/** @type {any} */ body) {
