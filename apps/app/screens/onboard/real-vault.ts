@@ -18,18 +18,26 @@ const unreachable = (c: string | undefined) => !c || ["offline", "unreachable", 
 /** The vault is open: read the person's space list once and connect the servers this device lacks. Never blocks or fails the sign-in; a list that cannot be read is simply not applied. */
 const opened = (): void => { void import("../../src/real/space-list-app").then((m) => m.onVaultOpened()).catch(() => {}); };
 
+// The vault recovery secret a person types to set a new master password: held here between the Create screen and the call, then dropped. Not in the flow's state, not stored.
+let resetKit = "";
+export const holdResetKit = (text: string): void => { resetKit = text.trim(); };
+
 /** Create the personal vault with the master password (`reset`: it is the new one after a recovery kit). Nothing but the password is sent; the Secret Key the box answers with is not read. */
-export async function createVault(password: string, reset = false): Promise<Outcome> {
-  if (MOCK) { await slow(600); return { ok: true }; }
+export async function createVault(password: string, reset = false): Promise<Outcome<{ recoverySecret?: string }>> {
+  if (MOCK) { await slow(600); return { ok: true, recoverySecret: "R1-DEMO42-ABCDEFGHIJKLMNOPQRSTUVWXYZ-23" }; }
   try {
-    await tool("vault.account.create", { password });
+    const made = await tool<{ recoverySecret?: string }>(reset ? "vault.account.reset" : "vault.account.create", reset ? { password, recovery: resetKit } : { password });
+    resetKit = "";
     opened();
-    return { ok: true };
+    return { ok: true, ...(made?.recoverySecret ? { recoverySecret: made.recoverySecret } : {}) };
   } catch (e) {
     const c = fail(e).code;
+    if (c === "bad_recovery" || c === "wrong_recovery" || c === "wrong_account") return { ok: false, say: "That is not the vault recovery secret for this vault. Check the kit you saved and type it again." };
+    if (c === "throttled") return { ok: false, say: personalUnlockRefusal(c, fail(e).detail) };
+    if (c === "weak_password") return { ok: false, say: "That password is too short. Use at least 12 characters." };
     if (c === "presence_required" || c === "needs_presence") return { ok: false, say: "That needs you. Approve on this device, then try again." };
     // There is no tool that changes an account's password yet, so a vault that already has one cannot take a new one here.
-    if (/already has an account/i.test(fail(e).message ?? "")) return { ok: false, say: reset ? "Vyre cannot set a new master password on a vault that already has one yet. Nothing was changed. Go back and try the master password you had, or ask another device that has your vault." : "This vault already has a master password. Go back and type it to open the vault." };
+    if (/already has an account/i.test(fail(e).message ?? "")) return { ok: false, say: reset ? "Nothing was changed. Try your recovery kit again." : "This vault already has a master password. Go back and type it to open the vault." };
     if (unreachable(c)) return { ok: false, say: noBox };
     return { ok: false, say: "Your vault was not created and nothing was saved. Try again." };
   }
