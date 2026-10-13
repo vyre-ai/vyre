@@ -57,6 +57,12 @@ To send signers to `sign.yourfirm.com` instead of the Space's address, ask for i
 
 `comms.send` sends an email through your own mail account or a text through your own Twilio account. It is held at the Gate until you say yes to the final words; a text to several numbers is one yes. Texts need `comms.sms` in `config.json` (`{ "account": "AC…", "from": "+1…" }`) and your Twilio auth token in the Vault: Vault, Connections, Twilio for Comms (an API key's secret works too: put its id, `SK…`, in the id field). Once sent, the message is logged on the client it went to.
 
+## Send a Flow's email through your own sending service
+
+A Space can keep the key to its own account at Resend, Mailgun, Postmark or SendGrid, or the login to an SMTP server, and Flows send their email through it. An owner or an admin adds it in Settings, Connections, under Sending service: pick the service, paste the key, type the address the email comes from (and the domain, for Mailgun). The key goes to the Vault and is never shown again; the screen shows only which service and which address.
+
+A Flow's Send email step is `comms.email`. It is held at the Gate for a person's yes to the final words, like every send, and goes out through your account. The address it sends from must be on your own domain. With no sending service, the step stops and says to add one in Settings, Connections, Add a sending service. "Send a test" sends one email to the address you type, after you confirm it with your own presence. Vyre's servers send no email: the message goes from your server to your account at the service. SMTP sends the plain-text part of a message only.
+
 ## Open source
 
 Signatures run on DocuSeal (AGPL-3.0) and templates fill with docxtemplater (MIT); both are credited in Settings, About, Open-source credits.
