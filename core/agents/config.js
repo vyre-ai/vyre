@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { agentDir, agentPart } from "../../lib/files/layout.js";
+import { writeDocs, writeRootFile, MIRROR_FILES } from "../../lib/folder-docs.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
@@ -27,11 +28,9 @@ export const contextName = s => String(s ?? "").trim().split(/[\\/]/).pop().repl
 const inside = (dir, f) => { const r = path.relative(dir, f); return r === "" || (!!r && !r.startsWith("..") && !path.isAbsolute(r)); };
 const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
 
-/** What an agent is told about its context, after its instructions: names only, never contents. @param {{ dir: string, files: string[], links: string[], items: string[], claude: string }} c */
+/** What an agent is told about what it may reach beyond its folder: the folders linked for it and the Vault item names put at its disposal. Names only. The instructions and context files are named by the orientation block (lib/orientation.js), never copied. @param {{ links: string[], items: string[] }} c */
 export function contextBrief(c) {
   const out = [];
-  if (c.claude) out.push("", "Notes for Claude:", c.claude);
-  if (c.files.length) out.push("", `Context files kept for you, in ${c.dir}: ${c.files.join(", ")}. Read them when they bear on the work.`);
   if (c.links.length) out.push("", `Folders linked for you: ${c.links.join(", ")}.`);
   if (c.items.length) out.push("", `Vault items put at your disposal (names only; using one still needs the person's yes): ${c.items.join(", ")}.`);
   return out.join("\n");
@@ -95,7 +94,21 @@ export function register(ctx, h) {
   const items = (/** @type {any} */ a) => db.prepare("SELECT item FROM agents_vault_items WHERE agent = ? ORDER BY at").all(a.name).map((/** @type {any} */ r) => String(r.item));
 
   /** What a launch adds to an agent's brief. */
-  const brief = (/** @type {any} */ a) => contextBrief({ dir: ctxDir(a), files: listFiles(a).map((/** @type {any} */ f) => f.name), links: links(a), items: items(a), claude: readClaude(a).trim() });
+  const brief = (/** @type {any} */ a) => contextBrief({ links: links(a), items: items(a) });
+  /**
+   * The agent's folder as a session reads it: AGENTS.md (its instructions) and CLAUDE.md (an import of AGENTS.md, then the notes for Claude) at its root, so Claude Code and Codex read them natively when the
+   * session runs there, and the folders the orientation names. Written fresh at every launch from the stored truth; never from the session. @param {any} a
+   * @returns {{ dir: string, instructions: boolean, context: boolean }}
+   */
+  const materialize = a => {
+    ensureParts(a);
+    const words = String(a.instructions || "").trim(), notes = readClaude(a).trim();
+    writeDocs(home(a), "AGENTS.md", words ? words + "\n" : "");
+    writeDocs(home(a), "CLAUDE.md", words || notes ? `@AGENTS.md\n${notes ? "\n" + notes + "\n" : ""}` : "");
+    // the same words under the other tools' names (Grok reads GROK.md)
+    for (const m of MIRROR_FILES) writeRootFile(home(a), m, words ? words + "\n" : "");
+    return { dir: home(a), instructions: Boolean(words), context: listFiles(a).length > 0 };
+  };
 
   ctx.tool("agents.docs.get", {
     description: "An agent's two instruction files: AGENTS.md (its instructions) and CLAUDE.md (extra notes for Claude).",
@@ -277,5 +290,15 @@ export function register(ctx, h) {
   const sharedLine = async a => (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => `${g.subject} (${g.level})`);
   /** An agent that is gone takes its sharing with it. @param {any} a */
   const clearShared = async a => { if (ctx.kernel && ctx.kernel.mint) for (const g of await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` })) await ctx.kernel.mint.end({ id: g.id, reason: "the agent was removed" }); };
-  return { brief, levelOf, sharedLine, clearShared };
+  /**
+   * Who made an agent and who it is shared with, for the list: the maker's person id, and [{ person, level }]. The owner, an admin, the maker and anyone with Can edit see every share; anyone
+   * else sees only their own, so a list never shows who else was given an agent. @param {any} meta @param {any} a @param {boolean} staff
+   */
+  const sharesFor = async (meta, a, staff) => {
+    const all = (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => ({ person: g.subject, level: g.level }));
+    if (staff || (await levelOf(meta, a)) === "edit") return { made_by: a.owner || null, shares: all };
+    const me = await h.chainPerson(meta);
+    return { made_by: a.owner || null, shares: me ? all.filter((/** @type {any} */ g) => g.person === me) : [] };
+  };
+  return { brief, materialize, levelOf, sharedLine, clearShared, sharesFor };
 }

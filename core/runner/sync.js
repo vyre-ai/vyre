@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { readInside, listInside, writeInside, parts, plantable } from "./safefs.js";
-import { isCredentialFile } from "./credfiles.js";
+import { isCredentialFile } from "../../lib/credfiles.js";
 
 /** The folders the sync carries, relative to the mounted workspace, and where each lands in the space. */
 export const ROOTS = [

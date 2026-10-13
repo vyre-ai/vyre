@@ -167,8 +167,8 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
-            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Ask about this</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (

@@ -26,22 +26,22 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving, part 
   const doers = E.assigneeChoices(body, people, agents), owners = E.ownerChoices(body);
   return (
     <View className="gap-s4">
-      <Sec title="The template">
-        <Field label="Template name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
+      <Sec title="The playbook">
+        <Field label="Playbook name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
         <Field label="What one project of it is called" value={body.noun?.one || ""} onChangeText={(v: string) => onChange(E.setNoun(body, v))} placeholder="Campaign" />
         {body.noun ? <Field label="What several are called" value={body.noun.many} onChangeText={(v: string) => onChange(E.setNoun(body, body.noun!.one, v))} placeholder="Campaigns" /> : null}
         <Text size="caption" tone="muted">{body.noun ? `The app says "New ${body.noun.one.toLowerCase()}" and "${body.noun.many}" wherever it names these. Leave it empty to call them projects.` : "An agency might say Campaign, a studio Job. Leave it empty to call them projects."}</Text>
         <Field label="What it is for" value={body.description || ""} onChangeText={(v: string) => onChange(E.setDescription(body, v))} multiline lines={2} />
-        <Select label="A project of this template opens on" value={open} options={E.PAGES} onChange={(v: string) => onChange(E.setOpensOn(body, v))} />
+        <Select label="A project of this playbook opens on" value={open} options={E.PAGES} onChange={(v: string) => onChange(E.setOpensOn(body, v))} />
       </Sec>
       <Sec title="Roles">
-        <Text tone="muted">A role is who a kind of work is for. Give it to an assistant to have it done for you, or leave it to a person with that role. One role can be the project lead.</Text>
+        <Text tone="muted">A role is who a kind of work is for. Give it to an agent to have it done for you, or leave it to a person with that role. One role can be the project lead.</Text>
         <Card flush>
           {(body.roles || []).map((r, i) => (
             <View key={r.role}>{i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
                 <Text strong>{r.role}</Text>
-                <Field label="Assistant that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
+                <Field label="Agent that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
                 <View className="flex-row items-center gap-s3"><Switch on={Boolean(r.lead)} onChange={(v: boolean) => onChange(E.setRoleLead(body, r.role, v))} label={`${r.role} is the project lead`} /><Text>The project lead</Text></View>
                 <View className="self-start"><Button kind="ghost" size="sm" label="Remove this role" onPress={() => onChange(E.removeRole(body, r.role))} /></View>
               </View>
@@ -85,7 +85,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving, part 
       ))}
       {part === "settings" || E.stageModeOf(body) === "none" ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Add a stage" onPress={() => onChange(E.addStage(body))} /></View>}
       <Sec title="Automations">
-        <Text tone="muted">A Flow of this Space the template runs for each project: when it starts, or when it enters a stage. The Flow keeps its own approval and limits; only a running Flow runs.</Text>
+        <Text tone="muted">A Flow of this Space the playbook runs for each project: when it starts, or when it enters a stage. The Flow keeps its own approval and limits; only a running Flow runs.</Text>
         <Card flush>
           {(body.automations || []).map((a, i) => (
             <View key={`${a.when}|${a.flow}`}>{i ? <Divider /> : null}

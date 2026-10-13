@@ -17,11 +17,13 @@
 //  5. Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module); a tool added later is refused for members unless its name is in MEMBER_ALLOWED; and a
 //     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
+import { ME_TOOLS } from "./tools/me.js";
+
 /**
- * The vault tool names a non-owner person may call. Empty: a member reaches nothing of the owner's vault. A name is added here deliberately, one at a time (a member's own key tools do that when they land).
+ * The vault tool names a non-owner person may call. Only vault.me.* (tools/me.js): a member's own vault, whose tools take the person from the kernel chain and refuse the owner and anyone but one member. A member reaches nothing of the owner's vault. A name is added here deliberately, one at a time.
  * @type {Set<string>}
  */
-export const MEMBER_ALLOWED = new Set([]);
+export const MEMBER_ALLOWED = new Set(ME_TOOLS);
 
 /** The names of the tools that were registered through the gate (so a test can tell one that slipped past). */
 export const GATED = new Set();

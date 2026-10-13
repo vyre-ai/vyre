@@ -1,2 +1,2 @@
-import S from "../../screens/flows/EngineerScreen";
-export default S;
+import { EngineerEntry } from "../../screens/engineer/EngineerEntry";
+export default function Route() { return <EngineerEntry />; }
