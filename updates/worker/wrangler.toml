@@ -22,7 +22,7 @@ ORIGIN = "https://vyre.run"
 # One row per address: email, name, created_at, consent_version, source, confirmed_at. The key is a keyed hash, never the address.
 [[kv_namespaces]]
 binding = "UPDATES"
-id = "REPLACE_WITH_THE_NAMESPACE_ID"
+id = "c8755dd16d9a475788e10dc4012f3dd5"
 
 # Per-address limiting, as the relay does it. The namespace_id is this account's own choice (an integer unique across its
 # Workers); 28xxx is this Worker's block, the relay has 26xxx and the name directory 27xxx. Never a global limit (GHSA-25xh-w9j7-7v28).
