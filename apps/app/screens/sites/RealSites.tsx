@@ -6,14 +6,13 @@ import * as Clipboard from "expo-clipboard";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState, useUiTheme } from "@vyre/ui";
+import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState, useUiTheme } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, door, edgeDown, edgeUp, jobAttention, jobRun, jobRuns, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
 import { SitesList } from "./SitesList";
-import { BLANK, CHECK_EVERY_MS, PIPE, SOURCES, build, canonicalChoice, canonicalInput, checkOf, doorBanner, dockerBanner, grantProblem, jobLine, type Canonical, type Check, type JobRun, decision, domainLine, heldOf, nextStep, planLines, publishRefusal, recordOf, repoGrant, sites, stepOf, versionRows, waitingRows, type Dep, type Draft, type Held, type Site, type Status } from "./real-model";
-import { personName } from "../spaces/real.js";
-import { useMembers } from "../spaces/state";
+import { BLANK, CHECK_EVERY_MS, PIPE, SOURCES, build, approverName, canonicalChoice, canonicalInput, checkOf, doorBanner, dockerBanner, grantProblem, jobLine, type Canonical, type Check, type JobRun, decision, domainLine, heldOf, nextStep, planLines, publishRefusal, recordOf, repoGrant, sites, stepOf, versionRows, waitingRows, type Dep, type Draft, type Held, type Site, type Status } from "./real-model";
+import { tool } from "../../src/real/box";
 import { PlaceTag } from "../../src/real/PlaceTag";
 import { useMayMakeTemplates } from "../templates/role";
 
@@ -109,7 +108,10 @@ export function RealSite() {
   const [pick, setPick] = useState<Canonical>("apex");
   const [setup, setSetup] = useState<{ host: string; challenge: unknown } | null>(null);
   const [hist, setHist] = useState<Record<string, Status | undefined>>({});
-  const self = useMembers((m) => m.selfId);
+  // names and the viewer come from records.actors and records.me, as the chat's members do
+  const [actors, setActors] = useState<unknown>(null);
+  const [me, setMe] = useState<string | null>(null);
+  useEffect(() => { tool("records.actors", {}).then(setActors).catch(() => setActors(null)); tool<{ person?: string }>("records.me", {}).then((r) => setMe(r?.person ?? null)).catch(() => setMe(null)); }, []);
   const load = useCallback(() => { setErr(""); list().then(setDeps).catch((e) => setErr(say(e))); }, []);
   useEffect(load, [load]);
   const site: Site | undefined = deps ? sites(deps).find((s) => s.name === id) : undefined;
@@ -156,8 +158,8 @@ export function RealSite() {
       </View>
     ) : tab === "history" ? (
       <View className="gap-s2">
-        <VersionTable rows={versionRows(site.versions, hist, (who) => personName(who, self))} phone={phone} />
-        {site.live ? <View className="flex-row gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
+        <VersionTable rows={versionRows(site.versions, hist, (who) => approverName(actors, who, me))} phone={phone} />
+        {site.live ? <View className="flex-row flex-wrap gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
         <Text size="caption" tone="label">Going back needs you, and takes effect at once. The version you leave stays in the history.</Text>
       </View>
     ) : tab === "domain" ? (
@@ -241,7 +243,12 @@ function VersionTable({ rows, phone }: { rows: ReturnType<typeof versionRows>; p
     <Card flush>
       {rows.map((v, i) => (
         <View key={v.id}>{i ? <Divider /> : null}
-          <Row title={`Version ${v.version}`} sub={[v.approvedBy && `Approved by ${v.approvedBy}`, v.wentLive && `Live ${v.wentLive}`, v.address].filter(Boolean).join(" · ")} end={chip(v.stage)} />
+          <View className="gap-s1 px-s4 py-s3">
+            <View className="flex-row items-center justify-between gap-s3"><Text strong>{`Version ${v.version}`}</Text>{chip(v.stage)}</View>
+            <View className="flex-row items-center gap-s2">{v.approverId ? <Avatar of={{ kind: "person", id: v.approverId, name: v.approvedBy }} size={20} /> : null}<Text tone="muted">{v.approverId ? `Approved by ${v.approvedBy}` : v.approvedBy}</Text></View>
+            {v.wentLive ? <Text tone="muted">{v.wentLive === "Never live" ? v.wentLive : `Went live ${v.wentLive}`}</Text> : null}
+            <Text mono size="caption" tone="label" numberOfLines={1}>{v.address}</Text>
+          </View>
         </View>
       ))}
     </Card>
@@ -260,7 +267,7 @@ function VersionTable({ rows, phone }: { rows: ReturnType<typeof versionRows>; p
         <View key={v.id}><Divider />
           <View className="flex-row items-center gap-s3 px-s4 py-s3">
             <View className="w-[88px]"><Text strong>{`Version ${v.version}`}</Text></View>
-            <View className={cell}><Text>{v.approvedBy || " "}</Text></View>
+            <View className={cell}>{v.approverId ? <View className="flex-row items-center gap-s2"><Avatar of={{ kind: "person", id: v.approverId, name: v.approvedBy }} size={20} /><Text numberOfLines={1}>{v.approvedBy}</Text></View> : <Text>{v.approvedBy || " "}</Text>}</View>
             <View className={cell}><Text>{v.wentLive || " "}</Text></View>
             <View className="flex-[2] min-w-0"><Text mono size="caption" numberOfLines={1}>{v.address}</Text></View>
             <View className="w-[72px] items-end">{chip(v.stage)}</View>
