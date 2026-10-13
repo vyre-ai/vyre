@@ -24,11 +24,17 @@ test("PROMPT.md holds exactly the short prompt the site serves, and the prompt i
   assert.ok(!/[\u2014\u00a7]/.test(PROMPT));
 });
 
-test("every raw GitHub file START-HERE links exists in the repo", () => {
-  const files = [...START.matchAll(/raw\.githubusercontent\.com\/vyre-ai\/vyre\/main\/([A-Za-z0-9_./-]+\.(?:md|json))/g)].map((m) => m[1]);
-  assert.ok(files.length >= 8, "a reading list");
-  for (const f of files) assert.ok(fs.existsSync(path.join(ROOT, f)), `${f} exists`);
+test("every file START-HERE links exists in the repo, on the hosted docs or as a raw GitHub file", () => {
+  const raw = [...START.matchAll(/raw\.githubusercontent\.com\/vyre-ai\/vyre\/main\/([A-Za-z0-9_./-]+\.(?:md|json))/g)].map((m) => m[1]);
+  for (const f of raw) assert.ok(fs.existsSync(path.join(ROOT, f)), `${f} exists`);
+  const hosted = [...START.matchAll(/https:\/\/vyre\.run\/docs\/([A-Za-z0-9_./-]+\.md)/g)].map((m) => m[1]);
+  assert.ok(hosted.length >= 8, "a reading list");
+  for (const h of hosted) {
+    const src = h.startsWith("project/") ? h.slice(8) : h.startsWith("roadmap/") ? h : path.join("docs", h);
+    assert.ok(fs.existsSync(path.join(ROOT, src)), `${h} exists as ${src}`);
+  }
   for (const f of ["records", "flows", "agents", "vault", "gate", "mcp-and-engineer"]) assert.ok(START.includes(`${f}.md`), f);
+  assert.ok(/only from vyre\.run pages/.test(START), "instructions only from vyre.run");
 });
 
 test("START-HERE carries the reading list, the questions, the mapping, Get started, Next and Stay in the loop, and no gaps link", () => {

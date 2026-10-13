@@ -236,7 +236,7 @@ export function buildCompare(h) {
   const LINKS = { FLOWS: feat('flows'), GATE: feat('gate'), VAULT: feat('vault'), AGENTS: feat('agents'), TASKS: feat('tasks-and-needs-you'), RECORDS: feat('records'), SESSIONS: feat('sessions-and-models'), MCP: feat('mcp-and-engineer'), SITES: feat('sites-and-publishing'), CHATS: feat('chats'), DOCS: feat('documents-and-signing'), MAP: MAP_URL };
   const href = (k) => LINKS[k] || k;
 
-  const traitsHtml = `<div class="ar-table rv">${TRAITS.map(([t, d]) => `<div><p class="lbl">${t}</p><p>${d}</p></div>`).join('')}</div>`;
+  const traitsHtml = `<div class="ar-table ar-six rv">${TRAITS.map(([t, d]) => `<div><p class="lbl">${t}</p><p>${d}</p></div>`).join('')}</div>`;
 
   const connects = (items) => `<div class="note rv"><p class="lbl" style="margin-bottom:8px">Connects to</p><ul class="plain" style="margin:0;padding-left:1.1em">${items.map(([k, t]) => `<li style="margin:.3em 0"><a href="${href(k)}">${t}</a></li>`).join('')}<li style="margin:.3em 0"><a href="/compare/">The other comparisons</a></li><li style="margin:.3em 0"><a href="/start/">Set up Vyre</a></li></ul></div>`;
 

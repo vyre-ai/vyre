@@ -1163,3 +1163,8 @@ li > .chip-next, .ar-box > .chip-next, h3 > .chip-next { margin-bottom: 8px; dis
 .works { position: relative; z-index: 0; background: transparent; }
 
 .tlc .chip-next { display: flex; margin-top: 8px; }
+
+/* six points: 3 x 2 on a wide screen, 2 x 3 on a tablet, one column on a phone, never 5 + 1 */
+.ar-table.ar-six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1060px) { .ar-table.ar-six { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .ar-table.ar-six { grid-template-columns: 1fr; } }

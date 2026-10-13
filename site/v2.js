@@ -245,7 +245,7 @@
       fetch(f.action, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
         .then(function (x) {
-          if (x.ok) { f.classList.add('done'); say('You are on the list. One email a week at most, and every email has a link to leave.', 'ok'); }
+          if (x.ok) { f.classList.add('done'); say('You are on the list. Nothing is sent yet. When sending starts, the first email asks you to confirm, it will be one email a week at most, and every email will have a link to leave.', 'ok'); }
           else { btn.disabled = false; say((x.j && x.j.error) || 'It did not save. Try again in a minute.', 'err'); }
         }, function () { btn.disabled = false; say('It did not save. Check your connection and try again.', 'err'); });
     });
