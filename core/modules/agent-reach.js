@@ -684,7 +684,7 @@ export const SETUP_REACH = new Map([...SETUP_REASONS]);
  * person-only setup tools work for it as they do in the app. It is still a model, not a face: outward acts stay held, and what a person proves with a face or a key, or does to the doors themselves,
  * stays out of its reach. This is that list: a tool in PERSON_ONLY whose reason is the person's presence, devices, sign-in or secrets, the human-only tools, and these families.
  */
-export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity."]);
+export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "publish.decide"]);
 const NEVER_REASON = /face id|presence|device|pairing|sign[- ]?in|secret|passkey|identity|key/i;
 /** May a call that came in on a person's MCP connection use this tool as the person? @param {string} tool */
 export function mcpPersonMay(tool) {

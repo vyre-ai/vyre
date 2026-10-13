@@ -28,4 +28,4 @@ A sealed field (a social security number, a card, a bank account, a passport, a 
 
 ## When you need the value
 
-Ask for a use, not a reveal: describe the act that needs it (send this form, fill this field) and let the system do it with the value. If no act can do what is needed, tell the person which value you need and why; they decide.
+If a connection stopped because a password, key or token is missing or changed, never ask for it in a chat or a field. Flag the task stuck with a `suggested_fix` that names the item in quotes and says Vault (`Add "court-portal" to the Vault.`); the person's card opens the Vault's Add sheet with that name filled in (see `behaviour.md`, "Ask with the right kind of ask"). Ask for a use, not a reveal: describe the act that needs it (send this form, fill this field) and let the system do it with the value. If no act can do what is needed, tell the person which value you need and why; they decide.

@@ -136,3 +136,6 @@ export function chatRowsOf(list, now, places) {
     };
   });
 }
+
+/** Whether a chat may be forked: the assistant's and the Engineer's pinned chats are each one chat and are never forked. @param {{ pinned?: string } | null | undefined} row */
+export const canFork = (row) => row?.pinned !== "assistant" && row?.pinned !== "engineer";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Platform, View, useWindowDimensions } from "react-native";
 import { AccessList, Avatar, Banner, Button, IconButton, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
@@ -36,6 +36,10 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  // A Needs you card for a stuck password or key opens the Add sheet for that item: /u/vault?add=<name>&kind=<login|api-key>.
+  const want = useLocalSearchParams<{ add?: string; kind?: string }>();
+  const wanted = want.add ? { name: want.add === "1" ? "" : String(want.add), kind: String(want.kind || "api-key") } : null;
+  useEffect(() => { if (want.add) setAdding(true); }, [want.add]);
   const [addProblem, setAddProblem] = useState("");
   const [importing, setImporting] = useState(false);
   const [acc, setAcc] = useState<{ rows: { who: string; level: Level }[]; people: { id: string; name: string }[] }>({ rows: [], people: [] });
@@ -179,7 +183,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   );
 
   const addSheet = (
-    <AddSheet open={adding} scope={scope} busy={busy} problem={addProblem} onClose={() => setAdding(false)} onSave={doAdd}
+    <AddSheet want={wanted} open={adding} scope={scope} busy={busy} problem={addProblem} onClose={() => setAdding(false)} onSave={doAdd}
       onImport={() => setImporting(true)} onSignIn={() => { setAdding(false); router.push("/u/connections" as never); }} />
   );
 

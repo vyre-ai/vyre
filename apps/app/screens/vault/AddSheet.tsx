@@ -22,7 +22,9 @@ function SecretInput({ field, value, error, onChange }: { field: FormField; valu
   );
 }
 
-export function AddSheet({ open, scope, busy, problem, onClose, onSave, onImport, onSignIn }: {
+export function AddSheet({ open, scope, busy, problem, onClose, onSave, onImport, onSignIn, want }: {
+  /** A Needs you card for a stuck password or key asks for this item: the sheet opens on a login or an API key with the name filled in. */
+  want?: { name: string; kind: string } | null;
   open: boolean; scope: Scope; busy: boolean; /** What the box said to the last Save. */ problem: string; onClose: () => void;
   onSave: (call: Call, name: string) => void; onImport: () => void; onSignIn: (form: Form) => void;
 }) {
@@ -36,7 +38,14 @@ export function AddSheet({ open, scope, busy, problem, onClose, onSave, onImport
   const [mode, setMode] = useState<"make" | "existing">("make");
   const [more, setMore] = useState({ description: "", sshFile: "" });
   const [errs, setErrs] = useState<Record<string, string>>({});
-  useEffect(() => { if (open) { setQ(""); setPick(null); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    setQ(""); setPick(null);
+    if (want) {
+      const e = entriesFor(scope).find((x) => x.id === (want.kind === "login" ? "login" : "api-key"));
+      if (e) { setPick(e); setName(want.name ? slugOf(want.name) : startName(e)); setVals({}); setFile(null); setFileErr(""); setMode("make"); setMore({ description: "", sshFile: "" }); setErrs({}); }
+    }
+  }, [open]);
 
   const entries = useMemo(() => entriesFor(scope), [scope]);
   const found = useMemo(() => searchEntries(entries, q), [entries, q]);
