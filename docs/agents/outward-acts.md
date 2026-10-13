@@ -5,7 +5,7 @@ audience: agents
 owner: docs
 status: stable
 tokens: 720
-when: You want to send an email or message, pay, post, publish, share, or delete something, or a call came back held.
+when: You want to send an email to a client or another message, pay, post, publish, share, or delete something, or a call came back held.
 ---
 
 # Sending, paying, posting, deleting
