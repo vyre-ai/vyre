@@ -27,7 +27,7 @@ export function groupByDay(rows, zone) {
 /** What tapping an entry does: a chat opens the chat, a Flow run opens that run's page (the entry names the run and its Flow), a record entry opens the record; a stage move, a project start and a shared file are the story itself and open nothing. @param {{ type: string, id: string, chat?: string, run?: string, flow?: string }} e @returns {{ route: string } | null} */
 export function entryAction(e) {
   if (e.type === "chat" && e.chat) return { route: `/u/chats/${e.chat}` };
-  if (e.type === "flow-run") return e.run && e.flow ? { route: `/u/flows/${e.flow}?run=${e.run}` } : null;
+  if (e.type === "flow-run") return e.run && e.flow ? { route: `/u/flows/${e.flow}/runs/${e.run}` } : null;
   if (e.type === "stage" || e.type === "project-start" || e.type === "file-share") return null;
   return { route: `/u/record/${e.id}` };
 }

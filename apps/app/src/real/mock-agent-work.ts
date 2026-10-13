@@ -17,5 +17,6 @@ const FLOW = [
   t("th_refund_43", "refunds", { purpose: "job", name: "Flow: Handle refund - Refund request", started: now - 20 * 60_000, last: now - 20 * 60_000, status: "waiting", asks: 1, origin: fo("flow_refund", "run_43", "43", "Refund for Jane Doe") }),
 ];
 export const mockAgentWorkTools: Record<string, (i: any) => unknown> = {
+  "tasks.list": (i) => ({ tasks: i?.doer === "intake" ? [{ id: "tk_1", title: "Check conflicts for the Harlow matter", state: "working", doer: { kind: "agent", id: "intake" }, form: { thread: "th_intake_job1" } }, { id: "tk_2", title: "Welcome email for Dana Wu", state: "ready", doer: { kind: "agent", id: "intake" } }] : [] }),
   "threads.list": (i) => i?.agent ? [...ALL, ...FLOW].filter((r) => r.agent === i.agent) : FLOW,
 };

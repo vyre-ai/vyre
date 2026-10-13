@@ -12,10 +12,10 @@ export function configSource(call: Call) {
     return r.data as T;
   }
   return {
-    /** Both instruction files: { "AGENTS.md": text, "CLAUDE.md": text }. */
+    /** The instructions: { "AGENTS.md": text }. */
     docs: async (agent: string): Promise<{ files: Record<Doc, string>; madeBy: { id: string; staff: boolean } | null; editedBy: string | null }> => {
       const d = await ask<any>("agents.docs.get", { agent });
-      return { files: { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? ""), "CLAUDE.md": String(d?.files?.["CLAUDE.md"] ?? "") }, madeBy: d?.made_by ? { id: String(d.made_by.id), staff: d.made_by.staff === true } : null, editedBy: d?.edited_by ? String(d.edited_by) : null };
+      return { files: { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? "") }, madeBy: d?.made_by ? { id: String(d.made_by.id), staff: d.made_by.staff === true } : null, editedBy: d?.edited_by ? String(d.edited_by) : null };
     },
     saveDoc: (agent: string, file: Doc, text: string) => ask("agents.docs.set", { agent, file, text }),
     context: async (agent: string): Promise<{ files: ContextFile[]; links: string[] }> => {
@@ -73,8 +73,8 @@ export function configSource(call: Call) {
   };
 }
 
-/** An agent's instructions as the shared editor's api: AGENTS.md is its instructions, CLAUDE.md its notes for Claude (kept apart, so not `kept`). */
+/** An agent's instructions as the shared editor's api: AGENTS.md is its instructions, the one file. */
 export function agentDocsApi(call: Call, agent: string, canEdit = true) {
   const src = configSource(call);
-  return { id: `agent:${agent}`, canEdit, docs: async () => (await src.docs(agent)).files, saveDoc: (file: "AGENTS.md" | "CLAUDE.md", text: string) => src.saveDoc(agent, file, text) };
+  return { id: `agent:${agent}`, canEdit, versioned: true, docs: async () => (await src.docs(agent)).files, saveDoc: (file: "AGENTS.md", text: string) => src.saveDoc(agent, file, text) };
 }

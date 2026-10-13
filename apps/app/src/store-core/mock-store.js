@@ -493,7 +493,7 @@ export function createMockStore(opts = {}) {
     m("m5", { title: "Ortiz power of attorney", client: "c5", plan: "Will", fee: 800, owner: WHO.alex, closing: "2026-10-05" }, "Funding");
     const p = (/** @type {string} */ alias, /** @type {string} */ space, /** @type {any} */ v) => { const { owner, brief, ...rest } = v; put("project", space, { ...rest, owner: own(owner, space), brief: file(brief) }, alias); };
     p("p1", H, { title: "Site rebuild", template: "tpl_ad-campaign", owner: WHO.kit, due: "2026-10-30", brief: "Site rebuild brief.docx" });
-    p("p2", H, { title: "Northwind Bakery bookkeeping", template: "tpl_estate-plan", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
+    p("p2", H, { title: "Northwind Holdings lease dispute", template: "tpl_estate-plan", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
     p("p3", M, { title: "Vyre site", template: "tpl_ad-campaign", owner: WHO.juno, due: "2026-11-05", brief: "Wink page outline.md" });
     p("p4", M, { title: "Passport renewal", template: "tpl_estate-plan", owner: WHO.juno, due: "2026-10-20", brief: "Renewal checklist.pdf" });
     put("trip", M, { title: "Lisbon in November", where: addr("", "Lisbon", "", "", "Portugal"), leaves: "2026-11-14", budget: money(2400), stage: "Booked" }, "t1");
@@ -502,7 +502,7 @@ export function createMockStore(opts = {}) {
     /** A task, in the shape the first sketch used; this turns it into the kernel's Task. `doer`, `checker` and `madeBy` are directory ids; `template` and `dependsOn` are aliases or ids. @param {string} recAlias @param {any} t */
     const k = (recAlias, t) => {
       const recordUrn = urn(recAlias), space = spaceOfUrn(recordUrn), id = newTaskId();
-      const { doer, checker, madeBy, template, dependsOn, output, stuck, result, now, say, note, required, source, due, state, how, stage, title } = t;
+      const { doer, checker, madeBy, template, dependsOn, output, stuck, result, now, say, note, required, source, due, state, how, stage, title, session } = t;
       const outKind = output.kind, target = outKind === "fields" ? output.fields : output.target;
       /** @type {Record<string, any>} */
       const res = {};
@@ -512,9 +512,9 @@ export function createMockStore(opts = {}) {
       const ext = { ...(now ? { now } : {}), ...(say ? { say } : {}), ...(note ? { note } : {}), ...(required === false ? { required: false } : {}), ...(Object.keys(res).length ? { result: res } : {}) };
       const stamp = today(13, 0);
       /** @type {Task} */
-      const task = { id, space, title, record: recordUrn, ...(stage ? { stage } : {}), ...(source ? { source } : {}), doer: actor(doer, space), ...(checker ? { checker: actor(checker, space) } : {}),
+      const task = { id, space, title, record: recordUrn, ...(stage ? { stage } : {}), ...(source ? { source } : {}), ...(session ? { session } : {}), doer: actor(doer, space), ...(checker ? { checker: actor(checker, space) } : {}),
         output: { kind: outKind, ...(target !== undefined ? { target } : {}) }, ...(how ? { how } : {}), ...(template ? { template: urn(template) } : {}), depends_on: dependsOn || [], ...(due ? { due } : {}), state,
-        ...(stuck ? { stuck: { reason: stuck.reason, since: stuck.since, suggested_fix: { text: stuck.suggestedFix } } } : {}),
+        ...(stuck ? { stuck: { reason: stuck.reason, since: stuck.since, suggested_fix: { text: stuck.suggestedFix, ...(stuck.vaultItem ? { action: { kind: "open_vault_item", resource: stuck.vaultItem } } : {}) } } } : {}),
         ...(state === "done" && outKind === "sent" ? { outcome: "approved", payload: { payload_hash: "preview", decision: "preview" } } : {}),
         assigned_by: actor(madeBy || doer, space), labels: { trust: "member", red: "internal", source_spaces: [space] }, created_at: stamp, updated_at: stamp, ...(Object.keys(ext).length ? { ext } : {}) };
       tasks.set(id, task);
@@ -531,12 +531,12 @@ export function createMockStore(opts = {}) {
     }
     k("m2", { title: "Engagement letter for John Roe", doer: WHO.drafting, checker: WHO.alex, stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "tpl2", now: "is filling Engagement letter with John's notes" });
     k("m2", { title: "Check the court docket", doer: WHO.juno, stage: "Engagement", state: "stuck", output: { kind: "note", target: "Docket note" }, how: "assistant", madeBy: WHO.juno, note: "juno stopped",
-      say: "juno could not log in to the court portal", stuck: { reason: "The password changed.", since: today(8, 40), suggestedFix: "Update the password in the Vault, or reassign to Chris." } });
+      say: "juno could not log in to the court portal", session: "c1", stuck: { reason: "The password changed.", since: today(8, 40), suggestedFix: "Update the password in the Vault, or reassign to Chris.", vaultItem: "court-portal" } });
     const k7 = k("m3", { title: "Research the client", doer: WHO.research, stage: "Intake", state: "working", output: { kind: "fields", fields: ["situation", "assets", "pressure", "research"] }, how: "assistant", now: "is reading Priya Shah's intake form" });
     k("m3", { title: "Welcome email for Priya Shah", doer: WHO.intake, checker: WHO.alex, stage: "Intake", state: "waiting", output: { kind: "sent", target: "Email to Priya Shah" }, how: "tailor", template: "tpl1", dependsOn: [k7.id] });
     k("m3", { title: "Approve a $720 refund for Priya Shah", doer: WHO.alex, stage: "Intake", state: "ready", output: { kind: "decision", target: "Refund or not" }, how: "person", note: "Flow: Large refunds", madeBy: WHO.vyre, required: false,
       source: "flow_step", say: "Approve a $720 refund for Priya Shah" });
-    const k10 = k("m4", { title: "Signing date", doer: WHO.alex, stage: "Signing", state: "ready", output: { kind: "fields", fields: ["signing"] }, how: "person", madeBy: WHO.kit, note: "kit asked", source: "assistant_request",
+    const k10 = k("m4", { title: "Signing date", doer: WHO.alex, stage: "Signing", state: "ready", output: { kind: "fields", fields: ["signing"] }, how: "person", madeBy: WHO.kit, note: "kit asked", source: "assistant_request", session: "c1",
       say: "kit needs the client's signing date to continue" });
     k("m4", { title: "Collect signatures", doer: WHO.alex, stage: "Signing", state: "waiting", dependsOn: [k10.id], output: { kind: "file", target: "Signed documents" }, how: "person" });
     k("m5", { title: "Record the document", doer: WHO.rev, stage: "Funding", state: "working", output: { kind: "file", target: "Recorded deed" }, how: "assistant", now: "is recording the deed with the county" });
@@ -551,7 +551,7 @@ export function createMockStore(opts = {}) {
     const k19 = k("p3", { title: "Write the Wink page", doer: WHO.juno, state: "working", output: { kind: "file", target: "Wink page" }, how: "assistant", now: "is writing the Wink page" });
     const k20 = k("p3", { title: "Pick the hero image", doer: WHO.alex, state: "waiting", dependsOn: [k19.id], output: { kind: "file", target: "Hero image" }, how: "person" });
     k("p3", { title: "Publish the preview", doer: WHO.kit, state: "waiting", dependsOn: [k20.id], output: { kind: "sent", target: "Preview" }, how: "assistant" });
-    const k22 = k("p4", { title: "Add a signature photo", doer: WHO.alex, state: "ready", output: { kind: "file", target: "Signature photo" }, how: "person", madeBy: WHO.juno, note: "juno asked", source: "assistant_request", say: "Passport renewal needs your signature photo" });
+    const k22 = k("p4", { title: "Add a signature photo", doer: WHO.alex, state: "ready", output: { kind: "file", target: "Signature photo" }, how: "person", madeBy: WHO.juno, note: "juno asked", source: "assistant_request", session: "c2", say: "Passport renewal needs your signature photo" });
     k("p4", { title: "Submit the form", doer: WHO.juno, checker: WHO.alex, state: "waiting", dependsOn: [k22.id], output: { kind: "sent", target: "Form to the passport office" }, how: "assistant" });
     const k24 = k("t1", { title: "Book the flights", doer: WHO.juno, state: "working", output: { kind: "decision", target: "Which flight" }, how: "assistant", now: "is comparing three flights" });
     k("t1", { title: "Reserve the hotel", doer: WHO.juno, checker: WHO.alex, state: "waiting", dependsOn: [k24.id], output: { kind: "sent", target: "Booking" }, how: "assistant" });

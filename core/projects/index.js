@@ -14,7 +14,7 @@ import { ownerDevice } from "../modules/index.js";
 import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
 import { backupSources } from "./backup.js";
-import { readDocs, writeDocs, listContext, addContextFile, addNote, addLink, removeContext } from "../../lib/folder-docs.js";
+import { readDocs, writeInstructions, withNotes, listContext, addContextFile, addNote, addLink, removeContext } from "../../lib/folder-docs.js";
 import { grantReach, revokeReach, reachGrants, mayReach, asPerson } from "../../lib/project-reach.js";
 
 const str = { type: "string" };
@@ -284,7 +284,7 @@ export default {
       run: async input => P.context(input),
     });
 
-    // A project's Instructions (AGENTS.md at its root, CLAUDE.md kept the same) and Context (context/ at its root: files, notes and references to Vyre Files): the same editors and the same
+    // A project's Instructions (AGENTS.md at its root, CLAUDE.md a pointer at it) and Context (context/ at its root: files, notes and references to Vyre Files): the same editors and the same
     // folder code as an agent's (lib/folder-docs.js). Who may: Can use = anyone on the project's seat list at any level and the owner and admins (read); Can edit = the project's owner, a lead or
     // contributor, the Space's owner and the admins (write). A viewer reads and cannot write. The seat is the work module's (work.project.seat), judged for the person on the call.
     /** @param {any} meta @param {string} ref @returns {Promise<{ p: any, use: boolean, edit: boolean }>} */
@@ -309,15 +309,21 @@ export default {
     const noModel = (/** @type {any} */ meta) => { if ((meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(String((meta && meta.caller) || ""))) throw refuse("only a person reads or changes a project's instructions and context; an agent gets them in its brief when its chat starts", "denied"); };
     const proj = { type: "object", required: ["project"], properties: { project: str } };
     ctx.tool("projects.docs.get", {
-      description: "A project's instructions: AGENTS.md and CLAUDE.md at its root (kept the same).",
+      description: "A project's instructions: AGENTS.md at its root. CLAUDE.md beside it is only a pointer at it.",
       input: proj, callers: PERSON_CALLERS,
-      run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); return { files: readDocs(p.home), kept_same: true }; },
+      run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); const d = readDocs(p.home); return { files: { "AGENTS.md": withNotes(d["AGENTS.md"], d["CLAUDE.md"]) } }; },
+    });
+    // the one place a session's prompt reads a project's instructions (sessions.prompt.compose), for every provider
+    ctx.tool("projects.instructions", {
+      description: "A project's AGENTS.md text, for a session's system prompt.", internal: true, callers: ["module"],
+      input: proj,
+      run: async ({ project }) => { const p = P.resolve(project); try { const d = readDocs(p.home); return { name: p.name || p.slug, text: withNotes(d["AGENTS.md"], d["CLAUDE.md"]) }; } catch { return { name: p.name || p.slug, text: "" }; } },
     });
     ctx.tool("projects.docs.set", {
-      description: "Write the project's instructions. AGENTS.md and CLAUDE.md are kept the same, whichever is written. Every chat in the project gets them from its next start.",
-      input: { type: "object", required: ["project", "file", "text"], properties: { project: str, file: { type: "string", enum: ["AGENTS.md", "CLAUDE.md"] }, text: str } },
+      description: "Write the project's instructions (file AGENTS.md). CLAUDE.md is only a pointer at it and cannot be written. Every chat in the project gets them from its next start.",
+      input: { type: "object", required: ["project", "file", "text"], properties: { project: str, file: { type: "string" }, text: str } },
       callers: PERSON_CALLERS,
-      run: async ({ project, file, text }, meta = {}) => { noModel(meta); const { p } = await needEdit(meta, project); try { writeDocs(p.home, file, text, { sync: true }); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "bad_input"); } P.emit("project.changed", { project: p.slug, instructions: true }, { project: p.slug }); return { ok: true, file }; },
+      run: async ({ project, file, text }, meta = {}) => { noModel(meta); if (file !== "AGENTS.md") throw refuse("Instructions live in AGENTS.md. Write them there; CLAUDE.md only points at it.", "bad_input"); const { p } = await needEdit(meta, project); try { writeInstructions(p.home, text); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "bad_input"); } P.emit("project.changed", { project: p.slug, instructions: true }, { project: p.slug }); return { ok: true, file }; },
     });
     ctx.tool("projects.refs.list", {
       description: "A project's context: the files, notes and references to Vyre Files kept in context/ at its root.",

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing } from "react-native";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
@@ -13,6 +14,8 @@ import { ActorMark } from "./ActorMark";
 import { Section } from "./Section";
 import { TaskCard } from "./TaskCard";
 import { useNowScope } from "./scope";
+import { groupAsks, groupKeyOf } from "./ask-model.js";
+import { useSnoozed } from "../../src/state/snooze";
 import { nameOf, nextEvent, nowModel, recordTitle, spaceTag, whenLabel, workingLine, who, type World } from "./model";
 import { SpaceTag } from "../components/SpaceTag";
 import { Stagger } from "../motion/Appear";
@@ -27,7 +30,7 @@ const WIDE = 1000;
 const SHOW = { wide: 3, phone: 2 };
 const RUNNING = 5;
 
-type Props = { world: World; onAction: (task: any, id: string, input?: string) => void; onOpen: (task: any) => void };
+type Props = { world: World; onAction: (task: any, id: string, input?: string, extra?: unknown) => void | Promise<void>; onOpen: (task: any) => void };
 
 /** The project emblem a record shows as, at any size. */
 export const emblemOf = (world: World, rec: any): AvatarRef => ({ kind: "project", id: rec?.id ?? "", name: recordTitle(world, rec), seed: rec?.data?.avatar_seed });
@@ -71,11 +74,62 @@ export function DoingList({ world, list, onOpen, swipe }: { world: World; list: 
   );
 }
 
-/** What waits on the person, from the `from`th card on, as standard cards (the page "N more waiting" pushes shows these). */
-export function NeedsList({ world, list, showSpace, onAction, onOpen, hero = 0 }: Props & { list: any[]; showSpace: boolean; hero?: number }) {
+/** A card that has been answered: it fades and folds away in a fifth of a second, then it is gone. */
+function Leaving({ children, onDone }: { children: React.ReactNode; onDone: () => void }) {
+  const t = useRef(new Animated.Value(1)).current;
+  const [h, setH] = useState<number | null>(null);
+  useEffect(() => {
+    if (h === null) return;
+    Animated.timing(t, { toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(onDone);
+  }, [h]);
+  return (
+    <Animated.View pointerEvents="none" style={{ opacity: t, overflow: "hidden", ...(h === null ? null : { height: t.interpolate({ inputRange: [0, 1], outputRange: [0, h] }) }) }}>
+      <View onLayout={(e) => { if (h === null) setH(e.nativeEvent.layout.height); }}>{children}</View>
+    </Animated.View>
+  );
+}
+
+/** Four or more asks from one project or Flow fold into one row that opens to show them. */
+function AskGroup({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
     <View className="gap-s3">
-      <Stagger>{list.map((t, i) => <TaskCard key={t.id} world={world} task={t} showSpace={showSpace} hero={i < hero} onAction={(id, input) => onAction(t, id, input)} onOpen={() => onOpen(t)} />)}</Stagger>
+      <Card>
+        <Row dense title={title} sub={`${count} things wait on you here`} end={<Icon name={open ? "chev-d" : "chev-r"} size={16} tone="muted" />} onPress={() => setOpen(!open)} />
+      </Card>
+      {open ? <View className="gap-s3">{children}</View> : null}
+    </View>
+  );
+}
+
+/** What waits on the person, from the `from`th card on, as standard cards (the page "N more waiting" pushes shows these). */
+export function NeedsList({ world, list, showSpace, onAction, onOpen, hero = 0 }: Props & { list: any[]; showSpace: boolean; hero?: number }) {
+  // A card the list just lost was answered: keep drawing it for the length of its fade, in the place it was.
+  const prev = useRef<any[]>([]);
+  const [gone, setGone] = useState<{ task: any; at: number }[]>([]);
+  useEffect(() => {
+    const ids = new Set(list.map((t) => t.id));
+    const left = prev.current.map((t, at) => ({ task: t, at })).filter((x) => !ids.has(x.task.id));
+    prev.current = list;
+    if (left.length) setGone((g) => [...g, ...left.filter((x) => !g.some((y) => y.task.id === x.task.id))]);
+  }, [list]);
+  const card = (t: any, i: number) => <TaskCard key={t.id} world={world} task={t} showSpace={showSpace} hero={i < hero} onAction={(id, input, extra) => onAction(t, id, input, extra)} onOpen={() => onOpen(t)} />;
+  const keyName = (k: string) => {
+    if (k.startsWith("flow:")) return `Flow ${k.slice(5)}`;
+    const rec = [...world.records.values()].find((r: any) => r.id === k.slice(8));
+    return rec ? recordTitle(world, rec) : "One project";
+  };
+  const rows = groupAsks(list, groupKeyOf);
+  const out: React.ReactNode[] = [];
+  let n = 0;
+  for (const r of rows) {
+    if (r.group) out.push(<AskGroup key={r.key} title={keyName(r.key)} count={r.items.length}>{r.items.map((t) => card(t, 99))}</AskGroup>);
+    else out.push(card(r.item, n++));
+  }
+  for (const g of gone) out.splice(Math.min(g.at, out.length), 0, <Leaving key={`gone-${g.task.id}`} onDone={() => setGone((x) => x.filter((y) => y.task.id !== g.task.id))}>{card(g.task, 99)}</Leaving>);
+  return (
+    <View className="gap-s3">
+      <Stagger>{out}</Stagger>
     </View>
   );
 }
@@ -93,7 +147,8 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
   const [doneOpen, setDoneOpen] = useState(false);
   const { width } = useWindowDimensions();
   const { phone } = useUiTheme();
-  const m = nowModel(world, scope);
+  const later = useSnoozed(world.now);
+  const m = nowModel(world, scope, later);
   const wide = width >= WIDE;
   const showSpace = scope === "all";
   const openSwipe = (t: any): SwipeSet => ({ trailing: [{ id: "open", label: "Open", icon: "chev-r", tone: "plain", haptic: "selection", onPress: () => onOpen(t) }] });

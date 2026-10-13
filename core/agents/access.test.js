@@ -31,9 +31,9 @@ test("a member makes an agent and owns it; a member with no access sees nothing 
   const { ben, owner } = await world(t);
   const made = await ben("agents.create", { name: "mine", kind: "agent", projects: [] });
   assert.equal(made.error, undefined, JSON.stringify(made.error));
-  assert.equal((await ben("agents.docs.set", { agent: "mine", file: "CLAUDE.md", text: "hi" })).error, undefined, "the creator edits her own");
+  assert.equal((await ben("agents.docs.set", { agent: "mine", file: "AGENTS.md", text: "hi" })).error, undefined, "the creator edits her own");
   await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "secret words" });
-  for (const [n, i] of [["agents.docs.get", { agent: "intake" }], ["agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x" }], ["agents.context.list", { agent: "intake" }], ["agents.used", { agent: "intake" }], ["agents.access.get", { agent: "intake" }]]) {
+  for (const [n, i] of [["agents.docs.get", { agent: "intake" }], ["agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "x" }], ["agents.context.list", { agent: "intake" }], ["agents.used", { agent: "intake" }], ["agents.access.get", { agent: "intake" }]]) {
     const r = await ben(/** @type {string} */ (n), i);
     assert.equal(r.error && r.error.code, "denied", `${n}: ${JSON.stringify(r).slice(0, 140)}`);
   }
@@ -45,11 +45,11 @@ test("Can use sees where an agent is used and nothing more; Can edit changes its
   assert.equal((await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" })).error, undefined);
   assert.equal((await ben("agents.used", { agent: "intake" })).error, undefined, "Can use sees where it is used");
   assert.equal((await ben("agents.docs.get", { agent: "intake" })).error.code, "denied", "but not its instructions");
-  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x" })).error.code, "denied");
+  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "x" })).error.code, "denied");
   assert.equal((await ben("agents.vault.assign", { agent: "intake", item: "mail" })).error.code, "denied");
   assert.equal((await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" })).error, undefined);
   assert.equal((await ben("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], "words");
-  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "kind" })).error, undefined, "Can edit changes it");
+  assert.equal((await ben("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "kind" })).error, undefined, "Can edit changes it");
   assert.equal((await ben("agents.context.add", { agent: "intake", name: "a.txt", base64: "QQ==" })).error, undefined);
   assert.equal((await ben("agents.access.set", { agent: "intake", kind: "person", subject: ADA, level: "edit" })).error.code, "denied", "an editor does not share it further");
   await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: null });
@@ -162,7 +162,7 @@ test("agents.list says who made each agent and who it is shared with; a member s
 test("an agent, a model or a guest caller is refused on every agent configuration tool: person surfaces only", { timeout: 120_000 }, async t => {
   const { owner } = await world(t);
   await owner("agents.create", { name: "intake", kind: "agent", projects: [] });
-  const tools = [["agents.docs.get", {}], ["agents.docs.set", { file: "CLAUDE.md", text: "x" }], ["agents.context.list", {}], ["agents.context.add", { name: "a.txt", base64: "QQ==" }], ["agents.context.remove", { name: "a.txt" }],
+  const tools = [["agents.docs.get", {}], ["agents.docs.set", { file: "AGENTS.md", text: "x" }], ["agents.context.list", {}], ["agents.context.add", { name: "a.txt", base64: "QQ==" }], ["agents.context.remove", { name: "a.txt" }],
     ["agents.context.link", { path: "/tmp" }], ["agents.context.unlink", { path: "/tmp" }], ["agents.vault.list", {}], ["agents.vault.assign", { item: "mail" }], ["agents.vault.unassign", { item: "mail" }],
     ["agents.used", {}], ["agents.access.get", {}], ["agents.access.set", { kind: "person", subject: BEN, level: "use" }]];
   for (const as of ["mcp:agent:kit", "cli:agent:kit", "harness", "tailnet-guest"]) {

@@ -4,10 +4,10 @@
 /** The three built-in groups a row falls in: [id, title]. A person's own groups come after them. */
 export const AGENT_GROUPS = /** @type {[string, string][]} */ ([["yours", "Yours"], ["team", "Your team's agents"], ["shared", "Shared with you"], ["builders", "Builders"]]);
 
-/** One line of role: the first line of the instructions with the markup taken off, at most 90 characters. @param {string | null | undefined} instructions @param {string} [fallback] */
-export function roleLine(instructions, fallback = "") {
-  const first = String(instructions ?? "").split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|__|`/g, "").trim()).find(Boolean);
-  return (first || fallback).slice(0, 90);
+/** One line of role: the agent's description, else its role; never the raw instruction text. At most 90 characters. @param {any} a @param {string} [fallback] */
+export function roleLine(a, fallback = "") {
+  const one = (/** @type {unknown} */ t) => String(t ?? "").split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|__|`/g, "").trim()).find(Boolean) ?? "";
+  return (one(a?.description) || one(a?.role) || fallback).slice(0, 90);
 }
 
 /** @param {any} a */
@@ -28,19 +28,19 @@ export function sharingOf(a, me) {
   return { mine: mine ? (mine.level === "edit" ? "Can edit" : "Can use") : "", count: sh.length };
 }
 
-const worksLine = (/** @type {unknown} */ projects) => {
+const worksLine = (/** @type {unknown} */ projects, /** @type {Record<string, string>} */ names = {}) => {
   if (projects === "*") return "Works on every project";
   const n = Array.isArray(projects) ? projects.length : 0;
-  if (n === 1 || n === 2) return `Works on ${/** @type {unknown[]} */ (projects).map(String).join(" and ")}`;
+  if (n === 1 || n === 2) return `Works on ${/** @type {unknown[]} */ (projects).map((x) => names[String(x)] || String(x)).join(" and ")}`;
   return n ? `Works on ${n} projects` : "No projects yet";
 };
 
-/** One agents.list row as the list shows it. @param {any} a @param {string} [me] */
-export function agentRow(a, me) {
+/** One agents.list row as the list shows it. @param {any} a @param {string} [me] @param {Record<string, string>} [names] project names by id */
+export function agentRow(a, me, names = {}) {
   const sharing = sharingOf(a, me);
   return {
-    name: String(a.name), kind: String(a.kind ?? "agent"), role: roleLine(a.instructions, a.kind === "assistant" ? "Your agent" : a.builtin ? "Builds your Space by conversation" : "Agent"),
-    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
+    name: String(a.name), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
+    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects, names), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
     ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
   };
 }
@@ -77,3 +77,39 @@ export function loadGroups(store) {
 export function saveGroups(store, v) {
   try { store.setItem(KEY, JSON.stringify(v)); } catch { /* the device may refuse; the groups then last for this visit only */ }
 }
+
+/** The titles of the groups the list works out for a person (facts, not folders): nobody moves an agent into them. */
+export const COMPUTED_TITLES = AGENT_GROUPS.map(([, t]) => t);
+
+/**
+ * The agents this person sees: every agent, but only their own Assistant (another person's never appears), the Assistant first.
+ * @param {ReturnType<typeof agentRow>[]} rows @param {string} [me]
+ */
+export function visibleAgents(rows, me) {
+  const mine = rows.filter((r) => r.kind !== "assistant" || !r.maker || !me || r.maker === me);
+  return [...mine.filter((r) => r.kind === "assistant"), ...mine.filter((r) => r.kind !== "assistant")];
+}
+
+/**
+ * What a row's menu offers, in order, as { key, label } (key "move" carries `to`). Only what makes sense for this row and this person.
+ * The Assistant has one chat and its settings; no sharing, deleting or moving. Pause and Resume only when the agent can pause. Share and Delete are for the maker, an owner or an admin; the built-in agents are not deleted.
+ * @param {ReturnType<typeof agentRow>} r
+ * @param {{ me?: string, staff?: boolean, chats?: number, groups?: string[], placed?: string, canDelete?: boolean }} o
+ * @returns {{ key: string, label: string, to?: string }[]}
+ */
+export function rowActions(r, o = {}) {
+  if (r.kind === "assistant") return [{ key: "chat", label: "Open chat" }, { key: "open", label: "Settings" }];
+  const may = !!o.staff || (!!o.me && r.maker === o.me);
+  /** @type {{ key: string, label: string, to?: string }[]} */
+  const out = [{ key: "open", label: "Open" }, { key: "new-chat", label: "New chat" }];
+  if (o.chats) out.push({ key: "chats", label: o.chats === 1 ? "Chat with it" : `Chats with it (${o.chats})` });
+  if (r.canPause) out.push({ key: "pause", label: r.status === "Paused" ? "Resume" : "Pause" });
+  if (may && !r.builtin) out.push({ key: "share", label: "Share" });
+  if (may && !r.builtin && o.canDelete !== false) out.push({ key: "delete", label: "Delete" });
+  const mine = (o.groups ?? []).filter((g) => !COMPUTED_TITLES.includes(g) && g !== o.placed);
+  for (const g of mine.slice(0, 6)) out.push({ key: "move", label: `Move to ${g}`, to: g });
+  return out;
+}
+
+/** Whether a chat row has this agent in it. @param {{ agents?: string[], pinned?: string }} c @param {string} name */
+export const chatHas = (c, name) => c.pinned !== "assistant" && (c.agents ?? []).some((a) => a === name);

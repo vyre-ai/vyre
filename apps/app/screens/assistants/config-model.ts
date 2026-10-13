@@ -3,14 +3,13 @@ import { providerName, type Account } from "../settings/accounts-model.ts";
 
 export type Entry = { provider: string; account?: string };
 export type Step = { provider: string; account: string; kind: string; title: string; sub: string; missing: boolean };
-export type Doc = "AGENTS.md" | "CLAUDE.md";
+export type Doc = "AGENTS.md";
 export type ContextFile = { name: string; size: number; at?: number };
 export type Used = { kind: "chat" | "flow"; id: string; title: string; sub: string };
 
-/** The two files an agent reads before it works: what the person calls them, and what each is for. */
+/** The one file an agent reads before it works: what the person calls it, and what it is for. */
 export const DOCS: [Doc, string, string][] = [
-  ["AGENTS.md", "AGENTS.md", "Who this agent is and how it works. Every agent tool reads this one."],
-  ["CLAUDE.md", "CLAUDE.md", "Extra notes for Claude, if you want them kept apart."],
+  ["AGENTS.md", "AGENTS.md", "Who this agent is and how it works. Every tool and model reads it."],
 ];
 
 /** What agents.docs.set takes: the file, and the text without the stray space at its ends. */

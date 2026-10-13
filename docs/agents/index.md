@@ -18,12 +18,12 @@ Read the page for what you are about to do, not all of them. `docs.find` finds a
 | --- | --- | --- |
 | `environment.md` | You need to know where you are running: which machine, which Space, what is yours, what belongs to the person and what you cannot reach. | 523 |
 | `authority.md` | A call was refused or came back not found, you wonder what you are allowed to do, or you need more access. | 529 |
-| `outward-acts.md` | You want to send an email or message, pay, post, publish, share, or delete something, or a call came back held. | 545 |
+| `outward-acts.md` | You want to send an email or message, pay, post, publish, share, or delete something, or a call came back held. | 676 |
 | `sealed-and-secrets.md` | A field shows a placeholder instead of a value, you need a password, key or number you cannot see, or you are about to write a secret into text. | 397 |
-| `tools.md` | You need a tool and do not know its name, a tool you expected is missing, or a call returned a held result. | 1238 |
+| `tools.md` | You need a tool and do not know its name, a tool you expected is missing, or a call returned a held result. | 1241 |
 | `records.md` | You read, create or change a contact, matter, task, note, file or other record, or need to link one record to another. | 582 |
 | `flows.md` | You write, change, test or explain an automation, or a Flow step asks you to do something. | 1495 |
-| `flows-cheatsheet.md` | You are about to write or change a Flow and need the exact keys, an example of each step, and the limits. | 1788 |
+| `flows-cheatsheet.md` | You are about to write or change a Flow and need the exact keys, an example of each step, and the limits. | 1790 |
 | `sessions-and-context.md` | You start or continue a session, need to know what was done before, or want to remember something for later. | 652 |
 | `connections.md` | You need to read from or act on an outside service such as mail, a calendar, a payment provider or any API, or a tool from an MCP server. | 672 |
 | `computers-and-files.md` | You need to read or write files, run something on a computer, use a browser, or hand a screen to a person. | 426 |
