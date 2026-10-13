@@ -82,6 +82,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         VyreAppWindow.shared.identity = MacIdentity(store: BundleSeedStore(bundle: keys))
         VyreAppWindow.shared.enclave = MacEnclave(store: BundleHandleStore(bundle: keys, slot: .enclave))
         VyreAppWindow.shared.agreement = MacAgree(store: BundleHandleStore(bundle: keys, slot: .agree))
+        VyreAppWindow.shared.openBoxless = { [weak self] in self?.firstRun.opensBoxless() ?? false }
         VyreAppWindow.shared.makeServer = { [weak self] in self?.firstRun.makeThisMacServer() }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
@@ -166,6 +167,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     /// `open Vyre.app` while it runs opens the Capsule: a way in that needs no hot key at all.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if firstRun.reopen() { return false }
         panel.toggle()
         return false
     }

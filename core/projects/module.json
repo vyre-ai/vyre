@@ -124,7 +124,7 @@
       {
         "name": "projects.sync",
         "summary": "hand every project's folders under /work to the project's own group on a team server, once (the owner, on a quiet box)",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {

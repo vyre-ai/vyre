@@ -21,6 +21,7 @@ import { spaceRef } from "../marks/useMark";
 import { recordTitle, spaceName, taskFraction, who, type World } from "./model";
 import { Stagger } from "../motion/Appear";
 import { useUiTheme } from "../theme";
+import { SpaceTag } from "../components/SpaceTag";
 
 type Item = { def: any; row: any };
 
@@ -54,7 +55,7 @@ function TaskBar({ done, total, width = 40 }: { done: number; total: number; wid
  * shows as one applied chip. A wide screen gets a table (emblem and title with "Matter · Juniper Studio" under it, stage steps and name, owner, "2 of 4"); a phone gets
  * 72 high rows (emblem 44, title, "Matter · Engagement", the owner at the end, a 3 high progress bar), grouped by space only in All spaces.
  */
-export function ProjectsList({ world, items, onOpen, onNew, choices, onChoose }: { world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
+export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose }: { world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void; /** The small tag that says where a project lives, from its source space (placeTag); the list shows it on every row */ tagOf?: (spaceId?: string) => string | null; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
   const { phone } = useUiTheme();
   const [space, setSpace] = useState("all");
   const [type, setType] = useState("all");
@@ -95,6 +96,7 @@ export function ProjectsList({ world, items, onOpen, onNew, choices, onChoose }:
               <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
               <Text size="secondary" tone="label" numberOfLines={1}>{[showType ? "" : typeLabel(i), manySpaces ? spaceName(world, spaceId(i)) : ""].filter(Boolean).join(" · ")}</Text>
             </View>
+            {tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}
           </View>
         ) },
         ...(showType ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
@@ -114,7 +116,7 @@ export function ProjectsList({ world, items, onOpen, onNew, choices, onChoose }:
         lead={emblem(i, 44, false)}
         title={recordTitle(world, i.row)}
         sub={<View className="gap-s2"><Text size="secondary" tone="label" numberOfLines={1}>{line}</Text>{t.total ? <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 120, height: 3 }}><View className="h-full rounded-full bg-accent" style={{ width: `${(t.done / t.total) * 100}%` }} /></View> : null}</View>}
-        end={a ? <ActorMark who={a} size={28} /> : undefined}
+        end={<>{tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}{a ? <ActorMark who={a} size={28} /> : null}</>}
         onPress={() => onOpen(i.row.id)}
       />
     );

@@ -10,7 +10,7 @@ holds what serves that build and pins it.
 | `manifest.js` | The signed manifest: canonical JSON of every file's SRI hash, Ed25519-signed. It is shared by the loader (browser) and `release.js` (Node). |
 | `sw.js` | The service worker. It installs a loader only when the loader's signature and every hash check out and the release is not older than the one it holds. It serves the loader from that cache. |
 | `worker.js`, `wrangler.toml` | The Cloudflare Worker: static assets with a strict CSP (no inline script, no `eval`, connections only to the relay and `*.ts.net`) and the other security headers. `/v/<sha>/` is immutable. Any other path gets the loader. |
-| `pair/` | The page at `vyre.run/pair` that a QR code opens. It checks the fragment and offers the app (`vyre://pair#...`) or the web app (`app.vyre.run/pair#...`), and it makes no request. The docs site publishes it. |
+| `pair/` | The page at `vyre.run/pair` that the old pairing QR opened. That code is gone: the page says so and names the next step (Devices, Add a device, on a device already in use). It makes no request. The docs site publishes it. |
 | `release.js` | The release steps, below. |
 
 ## A release
