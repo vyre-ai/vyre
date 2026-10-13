@@ -35,6 +35,7 @@ const ALLOWED = {
     // Mock data for the design gallery and the mock store: sample agents carry a model name, nothing reads it as the box's list.
     "apps/app/app/gallery.tsx": 4,
     "apps/app/src/real/mock-agents.ts": 4,
+    "apps/app/src/real/mock-agent-work.ts": 1,
   },
   // (the app's and the Deck's copies of the box's presence lists are gone: no client mirrors the floor's list any more, the box names the moment in its refusal)
   policy: {},
