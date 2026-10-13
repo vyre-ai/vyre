@@ -82,6 +82,7 @@ import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { httpFetch } from "../../lib/http.js";
+import { chosenServer } from "./chosen-server.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
@@ -1284,7 +1285,8 @@ export default {
       if (/^spc_[a-z2-7]{12}$/.test(String(i.id))) await files.keys.discard(String(i.id)).catch(() => {});
       return r;
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
-    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
+    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
+      if (i.server !== undefined) return chosenServer({ ctx, identity, K, remoteCall, refuse }).onChosenServer("spaces.host-here", i, meta, ["name", "id", "acceptBuiltinStore"], "Only this home's owner can have a server host a space.");
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space; run this on a server that hosts spaces.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1315,7 +1317,8 @@ export default {
     // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
     // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
     /** @type {Promise<any> | null} */ let homeKeyMaking = null;
-    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing.", obj({ name: str, done: { type: "boolean" } }, ["name"]), async (i, meta) => {
+    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.", obj({ name: str, done: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
+      if (i.server !== undefined) return chosenServer({ ctx, identity, K, remoteCall, refuse }).onChosenServer("spaces.name-here", i, meta, ["name", "done"], "Only this home's owner can name a space on a server.");
       if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1745,13 +1748,10 @@ export default {
     };
     /** See `resealPortFor` (lib/spaces/upgrade.js): the sealed-value transfer through platform's seal ops. */
     const resealPort = (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval) => resealPortFor({ local: sides.local, remote: sides.remote, sealing: sides.sealing, plan_hash, approval });
-    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.", obj(), async () => {
-      let who = null; try { who = identity.status(); } catch { who = null; }
+    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name, online, channel? }] }, where `id` is what `spaces.create` takes as `home.device.id` and `spaces.name-here` takes as `server`, and `channel` is { relay, route, box }, where the server is reached. Empty when none is paired.", obj(), async () => {
       /** @type {any[]} */ let rows = [];
-      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' ORDER BY created, id").all(); } catch { rows = []; }
-      void who;
-      // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do
-      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name), online: null })) };
+      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' AND removed_at IS NULL ORDER BY created, id").all(); } catch { rows = []; }
+      return { servers: await chosenServer({ ctx, identity, K, remoteCall, refuse }).serversWithChannel(rows) };
     });
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);

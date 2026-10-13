@@ -2,6 +2,7 @@
 // in this screen's state only); Seeing is agents.list; Privacy lists the sealed fields from records.types; About reads the running version from update.status.
 // The sample's PIN switch, defaults and retention have no tool on the box, so they are not here.
 import { useCallback, useEffect, useState } from "react";
+import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { Linking, View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
@@ -115,6 +116,7 @@ export function RealAbout() {
     <Page title="About Vyre" sub={v ? `Version ${v}.` : undefined} back="/u/settings">
       {status ? (
         <Card className="gap-s2">
+          <ServerLine />
           <Text tone="muted">{aboutLine(status)}</Text>
           {button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
         </Card>

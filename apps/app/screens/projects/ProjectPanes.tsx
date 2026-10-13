@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, Text } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, SpaceTag, Text } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
 import { showingJoined } from "../../src/real/team-join";
+import { usePlaceText } from "../../src/real/PlaceTag";
 import { treeOf, type Body } from "../templates/model";
 
 type Chat = { chat: string; title?: string; status?: string; last_active?: string };
@@ -31,6 +32,7 @@ export function ChatsPane({ slug }: { slug: string }) {
 
 /** The project's own files (Projects/<id>/files): sealed at rest, opened only by the project's members. Opening one is the Drive's job. */
 export function FilesPane({ id }: { id: string }) {
+  const fileTag = usePlaceText("showing");
   const router = useRouter();
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
   // a member of a joined team lists the project's files through the team's door (files.list: the owner's and team's only); her own Drive screens are her home's
@@ -47,7 +49,7 @@ export function FilesPane({ id }: { id: string }) {
     <View className="gap-s3">
       <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Drive" onPress={() => router.push("/u/drive" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
-        <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} /></View>))}</Card>
+        <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}</Card>
       )}
     </View>
   );

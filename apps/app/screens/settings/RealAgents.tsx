@@ -5,16 +5,18 @@ import { AccountsCard } from "./AccountsCard";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Segmented, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Segmented, SpaceTag, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
 import { showingJoined } from "../../src/real/team-join";
+import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
 export function RealAssistants() {
+  const homeTag = usePlaceText("home");
   const router = useRouter();
   const [list, setList] = useState<Agent[] | null>(null);
   const [err, setErr] = useState("");
@@ -28,6 +30,7 @@ export function RealAssistants() {
   };
   return (
     <Page title="Assistants" back="/u/settings">
+      <PlaceTag of="home" />
       <Segmented label="Assistants" value={tab} onChange={setTab} options={[["assistants", "Assistants"], ["teammates", "Teammates"]]} />
       {tab === "teammates" ? <TeammatesPage /> : null}
       {tab === "teammates" ? null : <>
@@ -42,7 +45,7 @@ export function RealAssistants() {
               <View className="flex-row items-center gap-s3 p-s3">
                 <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={40} />
                 <View className="min-w-0 flex-1 gap-s1">
-                  <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{isStopped(a) ? <Chip tone="warn">Paused</Chip> : null}</View>
+                  <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{homeTag ? <SpaceTag text={homeTag} /> : null}{isStopped(a) ? <Chip tone="warn">Paused</Chip> : null}</View>
                   <Text size="caption" tone="label">{`${roleOf(a)}. ${agentLine(a)}`}</Text>
                 </View>
                 {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} disabled={busy === a.name} onPress={() => flip(a)} /> : null}
@@ -69,6 +72,7 @@ export function RealAi() {
   const budgeted = us.filter((u) => u.agent && u.budget_usd != null);
   return (
     <Page title="AI accounts" back="/u/settings">
+      <PlaceTag of="home" />
       <Banner>Nobody's work runs on someone else's account. Your chats use your accounts and count against your budget.</Banner>
       {member ? null : <ConnectClaude onConnected={load} />}
       <AccountsCard />
