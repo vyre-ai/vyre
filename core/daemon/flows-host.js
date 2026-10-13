@@ -12,6 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
+import { createAgentWake } from "./agent-wake.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -401,6 +402,9 @@ export function createFlowsHost(o) {
     const storeAway = () => storeIsAway(k.store);
     k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { if (storeAway()) return; try { await flows.onEvent(e); void wake.poke(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { if (/** @type {any} */ (err) && /** @type {any} */ (err).code === "unavailable") return; log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+
+    // A task given to an agent (a Flow's agent step, tasks.request) wakes it once: core/daemon/agent-wake.js asks the agents module for the job.
+    if (typeof o.callModule === "function") k.log.subscribe("agent-wake", {}, createAgentWake({ space, gw, chain: flowsChain, callModule: o.callModule, log: m => log(m) }));
 
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.

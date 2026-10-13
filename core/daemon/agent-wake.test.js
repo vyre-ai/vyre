@@ -1,0 +1,85 @@
+// @ts-check
+// core/daemon/agent-wake: which kernel tasks wake an agent, and what the wake sends. Fakes for the kernel's task API and the agents module: no daemon, no session.
+
+import "../../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createAgentWake, wakes } from "./agent-wake.js";
+
+const NOW = 1_000_000_000;
+const task = (/** @type {any} */ o = {}) => ({ id: "t1", title: "Refund R-9", state: "ready", source: "flow_step", doer: { kind: "agent", id: "juno" }, assigned_by: { kind: "person", id: "ana" }, output: { kind: "decision" }, form: { instructions: "Escalate to Dana" }, flow: "refund", created_at: NOW - 1000, ...o });
+
+function rig(/** @type {any[]} */ tasks) {
+  const woke = /** @type {any[]} */ ([]), edits = /** @type {any[]} */ ([]), logs = /** @type {string[]} */ ([]);
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const claimed = new Map();
+  const gw = { ask: { get: async (_c, id) => byId.get(id) ?? null, edit: async (_c, id, patch) => { edits.push({ id, patch }); byId.set(id, { ...byId.get(id), ...patch }); } } };
+  const callModule = async (tool, input) => {
+    assert.equal(tool, "agents.wake");
+    woke.push(input);
+    if (claimed.has(input.task)) return { thread: claimed.get(input.task), already: true };
+    claimed.set(input.task, `th-${input.task}`);
+    return { thread: `th-${input.task}`, already: false };
+  };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), callModule, log: m => logs.push(m), clock: () => NOW });
+  return { onEvent, woke, edits, logs, byId };
+}
+const created = (/** @type {string} */ id, type = "task.created") => ({ type, data: { task: { id } } });
+
+test("a Flow agent step wakes the agent once, with the title, its instructions and the approver, and the task gets the thread id", async () => {
+  const r = rig([task({ record: "vyre://s/refund/9" })]);
+  await r.onEvent(created("t1"));
+  assert.equal(r.woke.length, 1);
+  assert.deepEqual({ ...r.woke[0] }, { task: "t1", agent: "juno", title: "Refund R-9", instructions: "Escalate to Dana", record: "vyre://s/refund/9", approver: "ana", flow: "refund" });
+  assert.deepEqual(r.edits, [{ id: "t1", patch: { form: { instructions: "Escalate to Dana", thread: "th-t1" } } }]);
+});
+
+test("a restart or a repeated event does not start it again, and writes the thread only once", async () => {
+  const r = rig([task()]);
+  await r.onEvent(created("t1"));
+  await r.onEvent(created("t1"));
+  await r.onEvent(created("t1", "task.readied"));
+  assert.equal(r.edits.length, 1, "the thread was already on the task");
+  assert.equal(new Set(r.woke.map(w => w.task)).size, 1);
+});
+
+test("a repeat after a crash between the wake and the write puts the thread on the task", async () => {
+  const r = rig([task()]);
+  await r.onEvent(created("t1"));
+  r.byId.set("t1", task());   // the write was lost
+  await r.onEvent(created("t1"));
+  assert.equal(r.edits.length, 2);
+});
+
+test("a task given to a person wakes nothing, and neither does a to-do, a note, a task not ready, a stale one or a kernel one", async () => {
+  const r = rig([
+    task({ id: "p", doer: { kind: "person", id: "ana" } }),
+    task({ id: "m", source: "manual" }),
+    task({ id: "n", output: { kind: "note" } }),
+    task({ id: "w", state: "waiting" }),
+    task({ id: "d", state: "done" }),
+    task({ id: "old", created_at: NOW - 48 * 3600 * 1000 }),
+    task({ id: "k", kernel: true }),
+  ]);
+  for (const id of ["p", "m", "n", "w", "d", "old", "k", "missing"]) await r.onEvent(created(id));
+  await r.onEvent({ type: "task.completed", data: { task: { id: "t1" } } });
+  await r.onEvent({ type: "flow.run", data: {} });
+  assert.deepEqual(r.woke, []);
+});
+
+test("a task made by an agent's request wakes the agent, with no approver when no person made it; a task freed by its dependencies wakes it then", async () => {
+  const r = rig([task({ id: "a", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, form: undefined, note: "Do the thing" })]);
+  await r.onEvent(created("a", "task.readied"));
+  assert.equal(r.woke.length, 1);
+  assert.equal(r.woke[0].approver, undefined);
+  assert.equal(r.woke[0].instructions, "Do the thing");
+  assert.equal(wakes(task(), NOW), true);
+});
+
+test("a wake that fails is logged and stops nothing", async () => {
+  const gw = { ask: { get: async () => task(), edit: async () => {} } };
+  const logs = /** @type {string[]} */ ([]);
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), callModule: async () => { throw new Error("no such agent"); }, log: m => logs.push(m), clock: () => NOW });
+  await onEvent(created("t1"));
+  assert.match(logs[0], /did not wake its agent \(no such agent\)/);
+});
