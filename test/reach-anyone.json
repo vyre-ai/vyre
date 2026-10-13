@@ -2516,6 +2516,42 @@
   "comms.service.get": {
    "module": "comms",
    "reason": "read-only: one comms service's settings, never a secret"
+  },
+  "files.linked.list": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.ls": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.read": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.search": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.tree": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.status": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.versions": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "files.linked.mentions.search": {
+   "module": "files",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "google.find": {
+   "module": "google",
+   "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
   }
  }
 }
