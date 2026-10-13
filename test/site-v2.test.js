@@ -25,8 +25,6 @@ function exists(href) {
   return fs.existsSync(path.join(p, "index.html"));
 }
 // Served by the build (scripts/build-site.sh) or a redirect, not committed: the install lines and the box files.
-const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|agenthome|setup\/tokens\.css)$/;
-const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|setup\/tokens\.css|map\/?)$/;
 const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|docs(\/.*)?|download\/mac|setup\/tokens\.css)$/;
 
 for (const slug of PAGES) {
