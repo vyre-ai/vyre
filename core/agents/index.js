@@ -33,7 +33,17 @@ import { agentDir } from "../../lib/files/layout.js";
 import { orientation } from "../../lib/orientation.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
-export const MIGRATIONS = [
+export /** What a woken agent is told about closing its task: the real tools and states (core/tasks-tools), so a task is never left open in silence and the next step of a Flow starts when the agent is done. */
+const HOW_TO_FINISH = [
+  "How to finish this task:",
+  "- Start it: tasks.move { id: \"<id>\", to: \"working\" }.",
+  "- When the work is done, hand it in: tasks.submit { id: \"<id>\", evidence } with a one-line result (for a note, evidence is { note: { text, sources } }; attach the file or record the task asks for). The Flow goes on to its next step by itself.",
+  "- If you are blocked on information or on a person: tasks.move { id: \"<id>\", to: \"stuck\", reason: \"what you need and from whom\", suggested_fix: \"what they should do\" }. It then shows as a card for whoever gave you the task.",
+  "- If it should go to someone else: ask for a task for them with tasks.request, say why in its note, then move this one to stuck with the same reason.",
+  "- Never leave the task open and silent, and never submit it without doing the work.",
+].join("\n");
+
+const MIGRATIONS = [
   `CREATE TABLE agents_agents (
      name TEXT PRIMARY KEY, kind TEXT NOT NULL, projects TEXT NOT NULL, auth TEXT NOT NULL,
      instructions TEXT, skills TEXT NOT NULL DEFAULT '[]', computer INTEGER NOT NULL DEFAULT 0,
@@ -831,7 +841,7 @@ export default {
             `You were given a task: ${String(i.title).slice(0, 200)}`,
             i.instructions ? `Instructions for this task:\n${String(i.instructions).slice(0, 4000)}` : "",
             i.record ? `Record: ${String(i.record)}` : "",
-            `Task id: ${task}. Start it with tasks.start, do the work, then hand in what you made with tasks.submit. If you cannot finish, say why in a note and leave it open.`,
+            `Task id: ${task}.\n\n${HOW_TO_FINISH.replace("<id>", task)}`,
           ].filter(Boolean).join("\n\n");
           const project = i.project && (a.projects === "*" || a.projects.includes(String(i.project))) ? String(i.project) : undefined;
           const t = await launch(a, { prompt, job: true, project, ...(i.approver ? { forPerson: String(i.approver), runAs: String(i.approver) } : {}), ...(org ? { flowOrigin: Object.fromEntries(Object.entries({ ...org, task, ...(i.approver ? { approver: String(i.approver) } : {}) }).filter(([, v]) => typeof v === "string" || typeof v === "number").map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 200) : v])) } : {}) });

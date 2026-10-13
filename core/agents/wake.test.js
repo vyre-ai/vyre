@@ -61,7 +61,9 @@ test("agents.wake: one job thread with the task in the prompt, for the approver,
   assert.match(l.prompt, /Refund R-9/);
   assert.match(l.prompt, /Escalate to Dana/);
   assert.match(l.prompt, /vyre:\/\/s\/refund\/9/);
-  assert.match(l.prompt, /tasks\.start/);
+  assert.match(l.prompt, /tasks\.move/);
+  assert.match(l.prompt, /tasks\.submit/);
+  assert.match(l.prompt, /stuck/);
   const again = await call("agents.wake", w, "module:vyred");
   assert.deepEqual([again.data.thread, again.data.already], ["job1", true]);
   assert.equal(globalThis.__launched.length, 1, "the second ask started no second job");
