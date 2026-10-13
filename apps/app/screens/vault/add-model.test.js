@@ -44,13 +44,18 @@ test("a pick starts with a lowercase name the vault accepts", () => {
   assert.equal(slugOf("Juniper Drive!"), "Juniper-Drive");
 });
 
-test("a provider's form has the catalog's own fields and labels, secrets marked", () => {
+test("a provider's form has the catalog's own fields and labels, in its console's order, optional ones last and labelled", () => {
   const f = formOf("twilio");
   assert.equal(f.how, "field");
-  assert.deepEqual(f.fields.map((x) => x.name), ["value", "sid", "account", "from", "service"]);
-  assert.equal(f.fields[0].secret, true); assert.equal(f.fields[0].label, "Auth token");
-  assert.equal(f.fields[3].secret, false); assert.equal(f.fields[3].optional, true);
+  assert.deepEqual(f.fields.map((x) => x.name), ["account", "value", "from", "sid", "service"]);
+  assert.equal(f.fields[1].secret, true); assert.equal(f.fields[1].label, "Auth token");
+  assert.equal(f.fields[0].label, "Account number (starts with AC)");
+  assert.match(f.fields[3].label, /^API key id \(optional, only if/);
+  assert.match(f.fields[4].label, /^Messaging service id \(optional, instead/);
   assert.equal(f.help, "https://console.twilio.com/");
+  const e = formOf("sending-service").fields.map((x) => x.name);
+  assert.deepEqual(e.slice(0, 3), ["service", "api_key", "from"]);
+  assert.match(formOf("sending-service").fields.find((x) => x.name === "domain").label, /\(optional/);
 });
 
 test("a provider with a file shows a drop zone for the JSON, and its other fields", () => {
