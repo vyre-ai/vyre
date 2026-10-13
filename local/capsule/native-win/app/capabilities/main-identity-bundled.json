@@ -19,6 +19,8 @@
     "allow-enclave-public",
     "allow-enclave-sign",
     "allow-agree-public",
-    "allow-agree-secret"
+    "allow-agree-secret",
+    "allow-mount-state",
+    "allow-mount-set"
   ]
 }

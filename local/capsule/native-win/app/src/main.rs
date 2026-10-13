@@ -6,6 +6,7 @@
 //! panel, a WebView2 on the person's own server with no capability, a navigation allowlist and
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
+mod mountctl;
 mod ncrypt;
 
 use std::sync::Mutex;
@@ -692,21 +693,24 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![mountctl::mount_reply, mountctl::mount_state, mountctl::mount_set, get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
+            app.manage(mountctl::Mounting::new(handle.clone()));
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &drive, &quit])?;
+            let mount = tauri::menu::CheckMenuItem::with_id(app, "mount", "Show Vyre in File Explorer", true, false, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open, &drive, &mount, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_panel(app, "/quick"),
                     "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
+                    "mount" => mountctl::toggle(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -730,6 +734,7 @@ fn main() {
             // A computer that has finished setup starts hidden in the tray; one that has not opens the app. The page says when setup is finished (`setup_finished`), and that is the one signal.
             if !setup_done(&handle) { show_first_run(&handle); }
             ensure_link_window(&handle);
+            mountctl::restore(&handle);
             spawn_update_loop(handle.clone());
             log("note", "setup", "done");
 

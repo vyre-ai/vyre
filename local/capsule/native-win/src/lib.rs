@@ -23,3 +23,5 @@ pub mod identity;
 pub mod bundled;
 pub mod applog;
 pub mod mount;
+#[cfg(windows)]
+pub mod mount_win;

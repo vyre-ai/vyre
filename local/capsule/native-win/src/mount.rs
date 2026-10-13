@@ -262,6 +262,12 @@ impl Mirror {
         if let Some(e) = self.files.remove(drive) { self.taken.remove(&lower(&e.local)); }
     }
 
+    /// Every known file under a local folder (either slash, any case): (Drive path, local path). A rename or delete of a folder acts on each of them.
+    pub fn files_under(&self, local_dir: &str) -> Vec<(String, String)> {
+        let pre = format!("{}/", lower(local_dir.replace('\\', "/").trim_end_matches('/')));
+        self.taken.range(pre.clone()..).take_while(|(k, _)| k.starts_with(&pre)).map(|(_, d)| (d.clone(), self.files[d].local.clone())).collect()
+    }
+
     pub fn dir_names(&self) -> BTreeSet<String> { self.dirs.values().cloned().collect() }
 }
 
@@ -452,6 +458,15 @@ mod tests {
         m.apply(&[ch("Docs/Report.txt", 2, 4, true)], 4);
         assert_eq!(m.local_of("docs/report.txt"), Some("Docs/report (2).txt"));
         assert_eq!(m.drive_of("docs/report (2).txt").as_deref(), Some("docs/report.txt"), "found by its local name in any case");
+    }
+
+    #[test]
+    fn a_folder_names_every_file_under_it_in_any_case_and_either_slash() {
+        let mut m = Mirror::new();
+        m.apply(&[ch("Docs/a.txt", 1, 1, false), ch("Docs/sub/b.txt", 1, 2, false), ch("Docsx/c.txt", 1, 3, false), ch("other/d.txt", 1, 4, false)], 4);
+        let under = m.files_under("docs\\");
+        assert_eq!(under, vec![("Docs/a.txt".to_string(), "Docs/a.txt".to_string()), ("Docs/sub/b.txt".to_string(), "Docs/sub/b.txt".to_string())]);
+        assert!(m.files_under("nothing").is_empty());
     }
 
     #[test]

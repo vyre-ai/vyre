@@ -12,6 +12,7 @@
     "allow-device-key-dh",
     "allow-mount-drive",
     "allow-unmount-drive",
-    "allow-notify"
+    "allow-notify",
+    "allow-mount-reply"
   ]
 }

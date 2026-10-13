@@ -28,7 +28,7 @@ async function call(tool, input = {}) {
     body: JSON.stringify(input),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((body.error && body.error.message) || `the box answered ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error((body.error && body.error.message) || `the box answered ${res.status}`), { code: (body.error && body.error.code) || `http_${res.status}` });
   return body.data;
 }
 
@@ -54,6 +54,20 @@ internals.invoke("plugin:event|listen", {
   event: "vyre-drive",
   target: { kind: "Window", label: "link" },
   handler: internals.transformCallback(() => { mountDrive(); }),
+}).catch(() => {});
+
+// Vyre in File Explorer: the shell's mount asks this page to make its server calls, as this computer's own device. The answer goes back through mount_reply (only this page may call it).
+internals.invoke("plugin:event|listen", {
+  event: "vyre-mount-call",
+  target: { kind: "Window", label: "link" },
+  handler: internals.transformCallback(async (e) => {
+    const { id, tool, input } = e.payload || {};
+    try {
+      invoke("mount_reply", { id, data: await call(tool, input || {}) }).catch(() => {});
+    } catch (err) {
+      invoke("mount_reply", { id, error: { code: (err && err.code) || "failed", message: String((err && err.message) || err) } }).catch(() => {});
+    }
+  }),
 }).catch(() => {});
 
 link().catch(() => {});
