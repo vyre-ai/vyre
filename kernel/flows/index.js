@@ -71,6 +71,8 @@ function personOf(chain) {
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
  *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, kinds?: Record<string, import("./proposals.js").ProposalKind>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
+
+ *   access?: { list: (flow: string) => Promise<any[]>, set: (flow: string, person: string, level: string | null) => Promise<any> },  who a Flow is shared with (the host makes one grant per person on that Flow)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -269,6 +271,22 @@ export function createFlows(o) {
       const by = chain.hops[chain.hops.length - 1].actor;
       const d = await runner.define(id, flow, by);
       return d.ok ? { ...d, changes: flowChanges(cur.flow, flow, c) } : d;
+    },
+    // Share one Flow with a person: Can use (run it, see it) or Can edit (change it too). Only its creator, an owner or an admin shares it. The kernel's grant on that Flow is the one source of truth.
+    "flows.access.get": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayEdit(chain, id);
+      return { access: o.access ? await o.access.list(id) : [] };
+    },
+    "flows.access.set": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayEdit(chain, id);
+      const kind = i.kind === undefined ? "person" : i.kind, level = i.level ?? null;
+      if (kind !== "person") throw Object.assign(new Error("a Flow can be shared with a person for now; a team or role comes later"), { code: "bad_input" });
+      if (typeof i.subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(i.subject)) throw Object.assign(new Error("name the person to share with"), { code: "bad_input" });
+      if (level !== null && !["use", "edit"].includes(level)) throw Object.assign(new Error("level is use, edit or null"), { code: "bad_input" });
+      if (!o.access) throw Object.assign(new Error("sharing a Flow needs the kernel"), { code: "unavailable" });
+      return o.access.set(id, i.subject, level);
     },
     "flows.cheatsheet": async () => ({ text: cheatsheet() }),
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),

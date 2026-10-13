@@ -2,7 +2,7 @@
 title: Flow builder
 summary: A Flow read as a sentence: a trigger, then steps in order, each a card that says what it does and opens to its settings.
 audience: builders
-owner: flows-ux
+owner: app-design
 status: draft
 ---
 
