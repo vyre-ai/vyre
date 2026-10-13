@@ -21,6 +21,7 @@ import { docsPaths, llmsDocs } from './site/docs.mjs';
 import { PROMPT, MAP_META, mapBody, agentBand } from './site/agent-prompt.mjs';
 import { AGENTHOME_META, agentHomeBody } from './site/agenthome.mjs';
 import { updatesBand, UPDATES_PAGE, UPDATES_PRIVACY } from './site/updates.mjs';
+import { buildNav } from './site/nav.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -95,33 +96,7 @@ const APP_URL = 'https://web.vyre.run';
 const DL = `${REPO}/releases/latest/download`;
 
 // ---------- layout ----------
-const NAV = [
-  { t: 'Product', h: '/#product', items: [['Records', '/records/'], ['Flows', '/flows/'], ['Agents', '/agents/'], ['Vault', '/vault/'], ['Computer', '/computer/']] },
-  { t: 'Solutions', h: '/for/', items: [['For industries', '/for/'], ['Compare', '/compare/'], ['Map your business', '/map/']] },
-  { t: 'Resources', h: '/docs/', items: [['Docs', '/docs/'], ['Architecture', '/architecture/'], ['Downloads', '/downloads/'], ['Direction', '/direction/']] },
-  { t: 'Open source', h: '/#open' },
-];
-function nav(slug) {
-  const isCur = (h) => { const seg = h.split('#')[0].split('/')[1]; return !!seg && (slug === seg || slug.startsWith(seg + '/')); };
-  const a = (t, h) => `<a href="${h}"${isCur(h) ? ' aria-current="page"' : ''}>${t}</a>`;
-  const links = NAV.map((g) => g.items
-    ? `<div class="nav-grp"><a class="nav-top" href="${g.h}"${g.items.some(([, h]) => isCur(h)) ? ' aria-current="page"' : ''}>${g.t}</a><div class="nav-pop">${g.items.map(([t, h]) => a(t, h)).join('')}</div></div>`
-    : a(g.t, g.h)).join('') + `<a class="only-m" href="${APP_URL}">Log in</a><a class="only-m" href="/start/">Set up Vyre</a>`;
-  return `<a class="skip" href="#main">Skip to content</a>
-<header class="nav">
-  <div class="wrap">
-    <a class="brand" href="/" aria-label="Vyre, home">${MARK}${WORD}</a>
-    <nav class="nav-links" id="links" aria-label="Main">${links}</nav>
-    <div class="nav-end">
-      <a class="star-pill" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star</span></a>
-      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
-      <a class="btn btn-sm nav-login" href="${APP_URL}">Log in</a>
-      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
-      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-    </div>
-  </div>
-</header>`;
-}
+function nav(slug) { return buildNav({ slug, MARK, WORD, REPO }); }
 const FOOT = `<footer class="foot">
   <div class="wrap">
     <div class="foot-grid">
@@ -135,7 +110,7 @@ const FOOT = `<footer class="foot">
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
-    <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+    <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span><button class="theme-btn" id="theme" type="button" aria-label="Switch theme"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg><span>Theme</span></button></div>
   </div>
 </footer>`;
 

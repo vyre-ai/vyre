@@ -2,6 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 - fix(ci): main goes green again: the feature docs name the built-in network instead of another VPN product, and the reads-are-reads test ignores memory_runs, the Memory curator's log of its own background passes.
+- docs(site): vyre.run header redesign: sentence-case Product, Solutions and Resources mega-menu panels (icon, title and one line per entry, a featured block), Docs and GitHub links, Log in as a text link, one Set up Vyre button, sticky blur bar with a hairline after scrolling, a full-screen accordion menu on phones, and the theme toggle moved to the footer (scripts/site/nav.mjs, site/v2.css, site/v2.js).
 - fix(app-out): the hosted app's manifest and Worker also accept + in a file path (the web export's `+not-found-<hash>.js`); a full export uses no other characters beyond [ ] and +.
 - docs(site): a /downloads page (Mac Apple silicon and Intel, Windows, Android, iPhone steps, Linux and Mac server line, web app, signature note), a Log in button in the nav, and a 404 with the halftone V drifting back and a Needs you card of links; built by scripts/site/pages.mjs.
 - docs(site): vyre.run alignment pass: one content grid on every page (FAQ and the agent note span the grid, text-only rows align to the top, mirrored feature rows keep the same copy width, direction and prose pages fill the grid), CSS only.
