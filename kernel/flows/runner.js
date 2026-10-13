@@ -1747,6 +1747,7 @@ export class FlowRunner {
         if (!s.checker) return [];
         const [kind, ...rest] = String(s.checker).split(":");
         if (kind === "person") return [{ kind: "person", id: rest.join(":"), space: run.space }];
+        if (kind === "teammate") return [{ kind: "agent", id: rest.join(":"), space: run.space }];
         const held = this.ports && this.ports.roles ? await this.ports.roles(run.space, rest.join(":")) : [];
         return Array.isArray(held) ? held : [];
       };
@@ -1819,7 +1820,7 @@ export class FlowRunner {
   /** A checker is a person or a role; a role stays a role for the kernel to expand to humans. @param {any} ctx @param {string} ref */
   async #checker(ctx, ref) {
     const [kind, ...rest] = ref.split(":");
-    return kind === "person" ? { kind: "person", id: rest.join(":"), space: ctx.run.space } : { role: rest.join(":") };
+    return kind === "person" ? { kind: "person", id: rest.join(":"), space: ctx.run.space } : kind === "teammate" ? { kind: "agent", id: rest.join(":"), space: ctx.run.space } : { role: rest.join(":") };
   }
 
   /** @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val */

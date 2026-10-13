@@ -119,7 +119,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
                   <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
                   {s.checker ? <ContextBox label="Note for the approver" value={s.approverNote ?? ""} onChange={(approverNote) => setStep(s.id, { approverNote })} options={options} placeholder="What to check" /> : null}
                   <Followers s={s} options={options} onChange={(patch) => setStep(s.id, patch)} />
-                  <Text size="caption" tone="label">All of them see it in their Now: to do, to approve, following. An agent cannot approve yet.</Text>
+                  <Text size="caption" tone="label">All of them see it in their Now: to do, to approve, following. An agent can check internal work; anything that goes out still waits for a person.</Text>
                 </View>
               ) : null}
               {s.kind === "email" ? (

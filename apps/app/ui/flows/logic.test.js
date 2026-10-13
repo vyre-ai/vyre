@@ -93,7 +93,7 @@ test("braces take a value from what started the Flow and come back as braces", (
   assert.equal(fromDefinition(def).steps[0].to, "{email}");
 });
 
-test("an approver, followers and their notes round-trip, and an agent cannot approve yet", () => {
+test("an approver, followers and their notes round-trip, and an agent may approve", () => {
   const d = { name: "People", trigger: { kind: "manual" }, steps: [{ id: "assign1", kind: "assign", to: "role:attorney", title: "Review", brief: "Look at [[record:this]]", checker: "role:manager", followers: ["person:ana", "agent:research"], approverNote: "Check the sums", followerNote: "FYI" }] };
   const def = toDefinition(d);
   assert.deepEqual(def.steps[0].followers, ["person:ana", "teammate:research"]);
@@ -101,5 +101,13 @@ test("an approver, followers and their notes round-trip, and an agent cannot app
   assert.deepEqual(checkFlow(def), []);
   assert.deepEqual(toDefinition(fromDefinition(def)), def);
   assert.match(stepSummary(d.steps[0], O), /checked by the Manager team, followed by 2 others/);
-  assert.equal(approverChoices(O).some(([v]) => v.startsWith("agent:")), false);
+  assert.equal(approverChoices(O).some(([v]) => v.startsWith("agent:")), true);
+});
+
+test("an agent as the approver is stored as a teammate checker and comes back", () => {
+  const d = { name: "Review", trigger: { kind: "manual" }, steps: [{ id: "assign1", kind: "assign", to: "agent:intake", title: "Draft", checker: "agent:research" }] };
+  const def = toDefinition(d);
+  assert.equal(def.steps[0].checker, "teammate:research");
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
 });

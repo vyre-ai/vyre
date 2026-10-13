@@ -187,14 +187,14 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("title", () => true, "give the title"); value("title");
         checkOutput(s.output, `${p}.output`, out);
         if (s.how !== undefined && !["template", "tailor", "assistant", "person"].includes(s.how)) out.push({ path: `${p}.how`, message: "how is template, tailor, assistant or person" });
-        if (s.checker !== undefined && (typeof s.checker !== "string" || !/^(?:person|role):/.test(s.checker))) out.push({ path: `${p}.checker`, message: "a checker is person:<id> or role:<name>" });
+        if (s.checker !== undefined && (typeof s.checker !== "string" || !/^(?:person|role|teammate):/.test(s.checker))) out.push({ path: `${p}.checker`, message: "a checker is person:<id>, role:<name> or teammate:<agent> (an agent checks internal work only)" });
         value("record");
         break;
       case "agent":
         need("assistant", v => typeof v === "string" && /^(?:teammate|pool):/.test(v), "name the assistant: teammate:<name> or pool:<name>");
         if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
         need("title", () => true, "give the title"); value("title"); need("instructions", () => true, "say what to do"); value("instructions");
-        if (s.checker !== undefined && (typeof s.checker !== "string" || !/^(?:person|role):/.test(s.checker))) out.push({ path: `${p}.checker`, message: "a checker is person:<id> or role:<name>" });
+        if (s.checker !== undefined && (typeof s.checker !== "string" || !/^(?:person|role|teammate):/.test(s.checker))) out.push({ path: `${p}.checker`, message: "a checker is person:<id>, role:<name> or teammate:<agent> (an agent checks internal work only)" });
         checkOutput(s.output, `${p}.output`, out); value("record");
         break;
       case "call":

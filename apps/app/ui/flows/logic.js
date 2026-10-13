@@ -184,7 +184,7 @@ export function stepDefinition(s, d) {
 /** The approver, the followers and what they are told, as the stored step has them. @param {DraftStep} s */
 export function peopleOf(s) {
   const notes = { ...(s.approverNote && s.approverNote.trim() ? { approver: s.approverNote } : {}), ...(s.followerNote && s.followerNote.trim() ? { followers: s.followerNote } : {}) };
-  return { ...(s.checker ? { checker: s.checker } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
+  return { ...(s.checker ? { checker: doer(s.checker) } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
 }
 
 /** The stored Flow for a draft. @param {Draft} d */
@@ -264,7 +264,7 @@ function triggerFrom(t) {
 }
 
 /** @param {any} s */
-const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
+const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
 
 /** @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
@@ -312,5 +312,5 @@ export function fromDefinition(flow) {
   return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
 }
 
-/** Who can approve: a person or a team or role. An agent cannot yet: the engine's checker is a person or a role. @param {Options} o @returns {[string, string][]} */
-export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter(([v]) => !v.startsWith("agent:"))];
+/** Who can approve: a person, a team or role, or an agent (an agent checks internal work only: a send or a stage hold still waits for a person). @param {Options} o @returns {[string, string][]} */
+export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o)];

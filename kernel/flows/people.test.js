@@ -82,3 +82,14 @@ test("the approver's box never rides on the doer's task: the doer who cannot rea
   assert.equal(checkTask.doer.id, ALEX.id);
   assert.match(checkTask.form.brief, /CHK Jane-SECRET/);
 });
+
+test("an agent can be the approver of an internal step (not of a send)", async () => {
+  const w = await world();
+  const { id } = await install(w, base([{ id: "go", kind: "assign", to: "teammate:intake", title: "Draft notes", output: { kind: "note" }, checker: "teammate:research" }]));
+  await w.runner.start(id, {}, w.kernel.as(ALEX));
+  await settle(w);
+  await w.kernel.pump();
+  const t = w.kernel.tasks.find(x => x.title === "Draft notes");
+  assert.ok(t, "the task was made");
+  assert.deepEqual([t.checker.kind, t.checker.id], ["agent", "research"]);
+});
