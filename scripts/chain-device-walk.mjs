@@ -133,16 +133,11 @@ try {
     const rl = await callAs(conn, "records.list", { type: "contact" });
     return `system.info 200 (${info.text.slice(0, 80)}); spaces.list ${sp.status} ${sp.text.slice(0, 160)}; records.list ${rl.status} ${rl.text.slice(0, 160)}`;
   });
-  await step("3b. the server marks its row via_chain (relay.devices, then relay.device.info of the chain device's row)", async () => {
-    const rows = await rowsOf();
-    const list = String(JSON.stringify(rows)).slice(0, 400);
-    const arr = Array.isArray(rows) ? rows : (rows && (rows.devices || rows.rows)) || [];
-    const row = arr.find((/** @type {any} */ d) => d && /founder-laptop|chain/.test(String(d.name || ""))) || arr[arr.length - 1];
-    assert.ok(row && row.id, `a device row: ${list}`);
-    const r = await srv.operator("relay.device.info", { id: row.id }).catch((/** @type {any} */ e) => ({ error: e.message }));
-    const s = JSON.stringify(r);
-    assert.ok(/via_?[cC]hain|chain/.test(s), `the row mentions the chain: ${s.slice(0, 500)}`);
-    return s.slice(0, 500);
+  await step("3b. relay.devices.list (as the operator) shows viaChain true for the chain device", async () => {
+    const r = await srv.operator("relay.devices.list", {});
+    const t = JSON.stringify(r);
+    assert.ok(/"viaChain":true/.test(t), `a row says viaChain true: ${t.slice(0, 600)}`);
+    return t.slice(0, 300);
   });
   await step("3c. the chain device opens its person session (pair-challenge, start-paired with its presence key) and then runs as the owner: spaces.list, records.list", async () => {
     const call = await signIn(conn);
@@ -167,17 +162,19 @@ try {
   });
 
   // 6: a newcomer entry (under 24 h on the list) is limited
-  await step("6. a NEWCOMER chain entry is admitted but limited: refused the device-admin tools with a next step, not refused records.list", async () => {
+  /** @type {any} */ let newConn = null, newCall = null;
+  await step("6. a NEWCOMER chain entry is admitted and signs in but is limited: the device-admin tools are refused with a next step, records.list is not", async () => {
     const c = await dial({ key: newKey, entry: newKey.eid, name: "newcomer" });
+    newConn = c; newCall = await signIn(c);
     const out2 = /** @type {string[]} */ ([]);
-    const ok = await callAs(c, "records.list", { type: "contact" });
+    const ok = await newCall("records.list", { type: "contact" });
     out2.push(`records.list ${ok.status}`);
-    assert.ok(!/limited|newcomer/i.test(ok.text), `records.list is not refused as limited: ${ok.status} ${ok.text}`);
+    assert.equal(ok.status, 200, `records.list is not refused to a limited device: ${ok.status} ${ok.text}`);
     for (const t of ["relay.devices.mark", "wink.phone.open", "presence.enroll", "spaces.devices.set"]) {
-      const r = await callAs(c, t, {});
+      const r = await newCall(t, {});
       out2.push(`${t} ${r.status} ${r.text.slice(0, 110)}`);
       assert.ok(r.status >= 400, `${t} is refused to a limited device: ${r.status} ${r.text}`);
-      assert.ok(/limited|newcomer|full device|24 hours|paired|typed code|ask/i.test(r.text), `${t}'s refusal names a reason or next step: ${r.text}`);
+      assert.ok(/limited|newcomer|full device|24 hours|paired|typed code|ask|in person/i.test(r.text), `${t}'s refusal names a reason or next step: ${r.text}`);
     }
     return out2.join(" | ");
   });
@@ -198,6 +195,9 @@ try {
     const r = await appendOp({ type: "remove", target: newKey.eid });
     assert.ok(r.status < 400, `the directory took the remove: ${r.status} ${r.body.slice(0, 160)}`);
     await new Promise((res) => setTimeout(res, 5.5 * 60_000));
+    const old = newCall ? await newCall("records.list", { type: "contact" }).catch((/** @type {any} */ e) => ({ status: 0, text: "refused: " + String(e.message).slice(0, 100) })) : { status: -1, text: "no session" };
+    console.log(`DIAG after removal, the newcomer's existing session: ${old.status} ${old.text.slice(0, 160)}`);
+    assert.ok(old.status !== 200, `the removed device's session is gone: ${old.status} ${old.text}`);
     let said = ""; try { const c = await dial({ key: newKey, entry: newKey.eid, name: "removed-device" }); said = JSON.stringify(await callAs(c, "system.info")); } catch (e) { said = "refused: " + String(/** @type {any} */ (e).message).slice(0, 160); }
     assert.match(said, /refused|removed|4\d\d|bad_proof/i, said);
     return said.slice(0, 220);
