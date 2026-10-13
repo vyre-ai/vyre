@@ -2069,7 +2069,7 @@ export default {
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
-      obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
+      obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, seats: { type: "array", items: { type: "object" }, description: "Projects the joiner is put on when they accept: [{ project, level: lead | contributor | viewer }], contributor by default" }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
@@ -2079,7 +2079,17 @@ export default {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
           const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
-          const body = { role: custom ? "member" : i.role === "guest" ? "temp" : i.role, ...(custom ? { custom } : {}), ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
+          const seats = Array.isArray(i.seats) ? i.seats : [];
+          if (seats.length) {
+            const me = String(k.chain.hops[0].actor.id), mine = ((await kernelHandle(row.id).gateway.grants.members.list(k.chain)) || []).find((/** @type {any} */ m) => m.person === me);
+            for (const st of seats) {
+              const r = /** @type {any} */ (await ctx.call("work.project.seat", { project: String(st && st.project), person: me }).catch(() => null));
+              const seat = r && r.data;
+              if (!seat || !seat.exists) throw refuse(`There is no project "${st && st.project}" in this space. Pick one from the project list, then invite again.`, "not_found");
+              if (!(seat.owner || seat.level === "lead" || (mine && (mine.role === "owner" || mine.role === "admin")))) throw refuse(`You are not a lead on "${st.project}", so you cannot put someone on it. Ask the project's owner or a lead, or take it out of the invite.`, "not_allowed");
+            }
+          }
+          const body = { ...(seats.length ? { seats: seats.map((/** @type {any} */ x) => ({ project: String(x.project), ...(x.level ? { level: String(x.level) } : {}) })) } : {}), role: custom ? "member" : i.role === "guest" ? "temp" : i.role, ...(custom ? { custom } : {}), ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
           /** @type {any} */ let rec;
           try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, body); }
           catch (e) {

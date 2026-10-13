@@ -611,6 +611,12 @@ async function startLocked(opts, root, p, release) {
         if (e && (e.type === "chat.created" || e.type === "chat.changed")) setImmediate(() => { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } });
       }, { batch: true });   // the work module's mirror of who is in a chat: a repeat writes the same ids
     } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
+    // An accepted invite that named projects: the work module seats the joiner (core/work onInviteUsed). Only the ids the event carries.
+    try {
+      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-invite-seats", { type: "invite.used" }, (/** @type {any} */ e) => {
+        if (e && e.data && Array.isArray(e.data.seats)) setImmediate(() => { try { events.emit("kernel", "invite.used", { data: e.data }); } catch { /* a notice, never a stop */ } });
+      }, { batch: true });
+    } catch (e) { log(`kernel: invite events are not passed on (${/** @type {Error} */ (e).message})`); }
     // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
     const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");

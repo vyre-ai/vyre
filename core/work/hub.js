@@ -398,15 +398,16 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /**
    * Set a person's level on a project (lead, contributor or viewer), under the CALLER's chain: the kernel's ownership rule says who may (the project's owner or a lead on it, an owner or an admin), so a refusal
    * is the kernel's own, in words. A person with no seat yet is seated at that level. Null when there is no such project.
-   * @param {any} callerChain @param {{ project: string, person: string, level: string }} o
+   * @param {any} callerChain @param {{ project: string, person: string, level: string, keep?: boolean }} o `keep`: an existing seat is left exactly as it is (an invite replayed must not undo an admin's edit)
    */
-  async function setSeatLevel(callerChain, { project, person, level }) {
+  async function setSeatLevel(callerChain, { project, person, level, keep }) {
     if (!SEAT_LEVELS.includes(level)) throw Object.assign(new Error(`a level is one of ${SEAT_LEVELS.join(", ")}`), { code: "bad_input" });
     if (!person) throw Object.assign(new Error("say which person: their id"), { code: "bad_input" });
     const proj = await projectOf(project);
     if (!proj) return null;
     const rows = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
     const mine = rows.find((/** @type {any} */ x) => { const m = data(x) || {}; return m.kind === "person" && m.actor && m.actor.actor && String(m.actor.actor.id) === person; });
+    if (mine && keep) return { id: mine.id, person, level: levelOfSeat(data(mine)), kept: true };
     if (mine) { const r = await kernel.records.update(callerChain, "team-member", mine.id, { level }, mine.version); return { id: r.id, person, level }; }
     const made = await kernel.records.create(callerChain, "team-member", { name: person, actor: { actor: { kind: "person", id: person, space: kernel.space } }, kind: "person", level, project: { urn: proj.urn } });
     return { id: made.id, person, level, seated: true };
