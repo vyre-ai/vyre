@@ -531,7 +531,7 @@ export default {
     };
     ctx.tool("publish.domain.add", {
       callers: WITH_MODELS,
-      description: "Start connecting a domain to a site. Returns the DNS record to add. Nothing serves until it is verified and published, which waits for a person's yes.",
+      description: "Start connecting a domain to a site. Returns the DNS record to add. Nothing serves until verified and published, which waits for a person's yes.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -558,7 +558,7 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return { domains: await b.pub.domainsOf(b.chain, i.deployment) }; },
     });
     ctx.tool("publish.holds", {
-      description: "Publishing acts waiting for a person's yes: each plan (what goes public, where, with which secrets, replacing which version) and its deciding task. A model cannot decide them.",
+      description: "Publishing acts waiting for a person's yes: each plan (what goes public, where, which secrets, which version it replaces) and its task. A model cannot decide them.",
       input: obj({}),
       run: async (i, meta) => {
         const b = await begin(i, meta);
