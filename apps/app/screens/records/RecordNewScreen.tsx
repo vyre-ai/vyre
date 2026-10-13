@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, EmptyState, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, formErrors, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
+import { Banner, EmptyState, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
 
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not save.");
 
 /** /u/record/new?type=<name>: the create form of any type, drawn from its definition, in its groups. A sealed value is put after the record exists, through the same putSealed a sealed field always used. */
 export function RecordNewScreen() {
-  const { type } = useLocalSearchParams<{ type: string }>();
+  const { type, via, to } = useLocalSearchParams<{ type: string; via?: string; to?: string }>();
   const router = useRouter();
   const store = useStore();
   const { data: world, loading, error, reload } = useRecordsWorld();
@@ -15,6 +15,9 @@ export function RecordNewScreen() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+  const ready = !!world?.types.find((t: any) => t.name === type);
+  // Started from another record's page: it begins linked to that record.
+  useEffect(() => { const d = world?.types.find((t: any) => t.name === type); if (d && via && to) setValues((v) => ({ ...prefillFromLink(d, String(via), String(to)), ...v })); }, [ready]);
   const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${type}` as never));
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="New" onBack={back} /><LoadingState rows={4} /></View>;

@@ -4,7 +4,7 @@ import { Text } from "../components/Text";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
 import { RelatedSection } from "../records/RelatedSection";
-import { groupRelated } from "../records/logic.js";
+import { groupRelated, viaOf } from "../records/logic.js";
 import { Row } from "../components/Row";
 import { Chip } from "../components/Chip";
 import { Banner } from "../components/Banner";
@@ -36,7 +36,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -170,7 +170,8 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
   const side = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-1")}>
       {related.length ? groupRelated(related, Object.fromEntries(world.types.map((t: any) => [t.name, { label: t.label, plural: viewDefOf(t).plural }]))).map((g) => (
-        <RelatedSection key={g.type} title={g.plural} noun={g.label.toLowerCase()} rows={g.rows.map((l) => ({ id: l.urn, title: l.title, sub: g.label }))} onOpen={onOpen} />
+        <RelatedSection key={g.type} title={g.plural} noun={g.label.toLowerCase()} rows={g.rows.map((l) => ({ id: l.urn, title: l.title, sub: g.label }))} onOpen={onOpen}
+          {...(onNew && viaOf(world.types, g.type, def.name) ? { onAdd: () => onNew(g.type, viaOf(world.types, g.type, def.name) as string) } : {})} />
       )) : <Card title="Linked records"><Text tone="label">Nothing linked.</Text></Card>}
       <Card title="Files" flush>
         {files.length ? files.map((x: any, i: number) => (

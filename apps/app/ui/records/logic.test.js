@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf } from "./logic.js";
+import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf, viaOf, prefillFromLink } from "./logic.js";
 
 const FIELDS = [
   { name: "notes", label: "Notes", kind: "rich_text" },
@@ -78,4 +78,18 @@ test("the facts under a record's name: up to three filled plain fields, never th
   const rec = { data: { title: "T", stage: "Intake", plan: "Trust", ssn: { sealed: "x" }, fee: { amount: 1200, currency: "USD" }, h: "no", opened: "2026-10-01", n: 4, e: "" } };
   assert.deepEqual(factsOf(def, rec).map((f) => f[0]), ["Plan", "Fee", "Opened"]);
   assert.equal(factsOf(def, rec)[1][1], "$1,200");
+});
+
+test("the field of a type that links to a record's type, so a new one can be started from that record's page", () => {
+  const types = [{ name: "asset", fields: [{ name: "name", kind: "text" }, { name: "client", kind: "link", to: "contact" }] }, { name: "note", fields: [{ name: "about", kind: "link" }] }];
+  assert.equal(viaOf(types, "asset", "contact"), "client");
+  assert.equal(viaOf(types, "asset", "project"), undefined);
+  assert.equal(viaOf(types, "note", "contact"), undefined);
+});
+
+test("a new record started from a page begins linked to it, and only through a real link field", () => {
+  const def = { fields: [{ name: "client", kind: "link", to: "contact" }, { name: "name", kind: "text" }] };
+  assert.deepEqual(prefillFromLink(def, "client", "vyre://s/contact/1"), { client: { urn: "vyre://s/contact/1" } });
+  assert.deepEqual(prefillFromLink(def, "name", "vyre://s/contact/1"), {});
+  assert.deepEqual(prefillFromLink(def, "", ""), {});
 });

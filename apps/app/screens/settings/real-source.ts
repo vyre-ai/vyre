@@ -24,6 +24,8 @@ export function settingsSource(call: Call) {
     /** Pause: stop every running thread (its record and notes stay). Resume: start its latest thread again. */
     agentStop: (agent: string) => ask<{ stopped: string[] }>("agents.stop", { agent }),
     agentResume: (agent: string) => ask<{ running?: boolean }>("agents.resume", { agent }),
+    /** The maker, an owner or an admin; the box refuses while a thread runs (stop it first), and for the assistant and the built-in agents. */
+    agentDelete: (agent: string) => ask<unknown>("agents.delete", { agent }),
     providers: async () => { const r = await ask<Provider[]>("providers.list"); return Array.isArray(r) ? r : []; },
     identity: () => ask<Identity>("spaces.identity.status"),
     entries: async () => (await ask<{ entries?: Entry[] }>("spaces.identity.entries")).entries ?? [],
