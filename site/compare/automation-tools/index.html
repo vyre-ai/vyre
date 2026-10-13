@@ -1,0 +1,149 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre and automation tools: Zapier, Make and n8n</title>
+  <meta name="description" content="How Vyre’s approach compares with Zapier, Make and n8n: where app-to-app automation is strong, where Vyre differs, and how the two work together.">
+  <link rel="canonical" href="https://vyre.run/compare/automation-tools/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/compare/automation-tools/">
+  <meta property="og:title" content="Vyre and automation tools: Zapier, Make and n8n">
+  <meta property="og:description" content="How Vyre’s approach compares with Zapier, Make and n8n: where app-to-app automation is strong, where Vyre differs, and how the two work together.">
+  <meta property="og:image" content="https://vyre.run/og/compare-automation.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Vyre and automation tools.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre and automation tools: Zapier, Make and n8n">
+  <meta name="twitter:description" content="How Vyre’s approach compares with Zapier, Make and n8n: where app-to-app automation is strong, where Vyre differs, and how the two work together.">
+  <meta name="twitter:image" content="https://vyre.run/og/compare-automation.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Compare","item":"https://vyre.run/compare/"},{"@type":"ListItem","position":3,"name":"Automation tools","item":"https://vyre.run/compare/automation-tools/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does Vyre replace Zapier, Make or n8n?","acceptedAnswer":{"@type":"Answer","text":"Not for connecting many apps. Those tools have large catalogues of ready-made connections. Vyre runs Flows over your records and agents, and it can sit next to them. Packaged Integrations for popular apps are Next, in 0.5.2."}},{"@type":"Question","name":"Can a Flow call an outside service today?","acceptedAnswer":{"@type":"Answer","text":"Yes. A Flow has a web step, and a person can add a connection that declares the host, how the key is sent and which operations are reads, drafts, changes, sends, spends or deletes."}}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=8097095a8e">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/architecture/">Architecture</a><a href="/compare/" aria-current="page">Compare</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/compare/">Compare</a> / Automation tools</p>
+    <p class="eyebrow">Zapier, Make and n8n.</p>
+    <h1 class="display">Vyre and <b>automation tools.</b></h1>
+    <p class="lead">Zapier, Make and n8n connect apps. Vyre keeps the work, the people and the agents in one place and runs Flows over them. The two fit together well, and this page shows where each is the better tool.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="who-h">
+  <div class="wrap">
+    <h2 id="who-h" class="lbl" style="margin-bottom:20px">Who each is for</h2>
+    <div class="cmp-two rv">
+      <div class="cmp-col"><h3>Automation tools</h3><p>Zapier, Make and n8n are workflow automation tools. A trigger in one app starts actions in others.</p><p>They suit operations, marketing and technical teams that want to link the apps they already use, often without writing code.</p></div>
+      <div class="cmp-col cmp-col-v"><h3>Vyre</h3><p>Vyre is for a team that wants the work itself in one place: the records, the tasks, the files and the agents that act on them.</p><p>A Flow in Vyre starts from that work, such as a record entering a stage, and it can hand a step to an agent.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="good-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">What they do well.</p>
+      <h2 id="good-h" class="h2">Where automation tools <b>are strong.</b></h2>
+    </div>
+    <ul class="cmp-good rv"><li><b>A large catalogue of app connections</b><span>Each of the three offers a wide library of ready-made connections to other products.</span></li><li><b>Fast for a single link</b><span>One trigger and one action can be running in minutes.</span></li><li><b>Visual builders</b><span>People who do not write code build and read automations on a canvas.</span></li><li><b>Run history</b><span>Each shows what ran and what failed, and teams that run them every day know how to read it.</span></li><li><b>Choice of hosting</b><span>Zapier and Make are hosted services. n8n can also be run on your own server.</span></li></ul>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="diff-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where Vyre is different.</p>
+      <h2 id="diff-h" class="h2">Six things Vyre does <b>its own way.</b></h2>
+    </div>
+    <div class="ar-ideas rv"><div class="piece"><span class="num">01</span><h3>Flows start from your work</h3><p>A Flow can start when a record is created or changes, when a record enters a stage, on a schedule, from a form, or when something new arrives in a mailbox or folder.</p></div><div class="piece"><span class="num">02</span><h3>A person approves a version</h3><p>Editing a Flow makes a new version. A person approves it before it runs, and a saved test that fails blocks the approval. You can go back to an earlier version.</p></div><div class="piece"><span class="num">03</span><h3>Judgment is one step you place</h3><p>A Flow follows its steps the same way each run. When a step needs judgment, you hand it to an agent, which finishes the task, hands it on, or marks it stuck with a reason.</p></div><div class="piece"><span class="num">04</span><h3>Sends wait at the Gate</h3><p>A Flow that emails a customer holds the message until a person has read the exact words and approved them. An approved Flow version can carry one yes for named destinations and limits.</p></div><div class="piece"><span class="num">05</span><h3>The Flow has the approver’s reach</h3><p>A Flow runs with no more authority than the person who approved it, and every step is checked the way a person’s own action is.</p></div><div class="piece"><span class="num">06</span><h3>Credentials stay sealed</h3><p>A Flow or an agent uses a login from the Vault. The value is put in at the moment of sending and a model never sees it.</p></div></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="table-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Side by side.</p>
+      <h2 id="table-h" class="h2">The two approaches, <b>row by row.</b></h2>
+      <p class="lead">The left column describes the kind of tool, from its public documentation. Where a product differs, its own documentation is the one to trust.</p>
+    </div>
+    <table class="cmp-table rv">
+        <caption class="cmp-cap">Automation tools compared with Vyre, one row for each question a buyer asks</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Automation tools</th><th scope="col">Vyre</th></tr></thead>
+        <tbody><tr><th scope="row">Where it runs</th><td data-label="Automation tools">Zapier and Make are hosted by the vendor. n8n is hosted or self-hosted.</td><td data-label="Vyre">On a server you own.</td></tr><tr><th scope="row">What starts work</th><td data-label="Automation tools">A trigger in a connected app.</td><td data-label="Vyre">A person, a schedule, a record change or stage, a form or inbound call, or something new in a mailbox or folder.</td></tr><tr><th scope="row">What it works on</th><td data-label="Automation tools">Data passed from one app to another.</td><td data-label="Vyre">Records, tasks and files kept in the same place as the Flow.</td></tr><tr><th scope="row">Judgment steps</th><td data-label="Automation tools">Many include AI steps.</td><td data-label="Vyre">An agent step you place on purpose. A task it cannot finish is marked stuck, with a reason.</td></tr><tr><th scope="row">Changing a live automation</th><td data-label="Automation tools">Set by each tool.</td><td data-label="Vyre">An edit is a new version. A person approves it, and an earlier version can be restored.</td></tr><tr><th scope="row">Outward actions</th><td data-label="Automation tools">Set by how each automation is built.</td><td data-label="Vyre">Held at the Gate until a person approves the exact words.</td></tr><tr><th scope="row">Credentials</th><td data-label="Automation tools">Held in each tool’s own connection store.</td><td data-label="Vyre">The Vault. Agents get use only and never read the value.</td></tr><tr><th scope="row">Ready-made app connections</th><td data-label="Automation tools">A large catalogue.</td><td data-label="Vyre">A connection to any service that has an API, used from a Flow’s web step. Next (0.5.2): packaged Integrations.</td></tr><tr><th scope="row">Cost</th><td data-label="Automation tools">Set by each vendor.</td><td data-label="Vyre">Vyre is free and open source (Apache 2.0). You pay your AI providers directly.</td></tr></tbody>
+      </table>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="together-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">How they work together.</p>
+      <h2 id="together-h" class="h2">Use both, <b>and let each do its part.</b></h2>
+    </div>
+    <ol class="cmp-flow rv" aria-label="One way automation tools and Vyre work together, in four steps"><li class="cmp-step"><span class="cmp-n">01</span><b>An app you already automate</b><span>A Zap, scenario or workflow fires on a new form entry</span></li><li class="cmp-step"><span class="cmp-n">02</span><b>A Vyre Flow starts</b><span>The call reaches the Flow’s path and creates the record</span></li><li class="cmp-step"><span class="cmp-n">03</span><b>An agent drafts the reply</b><span>It works from the record, the price list and the file</span></li><li class="cmp-step"><span class="cmp-n">04</span><b>The Gate holds the email</b><span>A person reads the exact words and approves</span></li></ol><p class="cmp-note">One way to combine them. The automation tool keeps doing the app-to-app link it already does well.</p>
+    <div class="cmp-prose rv"><p>Keep the automations that work. A Zap, scenario or workflow can call a Vyre Flow’s path when something happens in an app, and the Flow takes over with the records, the agents and the Gate. A Flow’s web step can call an automation tool’s webhook when you want its connection to an app Vyre does not yet package.</p><p>A useful split: let the automation tool carry data between apps, and let Vyre decide what the team does with it and who says yes.</p></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="faq-h">
+  <div class="wrap">
+    <h2 id="faq-h" class="lbl" style="margin-bottom:20px">Questions people ask</h2>
+    <div class="faq rv"><details><summary>Does Vyre replace Zapier, Make or n8n?</summary><p>Not for connecting many apps. Those tools have large catalogues of ready-made connections. Vyre runs Flows over your records and agents, and it can sit next to them. Packaged Integrations for popular apps are Next, in 0.5.2.</p></details><details><summary>Can a Flow call an outside service today?</summary><p>Yes. A Flow has a web step, and a person can add a connection that declares the host, how the key is sent and which operations are reads, drafts, changes, sends, spends or deletes.</p></details></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="conn-h">
+  <div class="wrap">
+    <h2 id="conn-h" class="lbl" style="margin-bottom:20px">Go deeper</h2>
+    <div class="note rv"><p class="lbl" style="margin-bottom:8px">Connects to</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0"><a href="/architecture/">The architecture: the door, the kernel and the Gate</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/flows.md">Flows, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/gate.md">The Gate, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/vault.md">The Vault, in the repository</a></li><li style="margin:.3em 0"><a href="/compare/">The other comparisons</a></li><li style="margin:.3em 0"><a href="/start/">Set up Vyre</a></li></ul></div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/compare/">All comparisons</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/compare/">Compare</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>

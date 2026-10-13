@@ -464,3 +464,51 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .ar-data p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
 
 .note .btn + .btn { margin-left: 8px; }
+
+/* Compare pages (scripts/site/compare.mjs) */
+.cmp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cmp-col { background: var(--panel); border: 1px solid var(--line); padding: 22px 22px 14px; }
+.cmp-col-v { border-color: var(--accent); }
+.cmp-col h3 { margin: 0 0 12px; font-size: 19px; font-weight: 600; letter-spacing: -.015em; }
+.cmp-col p { color: var(--ink-2); margin: 0 0 1em; }
+.cmp-two > .piece { min-height: 0; }
+.cmp-two > .piece p a { font-weight: 600; }
+.cmp-good { list-style: none; margin: 0; padding: 0; max-width: 880px; }
+.cmp-good li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 28px; border-top: 1px dashed var(--line-2); padding: 16px 0; }
+.cmp-good li:last-child { border-bottom: 1px dashed var(--line-2); }
+.cmp-good b { font-weight: 600; letter-spacing: -.01em; }
+.cmp-good span { color: var(--ink-2); }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.cmp-cap { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cmp-table th, .cmp-table td { text-align: left; vertical-align: top; padding: 14px 18px 14px 0; border-top: 1px dashed var(--line-2); color: var(--ink-2); }
+.cmp-table thead th { font: 500 11px/1.4 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); border-top: 0; border-bottom: 1px solid var(--line); }
+.cmp-table tbody th { color: var(--ink); font-weight: 600; width: 18%; }
+.cmp-table td:last-child { color: var(--ink); background: var(--accent-wash); padding-left: 16px; padding-right: 16px; }
+.cmp-table thead th:last-child { padding-left: 16px; color: var(--accent); }
+.cmp-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 36px; }
+.cmp-step { position: relative; display: flex; flex-direction: column; gap: 4px; background: var(--bg); border: 1px solid var(--line-2); padding: 16px 16px 18px; animation: cmp-lit 8s linear infinite; }
+.cmp-step:nth-child(2) { animation-delay: 2s; }
+.cmp-step:nth-child(3) { animation-delay: 4s; }
+.cmp-step:nth-child(4) { animation-delay: 6s; }
+.cmp-step:not(:last-child)::after { content: "\2192"; position: absolute; top: 50%; right: -27px; transform: translateY(-50%); color: var(--accent); font-size: 18px; line-height: 1; }
+.cmp-n { font: 500 11px var(--mono); color: var(--accent); letter-spacing: .08em; }
+.cmp-step b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.cmp-step span:last-child { font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.cmp-note { margin: 14px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-3); }
+.cmp-prose { max-width: 40em; margin-top: 28px; }
+.cmp-prose p { color: var(--ink-2); }
+@keyframes cmp-lit { 0%, 22% { border-color: var(--accent); background: var(--accent-wash); } 28%, 100% { border-color: var(--line-2); background: var(--bg); } }
+@media (prefers-reduced-motion: reduce) { .cmp-step { animation: none; } }
+@media (max-width: 960px) { .cmp-flow { grid-template-columns: 1fr 1fr; row-gap: 36px; } .cmp-step:nth-child(2)::after { content: none; } }
+@media (max-width: 860px) { .cmp-two { grid-template-columns: 1fr; } .cmp-good li { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .cmp-table, .cmp-table tbody, .cmp-table tr, .cmp-table th, .cmp-table td { display: block; width: auto; }
+  .cmp-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .cmp-table tr { border-top: 1px dashed var(--line-2); padding: 14px 0; }
+  .cmp-table th, .cmp-table td { border: 0; padding: 3px 0; }
+  .cmp-table tbody th { width: auto; font-size: 17px; padding-bottom: 8px; }
+  .cmp-table td::before { content: attr(data-label); display: block; font: 500 11px/1.4 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+  .cmp-table td:last-child { padding: 10px 12px; margin-top: 8px; }
+  .cmp-table td:last-child::before { color: var(--accent); }
+}
+@media (max-width: 600px) { .cmp-flow { grid-template-columns: 1fr; row-gap: 30px; } .cmp-step:not(:last-child)::after { content: "\2193"; top: auto; bottom: -27px; right: auto; left: 20px; transform: none; } .cmp-step:nth-child(2)::after { content: "\2193"; } }

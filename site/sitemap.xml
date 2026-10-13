@@ -31,6 +31,31 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://vyre.run/compare/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/compare/automation-tools/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/compare/work-management/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/compare/ai-assistants/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/compare/practice-software/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://vyre.run/direction/</loc>
     <lastmod>2026-10-13</lastmod>
     <priority>0.7</priority>

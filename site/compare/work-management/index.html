@@ -1,0 +1,149 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre and work management tools: Notion, ClickUp, Asana, Monday</title>
+  <meta name="description" content="How Vyre compares with Notion, ClickUp, Asana and Monday: what planning tools do well, how Vyre adds agents as members who take tasks, and how to use both.">
+  <link rel="canonical" href="https://vyre.run/compare/work-management/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/compare/work-management/">
+  <meta property="og:title" content="Vyre and work management tools: Notion, ClickUp, Asana, Monday">
+  <meta property="og:description" content="How Vyre compares with Notion, ClickUp, Asana and Monday: what planning tools do well, how Vyre adds agents as members who take tasks, and how to use both.">
+  <meta property="og:image" content="https://vyre.run/og/compare-work.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Vyre and work management.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre and work management tools: Notion, ClickUp, Asana, Monday">
+  <meta name="twitter:description" content="How Vyre compares with Notion, ClickUp, Asana and Monday: what planning tools do well, how Vyre adds agents as members who take tasks, and how to use both.">
+  <meta name="twitter:image" content="https://vyre.run/og/compare-work.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Compare","item":"https://vyre.run/compare/"},{"@type":"ListItem","position":3,"name":"Work management","item":"https://vyre.run/compare/work-management/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can an agent take a task in Vyre?","acceptedAnswer":{"@type":"Answer","text":"Yes. When a task is given to an agent, by a person, by a Flow or by another agent, the agent starts with the task, its record and where it came from. It finishes the task, hands it on, or marks it stuck with a reason, and a stuck task appears under Needs you."}},{"@type":"Question","name":"Does Vyre import from the tools on this page?","acceptedAnswer":{"@type":"Answer","text":"Excel or CSV imports into any list from the web app. A connection or a custom module can reach a planning tool that has an API. Packaged Integrations are Next, in 0.5.2."}}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=8097095a8e">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/architecture/">Architecture</a><a href="/compare/" aria-current="page">Compare</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/compare/">Compare</a> / Work management</p>
+    <p class="eyebrow">Notion, ClickUp, Asana and Monday.</p>
+    <h1 class="display">Vyre and <b>work management.</b></h1>
+    <p class="lead">Notion, ClickUp, Asana and Monday help a team plan and track work. Vyre adds agents that take tasks, a Gate on what leaves, and a server you own. Many teams will use both.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="who-h">
+  <div class="wrap">
+    <h2 id="who-h" class="lbl" style="margin-bottom:20px">Who each is for</h2>
+    <div class="cmp-two rv">
+      <div class="cmp-col"><h3>Work management</h3><p>Notion, ClickUp, Asana and Monday are hosted workspaces for planning and tracking work. They hold tasks, boards, timelines, documents and dashboards.</p><p>They suit teams that want one shared place to see who is doing what and when.</p></div>
+      <div class="cmp-col cmp-col-v"><h3>Vyre</h3><p>Vyre is for a team whose work is partly done by AI agents, and that wants those agents to take tasks the way a colleague does.</p><p>It also keeps the records the work is about, such as clients, jobs and cases, linked to the tasks.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="good-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">What they do well.</p>
+      <h2 id="good-h" class="h2">Where work management <b>are strong.</b></h2>
+    </div>
+    <ul class="cmp-good rv"><li><b>Views people already know</b><span>Boards, lists, calendars and timelines, refined over many years.</span></li><li><b>Templates and a familiar interface</b><span>A new teammate or an outside client often knows the tool already.</span></li><li><b>Docs and wikis next to tasks</b><span>Notion in particular puts pages, databases and notes in one workspace.</span></li><li><b>Reporting dashboards</b><span>Portfolio and workload views for managers.</span></li><li><b>A large ecosystem</b><span>Integrations, templates and a community of people who can help.</span></li></ul>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="diff-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where Vyre is different.</p>
+      <h2 id="diff-h" class="h2">Six things Vyre does <b>its own way.</b></h2>
+    </div>
+    <div class="ar-ideas rv"><div class="piece"><span class="num">01</span><h3>Agents are members</h3><p>An agent has a job, instructions in its own AGENTS.md, the projects it can reach and a share of the Vault. A task assigned to it wakes it. It finishes the task, hands it on, or marks it stuck.</p></div><div class="piece"><span class="num">02</span><h3>Records of any shape</h3><p>Beside tasks, a Space holds contacts, organizations, projects and record types you define, linked in any web, with boards by stage, calendars and dashboards.</p></div><div class="piece"><span class="num">03</span><h3>Playbooks run each kind of work</h3><p>A Playbook lists the stages and tasks of one kind of job and who does each: a person, a role or an agent. It goes live when an owner approves it.</p></div><div class="piece"><span class="num">04</span><h3>Flows between the stages</h3><p>Where a Playbook sets the stages, a Flow does the actions between them, and a person approves each version.</p></div><div class="piece"><span class="num">05</span><h3>Sends wait at the Gate</h3><p>An agent that finishes a task cannot email the client on its own. The Gate holds the message until a person approves it.</p></div><div class="piece"><span class="num">06</span><h3>Your data on your server</h3><p>Records, files and history are kept on a server you own. Sealed fields show an agent a placeholder.</p></div></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="table-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Side by side.</p>
+      <h2 id="table-h" class="h2">The two approaches, <b>row by row.</b></h2>
+      <p class="lead">The left column describes the kind of tool, from its public documentation. Where a product differs, its own documentation is the one to trust.</p>
+    </div>
+    <table class="cmp-table rv">
+        <caption class="cmp-cap">Work management compared with Vyre, one row for each question a buyer asks</caption>
+        <thead><tr><th scope="col">Question</th><th scope="col">Work management</th><th scope="col">Vyre</th></tr></thead>
+        <tbody><tr><th scope="row">Where it runs</th><td data-label="Work management">Hosted by the vendor.</td><td data-label="Vyre">On a server you own.</td></tr><tr><th scope="row">Unit of work</th><td data-label="Work management">Tasks, items, pages and databases.</td><td data-label="Vyre">Tasks, plus records of any type you define, linked to each other.</td></tr><tr><th scope="row">Who does the work</th><td data-label="Work management">People. Most of these tools now include AI features that help inside the tool.</td><td data-label="Vyre">People and agents, both as members. An agent takes a task, then finishes, hands on or marks it stuck.</td></tr><tr><th scope="row">Process</th><td data-label="Work management">Project and board templates.</td><td data-label="Vyre">Playbooks: stages, tasks and who does each. An owner approves one before it goes live.</td></tr><tr><th scope="row">Automation</th><td data-label="Work management">Built-in rules and automations.</td><td data-label="Vyre">Flows: stored steps, a person approves each version, every run follows it.</td></tr><tr><th scope="row">Views</th><td data-label="Work management">Boards, lists, calendars, timelines and dashboards.</td><td data-label="Vyre">Boards by stage, calendars by date and dashboards over any record type.</td></tr><tr><th scope="row">Documents</th><td data-label="Work management">Pages and docs inside the tool.</td><td data-label="Vyre">Your own Word templates filled from records, with signing for people who have no account.</td></tr><tr><th scope="row">Outward actions</th><td data-label="Work management">Set by how each automation is built.</td><td data-label="Vyre">Held at the Gate until a person approves the exact words.</td></tr><tr><th scope="row">Sensitive fields</th><td data-label="Work management">The tool’s own permission settings.</td><td data-label="Vyre">Sealed fields show an agent a placeholder, and fields can be hidden from named roles.</td></tr></tbody>
+      </table>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="together-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">How they work together.</p>
+      <h2 id="together-h" class="h2">Use both, <b>and let each do its part.</b></h2>
+    </div>
+    <ol class="cmp-flow rv" aria-label="One way work management and Vyre work together, in four steps"><li class="cmp-step"><span class="cmp-n">01</span><b>The board your team uses</b><span>A task or status changes in the planning tool</span></li><li class="cmp-step"><span class="cmp-n">02</span><b>A Vyre Flow reads it</b><span>Through a connection and a web step, where the vendor provides an API</span></li><li class="cmp-step"><span class="cmp-n">03</span><b>An agent does the task</b><span>It works in the project and hands the task on or marks it stuck</span></li><li class="cmp-step"><span class="cmp-n">04</span><b>A person approves the send</b><span>The result goes out once the Gate has a yes</span></li></ol><p class="cmp-note">One way to combine them. The board stays where your team already looks.</p>
+    <div class="cmp-prose rv"><p>Keep the board your team already reads. Where the vendor provides an API or an MCP server, a connection lets a Flow read or update it, and a person can add the MCP server for agents to use. Vyre then holds the records, the agent work and the approvals, and the planning tool shows the status.</p><p>Teams that want one place for everything can run the work in Vyre alone: tasks, Playbooks and boards by stage are all there.</p></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="faq-h">
+  <div class="wrap">
+    <h2 id="faq-h" class="lbl" style="margin-bottom:20px">Questions people ask</h2>
+    <div class="faq rv"><details><summary>Can an agent take a task in Vyre?</summary><p>Yes. When a task is given to an agent, by a person, by a Flow or by another agent, the agent starts with the task, its record and where it came from. It finishes the task, hands it on, or marks it stuck with a reason, and a stuck task appears under Needs you.</p></details><details><summary>Does Vyre import from the tools on this page?</summary><p>Excel or CSV imports into any list from the web app. A connection or a custom module can reach a planning tool that has an API. Packaged Integrations are Next, in 0.5.2.</p></details></div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="conn-h">
+  <div class="wrap">
+    <h2 id="conn-h" class="lbl" style="margin-bottom:20px">Go deeper</h2>
+    <div class="note rv"><p class="lbl" style="margin-bottom:8px">Connects to</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0"><a href="/architecture/">The architecture: layers, calls and agent turns</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/agents.md">Agents, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/tasks-and-needs-you.md">Tasks, Needs you and Playbooks, in the repository</a></li><li style="margin:.3em 0"><a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features/records.md">Records, in the repository</a></li><li style="margin:.3em 0"><a href="/compare/">The other comparisons</a></li><li style="margin:.3em 0"><a href="/start/">Set up Vyre</a></li></ul></div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/compare/">All comparisons</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/compare/">Compare</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>
