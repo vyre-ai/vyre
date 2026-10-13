@@ -325,7 +325,7 @@
     m.tl.forEach(function (t) {
       var d = el('div', 'tlc'); d.appendChild(el('b', '', t.name));
       var p = el('p'); p.appendChild(doc.createTextNode('Works with it today through a connection, plus a Flow web step or a custom module. '));
-      p.appendChild(el('span', 'next', t.planned ? 'Next 0.5.2: packaged Integration' : 'Next 0.5.2: an Integration built from its API')); p.appendChild(doc.createTextNode('*'));
+      p.appendChild(el('span', 'soon', t.planned ? 'Coming in 0.5.2: a packaged Integration*' : 'Coming in 0.5.2: an Integration built from its API*'));
       d.appendChild(p); box.appendChild(d);
     });
     box.appendChild(el('p', 'fnote', '*Where the vendor provides an API.'));

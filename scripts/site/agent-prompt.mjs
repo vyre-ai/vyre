@@ -220,10 +220,11 @@ const MAP_STYLE = `<style>
 .tlc{border:1px solid var(--line);padding:12px 14px;margin:0 0 -1px;background:var(--panel)}
 .tlc b{display:block;color:var(--ink);font-size:15.5px;margin-bottom:3px}
 .tlc p{margin:0;font-size:13.5px;color:var(--ink-2)}
-.tlc .next{margin-left:2px}
+.tlc .soon{display:block;margin-top:5px;font:500 13px var(--sans);color:var(--accent)}
 .fnote{font-size:12.5px;color:var(--ink-3);margin:10px 0 0}
 .gates-h{margin-top:30px!important}
-.play-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;margin-top:6px}
+.play-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:6px}
+.play-grid{}@media(max-width:700px){.play-grid{grid-template-columns:1fr}}
 .pc{border:1px solid var(--line);background:var(--panel);padding:14px 16px}
 .pc b{display:block;font-size:15.5px;margin-bottom:4px}
 .pc p{margin:0 0 4px;font-size:13.5px;color:var(--ink-2)}
