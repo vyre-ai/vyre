@@ -45,3 +45,10 @@ test("a held send is said plainly; nothing claims it went out", () => {
   assert.doesNotMatch(heldWords({ held: "gi_1" }), /\bsent\b(?! out)/i);
   assert.match(heldWords({}), /did not/i);
 });
+
+test("a refusal for a member is told apart from a real failure", async () => {
+  const { refusedForMember, MEMBER_LINE } = await import("./record-email.js");
+  for (const e of [{ code: "denied", message: "x" }, { code: "forbidden" }, { code: "not_allowed" }, { code: "no_such_tool" }, { message: "this tool is for the owner and admins" }]) assert.equal(refusedForMember(e), true, JSON.stringify(e));
+  for (const e of [{ code: "no_account", message: "no mail account is connected" }, { code: "network", message: "offline" }, null, undefined]) assert.equal(refusedForMember(e), false);
+  assert.equal(MEMBER_LINE, "Sending from the firm's account is for owners.");
+});

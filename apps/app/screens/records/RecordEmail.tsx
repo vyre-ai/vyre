@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
-import { checkDraft, fromChoices, heldWords, mergeThreads, sendCall, threadQueries } from "./record-email.js";
+import { MEMBER_LINE, checkDraft, fromChoices, heldWords, mergeThreads, refusedForMember, sendCall, threadQueries } from "./record-email.js";
 
 type Msg = { id: string; account?: string; from?: string; to?: string; subject?: string; date?: string; snippet?: string };
 const say = (e: unknown) => String((e as { message?: string })?.message || "That did not go through.");
@@ -18,20 +18,20 @@ export function RecordEmail({ email, name }: { email: string; name: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [threads, setThreads] = useState<Msg[] | null>(null);
-  const [problem, setProblem] = useState("");
+  const [member, setMember] = useState(false);
   const [reading, setReading] = useState<{ msg: Msg; text: string | null; error: string } | null>(null);
 
+  // The owner's door decides: a member is refused here, and then she sees one line and no error. Anything else that goes wrong shows as "no mail yet", never as an error.
   const load = useCallback(() => {
-    Promise.all(threadQueries(email).map((q) => tool<{ messages?: Msg[] }>("mail.search", { q, limit: 10 }).then((r) => r.messages ?? [])))
-      .then((lists) => { setThreads(mergeThreads(lists) as Msg[]); setProblem(""); })
-      .catch((e) => { setThreads([]); setProblem(say(e)); });
+    tool<{ credentials?: unknown[] }>("comms.credentials", { kind: "email" }).then((r) => {
+      const c = fromChoices(r.credentials); setFrom(c); setPick((p) => p || c[0]?.id || "");
+      return Promise.all(threadQueries(email).map((q) => tool<{ messages?: Msg[] }>("mail.search", { q, limit: 10 }).then((x) => x.messages ?? []).catch((e) => { if (refusedForMember(e)) throw e; return [] as Msg[]; })))
+        .then((lists) => setThreads(mergeThreads(lists) as Msg[]));
+    }).catch((e) => { if (refusedForMember(e)) setMember(true); setThreads([]); });
   }, [email]);
   useEffect(load, [load]);
 
-  const open = () => {
-    setCompose(true); setError("");
-    tool<{ credentials?: unknown[] }>("comms.credentials", { kind: "email" }).then((r) => { const c = fromChoices(r.credentials); setFrom(c); setPick((p) => p || c[0]?.id || ""); }).catch((e) => setError(say(e)));
-  };
+  const open = () => { setCompose(true); setError(""); };
   const send = () => {
     const choice = from.find((c) => c.id === pick);
     if (!choice) { setError("Choose what to send from. Connect a sending service or a mail login in Settings, Connections."); return; }
@@ -47,6 +47,7 @@ export function RecordEmail({ email, name }: { email: string; name: string }) {
       .then((r) => setReading({ msg, text: String(r.body ?? ""), error: "" })).catch((e) => setReading({ msg, text: null, error: say(e) }));
   };
 
+  if (member) return <Text tone="muted" size="secondary">{MEMBER_LINE}</Text>;
   return (
     <View className="gap-s2">
       <View className="flex-row"><Button kind="secondary" size="sm" label="Email" onPress={open} /></View>
@@ -58,7 +59,7 @@ export function RecordEmail({ email, name }: { email: string; name: string }) {
               <Row title={m.subject || "(no subject)"} sub={<Text size="secondary" tone="muted">{[m.from, m.date?.slice(0, 10)].filter(Boolean).join(" · ")}</Text>} end={<Button kind="ghost" size="sm" label="Read" onPress={() => read(m)} />} />
             </View>))}
           </Card>)
-        : <Text tone="muted" size="secondary">{problem || "No mail with this contact yet."}</Text>}
+        : <Text tone="muted" size="secondary">No mail with this contact yet.</Text>}
 
       <Sheet open={compose} onClose={() => setCompose(false)} title={`Email ${name}`}>
         <View className="gap-s3 p-s4">

@@ -42,3 +42,14 @@ export function heldWords(r) {
   const o = obj(r);
   return o && o.held ? "It is waiting for your yes. Nothing has gone out yet; open Approvals to read the final words and send it." : "Vyre did not hold that email, so nothing was sent.";
 }
+
+/** The one line a member sees where the owner sees Email. */
+export const MEMBER_LINE = "Sending from the firm's account is for owners.";
+
+/** Did the box refuse this person (a member on the owner's door), as opposed to failing? @param {unknown} e */
+export function refusedForMember(e) {
+  const o = obj(e);
+  if (!o) return false;
+  if (["denied", "forbidden", "not_allowed", "no_such_tool", "not_found_for_member"].includes(String(o.code))) return true;
+  return /for the owner|owner and admins|owners only|not allowed for/i.test(String(o.message || ""));
+}
