@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
+import { aliasTable, toAliasText, toPathText, dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
 import { fromDefinition, toDefinition } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
@@ -32,14 +32,16 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   assert.ok(g[0].items.some((i) => i.token === "{email}"));
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
-  assert.ok(g[g.length - 1].items.every((i) => i.known === false && i.note === "Not available yet"));
+  const help = g[g.length - 1];
+  assert.deepEqual(help.items, []);
+  assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false && i.note === "Not available yet"));
 });
 
 test("only steps before this one are offered, and the engine can declare helpers", () => {
   const d = draft([email, { id: "later", kind: "formula", formula: "1" }]);
   assert.equal(insertList(d, "mail", O).some((g) => g.title === "Earlier steps"), false);
   const g = insertList(d, "mail", O, { engineHas: ["{now.date}"] });
-  assert.deepEqual(g[g.length - 1].items.filter((i) => i.known).map((i) => i.token), ["{now.date}"]);
+  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), ["{now.date}"]);
 });
 
 test("a record trigger lists its object's fields, and a sealed one carries a lock note", () => {
@@ -138,4 +140,27 @@ test("link fields nest the target object's fields, up to three links", () => {
   const kid = g[0].items.find((i) => i.token === "{after.kids.name}");
   assert.match(kid.note, /joined with commas/);
   assert.equal(tokenLabel("after.spouse.name", g), "Contact \u00b7 Spouse \u00b7 Name");
+});
+
+test("the owner reads friendly names and the engine gets its own paths, both ways", () => {
+  const o = { ...O, types: [{ name: "client", label: "Client", fields: [{ name: "name", label: "Name" }, { name: "email", label: "Email" }, { name: "spouse", label: "Spouse", kind: "link", to: "client" }] }] };
+  const d = draft([{ id: "mk", kind: "create", type: "client", fields: [] }, { id: "f1", kind: "find", type: "client" }, email], { kind: "created", type: "client" });
+  const g = insertList(d, "mail", o);
+  const t = aliasTable(g);
+  const has = (alias, path) => assert.ok(t.some((r) => r.alias === alias && r.path === path), `${alias} -> ${path}`);
+  has("{client.name}", "{after.name}");
+  has("{client.spouse.email}", "{after.spouse.email}");
+  has("{client_2.email}", "{steps.mk.record.data.email}");
+  has("{client_2.id}", "{steps.mk.record.id}");
+  has("{f1.rows}", "{steps.f1.rows}");
+  has("{now.date}", "{now.date}");
+  const stored = "Hi {after.name}, {steps.mk.record.data.email} {after.nothing} {steps.f1.rows}";
+  const shown = toAliasText(stored, t);
+  assert.equal(shown, "Hi {client.name}, {client_2.email} {after.nothing} {f1.rows}");
+  assert.equal(toPathText(shown, t), stored);
+  assert.equal(toPathText("{client.na", t), "{client.na");
+  const f = insertList(draft([email]), "mail", O);
+  assert.equal(toAliasText("{email} {name}", aliasTable(f)), "{form.email} {form.name}");
+  assert.equal(toPathText("{form.email}", aliasTable(f)), "{email}");
+  assert.ok(g.every((x) => x.items.every((i) => i.alias && !/steps\./.test(i.alias))));
 });

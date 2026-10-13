@@ -10,7 +10,7 @@ import { Row } from "../components/Row";
 import { Text } from "../components/Text";
 import { PHONE_MAX, useUiTheme } from "../theme";
 import { Select } from "../components/Select";
-import { DATE_DIRS, DATE_FORMATS, DATE_UNITS, appendToken, dateRefs, datePending, dateToken, dateWords, completeBrace, history, insertList, openBrace, parseTemplate, renderPreview, smsCount, suggest, tokenKnown, tokenLabel, unknownTokens } from "./template.js";
+import { DATE_DIRS, DATE_FORMATS, DATE_UNITS, appendToken, dateRefs, datePending, dateToken, dateWords, aliasTable, toAliasText, toPathText, completeBrace, history, insertList, openBrace, parseTemplate, renderPreview, smsCount, suggest, tokenKnown, tokenLabel, unknownTokens } from "./template.js";
 import type { Draft, Options } from "./logic.js";
 
 /**
@@ -26,6 +26,8 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
   const { color } = useUiTheme();
   const wide = width >= PHONE_MAX;
   const groups = useMemo(() => insertList(draft, stepId, options, { engineHas }), [draft, stepId, options, engineHas]);
+  const table = useMemo(() => aliasTable(groups), [groups]);
+  const [soonOpen, setSoonOpen] = useState(false);
   const hist = useRef(history(value));
   const [, bump] = useState(0);
   const edit = (v: string) => { hist.current.push(v); onChange(v); bump((n) => n + 1); };
@@ -37,6 +39,7 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
   const bad = unknownTokens(value, groups);
   const n = smsCount(value);
   const sealedUsed = parts.some((p) => "token" in p && groups.some((g) => g.items.some((i) => i.token === p.token && i.sealed)));
+  const soon = groups.flatMap((g) => g.soon || []);
   const refs = useMemo(() => dateRefs(groups), [groups]);
   const [dateOpen, setDateOpen] = useState(false);
   const [dt, setDt] = useState({ ref: "", dir: "at", amount: 1, unit: "days", format: "date" });
@@ -56,10 +59,11 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
             </View>
             <View className={wide ? "min-h-0 flex-1 flex-row gap-s4" : "min-h-0 flex-1 gap-s3"}>
               <ScrollView className="min-w-0 flex-1" contentContainerClassName="gap-s3" keyboardShouldPersistTaps="handled">
-                <Field label={title} name={title} multiline={multiline} lines={multiline ? 12 : 2} value={value} onChangeText={edit} autoFocus placeholder="Write it here. Type { to insert a value." />
-                {hints.length ? (
+                <Field label={title} name={title} multiline={multiline} lines={multiline ? 12 : 2} value={toAliasText(value, table)} onChangeText={(v) => edit(toPathText(v, table))} autoFocus placeholder="Write it here. Type { to insert a value." />
+                {brace === "" ? <Text size="caption" tone="label">Keep typing a name, or pick from Insert.</Text> : null}
+                {hints.length && brace ? (
                   <View className="gap-s1 rounded-card border border-edge bg-surface-3 p-s1">
-                    {hints.map((h) => <Row key={h.token} dense title={h.label} sub={h.known ? h.token : `${h.token}  Not available yet`} onPress={() => edit(completeBrace(value, h.token))} />)}
+                    {hints.map((h) => <Row key={h.token} dense title={h.label} sub={h.alias} onPress={() => edit(completeBrace(value, h.token))} />)}
                   </View>
                 ) : null}
                 {parts.some((p) => "token" in p) ? (
@@ -70,7 +74,7 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
                     })}
                   </View>
                 ) : null}
-                {bad.length ? <Banner tone="warn">{`${bad.join(", ")} ${bad.length === 1 ? "is" : "are"} not on the Insert list, so ${bad.length === 1 ? "it" : "they"} may stay empty when this runs. Pick from the list.`}</Banner> : null}
+                {bad.length ? <Banner tone="warn">{`${toAliasText(bad.join(", "), table)} ${bad.length === 1 ? "is" : "are"} not on the Insert list, so ${bad.length === 1 ? "it" : "they"} may stay empty when this runs. Pick from the list.`}</Banner> : null}
                 {sealedUsed ? <Banner icon="lock">A sealed value is sent only where the step allows sealed values.</Banner> : null}
                 {count ? <Text size="caption" tone="label">{`${n.chars} characters, ${n.segments} ${n.segments === 1 ? "text" : "texts"}${n.unicode ? " (this message has a character that makes each text shorter)" : ""}. Values you insert count by their length when sent.`}</Text> : null}
                 <View className="gap-s1 rounded-card border border-edge p-s3">
@@ -105,11 +109,17 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
                     <View key={g.title} className="gap-s1">
                       <Text size="caption" strong tone="label">{g.title}</Text>
                       {g.items.map((i) => (
-                        <Row key={i.token} dense lead={i.sealed ? <Icon name="lock" tone="warn" /> : undefined} title={i.label} sub={i.note ? `${i.token}  ${i.note}` : i.token} onPress={() => edit(appendToken(value, i.token))} />
+                        <Row key={i.token} dense lead={i.sealed ? <Icon name="lock" tone="warn" /> : undefined} title={i.label} sub={i.note ? `${i.alias}  ${i.note}` : i.alias} onPress={() => edit(appendToken(value, i.token))} />
                       ))}
                     </View>
                   ))}
                   {panel.length ? null : <Text tone="muted">Nothing matches.</Text>}
+                  {soon.length ? (
+                    <View className="gap-s1">
+                      <Button kind="ghost" size="sm" label={`Coming next (${soon.length})`} onPress={() => setSoonOpen(!soonOpen)} />
+                      {soonOpen ? soon.map((i) => <Text key={i.token} size="caption" tone="label">{`${i.label}  ${i.alias}`}</Text>) : null}
+                    </View>
+                  ) : null}
                 </ScrollView>
               </View>
             </View>
