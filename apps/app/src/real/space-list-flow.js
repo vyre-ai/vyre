@@ -13,7 +13,7 @@ import { readList, writeList } from "./space-list-vault.js";
 /** @typedef {{ found: ServerEntry[], confirm: ServerEntry[], unavailable?: string }} Found */
 
 /** The only vault door the list gets: tools of the vault family on the list note by name. Vault calls go to a named server outside any Space (the routing's one exception), so nothing else may ride them. @param {(name: string, input?: Record<string, unknown>) => Promise<any>} tool */
-export const onlyTheList = (tool) => (name, input) => {
+export const onlyTheList = (tool) => (/** @type {string} */ name, /** @type {Record<string, unknown> | undefined} */ input) => {
   if (!/^vault\./.test(name) || !input || input.name !== ITEM) return Promise.reject(Object.assign(new Error("That is not the list of your servers."), { code: "not_the_list" }));
   return tool(name, input);
 };
