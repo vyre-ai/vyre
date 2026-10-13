@@ -1,6 +1,6 @@
 // @vyre/ui: the one UI package. Tokens in, components out. Nothing outside this folder may import a UI library
 // (react-native-reusables, @rn-primitives, @tanstack/react-table, @dnd-kit): scripts/check-ui-imports.mjs fails the build if one does.
-export { ThemeProvider, useUiTheme, useAppearance, PHONE_MAX } from "./theme";
+export { ThemeProvider, useUiTheme, useTypeStyle, useAppearance, PHONE_MAX } from "./theme";
 export type { SpaceTheme, PersonTheme, Resolved } from "./theme";
 export { cn } from "./lib/cn";
 export { Text } from "./components/Text";

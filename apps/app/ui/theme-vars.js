@@ -16,6 +16,12 @@ export function typeScale(os, phone) {
   return /** @type {Record<string, [number, number]>} */ (!phone ? t.web : os === "android" ? t.android : t.ios);
 }
 
+/** A control that is not a Text (a TextInput, a plain view before the theme is up) takes its size and line height from the scale. Pure. @param {string} role @param {string} os @param {boolean} phone @param {{ strong?: boolean }} [o] */
+export function typeStyle(role, os, phone, o = {}) {
+  const [size, line] = typeScale(os, phone)[role] ?? typeScale(os, phone).body;
+  return { fontSize: size, lineHeight: line, ...(o.strong ? { fontWeight: /** @type {"600"} */ ("600") } : null) };
+}
+
 /**
  * @param {{ scheme: "dark"|"paper", accent: string, accentInk: string, accentWash: string, tint: string, density: string, corners: string, largerText: boolean }} r
  * @param {{ phone: boolean, os?: string }} where

@@ -8,7 +8,7 @@ import { resolveTheme } from "../src/store-core/theme.js";
 import { create } from "zustand";
 import { PortalHost } from "@rn-primitives/portal";
 import { ToastHost } from "./components/Toast";
-import { themeVars } from "./theme-vars.js";
+import { themeVars, typeStyle } from "./theme-vars.js";
 
 export type SpaceTheme = { accent?: string; hex?: string; tint?: string; thex?: string; density?: string; font?: string; corners?: string };
 export type PersonTheme = { theme?: "dark" | "paper" | "system"; density?: string | null; font?: string | null; reducedMotion?: boolean; largerText?: boolean };
@@ -68,6 +68,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       </View>
     </ThemeCtx.Provider>
   );
+}
+
+/** The type scale's size and line height for a role, for a control that is not a Text (a TextInput). */
+export function useTypeStyle(size: "caption" | "secondary" | "body" | "headline" | "read" | "title" | "control" = "body"): { fontSize: number; lineHeight: number } {
+  const { phone } = useUiTheme();
+  return typeStyle(size, Platform.OS, phone);
 }
 
 export function useUiTheme(): UiCtx {
