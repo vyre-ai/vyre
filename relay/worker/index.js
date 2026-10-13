@@ -31,6 +31,8 @@
  * These repeat core/relay/wire.js, which uses node:crypto and so cannot load here.
  * relay/worker/worker.test.js checks that they match.
  */
+import { onGithub } from "./github.js";
+export { GithubLinks } from "./github.js";
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
 export const FEATURES = Object.freeze(["registered", "revoke", "code"]);
@@ -185,6 +187,7 @@ export default {
     if (url.pathname === "/v1/pair" && request.method === "POST") return withPairCors(await onPairResolve(request, env));
     if (url.pathname === "/v1/wink/code" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: PAIR_PREFLIGHT });
     if (url.pathname === "/v1/wink/code" && request.method === "POST") return withPairCors(await onCodeStep(request, env));
+    if (url.pathname.startsWith("/v1/github/")) return onGithub(request, url, env);
     if (url.pathname === "/v1/setup/mbx" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: MBX_PREFLIGHT });
     if (url.pathname === "/v1/setup/mbx" && (request.method === "POST" || request.method === "GET")) return withMbxCors(await onSetupMbx(request, url, env));
     if (String(request.headers.get("upgrade")).toLowerCase() !== "websocket") return new Response(null, { status: 426 });

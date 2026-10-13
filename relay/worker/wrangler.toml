@@ -28,6 +28,11 @@ class_name = "PairTicket"
 name = "CODES"
 class_name = "CodeSlot"
 
+# Sign in with GitHub (relay/worker/github.js): starts, one-use tickets, nonces and the GitHub-id to identity links, in one object. Holds no key and no secret of a person.
+[[durable_objects.bindings]]
+name = "GITHUB"
+class_name = "GithubLinks"
+
 # The free plan needs SQLite-backed Durable Objects. Cloudflare applies each migration tag once,
 # ever, on a given relay: a relay that already ran v1 (RouteRelay alone, before ADR 0045) never
 # re-runs it, so PairTicket needs its OWN tag, or /v1/pair 404s everything forever, fail-closed
@@ -42,6 +47,10 @@ new_sqlite_classes = ["PairTicket"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["CodeSlot"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["GithubLinks"]
 
 # Per-address limiting for /v1/device: the 256-bit route id and the DO's own per-route caps make
 # this safe without one, but it is real protection against cost and flooding, so it is on.
