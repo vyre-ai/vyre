@@ -97,9 +97,7 @@ const NAV = [
 ];
 function nav(slug) {
   const links = NAV.map(([t, h]) => {
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/')) ? ' aria-current="page"' : '';
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('for') && h === '/for/')) ? ' aria-current="page"' : '';
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('compare') && h === '/compare/')) ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/') || (slug.startsWith('for') && h === '/for/') || (slug.startsWith('compare') && h === '/compare/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -126,7 +124,7 @@ const FOOT = `<footer class="foot">
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
       <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">Roadmap</a></li></ul></div>
-      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li><li><a href="/docs/">Docs</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
@@ -1188,7 +1186,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ...IND.sitemap, ...COMPARE.sitemap];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${[...SM, ...(await docsPaths(resolve(here, '..'))).map((p) => [p, '0.4'])].map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

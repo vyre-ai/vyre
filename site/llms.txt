@@ -12,6 +12,8 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Records](https://vyre.run/records/): custom types, links with inverses, link hops in tokens, stage sets, views, sealed fields, import and export
 - [Flows](https://vyre.run/flows/): triggers, approved versions, the replay-safe runner and holds for a person
 - [Agents](https://vyre.run/agents/): instructions, memory, access, and how a task wakes an agent that finishes, hands on or says stuck
+- [Start here, for AI agents](https://vyre.run/agenthome.md): the entry point for an agent: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up (HTML twin: https://vyre.run/agenthome/)
+- [Map your business](https://vyre.run/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [For professional services firms](https://vyre.run/for/): client journeys on Vyre by kind of firm
 - [Vyre for law firms](https://vyre.run/for/law-firms/): Inquiry, screening and conflict check, consultation, engagement letter signed, matter opened from a Playbook, deadlines from a trigger date, documents from the firm’s own templates, client updates, billing hand-off.
@@ -56,3 +58,4 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [sitemap.xml](https://vyre.run/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [The prompt to give your AI agent](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md): two lines that send an agent to https://vyre.run/agenthome.md

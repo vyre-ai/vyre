@@ -87,6 +87,17 @@ Tracks (Playbooks): Social retainer, Paid media, Website build. Agents: Intake, 
 Tracks (Playbooks): Listing side, Buyer side. Agents: Responder, Coordinator, Reviewer, Content. Apps named: Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign, Transaction and listing tools.
 
 Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Next, 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).
+- Architecture: see https://vyre.run/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.md.
+
+## Docs
+- [Docs home](https://vyre.run/docs/): every guide, reference page and architecture page, in the same design as this site
+- [docs/llms.txt](https://vyre.run/docs/llms.txt): every docs page as a link to its Markdown; https://vyre.run/docs/llms-full.txt has them all in one file
+- [index.json](https://vyre.run/docs/index.json): every command, tool, event, config key and concept, with the page that explains it
+- [Architecture, the front door](https://vyre.run/docs/project/ARCHITECTURE.md): how Vyre is built, with a table of contents into every architecture page
+- [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md): the method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [Development rules](https://vyre.run/docs/project/DEVELOPMENT-RULES.md): the rules every change follows
+- [Roadmap](https://vyre.run/docs/roadmap.md) and [plans by version](https://vyre.run/docs/roadmap/README.md)
+- Every docs page is also its raw Markdown at the same path with .md, for example https://vyre.run/docs/architecture/overview.md
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
