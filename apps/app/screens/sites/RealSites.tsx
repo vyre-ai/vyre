@@ -12,6 +12,7 @@ import { act, create, decide, domainAdd, domainRemove, domainVerify, edgeDown, e
 import { SitesList } from "./SitesList";
 import { BLANK, PIPE, SOURCES, build, jobLine, type JobRun, challengeText, decision, domainLine, heldOf, nextStep, planLines, publishRefusal, sites, stepOf, type Dep, type Draft, type Held, type Site, type Status } from "./real-model";
 import { PlaceTag } from "../../src/real/PlaceTag";
+import { useMayMakeTemplates } from "../templates/role";
 
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
@@ -32,6 +33,8 @@ export function RealSites() {
     create(b.input).then(() => { setDraft(null); showToast("Started as a draft. Nothing is public."); load(); router.push(`/u/sites/${b.input.name}` as never); }).catch((e) => setProblem(say(e))).finally(() => setBusy(false));
   };
   const { color } = useUiTheme();
+  // Taking sites online or offline is for an owner or an admin (the same role rule as making a playbook).
+  const mayServe = useMayMakeTemplates();
   const rows = deps ? sites(deps) : [];
   const [failing, setFailing] = useState<{ deployment: string; name: string; message: string }[]>([]);
   useEffect(() => { jobAttention().then(setFailing).catch(() => setFailing([])); }, [deps]);
@@ -48,7 +51,7 @@ export function RealSites() {
         </View>
       ) : null}
       {rows.length ? <SitesList rows={rows} onOpen={(name) => router.push(`/u/sites/${name}` as never)} /> : null}
-      {rows.length ? <Serving /> : null}
+      {rows.length && mayServe ? <Serving /> : null}
       <Sheet open={!!draft} onClose={() => setDraft(null)} title="Publish">
         {draft ? (
           <View className="gap-s3">

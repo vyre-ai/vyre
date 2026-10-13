@@ -110,5 +110,5 @@ test("a job run reads as one line with how long ago", async () => {
   const { jobLine } = await import("./real-model.ts");
   const now = 1_000_000_000;
   assert.equal(jobLine({ at: now - 3_600_000, ok: true, seconds: 3.6 }, now), "Ran in 4 s, 1 h ago");
-  assert.equal(jobLine({ at: now - 30_000, ok: false, code: 1, message: "it broke" }, now), "Failed, just now");
+  assert.equal(jobLine({ at: now - 10_000, ok: false, code: 1, message: "it broke" }, now), "Failed, just now");
 });
