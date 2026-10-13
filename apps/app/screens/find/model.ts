@@ -118,7 +118,7 @@ export function driveHits(d: unknown): Row[] {
 }
 
 /** Where a mentions.search result opens; null reads only. */
-export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/files" : null);
+export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" || kind === "linked" ? "/u/files" : null);
 /** mentions.search: names the box can find beyond what Find already searches (vault names, Drive, artifacts, GitHub), one section per kind. Records and sessions are Find's own, so they are left out;
  * a provider that was late or locked is named in a note. Names only, never a value. */
 export function mentionSections(d: unknown): { sections: Section[]; note: string } {
