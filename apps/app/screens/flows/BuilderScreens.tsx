@@ -44,7 +44,7 @@ function Editor({ id, start, options }: { id: string | null; start: FlowDraft; o
           {allowsMock() ? <Select label="Group" value={draft.group ?? ""} options={[["", "No group"], ...groups.map((g) => [g.name, g.name] as [string, string])]} onChange={(group) => setDraft({ ...draft, group: group || undefined })} /> : null}
         </View>
       </Card>
-      <FlowBuilder draft={draft} onChange={setDraft} options={options} accessNote={allowsMock() ? "Each step can only touch what the person who added it can reach." : undefined} />
+      <FlowBuilder draft={draft} onChange={setDraft} options={options} />
       {shown && problems.length ? <Banner tone="warn" icon="warning"><View className="gap-s1">{problems.map((p) => <Text key={p}>{p}</Text>)}</View></Banner> : null}
       {err ? <Banner tone="err">{err}</Banner> : null}
       <View className="flex-row flex-wrap items-center gap-s3">

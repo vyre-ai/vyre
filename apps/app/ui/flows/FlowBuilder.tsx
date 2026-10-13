@@ -46,7 +46,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
         </View>
       </Card>
 
-      <Text size="caption" tone="label">{accessNote ?? "When it runs, it uses the access of the person who approved it, and pauses if that access is lost."}</Text>
+      <Text size="caption" tone="label">{accessNote ?? "Each step can only read and write what the person who added it can reach. It runs with the access of the person who approved it, and pauses if that is lost."}</Text>
       <View>
         <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => toggle("trigger")}
           last={!draft.steps.length && readOnly}>

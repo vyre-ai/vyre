@@ -47,3 +47,5 @@ Owner's words: Flows are "process automation and project automation", and the ol
 - Copy is plain words: "projects", never "matters of the template"; no em dashes.
 - The agent's own instructions say who to escalate to and which email alias to use outside. The step's instructions add to them, and the card says so.
 - Groups of Flows use [GroupedList](grouped-list.md).
+- Sharing: a Share sheet with Can use and Can edit per person (`flows.access.get` and `flows.access.set`, the same shape agents use). Teams and roles are offered in the sample build only until the engine takes them.
+- Copy says "object" for a record table.
