@@ -68,7 +68,7 @@ export function ContextEditor({ api, who, title = "Context" }: { api: FolderApi;
           <Card flush>
             {items.map((i, k) => {
               const l = itemLine(i);
-              return <View key={i.name}>{k ? <Divider /> : null}<Row title={l.title} sub={l.sub} end={edit ? <IconButton icon="trash" label={`Remove ${l.title}`} onPress={() => api.remove(i.name).then(q.reload).catch((e) => showToast(say(e)))} /> : undefined} /></View>;
+              return <View key={i.name}>{k ? <Divider /> : null}<Row title={l.title} sub={l.sub} end={edit ? <IconButton icon="x" label={`Remove ${l.title} from the context`} onPress={() => api.remove(i.name).then(q.reload).catch((e) => showToast(say(e)))} /> : undefined} /></View>;
             })}
           </Card>
         ) : <Card><Text tone="muted">{`Nothing kept for ${who} yet. Add files, notes, or a place in Files that every chat here should be able to find.`}</Text></Card>}

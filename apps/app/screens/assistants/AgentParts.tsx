@@ -66,7 +66,7 @@ export function Context({ name }: { name: string }) {
           <Card flush>
             {files.map((f, i) => (
               <View key={f.name}>{i ? <Divider /> : null}
-                <Row title={f.name} sub={sizeLine(f.size)} end={<IconButton icon="trash" label={`Remove ${f.name}`} onPress={() => config.removeContext(name, f.name).then(q.reload).catch((e) => showToast(say(e)))} />} />
+                <Row title={f.name} sub={sizeLine(f.size)} end={<IconButton icon="x" label={`Remove ${f.name} from the context`} onPress={() => config.removeContext(name, f.name).then(q.reload).catch((e) => showToast(say(e)))} />} />
               </View>
             ))}
           </Card>
@@ -207,7 +207,7 @@ export function Used({ name }: { name: string }) {
             {v.data.assigned.map((it, i) => <View key={it}>{i ? <Divider /> : null}<Row title={it} sub="Noted for the agent. No access." end={<IconButton icon="x" label={`Remove the note for ${it}`} onPress={() => void flip(it, false)} />} /></View>)}
           </Card>
         ) : null}
-        <View className="flex-row"><Button size="sm" kind="ghost" label="Note an item" onPress={() => setPicking("note")} /></View>
+        <View className="flex-row"><Button size="sm" kind="secondary" label="Note an item" onPress={() => setPicking("note")} /></View>
       </Sec>
       <Sheet open={picking !== null} onClose={() => setPicking(null)} title={picking === "login" ? "Lend a login" : "Note an item"}>
         {picking === "login" ? (
