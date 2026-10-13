@@ -2,6 +2,8 @@
 // The card model (model.js cardModel) says what the words and buttons are; this says which control answers it, where an answered file lands,
 // where "Open chat" goes, when "Later" brings a card back, and which cards fold into one group.
 
+import { hourOf } from "../../src/time/show.js";
+
 /** Credentials a stuck task names: its suggested fix points at a Vault item, or says a password, key, token or sign-in is the problem. */
 const CREDENTIAL = /\b(vault|password|passphrase|credential|api key|token|sign-?in|log ?in)\b/i;
 
@@ -95,8 +97,7 @@ export function nextMorning(now, hour = 8) {
 /** The choices under "Later". Tonight is left out after 6 pm, tomorrow is never today. @param {number} now @returns {{ id: string, label: string, until: number }[]} */
 export function laterChoices(now) {
   const out = [{ id: "hour", label: "In an hour", until: now + HOUR }];
-  const d = new Date(now);
-  if (d.getHours() < 18) { const t = new Date(now); t.setHours(18, 0, 0, 0); out.push({ id: "evening", label: "This evening", until: t.getTime() }); }
+  if (hourOf(now) < 18) { const t = new Date(now); t.setHours(18, 0, 0, 0); out.push({ id: "evening", label: "This evening", until: t.getTime() }); }
   out.push({ id: "morning", label: "Tomorrow morning", until: nextMorning(now) });
   const w = new Date(now); w.setDate(w.getDate() + ((8 - w.getDay()) % 7 || 7)); w.setHours(8, 0, 0, 0);
   out.push({ id: "monday", label: "Next Monday", until: w.getTime() });

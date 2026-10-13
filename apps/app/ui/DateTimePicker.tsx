@@ -5,11 +5,12 @@ import { Field } from "./components/Field";
 import { Icon } from "./components/Icon";
 import { Text } from "./components/Text";
 import { useUiTheme } from "./theme";
+import { weekdayDayOf } from "../src/time/show.js";
 import { dayText, keyDay, monthCells, parseDay, parseTime, quickDays, shiftMonth, stepTime, timeWords, zoneName } from "./datetime.js";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const words = (v: string) => { const d = parseDay(v); return d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : ""; };
+const words = (v: string) => { const d = parseDay(v); return d ? `${weekdayDayOf(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)), 12), "UTC")} ${d.slice(0, 4)}` : ""; };
 
 /**
  * The one date (and time) picker. The value is a day, 2026-10-28, or with `withTime` a day and time, 2026-10-28T14:15, or "". Quick chips (Today, Tomorrow, Next week), a month grid with month buttons and

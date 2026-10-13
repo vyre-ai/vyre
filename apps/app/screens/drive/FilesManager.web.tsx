@@ -4,8 +4,7 @@
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, Icon, IconButton } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
@@ -98,7 +97,7 @@ function Manager({ wide }: { wide: boolean }) {
   };
 
   const scroller = useRef<HTMLDivElement>(null);
-  const virt = useVirtualizer({ count: shown.length, getScrollElement: () => scroller.current, estimateSize: () => ROW_H, overscan: 8 });
+  const virt = useVirtualRows({ count: shown.length, getScrollElement: () => scroller.current, estimateSize: () => ROW_H, overscan: 8 });
 
   const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames }) : [];
   // The bar is for several at once; one row has its "..." and the detail panel, and a bar that appears on the first click would push the rows down before the second click of a double click.

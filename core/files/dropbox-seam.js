@@ -7,6 +7,8 @@
 // below pass, and files/delete_v2 never does: Dropbox cannot undo it, so the provider moves a file to "Vyre Trash" instead. A read stops at 25 MB. An error that leaves here has the token and every
 // token-looking value removed and is cut to 300 characters.
 
+import { scrub } from "../../lib/scrub.js";
+
 export const NO_TOKEN = "Connect your Dropbox in the Vault first";
 export const HOSTS = Object.freeze({ rpc: "api.dropboxapi.com", content: "content.dropboxapi.com" });
 export const MAX_READ = 25 * 1024 * 1024;
@@ -20,7 +22,7 @@ const fail = (/** @type {string} */ message, /** @type {string} */ code) => Obje
 /** A message with the token, every bearer token, authorization header and token-valued field removed, cut to 300 characters. @param {unknown} s @param {string} [token] */
 export function strip(s, token) {
   let t = String(s ?? "");
-  if (token && token.length >= 6) t = t.split(token).join("[removed]");
+  if (token && token.length >= 6) t = scrub(t, [token], { marker: "[removed]", min: 6 });
   return t
     .replace(/\bauthorization\b\s*[:=]\s*\S+(?:\s+\S+)?/gi, "[removed]")
     .replace(/\bBearer\s+[^\s"',;}]+/gi, "[removed]")

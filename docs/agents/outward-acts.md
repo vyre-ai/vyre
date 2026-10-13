@@ -29,11 +29,11 @@ A connection's operation is outward when its kind is `change`, `send`, `spend`, 
 
 ## Put a site live
 
-1. `publish.create`, then `publish.preview` (private address).
-2. `publish.secret.grant` for Vault items you may use (a real secret is held).
-3. `publish.domain.add` (`canonical` apex or www). `publish.domain.status` gives the DNS record to tell the person; recheck with `publish.domain.verify`. Live sites: the person's.
-4. `publish.go` returns `held` with the plan and a task. Nothing is live.
-5. Ask the person to approve it on Now or in this chat. You cannot approve. Do not call `publish.go` again.
+1. `tools_call publish.create`, then `tools_call publish.preview` (private address).
+2. `tools_call publish.secret.grant` for Vault items you may use (a real secret is held).
+3. `tools_call publish.domain.add` (`canonical` apex or www). `tools_call publish.domain.status` gives the DNS record to tell the person; recheck with `tools_call publish.domain.verify`. Live sites: the person's.
+4. `tools_call publish.go` returns `held` with the plan and a task. Nothing is live.
+5. Ask the person to approve it on Now or in this chat. You cannot approve. Do not call `tools_call publish.go` again.
 
 ## What the system guarantees
 

@@ -67,7 +67,7 @@ export function cheatsheet() {
   out.push("- `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).");
   out.push("- Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.");
   out.push("- `ask` goes to `person:<id>` or `role:<name>`, never an agent.");
-  out.push("- Email: `call action=comms.email resource=vyre://space/comms input={to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.");
+  out.push("- Email: `tools_call comms.email {to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.");
   out.push("- A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.");
   out.push("", "## If it can fail");
   out.push(`- timeout_ms ${POLICY_LIMITS.timeoutMin}-${POLICY_LIMITS.timeoutMax}; retry false | {attempts 1-${POLICY_LIMITS.attempts}, backoff_ms n | [n...], on [${RETRY_CODES.join(", ")}]}. Defaults: ${Object.entries(POLICY).map(([k, p]) => `${k} ${ms(/** @type {any} */ (p).timeout_ms)} x${/** @type {any} */ (p).attempts}`).join(", ")}; other kinds do not retry. A refusal is never retried.`);
