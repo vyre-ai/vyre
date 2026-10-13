@@ -113,3 +113,35 @@ export { formatCode, codeComplete } from "./lib/code.js";
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
 export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";
 export type { Screen as BlockScreenData, Handlers as BlockHandlers } from "./blocks";
+// Records setup: a field (kind, options, relation, rules, who sees it), the type's fields, the model map, starting a type.
+export { FieldEditor } from "./setup/FieldEditor";
+export type { Rules } from "./setup/FieldEditor";
+export { FieldRows } from "./setup/FieldRows";
+export type { FieldRow } from "./setup/FieldRows";
+export { ChoicesEditor } from "./setup/ChoicesEditor";
+export { RelationEditor } from "./setup/RelationEditor";
+export { VisibilityMatrix } from "./setup/VisibilityMatrix";
+export { RuleBuilder } from "./setup/RuleBuilder";
+export type { Rule } from "./setup/RuleBuilder";
+export { ModelMap } from "./setup/ModelMap";
+export type { MapType } from "./setup/ModelMap";
+export { TypeStarter } from "./setup/TypeStarter";
+export type { Starter } from "./setup/TypeStarter";
+export type { TypeRef, RoleRef, FieldRef } from "./setup/types";
+export { newDraft, nameOf, checkField, toDefinition, fieldSummary } from "./setup/logic.js";
+export type { Draft } from "./setup/logic.js";
+// Records screens built from parts: the create form, the record header, related records, the one timeline, the import wizard.
+export { RecordForm } from "./records/RecordForm";
+export { RecordHeader } from "./records/RecordHeader";
+export { RelatedSection } from "./records/RelatedSection";
+export type { RelatedRow } from "./records/RelatedSection";
+export { ActivityFeed } from "./records/ActivityFeed";
+export type { Activity } from "./records/ActivityFeed";
+export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
+export type { ImportIssue, DupeRule } from "./records/ImportWizard";
+export { formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { GroupedList } from "./components/GroupedList";
+export type { Group } from "./components/GroupedList";
+export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
+export { draftOf, applyDraft } from "./setup/logic.js";
+export { putField, moveField, regroup, parseRule } from "./setup/typeedit.js";
