@@ -89,7 +89,7 @@ export default function TemplateScreen() {
             <View className="min-w-0 flex-1"><Text strong>{bar.line}</Text>{!mayMake ? <Text size="caption" tone="label">Only an owner or an admin changes a playbook.</Text> : null}</View>
             {mayMake ? <>
               <Button kind="ghost" size="sm" label="Save draft" loading={busy === "save"} disabled={dirtyFromShown === 0} onPress={() => void saveDraft()} />
-              <Button kind="primary" size="sm" label="Publish" loading={busy === "publish"} disabled={!bar.canPublish} onPress={() => void publish()} />
+              {bar.canPublish ? <Button kind="primary" size="sm" label="Publish" loading={busy === "publish"} onPress={() => void publish()} /> : null}
             </> : null}
           </View></Card>
           <View className={phone || !panel ? "gap-s4" : "flex-row items-start gap-s4"}>

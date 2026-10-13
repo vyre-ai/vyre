@@ -67,7 +67,7 @@ export function versionBar({ live, changes }: { live: number | null; changes: nu
   return { line: changes ? `Live: v${live} · Draft changes: ${changes}` : `Live: v${live} · No changes`, canPublish: changes > 0 };
 }
 
-/** Letters for an avatar: "Alex Rivera" is AR, "The paralegal" is P, "Research (assistant)" is R. */
+/** Letters for an avatar: "Alex Rivera" is AR, "The paralegal" is P, "Research (agent)" is R. */
 export function initialsOf(label: string): string {
   const words = label.replace(/\(.*?\)/g, " ").replace(/^the\s+/i, "").trim().split(/\s+/).filter(Boolean);
   if (!words.length) return "?";
