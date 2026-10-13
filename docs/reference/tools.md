@@ -8860,7 +8860,7 @@ Approve a previewed version and put it live with one yes. The first call holds; 
 
 ### `publish.holds`
 
-Publishing acts waiting for a person's yes: each plan (what goes public, where, which secrets, which version it replaces) and its task. A model cannot decide them.
+Publishing acts awaiting a person's yes: each plan (what goes public, where, which secrets, what it replaces) and its task. A model cannot decide them.
 
 - Input:
   - `space` string
