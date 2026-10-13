@@ -195,7 +195,7 @@ export function TranscriptPage({ thread }: { thread: string }) {
   if (err) return <Banner tone="warn">{err}</Banner>;
   if (!data) return <LoadingState rows={4} />;
   if (!data.length) return <EmptyState title="Nothing said yet" body="The words of this chat show here." />;
-  const who = (w: Line["who"]) => (w === "you" ? "You" : w === "assistant" ? "Assistant" : w === "tool" ? "Tool" : "Thinking");
+  const who = (w: Line["who"]) => (w === "you" ? "You" : w === "assistant" ? "Agent" : w === "tool" ? "Tool" : "Thinking");
   return <View>{data.map((l, i) => <View key={i}>{i ? <Divider /> : null}<Row dense title={l.text} sub={who(l.who)} /></View>)}</View>;
 }
 

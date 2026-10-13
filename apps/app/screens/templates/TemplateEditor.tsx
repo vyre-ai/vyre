@@ -68,7 +68,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving, part 
             </View>}
             <Select label="Who may move a project on early" value={s.owner || ""} options={owners} onChange={(v: string) => onChange(E.setStageOwner(body, si, v))} />
             <Field label="It moves on when (optional)" value={s.moves_on_when || ""} onChangeText={(v: string) => onChange(E.setMovesOn(body, si, v))} placeholder="the tasks are done" />
-            <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an assistant when a project enters it."}</Text>
+            <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an agent when a project enters it."}</Text>
             <GroupedList groups={E.groupsOf(s)} items={s.tasks || []} itemNoun="tasks" onChange={(n) => onChange(E.setStageGroups(body, si, n))} renderItems={(list) => (<View className="gap-s2">{list.map((t) => { const ti = (s.tasks || []).indexOf(t); return (
               <View key={ti} className="gap-s2 rounded-field border border-edge p-s3">
                 <TaskForm body={body} si={si} ti={ti} onChange={onChange} people={people} agents={agents} />

@@ -97,7 +97,7 @@ function all(/** @type {string} */ space) {
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
       ["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"],
-      ["Assistants", "Your agents and agents", "/u/settings/assistants", "assistants"],
+      ["Agents", "Your agents and what they can do", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
       ["All settings", "Every setting, in one place", "/u/settings/all", "settings"],

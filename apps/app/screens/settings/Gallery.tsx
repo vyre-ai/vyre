@@ -41,7 +41,7 @@ export function ComponentGallery() {
           <Tabs value={tab} onChange={setTab} items={[["contacts", "Contacts"], ["matters", "Matters"], ["docs", "Documents"]]} />
         </View>
       ))}
-      {block("Avatars: people, assistants, teammates, agents", (
+      {block("Avatars: people, agents, teammates", (
         <View className="gap-s3">
           <View className="flex-row flex-wrap items-center gap-s3">{PEOPLE.map((n) => <Avatar key={n} of={markRef("person", n)} size={40} onPress={() => showToast(n)} />)}</View>
           <View className="flex-row flex-wrap items-center gap-s3">

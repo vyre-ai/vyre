@@ -58,7 +58,7 @@ export function RecordScreen({ id }: { id: string }) {
         {forgetting ? (
           <View className="gap-s3">
             <Text tone="muted">It cannot be undone. The text of every task about it is emptied, the record and its history are destroyed, its events lose their data and any sealed values are destroyed. Files linked to it stay in Files.</Text>
-            <Text tone="muted">You approve it with your phone. An assistant can only propose it.</Text>
+            <Text tone="muted">You approve it with your phone. An agent can only propose it.</Text>
             {forgetting.problem ? <Banner tone="warn">{forgetting.problem}</Banner> : null}
             <View className="flex-row gap-s2">
               <Button kind="primary" label="Forget it" loading={forgetting.busy} disabled={forgetting.busy} onPress={() => {
