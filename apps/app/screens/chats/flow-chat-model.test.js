@@ -64,3 +64,11 @@ test("reply goes to the agent, or to one run", { skip: !strip }, async () => {
   assert.match(m.flowChatSub(c, D + 3 * 3600_000), /^3 runs · Last: waiting on you · /);
   assert.deepEqual(m.flowChatsOf(rows, "nobody"), []);
 });
+
+test("the Flow origin is row.flow_origin; a string origin is the launch surface and no Flow", { skip: !strip }, async () => {
+  const m = await import("./flow-chat-model.ts");
+  const r = { id: "z", agent: "a", origin: "capsule", flow_origin: { flow: "f9", run: "run_9", step: "1", flow_name: "Intake", step_name: "draft", approver: "Dana" } };
+  assert.equal(m.markerOf(r)?.flow, "f9");
+  assert.equal(m.markerOf({ id: "q", origin: "capsule", flow_origin: null }), null);
+  assert.deepEqual(m.flowChats([r])[0].title, "Flow: draft - Intake");
+});
