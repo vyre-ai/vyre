@@ -38,7 +38,7 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
   const dir = fs.mkdtempSync(path.join(out, "dev-"));
   const crypto2 = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "k.json"));
   const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "Chain device", crypto: crypto2, keyStore,
-    chainHello: o.hello || (async (/** @type {Uint8Array} */ devicePub) => chainHello({ sha256, devicePub, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "Chain device" })) });
+    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => chainHello({ sha256, devicePub: given ?? (await keyStore.get()).publicKey, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "Chain device" })) });
   return conn;
 }
 /** One tool call as that device: { status, text }. */
@@ -91,7 +91,7 @@ try {
   await step("3b. the server marks its row via_chain (relay_devices)", async () => {
     const script = `const {DatabaseSync}=require("node:sqlite");`;
     void script;
-    const r = await srv.operator("relay.devices", {}).catch((/** @type {any} */ e) => ({ error: e.message }));
+    const r = await srv.operator("relay.device.info", { id: "x" }).catch((/** @type {any} */ e) => ({ error: e.message }));
     const s = JSON.stringify(r);
     assert.ok(/via_chain|viaChain|chain/.test(s), `a row mentions the chain: ${s.slice(0, 500)}`);
     return s.slice(0, 500);
