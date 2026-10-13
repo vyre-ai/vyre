@@ -125,7 +125,7 @@ export function createJoins(h) {
     }
     room(run, lanes.length);
     const sc = h.scope(ctx, locals);
-    const inherit = { trigger: sc.trigger, event: sc.event, steps: sc.steps, locals: Object.fromEntries(Object.entries(sc).filter(([k]) => !["trigger", "event", "steps", "run", "now"].includes(k))) };
+    const inherit = { trigger: sc.trigger, event: sc.event, steps: sc.steps, locals: Object.fromEntries(Object.entries(sc).filter(([k]) => !["trigger", "event", "steps", "run", "now", "tz"].includes(k))) };
     /** @type {string[]} */ const children = [];
     for (const b of lanes) children.push(await spawn(run, { key: `${key}/${b.id}`, kind: "branch", source: `branch:${run.id}/${s.id}/${b.id}`, flow: run.flow, version: run.version, hash: run.hash, depth: run.depth, step: key, stepId: s.id, lane: b.id, inherit }));
     return waitFor(ctx, key, children);

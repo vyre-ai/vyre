@@ -49,3 +49,14 @@ test("a session opened in the home speaks for its person, and its agent, in anot
   await assert.rejects(() => h.chainIn("spc_cccccccccccc", { token: s.token }), { code: "not_found" }, "a Space this home does not host has no chain");
   await assert.rejects(() => h.chainIn(OTHER, { token: "not-a-token" }), { code: "not_a_member" });
 });
+
+test("the owner's own tailnet node is not refused for having no enrolment list; a removed paired device still is", async () => {
+  const removed = new Set();
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), deviceEnrolled: async (_s, id) => !removed.has(id) });
+  const h = k.kernelFor({ name: "probe", needs: { kernel: { actions: [] } } });
+  const node = { kind: "device", device_key_id: "n_o", person: OWNER, path: "wink" };
+  removed.add("n_o");
+  assert.equal((await h.chain({ kernelFacts: node })).hops.some(x => x.actor.kind === "person"), true, "the owner's verified node is served");
+  removed.add("dev1");
+  await assert.rejects(() => h.chain({ kernelFacts: { kind: "device", device_key_id: "dev1", person: OWNER, path: "relay" } }), { code: "not_a_member" });
+});

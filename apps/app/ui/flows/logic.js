@@ -4,7 +4,8 @@
 // Send an email is `call comms.send`, Wait for a yes is `ask`, Update a record is `update`.
 
 /** @typedef {{ name: string, label: string }} Named */
-/** @typedef {{ name: string, label: string, fields?: Named[] }} TypeOpt  an object (record table) and its fields */
+/** @typedef {{ name: string, label: string, kind?: string }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
+/** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
 /** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
@@ -215,38 +216,54 @@ const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
 const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
 const TOKEN = /\{([a-z0-9_.]+)\}/gi;
+/** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
+const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
+/** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
+let DATE_TOKENS = new Map();
+/** What a token reads when it sits inside text: a date or time field is written as people read it, a helper as its own call, anything else as text. @param {string} t */
+const partExpr = (t) => {
+  if (HELPERS[t]) return HELPERS[t];
+  const kind = DATE_TOKENS.get(t);
+  return kind === "datetime" ? `datetime(${tokenExpr(t)}, tz)` : kind === "date" ? `date(${tokenExpr(t)})` : `text(${tokenExpr(t)})`;
+};
 /**
  * A text value the person typed. A whole value like {email} reads that field of what started the Flow. Text with tokens inside, like "Hello {name}, ...", becomes one expression that joins the
- * pieces (`"Hello " + text(trigger.name) + ", ..."`), so the braces are filled in when the step runs; a missing value reads as empty. Text with no token is the text itself.
+ * pieces (`"Hello " + text(trigger.name) + ", ..."`), so the braces are filled in when the step runs; a missing value reads as empty. A date or time field inside text is written as people read it
+ * ("Wed 14 Oct, 2:00 pm", in the Space's zone), and {now} and {today} are the time and the date now. Text with no token is the text itself.
  * @param {string} t
  */
 export const val = (t) => {
   const s = String(t ?? "");
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(s.trim());
-  if (m) return { expr: tokenExpr(m[1]) };
+  if (m) return { expr: HELPERS[m[1]] || tokenExpr(m[1]) };
   if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return t; }
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(`text(${tokenExpr(x[1])})`); at = x.index + x[0].length; }
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(partExpr(x[1])); at = x.index + x[0].length; }
   if (at < s.length) parts.push(lit(s.slice(at)));
   return { expr: parts.join(" + ") };
 };
-const TEMPLATE_PART = /"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\)/g;
+const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\))';
+const TEMPLATE_PART = new RegExp(PART, "g");
+const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
-  if (!/^(?:"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\))(?: \+ (?:"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\)))*$/.test(e) || !e.includes("text(")) return null;
+  if (!TEMPLATE.test(e) || !/(?:text|date|datetime)\(/.test(e)) return null;
   let out = "";
   for (const p of e.match(TEMPLATE_PART) || []) {
-    if (p.startsWith("text(")) {
-      const n = p.slice(5, -1), m = /^trigger\.([a-z0-9_.]+)$/i.exec(n);
-      if (m) out += `{${m[1]}}`; else if (/^(?:steps|event|row|item)\./.test(n)) out += `{${n}}`; else return null;
-    } else out += unlit(p);
+    if (p.startsWith('"')) { out += unlit(p); continue; }
+    const call = /^(text|date|datetime)\(([a-z0-9_.]+)/.exec(p) || [];
+    const n = call[2] || "";
+    if (n === "now" && call[1] !== "text") out += call[1] === "date" ? "{today}" : "{now}";
+    else if (/^trigger\.([a-z0-9_.]+)$/i.test(n)) out += `{${n.slice(8)}}`;
+    else if (/^(?:steps|event|row|item)\./.test(n)) out += `{${n}}`;
+    else return null;
   }
   return out;
 }
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -320,7 +337,7 @@ function tokenWords(f, d, o, none = "a date") {
   return `{${ty?.fields?.find((x) => x.name === m[1])?.label || m[1]}}`;
 }
 /** What a Wait until can wait for: the values before this step, each named plainly, as [token, label]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
-export const dateChoices = (d, stepId, o) => valueSources(d, stepId, o).map(([tok, words]) => /** @type {[string, string]} */ ([tok, words.replace(/ of the record that started it$/, "").replace(/ from the form$/, "")]));
+export const dateChoices = (d, stepId, o) => valueSources(d, stepId, o).filter(([tok]) => tok !== "{now}" && tok !== "{today}").map(([tok, words]) => /** @type {[string, string]} */ ([tok, words.replace(/ of the record that started it$/, "").replace(/ from the form$/, "")]));
 export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"]]);
 export const WHEN_CHOICES = /** @type {[string, string][]} */ ([["before", "before"], ["after", "after"], ["at", "at that time"]]);
 export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);
@@ -335,7 +352,22 @@ export function peopleOf(s) {
 }
 
 /** The stored Flow for a draft. @param {Draft} d */
-export function toDefinition(d) {
+export function toDefinition(d, o) {
+  DATE_TOKENS = dateTokens(d, o);
+  try { return writeDefinition(d); } finally { DATE_TOKENS = new Map(); }
+}
+
+/** The tokens of date and time fields this draft can read, by the field's kind in the object's definition. @param {Draft} d @param {Options | undefined} o */
+function dateTokens(d, o) {
+  /** @type {Map<string, string>} */ const out = new Map();
+  if (!o) return out;
+  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime") out.set(token(f.name), f.kind); };
+  if (isRecordTrigger(d.trigger)) add(d.trigger.type, (f) => `after.${f}`);
+  for (const s of flat(d.steps)) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
+  return out;
+}
+
+function writeDefinition(d) {
   return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.rest || {}) };
 }
 
@@ -566,5 +598,6 @@ export function valueSources(d, stepId, o) {
     if (s.kind === "find") out.push([`{steps.${s.id}.rows}`, `The records found by ${s.id}`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
+  out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);
   return out;
 }

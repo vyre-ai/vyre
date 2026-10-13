@@ -52,3 +52,18 @@ test("expr: roots and step references drive the compile check", () => {
   assert.deepEqual([...roots(n)].sort(), ["item", "steps", "trigger"]);
   assert.deepEqual([...stepRefs(n)], ["find"]);
 });
+
+test("expr: date and datetime read a time as people do, in the zone given", () => {
+  const at = Date.UTC(2026, 9, 14, 21, 0);
+  const r = (src, extra = {}) => run(src, { at, tz: "America/Los_Angeles", ...extra });
+  assert.equal(r("datetime(at, tz)"), "Wed 14 Oct, 2:00 pm");
+  assert.equal(r("date(at, tz)"), "Wed 14 Oct");
+  assert.equal(r("datetime(at, \"Asia/Karachi\")"), "Thu 15 Oct, 2:00 am");
+  assert.equal(r("datetime(at)"), "Wed 14 Oct, 9:00 pm", "no zone reads as UTC");
+  assert.equal(r("datetime(at, \"Nowhere/None\")"), "Wed 14 Oct, 9:00 pm", "an unknown zone reads as UTC");
+  assert.equal(r("datetime(atText, tz)", { atText: String(at) }), "Wed 14 Oct, 2:00 pm", "a time in a string");
+  assert.equal(r("datetime(\"2026-10-14T21:00:00Z\", tz)"), "Wed 14 Oct, 2:00 pm", "a date text");
+  assert.equal(r("datetime(missing, tz)"), "", "a missing value is empty");
+  assert.equal(r("datetime(\"soon\", tz)"), "soon", "something that is not a time keeps its own text");
+  assert.equal(r("\"At \" + datetime(at, tz) + \".\""), "At Wed 14 Oct, 2:00 pm.");
+});

@@ -155,7 +155,26 @@ export function parse(src) {
 
 const str = (/** @type {any} */ v) => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
 /** The pure functions an expression may call. */
+/**
+ * A time as people read it, in a zone: "Tue 14 Oct, 2:00 pm" (with the time) or "Tue 14 Oct". The value is a time in milliseconds, a number in a string, or a date text; anything else comes
+ * back as its own text so nothing is lost. An unknown zone reads as UTC.
+ * @param {any} v @param {any} zone @param {boolean} withTime
+ */
+function when(v, zone, withTime) {
+  if (v === null || v === undefined || v === "") return "";
+  const ms = typeof v === "number" ? v : typeof v === "string" ? (/^-?\d+(?:\.\d+)?$/.test(v.trim()) ? Number(v) : Date.parse(v)) : NaN;
+  if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return str(v);
+  const fmt = (/** @type {string} */ tz) => new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(ms));
+  /** @type {Intl.DateTimeFormatPart[]} */ let parts;
+  try { parts = fmt(typeof zone === "string" && zone ? zone : "UTC"); } catch { parts = fmt("UTC"); }
+  const p = (/** @type {string} */ t) => parts.find(x => x.type === t)?.value ?? "";
+  const day = `${p("weekday")} ${p("day")} ${p("month")}`;
+  return withTime ? `${day}, ${p("hour")}:${p("minute")} ${p("dayPeriod").toLowerCase()}` : day;
+}
+
 export const FUNCTIONS = Object.freeze({
+  date: (/** @type {any} */ v, /** @type {any} */ zone) => when(v, zone, false),
+  datetime: (/** @type {any} */ v, /** @type {any} */ zone) => when(v, zone, true),
   len: (/** @type {any} */ v) => (Array.isArray(v) || typeof v === "string" ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0),
   lower: (/** @type {any} */ v) => str(v).toLowerCase(),
   upper: (/** @type {any} */ v) => str(v).toUpperCase(),

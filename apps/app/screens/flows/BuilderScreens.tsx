@@ -30,7 +30,7 @@ function Editor({ id, start, options }: { id: string | null; start: FlowDraft; o
         showToast("Saved.");
         router.replace(`/u/flows/${key}` as never);
       } else {
-        const key = await defineReal(flowDefinition(draft));
+        const key = await defineReal(flowDefinition(draft, options));
         showToast("Saved. Read the card and approve it to switch it on.");
         router.replace(`/u/flows/${key}` as never);
       }
@@ -103,7 +103,7 @@ export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unkn
   const save = async () => {
     if (problems.length) return;
     setBusy(true); setErr("");
-    try { await defineReal(flowDefinition(draft), id); showToast("Saved as a new version. Read the card and approve it to switch it on."); onSaved(); }
+    try { await defineReal(flowDefinition(draft, options), id); showToast("Saved as a new version. Read the card and approve it to switch it on."); onSaved(); }
     catch (e) { setErr(e instanceof Error ? e.message : "That did not save."); } finally { setBusy(false); }
   };
   return (

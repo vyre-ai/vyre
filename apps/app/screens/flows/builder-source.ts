@@ -13,7 +13,7 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
 }
 const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArray(d?.[key]) ? d[key] : []);
 
-export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string }[] }[], space?: string | null, reload?: () => void): Promise<FlowOptions> {
+export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string; kind?: string }[] }[], space?: string | null, reload?: () => void): Promise<FlowOptions> {
   const [vaultNames, agents, tpls, roles, fl, conns, mailCreds, smsCreds] = await Promise.all([ask("vault.items.names"), ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list"), ask("connectors.connection.list"), ask("comms.credentials", { kind: "email" }), ask("comms.credentials", { kind: "sms" })]);
   // comms.* is an owner's on a member's door: where it cannot be read the picker says an owner chooses
   const creds = (d: any) => (d && Array.isArray(d.credentials) ? d.credentials.map((c: any) => ({ id: String(c.id), name: String(c.name), provider: String(c.provider), step: String(c.step) })) : null);
@@ -60,7 +60,7 @@ export function useFlowOptions(): FlowOptions | null {
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    const types = defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name) })) }));
+    const types = defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name), kind: String(f.kind || "") })) }));
     realOptions(types, space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
     return () => { live = false; };
   }, [defs, space, tick]);
