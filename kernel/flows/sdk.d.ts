@@ -1,9 +1,11 @@
 // Editor typings for the Flow part of @vyre/sdk. The stored form is the source of truth; these describe how to write it as text.
+/** A value read when the step runs. Text with values is one expression joining pieces, for example `"Hello " + text(trigger.after.name)`; `format(t, "weekdaytime", tz)` and `addtime(t, 2, "hours", tz)` work with times (see the cheat sheet). */
 export interface ExprValue { expr: string }
 export type Value = string | number | boolean | null | ExprValue | readonly Value[] | { readonly [k: string]: Value };
 export function expr(source: string): ExprValue;
 
 export type Trigger =
+  /** A record changed: event ['client.created', 'client.updated'] with field to react only when that field changed, and when_record_changes for a run that is waiting. */
   | { on: 'event'; event: string | string[]; where?: string; field?: string; when_record_changes?: 'replace' | 'keep' }
   | { on: 'time'; cron?: string; every_ms?: number; at?: number }
   | { on: 'web'; path: string }
@@ -33,6 +35,7 @@ export const step: Policy & {
   decide(id: string, p: Policy & { if: string; then: readonly Step[]; else?: readonly Step[]; label?: string }): Step;
   repeat(id: string, p: Policy & { over: string; as: string; steps: readonly Step[]; max?: number; label?: string }): Step;
   wait(id: string, p: ({ for_ms: number } | { until: Value; offset_ms?: number } | { event: string; where?: string }) & Omit<Policy, 'timeout_ms'> & { timeout_ms?: number; on_timeout?: 'continue' | 'fail'; label?: string }): Step;
+  /** `to` is `person:<id>` or `role:<name>`, never an agent. */
   ask(id: string, p: Policy & { to: string; title: Value; form?: readonly { name: string; [k: string]: unknown }[]; label?: string }): Step;
   assign(id: string, p: Policy & { to: string; title: Value; output: { kind: 'fields' | 'note' | 'draft' | 'sent' | 'decision' | 'file'; target?: string | readonly string[] }; how?: 'template' | 'tailor' | 'assistant' | 'person'; template?: string; checker?: string; record?: Value; await?: boolean; label?: string }): Step;
   agent(id: string, p: Policy & { assistant: string; title: Value; instructions: Value; output: { kind: string; target?: string | readonly string[] }; record?: Value; await?: boolean; label?: string }): Step;
