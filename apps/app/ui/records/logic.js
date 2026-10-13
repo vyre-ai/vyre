@@ -60,6 +60,7 @@ export function importIssues(rows, mapping, fields) {
       if (f.unique) { const s = (seen[f.name] ??= new Set()); if (s.has(v.toLowerCase())) { out.push({ row: i + 1, field: f.name, problem: "duplicate" }); continue; } s.add(v.toLowerCase()); }
       if ((f.kind === "number" || f.kind === "money") && Number.isNaN(Number(v.replace(/[$,\s]/g, "")))) out.push({ row: i + 1, field: f.name, problem: "not a number" });
       if ((f.kind === "date" || f.kind === "datetime") && Number.isNaN(Date.parse(v))) out.push({ row: i + 1, field: f.name, problem: "not a date" });
+      if (f.kind === "choice" && f.options?.length && !f.options.some((/** @type {string} */ o) => o.toLowerCase() === v.toLowerCase())) out.push({ row: i + 1, field: f.name, problem: "not one of the options" });
     }
   });
   return out;

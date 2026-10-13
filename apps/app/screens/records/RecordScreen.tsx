@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Linking } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, Button, Chip, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, Banner, Button, Chip, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
+import { useSidebar } from "../shell/sidebar";
 import { RecordTimeline } from "./RecordTimeline";
 import { DocumentsBar } from "./DocumentsBar";
 import { relatedRecords } from "../../ui/views/logic.js";
@@ -23,6 +24,8 @@ export function RecordScreen({ id }: { id: string }) {
   const events = useRecordEvents(rec?.urn);
   // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
   const [canSend, setCanSend] = useState(false);
+  const [forgetting, setForgetting] = useState<null | { busy: boolean; problem: string }>(null);
+  const admin = useSidebar((s) => s.canSetDefault);
   const isContact = rec?.type === "contact";
   useEffect(() => {
     if (!isContact) { setCanSend(false); return; }
@@ -42,7 +45,7 @@ export function RecordScreen({ id }: { id: string }) {
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} />} />
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2">{admin ? <Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
       <View className="flex-row flex-wrap items-center gap-s2 px-s4 pt-s2">
         {factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>)}
         {email ? <Button kind="secondary" size="sm" icon="mail" label="Email" onPress={() => void Linking.openURL(`mailto:${email}`)} /> : null}
@@ -52,6 +55,22 @@ export function RecordScreen({ id }: { id: string }) {
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
+      <Sheet open={!!forgetting} onClose={() => setForgetting(null)} title={`Forget ${title} for good?`}>
+        {forgetting ? (
+          <View className="gap-s3">
+            <Text tone="muted">It cannot be undone. The text of every task about it is emptied, the record and its history are destroyed, its events lose their data and any sealed values are destroyed. Files linked to it stay in Files.</Text>
+            <Text tone="muted">You approve it with your phone. An assistant can only propose it.</Text>
+            {forgetting.problem ? <Banner tone="warn">{forgetting.problem}</Banner> : null}
+            <View className="flex-row gap-s2">
+              <Button kind="primary" label="Forget it" loading={forgetting.busy} disabled={forgetting.busy} onPress={() => {
+                setForgetting({ busy: true, problem: "" });
+                tool<{ message?: string }>("records.forget", { urn: rec.urn }).then((r) => { setForgetting(null); showToast(r?.message?.split(".")[0] ? `${title} is forgotten.` : "Forgotten."); back(); }).catch((e) => setForgetting({ busy: false, problem: e instanceof Error ? e.message : "That did not work." }));
+              }} />
+              <Button kind="ghost" label="Cancel" onPress={() => setForgetting(null)} />
+            </View>
+          </View>
+        ) : null}
+      </Sheet>
     </View>
   );
 }
