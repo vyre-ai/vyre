@@ -28,7 +28,7 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
   ctx.tool("vault.get", { callers: ["cli"], run: async () => "space vault read" });
   const call = async (/** @type {string} */ name, /** @type {any} */ input, /** @type {string} */ who, /** @type {any} */ extra = {}) => {
-    const meta = { caller: "device:abcdef", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
+    const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
   return { call, reg, people };
