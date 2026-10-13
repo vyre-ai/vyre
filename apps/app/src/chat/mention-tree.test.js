@@ -38,11 +38,11 @@ test("# has four categories in order", () => {
 
 test("Projects: a branch per template with a whole pick, then its projects", () => {
   const projects = tree[0];
-  const estate = projects.kids.find((k) => k.label === "Estate plan");
+  const estate = projects.kids.find((k) => k.label === "Estate plan playbook");
   assert.deepEqual(estate.pick, { pick: "Matters (all)", urn: "template/tpl_estate-plan", kind: "collection" });
   assert.deepEqual(estate.kids.map((k) => k.label), ["Okafor admin"]);
   assert.deepEqual(estate.kids[0].pick, { pick: "Okafor admin", urn: "u/p1", kind: "project" });
-  const ads = projects.kids.find((k) => k.label === "Ad campaign");
+  const ads = projects.kids.find((k) => k.label === "Ad campaign playbook");
   assert.equal(ads.pick.pick, "Ad campaign (all)");
   const loose = projects.kids.find((k) => k.label === "No template");
   assert.deepEqual(loose.kids.map((k) => k.label), ["Loose project"]);
@@ -95,7 +95,7 @@ test("a template with no projects, an object with no records and a category with
     titleOf, templates, files: [], names: {},
   });
   assert.deepEqual(t.map((n) => n.label), ["Projects", "Records"], "no Files, no Tags");
-  assert.deepEqual(t[0].kids.map((k) => k.label), ["Estate plan"], "Ad campaign has no project");
+  assert.deepEqual(t[0].kids.map((k) => k.label), ["Estate plan playbook"], "Ad campaign has no project");
   assert.deepEqual(t[1].kids.map((k) => k.label), ["Clients"], "Leads has no records");
 });
 

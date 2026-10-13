@@ -23,6 +23,9 @@ function templateRows(d) {
   return list.filter((/** @type {any} */ t) => t && t.template && !t.archived).map((/** @type {any} */ t) => ({ template: String(t.template), name: String(t.name || t.template), many: String(t.noun?.many || t.name || t.template) }));
 }
 
+/** A project template is a Playbook in the words people read ("Estate plan playbook"); the tools and records keep work.template.*. @param {string} name */
+const playbook = (name) => (/playbook$/i.test(name.trim()) ? name.trim() : `${name.trim()} playbook`);
+
 /** @param {string} name */
 const all = (name) => `${name} (all)`;
 
@@ -60,7 +63,7 @@ export function hashTree({ world, titleOf, templates, files, names }) {
   const projects = (world?.byType?.project ?? []).map((/** @type {any} */ r) => ({ ...r, title: titleOf(projectDef, r) }));
   const leaf = (/** @type {any} */ r) => ({ key: String(r.urn), label: r.title, sub: undefined, pick: { pick: r.title, urn: String(r.urn), kind: "project" } });
   /** @type {NestNode[]} */ const byTemplate = templateRows(templates).map((t) => ({
-    key: t.template, label: t.name, pick: { pick: all(t.many), urn: `template/${t.template}`, kind: "collection" },
+    key: t.template, label: playbook(t.name), pick: { pick: all(t.many), urn: `template/${t.template}`, kind: "collection" },
     kids: projects.filter((/** @type {any} */ r) => r.data?.template === t.template).map(leaf),
   }));
   const known = new Set(byTemplate.map((t) => t.key));
