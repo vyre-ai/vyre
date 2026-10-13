@@ -24,6 +24,10 @@ function rig({ drive = true, chain = person } = {}) {
     async move(c, from, to) { calls.push(["move", c, from, to]); return { path: to, version: 1 }; },
     async trash(c, p) { calls.push(["trash", c, p]); return { path: `.trash/${p}`, version: 1 }; },
     async getRange(c, p, o) { calls.push(["getRange", c, p, o]); return { bytes: new Uint8Array(Math.min(o.length, 10)), size: 10 }; },
+    async uploadBegin(c, p, o) { calls.push(["uploadBegin", c, p, o]); return { upload: "u_abcdefgh12345678" }; },
+    async uploadPart(c, id, index, bytes) { calls.push(["uploadPart", c, id, index, bytes.length]); return { index, size: bytes.length }; },
+    async uploadCommit(c, id, count) { calls.push(["uploadCommit", c, id, count]); return { path: "a/big", version: 1, conflict: false, size: 9 }; },
+    async uploadAbort(c, id) { calls.push(["uploadAbort", c, id]); return { dropped: true }; },
     async restore(c, p, version, o) { calls.push(["restore", c, p, version, o]); const v = files.get(p) || []; if (!v[version - 1]) throw Object.assign(new Error("the drive could not do that"), { code: "not_found" }); v.push({ ver: v.length + 1, size: v[version - 1].size, by: "person:per_alex" }); return { version: v.length }; },
   };
   /** @type {Map<string, any>} */ const tools = new Map();
@@ -40,7 +44,7 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.changes", "files.drive.space.list", "files.drive.space.move", "files.drive.space.read", "files.drive.space.stat", "files.drive.space.trash", "files.drive.upload", "files.drive.versions"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.changes", "files.drive.space.list", "files.drive.space.move", "files.drive.space.read", "files.drive.space.stat", "files.drive.space.trash", "files.drive.space.upload.abort", "files.drive.space.upload.begin", "files.drive.space.upload.commit", "files.drive.space.upload.part", "files.drive.upload", "files.drive.versions"]);
   // the reads are open to a model in a team chat's turn (as the member, in that Space); writing, versions and restore stay the person's own
   for (const [name, d] of r.tools) assert.deepEqual(d.callers, /^files\.drive\.space\.(list|read|stat|changes)$/.test(name) ? ["cli", "local", "deck", "capsule", "mobile", "device", "mcp"] : ["cli", "local", "deck", "capsule", "mobile", "device"], name);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
@@ -149,4 +153,24 @@ test("the mount tools: changes, stat, move, trash and a ranged read run under th
   assert.equal(r.calls.length, 0, "nothing reached the Drive");
   // writing tools are the person's own: a model in a chat turn may read changes and stat, never move or trash
   for (const n of ["files.drive.space.move", "files.drive.space.trash"]) assert.ok(!r.tools.get(n).callers.includes("mcp"), n);
+});
+
+test("a big file goes up in parts: begin, part, commit, each under the caller's chain, with the entries checked first", async () => {
+  const r = rig();
+  const u = await r.run("files.drive.space.upload.begin", { path: "a/big", base: 2 });
+  assert.deepEqual(r.calls[0].slice(2), ["a/big", { base: 2 }]);
+  assert.deepEqual(await r.run("files.drive.space.upload.part", { upload: u.upload, index: 0, base64: b64("abcd") }), { index: 0, size: 4 });
+  assert.deepEqual(await r.run("files.drive.space.upload.commit", { upload: u.upload, parts: 1 }), { path: "a/big", version: 1, conflict: false, size: 9 });
+  assert.deepEqual(await r.run("files.drive.space.upload.abort", { upload: u.upload }), { dropped: true });
+  assert.ok(r.calls.every(c => c[1] === person), "the call's own chain every time");
+  r.calls.length = 0;
+  assert.equal(await code(r.run("files.drive.space.upload.begin", { path: "../x" })), "bad_input");
+  assert.equal(await code(r.run("files.drive.space.upload.begin", { path: "a/b", base: 0 })), "bad_input");
+  assert.equal(await code(r.run("files.drive.space.upload.part", { upload: "x", index: 0, base64: b64("a") })), "bad_input");
+  assert.equal(await code(r.run("files.drive.space.upload.part", { upload: u.upload, index: -1, base64: b64("a") })), "bad_input");
+  assert.equal(await code(r.run("files.drive.space.upload.part", { upload: u.upload, index: 0, base64: "not base64!!" })), "bad_input");
+  assert.equal(await code(r.run("files.drive.space.upload.part", { upload: u.upload, index: 0, base64: Buffer.alloc(MAX_UPLOAD + 1).toString("base64") })), "too_large");
+  assert.equal(await code(r.run("files.drive.space.upload.commit", { upload: u.upload, parts: 0 })), "bad_input");
+  assert.equal(r.calls.length, 0, "nothing reached the Drive");
+  for (const n of ["begin", "part", "commit", "abort"]) assert.ok(!r.tools.get("files.drive.space.upload." + n).callers.includes("mcp"), n);
 });

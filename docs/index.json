@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":350,"tool":1698,"event":538,"config":302,"env":304,"screen":0,"concept":39},
+  "counts": {"command":350,"tool":1702,"event":538,"config":302,"env":304,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -512,6 +512,10 @@
     {"kind":"tool","name":"files.drive.space.read","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceread","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.space.stat","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacestat","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.space.trash","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacetrash","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.upload.abort","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceuploadabort","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.upload.begin","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceuploadbegin","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.upload.commit","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceuploadcommit","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.upload.part","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceuploadpart","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.status","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdrivestatus","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unmount","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunmount","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unshare","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunshare","module":"files","mentions":[]},

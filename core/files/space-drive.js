@@ -101,4 +101,33 @@ export function registerSpaceDrive(ctx) {
 
   tool("files.drive.space.trash", "Delete a file from a mount: it moves under .trash/ (versions kept, nothing is lost) and an owner or admin can bring it back; the real delete is a separate act that asks. { space?, path }. Answers { path, version } with the path in the trash.",
     obj({ space: str, path: str }, ["path"]), async (i, d, drive) => drive.trash(d.chain, pathOf(i.path)));
+
+  // A file over the one-call cap arrives in parts: begin, part by part (each at most MAX_UPLOAD), then commit, which writes ONE version.
+  const b64bytes = (/** @type {any} */ v) => {
+    const text = String(v ?? "");
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the part's bytes, standard base64", "bad_input");
+    if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a part is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
+    const bytes = new Uint8Array(Buffer.from(text, "base64"));
+    if (bytes.length > MAX_UPLOAD) throw refuse(`a part is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
+    return bytes;
+  };
+  const idOf = (/** @type {any} */ v) => { if (typeof v !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(v)) throw refuse("name the upload", "bad_input"); return v; };
+
+  tool("files.drive.space.upload.begin", "Start uploading a file of any size to the Space's Drive, in parts: { space?, path, base? }. Answers { upload }. Then send each part with files.drive.space.upload.part and finish with files.drive.space.upload.commit. Only you can add to it; it ends after an hour of silence.",
+    obj({ space: str, path: str, base: { type: "integer" } }, ["path"]), async (i, d, drive) => {
+      if (i.base !== undefined && (!Number.isInteger(i.base) || i.base < 1)) throw refuse("base is a version number", "bad_input");
+      return drive.uploadBegin(d.chain, pathOf(i.path), { base: i.base ?? null });
+    });
+  tool("files.drive.space.upload.part", `Add one part of an upload: { space?, upload, index, base64 }. Parts are numbered from 0, each at most ${MAX_UPLOAD / 1048576} MB; sending an index again replaces it.`,
+    obj({ space: str, upload: str, index: { type: "integer" }, base64: str }, ["upload", "index", "base64"]), async (i, d, drive) => {
+      if (!Number.isInteger(i.index) || i.index < 0) throw refuse("index is the part's number, from 0", "bad_input");
+      return drive.uploadPart(d.chain, idOf(i.upload), i.index, b64bytes(i.base64));
+    });
+  tool("files.drive.space.upload.commit", "Finish an upload: { space?, upload, parts }, `parts` being how many were sent (0 to parts - 1). Writes the file as ONE new version. Answers { path, version, conflict, size }.",
+    obj({ space: str, upload: str, parts: { type: "integer" } }, ["upload", "parts"]), async (i, d, drive) => {
+      if (!Number.isInteger(i.parts) || i.parts < 1) throw refuse("parts is how many were sent", "bad_input");
+      return drive.uploadCommit(d.chain, idOf(i.upload), i.parts);
+    });
+  tool("files.drive.space.upload.abort", "Drop an upload and the parts sent so far: { space?, upload }.",
+    obj({ space: str, upload: str }, ["upload"]), async (i, d, drive) => drive.uploadAbort(d.chain, idOf(i.upload)));
 }

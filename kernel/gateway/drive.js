@@ -2,6 +2,7 @@
 // nothing about who may. Every call here takes a kernel-built chain and asks `authorize` with the drive.* actions (kernel/seal/uses.js) first; a refusal looks like absence;
 // the actor recorded on a version is the chain's acting actor, never a name the caller supplied; a path is checked (no dot segments, no encoding) before it is turned
 // into a resource; and one event says what happened, with the path and the version, never the bytes. Delete and restoring a backup are the kinds of act that need a person.
+import crypto from "node:crypto";
 import { createGate } from "../core/gate.js";
 import { isChain } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -62,7 +63,69 @@ export function createDriveGateway(cfg) {
     return { path: to, version: r.version };
   };
 
+  // Upload sessions: a file too big for one call arrives in parts. The right to write the target is asked at the start and again at commit; between them only the same actor may add to it. The parts wait under
+  // `.upload/<id>/` (the Drive keeps every version, so a finished or dropped session leaves cold tombstoned parts until the next prune), and commit writes ONE version of the file from them in order.
+  /** @type {Map<string, { actor: string, path: string, base: number | null, expires: number }>} */
+  const sessions = new Map();
+  const SESSION_MS = 60 * 60 * 1000, MAX_SESSIONS = 8, MAX_PART = 16 * 1024 * 1024, MAX_PARTS = 10_000;
+  const sessionOf = (/** @type {any} */ chain, /** @type {string} */ id) => {
+    mustChain(chain);
+    const s = sessions.get(String(id));
+    if (!s || s.actor !== actor(chain)) throw new KernelError("not_found", "no such upload");
+    if (Date.now() > s.expires) { sessions.delete(String(id)); throw new KernelError("not_found", "no such upload"); }
+    return s;
+  };
+  const partPath = (/** @type {string} */ id, /** @type {number} */ n) => `.upload/${id}/${n}`;
+  const dropParts = async (/** @type {any} */ chain, /** @type {string} */ id, /** @type {number} */ count) => {
+    const by = actor(chain);
+    for (let n = 0; n < count; n++) { try { await run(async () => cfg.drive.delete(partPath(id, n), { by })); } catch { /* already gone */ } }
+  };
+
   return Object.freeze({
+    /** Start an upload of a file of any size: `{ upload }`. @param {any} chain @param {string} p @param {{ base?: number | null }} [o] */
+    async uploadBegin(chain, p, o = {}) {
+      mustChain(chain);
+      await gate(chain, "drive.write", file(p));
+      for (const [k, v] of sessions) if (Date.now() > v.expires) sessions.delete(k);
+      const mine = actor(chain);
+      if ([...sessions.values()].filter(v => v.actor === mine).length >= MAX_SESSIONS) throw new KernelError("too_many", "finish or drop an upload first");
+      if (o.base != null && (!Number.isInteger(o.base) || o.base < 1)) throw new KernelError("bad_input", "base is a version number");
+      const id = crypto.randomBytes(12).toString("base64url");
+      sessions.set(id, { actor: mine, path: p, base: o.base ?? null, expires: Date.now() + SESSION_MS });
+      return { upload: id };
+    },
+    /** Add part `index` (0, 1, 2 ...) of an upload; sending the same index again replaces it. @param {any} chain @param {string} id @param {number} index @param {Uint8Array} bytes */
+    async uploadPart(chain, id, index, bytes) {
+      const s = sessionOf(chain, id);
+      if (!Number.isInteger(index) || index < 0 || index >= MAX_PARTS) throw new KernelError("bad_input", "a part number");
+      if (!(bytes instanceof Uint8Array) || bytes.length > MAX_PART) throw new KernelError("bad_input", "a part is bytes, within the size limit");
+      await run(async () => cfg.drive.put(partPath(String(id), index), bytes, { by: actor(chain) }));
+      s.expires = Date.now() + SESSION_MS;
+      return { index, size: bytes.length };
+    },
+    /** Write the file from parts 0 to `count - 1` as one version. @param {any} chain @param {string} id @param {number} count */
+    async uploadCommit(chain, id, count) {
+      const s = sessionOf(chain, id);
+      if (!Number.isInteger(count) || count < 1 || count > MAX_PARTS) throw new KernelError("bad_input", "how many parts");
+      const d = await gate(chain, "drive.write", file(s.path));
+      for (let n = 0; n < count; n++) { try { await run(async () => cfg.drive.stat(partPath(String(id), n), {})); } catch (e) { if (e instanceof KernelError && e.code === "not_found") throw new KernelError("bad_input", "a part is missing"); throw e; } }
+      const source = (async function* () { for (let n = 0; n < count; n++) for await (const c of cfg.drive.stream(partPath(String(id), n), {})) yield c; })();
+      const r = await run(() => cfg.drive.putStream(s.path, source, { by: actor(chain), base: s.base, maxBytes: cfg.maxBytes ?? 256 * 1024 * 1024 }));
+      sessions.delete(String(id));
+      await dropParts(chain, String(id), count);
+      note(chain, "file.written", file(s.path), { path: shown(s.path), version: r.version, conflict: Boolean(r.conflict), bytes: r.size, what: "parts" }, d.decision);
+      return { path: s.path, version: r.version, conflict: Boolean(r.conflict), size: r.size };
+    },
+    /** Drop an upload and its parts. @param {any} chain @param {string} id */
+    async uploadAbort(chain, id) {
+      sessionOf(chain, id);
+      sessions.delete(String(id));
+      // parts are numbered from 0 with no gaps in practice; sweep a generous run and stop at the first hole
+      let n = 0;
+      for (; n < MAX_PARTS; n++) { try { cfg.drive.stat(partPath(String(id), n), {}); } catch { break; } }
+      await dropParts(chain, String(id), n);
+      return { dropped: true };
+    },
     /**
      * The Drive as the vault's file seam for ONE chain (a lent member's request, `leases.forward`): the same `read(path, version)` and `write(path, source, { maxBytes })` the vault's
      * `deps.files` has, but every call goes through the gate for this chain (`drive.read`, `drive.write`), so a route's Drive lists only ever narrow what the member may already do (FW-2).
@@ -147,6 +210,7 @@ export function createDriveGateway(cfg) {
       for (const e of all.items) {
         if (out.length >= limit || scanned >= 5000) { more = true; break; }
         scanned++; last = e.seq;
+        if (e.path.startsWith(".upload/")) continue; // an upload's waiting parts are no one's files
         if (await check(chain, "drive.read", file(e.path))) out.push(e);
       }
       return { anchor: more ? last : all.anchor, items: out, more };
