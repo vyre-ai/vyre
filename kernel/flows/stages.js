@@ -116,9 +116,6 @@ export function createStages(o) {
     if (t.brief) parts.push(renderBrief(t.brief, data));
     if (Array.isArray(t.checklist) && t.checklist.length) parts.push(`Before this counts as done:\n${t.checklist.map((/** @type {any} */ c) => `- ${c.say}`).join("\n")}`);
     if (Array.isArray(t.credentials) && t.credentials.length) parts.push(`Connections you may use: ${t.credentials.join(", ")}.`);
-    // what the approver and the followers are told, written under who it is for (tags inside stay as written until the Flow side resolves them)
-    if (t.notes && t.notes.approver) parts.push(`For the approver: ${renderBrief(String(t.notes.approver), data)}`);
-    if (t.notes && t.notes.followers) parts.push(`For followers: ${renderBrief(String(t.notes.followers), data)}`);
     return parts.join("\n\n");
   }
 
@@ -159,17 +156,10 @@ export function createStages(o) {
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
       if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); continue; }
-      // followers are the task's helpers; one nobody can be is said, and the task is still made
-      const helpers = [];
-      for (const f of t.followers || []) {
-        const a = await actorFor(f, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
-        if (a && !helpers.some((/** @type {any} */ h) => h.kind === a.kind && h.id === a.id)) helpers.push(a);
-        else if (!a) emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${f} cannot follow "${t.title}": nobody holds it` });
-      }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
-        title: t.title, record: e.urn, stage: e.stage, doer, ...(helpers.length ? { helpers } : {}),
+        title: t.title, record: e.urn, stage: e.stage, doer,
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
@@ -191,6 +181,17 @@ export function createStages(o) {
         continue;
       }
       made.set(t.title, task.id);
+      // Followers and the approver are not on the doer's task: each gets an informational note task of their own (doer = that person, no access to the main task), carrying their own box. One nobody can be is
+      // said and never stops the stage. (Tags in a box stay as written until the per-reader resolver lands.)
+      const noteTask = async (/** @type {string} */ ref, /** @type {string} */ title, /** @type {string} */ box, /** @type {string} */ lead, /** @type {string} */ idem) => {
+        const a = await actorFor(ref, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
+        if (!a) { emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${ref} was not told about "${t.title}": nobody holds it` }); return; }
+        const text = [box ? renderBrief(box, data) : "", `${lead}${t.title}`].filter(Boolean).join("\n\n");
+        try { await o.kernel.ask.request(chain, { title, doer: a, output: { kind: "note" }, record: e.urn, stage: e.stage, note: text.slice(0, 400), form: { brief: text } }, { idem }); }
+        catch (err) { emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${ref} was not told about "${t.title}": ${err instanceof Error ? err.message : String(err)}` }); }
+      };
+      for (const [fi, f] of (t.followers || []).entries()) await noteTask(f, `Following: ${t.title}`, t.notes && t.notes.followers, "Task: ", `stage:${key}:${t.title}:follow${fi}`);
+      if (t.checker && t.notes && t.notes.approver && /^(person|role|teammate):/.test(String(t.checker))) await noteTask(String(t.checker), `To check: ${t.title}`, t.notes.approver, "Task to check: ", `stage:${key}:${t.title}:check`);
       ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
       taskEntry.set(task.id, key);
     }
