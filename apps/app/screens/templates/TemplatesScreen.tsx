@@ -36,7 +36,7 @@ export default function TemplatesScreen() {
   };
   const have = new Set((rows || []).map((r) => r.name));
   return (
-    <Frame back="/u/projects" title="Templates" sub="A template is what a kind of project follows: its stages, the tasks in each, and who does them. Name it for what your firm calls the work, such as Matter or Campaign. New project then offers it.">
+    <Frame back="/u/projects" title="Templates" sub="A template is what a kind of project follows: its stages, the tasks in each, and who does them. Name it for what your firm calls the work, such as Campaign or Job. New project then offers it.">
       {draft ? (
         <Sec title="A new template"><TemplateEditor body={draft} onChange={setDraft} onSave={() => void create()} onCancel={() => setDraft(null)} saving={busy === "new"} /></Sec>
       ) : <View className="self-start"><Button kind="primary" size="sm" label="New template" onPress={() => setDraft(blank())} /></View>}
