@@ -367,6 +367,30 @@ test("stores: the same Flow works when definitions and runs are records in the k
   assert.equal(mine(w, "flow-run").length, 1, "the run record is updated in place");
 });
 
+test("wait until: a time from the record, moved by offset_ms (negative is before), and a time already past carries on at once", async () => {
+  const w = await world();
+  const H = 3_600_000;
+  const { id } = await install(w, flowOf([{ id: "w", kind: "wait", until: { expr: "trigger.at" }, offset_ms: -24 * H }, { id: "b", kind: "create", type: "payment", set: { amount: 1 } }]));
+  w.kernel.inbound("payment.received", { at: new Date(w.clock.t + 30 * H).toISOString() }); // 6 hours until the reminder is due
+  await settle(w);
+  assert.equal((await last(w, id)).state, "waiting");
+  w.advance(5 * H); await w.runner.tick(); await settle(w);
+  assert.equal((await last(w, id)).state, "waiting", "not yet");
+  w.advance(1.5 * H); await w.runner.tick(); await settle(w);
+  assert.equal((await last(w, id)).state, "done");
+  assert.equal(mine(w, "payment").length, 1);
+  w.kernel.inbound("payment.received", { at: new Date(w.clock.t + 2 * H).toISOString() }); // 1 day before is already past
+  await settle(w);
+  assert.equal(mine(w, "payment").length, 2, "carried on at once");
+});
+
+test("wait until: offset_ms needs an until and a whole number", async () => {
+  const w = await world();
+  const bad = async (step) => { try { await install(w, flowOf([{ id: "w", kind: "wait", ...step }])); return null; } catch (e) { return String(e.message || JSON.stringify(e)); } };
+  assert.match(await bad({ for_ms: 1000, offset_ms: -5 }) || "", /offset_ms/);
+  assert.match(await bad({ until: { expr: "trigger.at" }, offset_ms: 1.5 }) || "", /offset_ms/);
+});
+
 // ---- standing rules for a space (DESIGN-flows-joints 5a): the two behaviours the kernel's authorize calls on ----
 const RULE_DRAFT = { id: "rule_drafts", label: "Email is drafts only" };
 const draftRule = (action = "service.call") => ({ match: i => i.action === action, effect: "allow", reason: "ok", obligations: [{ type: "draft_only", rule: "rule_drafts" }], rule: RULE_DRAFT });

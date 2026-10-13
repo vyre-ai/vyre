@@ -30,7 +30,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "decide", icon: "sort", label: "If / else", hint: "Do one thing when a condition holds, another when it does not", words: "if else branch condition when otherwise" },
     { kind: "repeat", icon: "refresh", label: "For each", hint: "Do the same steps for every record in a list", words: "repeat loop each every list" },
     { kind: "parallel", icon: "list", label: "Side by side", hint: "Do several things at once, then carry on", words: "parallel branch together same time" },
-    { kind: "wait", icon: "clock", label: "Wait", hint: "Pause for minutes, hours or days", words: "delay pause sleep timer later" },
+    { kind: "wait", icon: "clock", label: "Wait", hint: "Pause for a while, or until a date such as an appointment", words: "delay pause sleep timer later" },
     { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer", words: "ask approve approval question decision" },
   ] },
   { name: "Records", items: [
@@ -124,7 +124,8 @@ export function stepSummary(s, o, d) {
     case "upsert": return `Create or update a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
-    case "wait": return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
+    case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${dateWords(s.field, d, o)}`;
+      return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
     case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
     case "web": return `${s.method === "GET" || !s.method ? "Fetch" : "Send"} ${s.path || "/"} ${s.method === "GET" || !s.method ? "from" : "to"} ${named(o.connections || [], s.connector) || "a web service"}`;
     case "sms": return `Text ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the number from the form" : s.to.trim()) : "someone"}`;
@@ -174,7 +175,9 @@ export function stepProblem(s, o) {
     case "find": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
-    case "wait": return Number(s.amount) > 0 ? null : "Say how long to wait.";
+    case "wait":
+      if (s.mode === "until") return !val(s.field || "").expr ? "Pick the date to wait for." : s.when !== "at" && !(Number(s.amount) > 0) ? "Say how long before or after." : null;
+      return Number(s.amount) > 0 ? null : "Say how long to wait.";
     case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
     case "web": return !s.connector ? "Choose the connection (an owner adds one in the Vault)." : (s.path || "").trim().startsWith("/") ? null : "Start the path with /.";
     case "sms": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the text." : null;
@@ -241,7 +244,9 @@ export function stepDefinition(s, d) {
     case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields) };
     case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
     case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
-    case "wait": return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
+    case "wait":
+      if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
+      return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
     case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: val(s.to), body: val(s.body) } };
@@ -267,6 +272,15 @@ export function stepDefinition(s, d) {
 /** Field rows as a stored object: the field's slug and a typed value. @param {any[] | undefined} rows */
 const pairs = (rows) => Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)]));
 const UNITS = /** @type {Record<string, number>} */ ({ minutes: 60_000, hours: 3_600_000, days: 86_400_000 });
+/** A date field in words, for a label: the field's own name where the Flow's record has it, else the token as typed. @param {string | undefined} f @param {Draft | undefined} d @param {Options} o */
+function dateWords(f, d, o) {
+  const m = /^\{(?:after\.)?([a-z0-9_]+)\}$/i.exec(String(f || "").trim());
+  if (!m) return "a date";
+  const ty = d && (d.trigger.kind === "created" || d.trigger.kind === "stage") ? o.types.find((x) => x.name === d.trigger.type) : undefined;
+  return `{${ty?.fields?.find((x) => x.name === m[1])?.label || m[1]}}`;
+}
+export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"]]);
+export const WHEN_CHOICES = /** @type {[string, string][]} */ ([["before", "before"], ["after", "after"], ["at", "at that time"]]);
 export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);
 /** A formula is a Code step that returns one value: the engine evaluates the expression (its own language, kernel/flows/expr.js) before the code runs. `FORMULA_HASH` is the hash of this source, checked by a test. */
 export const FORMULA_SOURCE = "return { value: inputs.value };";
@@ -302,7 +316,7 @@ export function newStep(kind, d, o) {
     case "upsert": return { id, kind, type: "", matchFields: [{ field: "", value: "" }], fields: [{ field: "", value: "" }] };
     case "remove": return { id, kind, type: lastMade?.type || "", record: link };
     case "stage": return { id, kind, type: lastMade?.type || d.trigger.type || "", record: link, to: "" };
-    case "wait": return { id, kind, amount: 1, unit: "days" };
+    case "wait": return { id, kind, amount: 1, unit: "days", mode: "for", field: "", when: "before" };
     case "web": return { id, kind, connector: o.connections?.[0]?.name || "", method: "GET", path: "/", body: "" };
     case "formula": return { id, kind, formula: "" };
     case "sms": return { id, kind, to: "", body: "" };
@@ -392,6 +406,11 @@ function stepFrom(s) {
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
     case "wait": {
+      if (s.until !== undefined) {
+        const off = s.offset_ms === undefined ? 0 : s.offset_ms, f = unval(s.until);
+        const u = Object.entries(UNITS).reverse().find(([, ms]) => off % ms === 0);
+        return f && f.startsWith("{") && Number.isInteger(off) && u && keys(s, ["id", "kind", "until", "offset_ms", "label"]) ? { id: s.id, kind: "wait", mode: "until", field: f, when: off < 0 ? "before" : off > 0 ? "after" : "at", amount: off ? Math.abs(off) / u[1] : 1, unit: off ? u[0] : "hours" } : adv;
+      }
       const u = Object.entries(UNITS).reverse().find(([, ms]) => s.for_ms % ms === 0);
       return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
     }
