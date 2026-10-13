@@ -302,9 +302,9 @@ export default {
       const edit = !onTeam || Boolean(seat.owner) || seat.level === "lead" || seat.level === "contributor";
       return { p, use: true, edit };
     };
-    const needUse = async (/** @type {any} */ meta, /** @type {string} */ ref) => { const r = await may(meta, ref); if (!r.use) throw refuse("you are not on this project, so you cannot read its instructions or context. Ask its owner to add you", "denied"); return r; };
+    const needUse = async (/** @type {any} */ meta, /** @type {string} */ ref) => { noModel(meta); const r = await may(meta, ref); if (!r.use) throw refuse("you are not on this project, so you cannot read its instructions or context. Ask its owner to add you", "denied"); return r; };
     const needEdit = async (/** @type {any} */ meta, /** @type {string} */ ref) => { const r = await needUse(meta, ref); if (!r.edit) throw refuse("you have read-only access to this project (viewer): ask its owner or a lead for contributor to change its instructions or context", "denied"); return r; };
-    const noModel = (/** @type {any} */ meta) => { if (/^(?:mcp|harness)(?::|$)/.test(String((meta && meta.caller) || ""))) throw refuse("a model does not edit a project's instructions or context; the person does", "denied"); };
+    const noModel = (/** @type {any} */ meta) => { if ((meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(String((meta && meta.caller) || ""))) throw refuse("only a person reads or changes a project's instructions and context; an agent gets them in its brief when its chat starts", "denied"); };
     const proj = { type: "object", required: ["project"], properties: { project: str } };
     ctx.tool("projects.docs.get", {
       description: "A project's instructions: AGENTS.md and CLAUDE.md at its root (kept the same).",

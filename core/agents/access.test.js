@@ -24,7 +24,7 @@ async function world(/** @type {any} */ t) {
   const ben = await add(BEN, "member", 2);
   const ada = await add(ADA, "admin", 3);
   const as = (/** @type {any} */ who) => (/** @type {string} */ name, /** @type {any} */ input = {}) => d.registry.call(name, input, "deck", who);
-  return { tool, d, project, launches, root, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "cli") };
+  return { tool, d, project, launches, root, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}, /** @type {string} */ as = "cli") => d.registry.call(n, i, as) };
 }
 
 test("a member makes an agent and owns it; a member with no access sees nothing of another's agent", { timeout: 120_000 }, async t => {
@@ -157,4 +157,27 @@ test("agents.list says who made each agent and who it is shared with; a member s
   assert.equal(row(owners, "two").shares.length, 1);
   await ada("agents.access.set", { agent: "one", kind: "person", subject: BEN, level: "edit" });
   assert.equal(row(await ben("agents.list", {}), "one").shares.length, 2, "Can edit sees who else has it");
+});
+
+test("an agent, a model or a guest caller is refused on every agent configuration tool: person surfaces only", { timeout: 120_000 }, async t => {
+  const { owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const tools = [["agents.docs.get", {}], ["agents.docs.set", { file: "CLAUDE.md", text: "x" }], ["agents.context.list", {}], ["agents.context.add", { name: "a.txt", base64: "QQ==" }], ["agents.context.remove", { name: "a.txt" }],
+    ["agents.context.link", { path: "/tmp" }], ["agents.context.unlink", { path: "/tmp" }], ["agents.vault.list", {}], ["agents.vault.assign", { item: "mail" }], ["agents.vault.unassign", { item: "mail" }],
+    ["agents.used", {}], ["agents.access.get", {}], ["agents.access.set", { kind: "person", subject: BEN, level: "use" }]];
+  for (const as of ["mcp:agent:kit", "cli:agent:kit", "harness", "tailnet-guest"]) {
+    for (const [name, input] of /** @type {[string, any][]} */ (tools)) {
+      const r = await owner(name, { agent: "intake", ...input }, as);
+      assert.ok(r.error, `${as} on ${name} ran: ${JSON.stringify(r).slice(0, 120)}`);
+    }
+  }
+  assert.equal((await owner("agents.docs.get", { agent: "intake" })).error, undefined, "the person's own surface still works");
+});
+
+test("the people an editor can pick come from the kernel's member list on her own chain", { timeout: 120_000 }, async t => {
+  const { ada } = await world(t);
+  await ada("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const got = (await ada("agents.access.get", { agent: "intake" })).data;
+  assert.ok(got.people.some((/** @type {any} */ p) => p.id === BEN), JSON.stringify(got.people));
+  assert.deepEqual(got.roles, []);
 });

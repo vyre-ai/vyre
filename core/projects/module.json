@@ -147,31 +147,31 @@
       },
       {
         "name": "projects.docs.get",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read",
         "projectArg": "project"
       },
       {
         "name": "projects.docs.set",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write",
         "projectArg": "project"
       },
       {
         "name": "projects.refs.list",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read",
         "projectArg": "project"
       },
       {
         "name": "projects.refs.add",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write",
         "projectArg": "project"
       },
       {
         "name": "projects.refs.remove",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write",
         "projectArg": "project"
       }
