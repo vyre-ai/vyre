@@ -32,6 +32,7 @@
  "core/mcp/discover.js": 2,
  "core/memory/index.js": 1,
  "core/memory/personal/reader.js": 3,
+ "core/modules/door-lists.js": 1,
  "core/onboard/index.js": 11,
  "core/onboard/loopback.js": 1,
  "core/onboard/setup-token.js": 1,

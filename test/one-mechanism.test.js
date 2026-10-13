@@ -96,6 +96,7 @@ test("D. one approval path: what waits on the person is ONE list (approvals.item
     "core/cli/commands/gate.js": "detail screen: vyre gate show/approve (the draft in full)", "core/cli/commands/threads.js": "detail screen: vyre threads answer", "core/cli/commands/vault.js": "detail screen: vyre vault pending/approve",
     "core/statusline/index.js": "fallback only, for a vyred without waiting.count",
     "core/mail/index.js": "mail finds its own held sends",
+    "core/modules/door-lists.js": "the door gate's lists of tool names; nothing reads a list",
     "apps/app/src/state/live.ts": "the app's Now list: moves onto approvals.items in work/approvals-app-031 (waits on B)", "apps/app/src/state/needs-model.ts": "same, and it names the gate.held and ask.* events",
     "apps/app/screens/vault/more-source.ts": "the vault screen's own pending list",
   };

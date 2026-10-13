@@ -13,7 +13,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOTS = ["core", "local", "modules", "lib", "relay", "records", "stores", "names"];
 
 /** The kernel's own chain builders: they define what a person is. */
-const CHAIN_BUILDERS = new Set(["core/modules/index.js", "lib/caller.js", "core/daemon/index.js"]);
+const CHAIN_BUILDERS = new Set(["core/modules/index.js", "lib/caller.js", "core/daemon/index.js", "core/modules/door-gate.js"]);   // the door gate reads the person from the kernel's chain; its one label rule only makes an unproven label a MEMBER's (it never grants)
 
 /** Existing hand-rolled label checks, by file: the most lines allowed. Lower a number when its owner removes one; never raise one. */
 export const FROZEN = Object.freeze({});
