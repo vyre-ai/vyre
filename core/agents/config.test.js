@@ -45,7 +45,7 @@ test("notes an older build kept in CLAUDE.md are appended once into AGENTS.md on
   assert.equal((await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], "Draft intake.\n\n## Notes\n\nUse plain words.\n", "read: nothing is hidden");
   assert.equal((await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "Draft intake, kindly." })).error, undefined);
   const after = (await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"];
-  assert.equal(after, "Draft intake, kindly.\n\n## Notes\n\nUse plain words.\n");
+  assert.equal(after, "Draft intake, kindly.\n\n## Notes\n\nUse plain words.", "stored trimmed, as every edit is");
   assert.equal(fs.existsSync(kept), false, "the separate notes file is retired");
   await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: after });
   assert.equal((await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], after, "appended once, never twice");
