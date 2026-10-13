@@ -102,3 +102,18 @@ test("vault.me.store.*: a member's JSON entries; another member and the owner do
   assert.equal((await call("vault.me.store.get", { key: "mcp/gh" }, OWNER)).error.code, "denied");
   assert.equal((await call("vault.me.store.remove", { key: "mcp/gh" }, BOB)).data.removed, true);
 });
+
+test("vault.me.store.*: a module may call it only on a member's own turn; the person is the chain's, never the input", async t => {
+  const { call, reg } = rig(t);
+  for (const n of ["get", "put", "list", "remove"]) assert.ok(reg.get("vault.me.store." + n).callers.includes("module"), n);
+  for (const n of ME_TOOLS.filter(x => !x.startsWith("vault.me.store."))) assert.ok(!reg.get(n).callers.includes("module"), `${n} stays closed to modules`);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  const via = (/** @type {string} */ who, /** @type {any} */ extra = {}) => ({ caller: "module:mcp", ...extra, hops: who ? [hop("person", who)] : [] });
+  await call("vault.me.store.put", { key: "mcp/a", value: { t: "bob" } }, BOB, via(BOB));
+  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB))).data, { t: "bob" }, "a relayed module hop for Bob reads Bob's store");
+  assert.equal((await call("vault.me.store.get", { key: "mcp/a", person: BOB, id: BOB }, EVE, via(EVE))).data, null, "naming Bob in the input still reads Eve's store");
+  assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, null, { caller: "module:mcp", hops: [] })).error.code, "denied", "a module call with no person is refused");
+  assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] }))).error.code, "denied", "an agent hop is refused");
+  assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, OWNER, via(OWNER))).error.code, "denied", "the owner is refused");
+});
