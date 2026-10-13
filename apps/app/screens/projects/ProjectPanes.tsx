@@ -55,7 +55,7 @@ export function FilesPane({ id }: { id: string }) {
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      {open && source ? <DocOverlay open onClose={() => setOpen(null)} title={open.split("/").pop() || "File"} name={open.split("/").pop() || open} source={source} spacing={30_000} onOpenInFiles={() => { setOpen(null); router.push("/u/files" as never); }} /> : null}
+      {open && source ? <DocOverlay open onClose={() => setOpen(null)} title={open.split("/").pop() || "File"} name={open.split("/").slice(0, -1).join(" / ") || open} fileName={open.split("/").pop() || open} source={source} spacing={30_000} onOpenInFiles={() => { setOpen(null); router.push("/u/files" as never); }} /> : null}
       <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Files" onPress={() => router.push("/u/files" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
         <Card flush>{rows.slice(0, 5).map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row dense title={String(f.name || (f.path || "").split("/").pop() || "file")} onPress={f.path ? () => setOpen(String(f.path)) : undefined} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}{rows.length > 5 ? <><Divider /><Row dense title={`${rows.length - 5} more in Files`} chevron onPress={() => router.push("/u/files" as never)} /></> : null}</Card>

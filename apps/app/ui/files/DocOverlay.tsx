@@ -19,8 +19,10 @@ export type DocOverlayProps = {
   onClose: () => void;
   /** The heading: "Instructions", or a file's name. */
   title: string;
-  /** The file's name, shown small under the title (AGENTS.md). */
+  /** Shown small under the title: the file name (AGENTS.md), or the folder a file is in. */
   name: string;
+  /** The file's real name when `name` is a folder line; the viewer picks how to draw it from this. */
+  fileName?: string;
   source: FileSource;
   kind?: ViewKind;
   readOnly?: boolean;
@@ -36,7 +38,7 @@ export function DocOverlay(p: DocOverlayProps) {
   const { width, height } = useWindowDimensions();
   const { color } = useUiTheme();
   const phone = width < 640;
-  const kind: ViewKind = p.kind ?? viewerKind(p.name);
+  const kind: ViewKind = p.kind ?? viewerKind(p.fileName ?? p.name);
   const writable = canEdit(kind) && !p.readOnly && !!p.source.save;
   const box = phone ? { width, height } : { width: Math.round(width * 0.92), height: Math.round(height * 0.92) };
   const card = (
@@ -86,7 +88,7 @@ function ReadOnly(p: DocOverlayProps & { kind: ViewKind }) {
   return (
     <View style={{ flex: 1 }}>
       <Bar p={p} close={p.onClose} />
-      <View style={{ flex: 1, minHeight: 0 }}><FileViewer bare name={p.name} source={p.source} kind={p.kind} readOnly onOpenInFiles={undefined} /></View>
+      <View style={{ flex: 1, minHeight: 0 }}><FileViewer bare name={p.fileName ?? p.name} source={p.source} kind={p.kind} readOnly onOpenInFiles={undefined} /></View>
     </View>
   );
 }
