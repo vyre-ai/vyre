@@ -271,5 +271,15 @@ export function register(ctx, h) {
   const sharedLine = async a => (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => `${g.subject} (${g.level})`);
   /** An agent that is gone takes its sharing with it. @param {any} a */
   const clearShared = async a => { if (ctx.kernel && ctx.kernel.mint) for (const g of await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` })) await ctx.kernel.mint.end({ id: g.id, reason: "the agent was removed" }); };
-  return { brief, levelOf, sharedLine, clearShared };
+  /**
+   * Who made an agent and who it is shared with, for the list: the maker's person id, and [{ person, level }]. The owner, an admin, the maker and anyone with Can edit see every share; anyone
+   * else sees only their own, so a list never shows who else was given an agent. @param {any} meta @param {any} a @param {boolean} staff
+   */
+  const sharesFor = async (meta, a, staff) => {
+    const all = (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => ({ person: g.subject, level: g.level }));
+    if (staff || (await levelOf(meta, a)) === "edit") return { made_by: a.owner || null, shares: all };
+    const me = await h.chainPerson(meta);
+    return { made_by: a.owner || null, shares: me ? all.filter((/** @type {any} */ g) => g.person === me) : [] };
+  };
+  return { brief, levelOf, sharedLine, clearShared, sharesFor };
 }
