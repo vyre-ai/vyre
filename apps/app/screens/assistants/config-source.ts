@@ -72,3 +72,9 @@ export function configSource(call: Call) {
     used: (agent: string) => ask<any>("agents.used", { agent }),
   };
 }
+
+/** An agent's instructions as the shared editor's api: AGENTS.md is its instructions, CLAUDE.md its notes for Claude (kept apart, so not `kept`). */
+export function agentDocsApi(call: Call, agent: string, canEdit = true) {
+  const src = configSource(call);
+  return { id: `agent:${agent}`, canEdit, docs: async () => (await src.docs(agent)).files, saveDoc: (file: "AGENTS.md" | "CLAUDE.md", text: string) => src.saveDoc(agent, file, text) };
+}
