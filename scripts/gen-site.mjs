@@ -245,7 +245,7 @@ const homeBody = `
     <p class="lbl" id="works-h" style="margin-bottom:14px">Works on</p>
     <div class="frame rv"><span class="pl-a">+</span><span class="pl-b">+</span>
       <div class="works-grid">
-        <a href="/mac/">${I.mac}<b>Mac</b><span>Vyre Lumen opens over any app with Option-Space.</span><i class="go">Mac &rarr;</i></a>
+        <a href="/mac/">${I.mac}<b>Mac</b><span>The Vyre app in its own window, with Touch ID.</span><i class="go">Mac &rarr;</i></a>
         <a href="/windows/">${I.win}<b>Windows</b><span>Vyre Lumen in your tray, with an Alt+Space panel.</span><i class="go">Windows &rarr;</i></a>
         <a href="/linux/">${I.server}<b>Linux server</b><span>Where your agents live and keep working. A Mac that stays on works too.</span><i class="go">Server &rarr;</i></a>
         <a href="/phone/">${I.phone}<b>iPhone and Android</b><span>The Vyre app from a file, paired with Face ID or a fingerprint.</span><i class="go">Phone &rarr;</i></a>
@@ -437,7 +437,7 @@ const homeBody = `
         <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
           ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}</li>
         <li><b>Check four words in the app.</b> The server prints four words and the app shows four; you confirm they match.</li>
-        <li><b>Add your computers.</b> Vyre Lumen for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
+        <li><b>Add your computers.</b> The Vyre app for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
       </ol>
     </div>
   </div>
@@ -531,35 +531,31 @@ ${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div cl
 }
 
 devicePage({
-  slug: 'mac', os: 'macOS', name: 'Vyre Lumen on Mac', crumb: 'Mac',
-  title: 'Vyre for Mac: Vyre Lumen, one key from any app',
-  desc: 'Vyre Lumen is the ask window for your Mac. Press Option-Space over any app, send a message to an agent, and get answers from your memory. Your agents run on your own server.',
-  h1: 'Vyre Lumen, <b>one key away on your Mac.</b>',
-  lead: 'Press Option-Space over any app. Ask, send to an agent, or pull an answer from your memory. Your agents run on your server, and Lumen is the window.',
-  ogSub: 'Press Option-Space over any app. Ask, send to an agent, or pull an answer from your memory.',
-  art: `<div class="win" role="img" aria-label="Vyre Lumen on a Mac. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen</span></div><div class="body" style="padding:18px 20px 20px"><div class="ask"><span class="k">&#8997;Space</span><span>@kit the Northwind form needs the new box size</span></div><div class="sends" style="margin-top:12px">Sends to <b>kit</b> &middot; Northwind Bakery &middot; then a draft, held for you</div></div></div><p class="demo-tag">Sample data.</p>`,
-  what: { h: 'A small window, <b>over everything.</b>', items: [
-    ['Option-Space, or Control twice', 'Opens over any app, a call or a doc. Esc closes it.'],
-    ['@ an agent or a project', 'The message goes there, and the destination shows before you send.'],
-    ['Answers from memory', 'If your memory knows, you get the answer with its source. No model is used.'],
-    ['Oversight', 'When an agent works on your Mac or in Chrome, Lumen shows the plan, and you can pause, stop, edit a step or say something.'],
-    ['Touch ID', 'Unlock your vault with Touch ID or your vault password.'],
-    ['Your keys', 'Your own shortcuts, # tags, module commands and spoken replies.'],
+  slug: 'mac', os: 'macOS', name: 'Vyre on Mac', crumb: 'Mac',
+  title: 'Vyre for Mac: the Vyre app in a window',
+  desc: 'The Vyre app for Mac is the Vyre web app in its own window, with Touch ID for your approvals. Your agents run on your own server.',
+  h1: 'The Vyre app, <b>in its own window on your Mac.</b>',
+  lead: 'Download it, open it, and the app walks you through connecting to your server. Your agents run on your server; the Mac app is the window.',
+  ogSub: 'The Vyre app in its own window on your Mac, with Touch ID for approvals.',
+  art: `<div class="win" role="img" aria-label="The Vyre app on a Mac. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre</span></div><div class="body" style="padding:18px 20px 20px"><div class="sends">Connected to your server &middot; Northwind Bakery</div></div></div><p class="demo-tag">Sample data.</p>`,
+  what: { h: 'The same app, <b>with a Mac window.</b>', items: [
+    ['One window', 'Opens on launch and when you open the app again. The menu bar icon has Open Vyre and Quit Vyre.'],
+    ['Touch ID', 'Approve what needs your yes with Touch ID.'],
+    ['Your files', 'Drop a file onto the app to hand it to an agent.'],
+    ['Your server', 'Everything runs on your own server; the app connects to it.'],
   ] },
-  steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>). Then, on your Mac:', items: [
-    `<b>Install the command line.</b> Vyre is not on npm yet, so it installs from a tarball on vyre.run.${term('npm i -g https://vyre.run/box/vyre.tgz')}`,
-    `<b>Pair this Mac with your server.</b> It asks for your server’s pairing code, shows three words, and pairs once you confirm they match on both screens.${term('vyre up')}`,
-    `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
-    `<b>Press Option-Space.</b> No extra permission is needed. Control twice needs Input Monitoring.`,
+  steps: { h: 'Download the app, <b>then connect it.</b>', lead: 'Get the Mac app from the latest release.', items: [
+    `<b>Download it.</b> <code>Vyre-aarch64.dmg</code> for Apple silicon or <code>Vyre-x86_64.dmg</code> for an Intel Mac, from <a href="https://github.com/vyre-ai/vyre/releases/latest">the latest release</a>. Open it and drag Vyre to Applications.`,
+    `<b>Open it once.</b> If macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security.`,
+    `<b>Follow the app.</b> It asks whether to connect to your server or set one up, and walks you through it.`,
   ] },
-  needs: [['Mac', 'macOS, with Node 22.5 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
-  extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too. The same setup line works there.</p>`,
-  gapList: ['Lumen is built on your Mac, not downloaded. There is no signed Mac download yet.', 'Lumen is self-signed, not notarized, so macOS may ask for your permissions again after an update. Notarization comes next.', 'Lumen has no AI presets or browser tabs yet, and its text snippets paste when you press Enter rather than expanding as you type.', 'The Mac server installer has not run on a real Mac yet.'],
+  needs: [['Mac', 'macOS 14 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
+  extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too: run the install line in Terminal.</p>`,
+  gapList: ['The Mac app is not yet signed with an Apple Developer ID, so you open it once with Open Anyway.'],
   faq: [
-    ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Vyre app opens in any browser. Lumen is the fastest way to ask from your Mac.'],
+    ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Vyre app opens in any browser.'],
     ['Can my Mac be the server?', 'Yes, a Mac that stays on can be the server. A Linux server is the best home, because agents keep working when a laptop sleeps.'],
-    ['Why does it build instead of download?', 'There is no signed Mac download yet. Building on your Mac from the package means nothing unsigned is installed. A notarized download comes next.'],
-    ['Does Lumen need Touch ID?', 'Only to unlock your vault. Asking and sending what you asked for do not.'],
+    ['Does the app need Touch ID?', 'Only to approve what needs your yes.'],
   ],
 });
 
@@ -718,7 +714,7 @@ ${part('00', 'need', 'What you need', `<ul>
 <li>To add a server: a Linux machine (a cloud machine is fine) or a Mac that stays on. With Records, which is recommended, it needs 8 GB of memory (4 GB at the least); without Records, 2 GB.</li>
 <li>To join a team: the invite your team sent you.</li></ul>`)}
 ${part('01', 'name', 'Reserve your name', `<p>Open <a href="/setup/">vyre.run/setup</a>, type the name you want and press <strong>Reserve this name</strong>. The page shows a code that starts with VYRE. Copy it. It is held for you for 24 hours and works once.</p>`)}
-${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-Lumen-aarch64.dmg</a> (Apple silicon) or Vyre-Lumen-x86_64.dmg (Intel), open it and drag Vyre Lumen to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
+${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-aarch64.dmg</a> (Apple silicon) or Vyre-x86_64.dmg (Intel), open it and drag Vyre to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
 <p><strong>Windows:</strong> download VyreSetup.exe from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> and run it. If Windows warns that the publisher is unknown, choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
 ${part('03', 'code', 'Paste the code', `<p>Open the app, choose <strong>Start</strong> and paste the code. The app makes your key on this computer and shows a recovery code once. Keep it somewhere only you can reach.</p>`)}
 ${part('04', 'choose', 'Choose how you will use Vyre', `<ul>
@@ -877,7 +873,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
-- [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, built on your Mac
+- [Mac: Vyre](${SITE}/mac/): the Vyre app in its own window
 - [Windows: Vyre Lumen](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
@@ -908,14 +904,14 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
-- Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
+- Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
 1. Reserve your name at ${SITE}/setup/ and copy the code it shows.
-2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-Lumen-aarch64.dmg or Vyre-Lumen-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
+2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
 5. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. Confirm the four words in the app.
@@ -971,7 +967,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
-- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: the Vyre app, sideloaded.
+- Mac app: Vyre, in its own window. Windows app: Vyre Lumen, Alt+Space. Phone: the Vyre app, sideloaded.
 - Current release: ${VERSION}.
 
 ## Operating a user's own Vyre
@@ -987,7 +983,7 @@ const AGENT_JSON = {
   license: 'Apache-2.0',
   docs: { llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
   install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user.' },
-  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (Vyre Lumen)', 'Windows (Vyre Lumen)', 'iOS and Android (the app, sideloaded)'] },
+  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (the Vyre app)', 'Windows (Vyre Lumen)', 'iOS and Android (the app, sideloaded)'] },
 };
 
 const write = (p, s) => { mkdirSync(dirname(join(site, p)), { recursive: true }); writeFileSync(join(site, p), s); };

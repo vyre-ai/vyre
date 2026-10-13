@@ -106,9 +106,9 @@ test("release dist: with --android the APK must be in the release under both nam
 test("release dist: with --mac the two stable Lumen dmgs must be in the release, listed in SHA256SUMS", t => {
   const d = dist(t);
   const problems = check(d, { mac: true });
-  assert.ok(problems.some(p => /Vyre-Lumen-aarch64\.dmg is not in the release/.test(p)));
-  assert.ok(problems.some(p => /Vyre-Lumen-x86_64\.dmg is not in the release/.test(p)));
-  for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) {
+  assert.ok(problems.some(p => /Vyre-aarch64\.dmg is not in the release/.test(p)));
+  assert.ok(problems.some(p => /Vyre-x86_64\.dmg is not in the release/.test(p)));
+  for (const f of ["Vyre-aarch64.dmg", "Vyre-x86_64.dmg"]) {
     fs.writeFileSync(path.join(d, f), f);
     fs.appendFileSync(path.join(d, "SHA256SUMS"), `${crypto.createHash("sha256").update(f).digest("hex")}  ${f}\n`);
   }
