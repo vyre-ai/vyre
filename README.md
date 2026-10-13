@@ -2,17 +2,17 @@
   <img src="docs/images/readme/vyre-mark.svg" width="96" alt="Vyre">
 </p>
 
-<h1 align="center">Vyre</h1>
+<h1 align="center">Vyre: the agentic command center for AI-native teams</h1>
 
-<p align="center"><b>Your team and your AI agents, working together on a server you own.</b><br>
-Open source. Self-hosted. Any model.</p>
+<p align="center"><b>Our mission is to help every professional services team become AI-native.</b></p>
 
 <p align="center">
   <a href="https://vyre.run">Website</a> ·
   <a href="docs/get-started/install.md">Install</a> ·
   <a href="docs/index.md">Docs</a> ·
-  <a href="docs/architecture/overview.md">Architecture</a> ·
-  <a href="docs/known-gaps.md">Known gaps</a>
+  <a href="ARCHITECTURE.md">Architecture</a> ·
+  <a href="roadmap/README.md">Roadmap</a> ·
+  <a href="docs/for-agents/MAP-YOUR-BUSINESS.md">Map your business</a>
 </p>
 
 <p align="center">
@@ -21,18 +21,18 @@ Open source. Self-hosted. Any model.</p>
 </p>
 
 <p align="center">
-  <img src="docs/images/readme/vyre-tour.gif" width="860" alt="A tour of the Vyre app: what needs you today, a conversation where an agent runs the tests and fixes a failure, the vault showing which agents used a login without seeing it, your projects, and your automations.">
+  <img src="docs/images/readme/now.webp" width="880" alt="The Now screen in Vyre: what needs you today, agents that are stuck and why, approvals waiting with their exact words, and what agents are doing now.">
 </p>
 
-AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same records your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.
+In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
 
-Vyre is the place where they can. It is one product for a team and its agents. Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome must be exact, such as who may see a record, what a Flow does, or what was sent, Vyre follows declared rules and does not leave it to a model. Every action that leaves your server waits for a person's yes.
+Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not. Open source, self-hosted, any model.
 
 ## What you get in 0.5
 
 - **People and agents in the same chats.** @ a teammate or an agent, # a record, a file or a project, and keep one thread with exact recall of anything said before. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
 - **Agents that wake on a task and finish it.** Give a task to an agent, or let a Flow's agent step do it. The agent wakes with the task, the record and the Flow it came from. It ends the task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.
-- **One instructions file per agent and per project.** Each has an `AGENTS.md` (`CLAUDE.md` is kept the same). Type @ or # in the editor to reference a person, a record or a file by its address. Every session reads the file natively.
+- **One instructions file per agent and per project.** Each has one `AGENTS.md` that every model reads (a `CLAUDE.md` beside it only points at it). Type @ or # in the editor to reference a person, a record or a file by its address. Every session reads the file natively.
 - **Flows that do the same thing every time.** A Flow starts from a person, a schedule (with business hours, holidays and a rule for missed runs), a change to a record, a stage, a form or a link, or a watcher. Steps include find, create, update, find-or-create, wait (for a time, a date or an event), ask, assign, call a connected service, and run an agent. A step that gives work to a person or an agent can name an assignee, an approver and followers. Text in a step fills in values, and dates read well: `{today}`, `{now}`, and offsets such as `{after.starts_at - 1 day as date}`, with a date picker to insert them. A person approves a Flow before it runs, and a run has its own page.
 - **Playbooks.** A template for a kind of project: stages, tasks per stage, who does each task, and when a stage counts as done. A project can start from a Playbook and link a record.
 - **Records.** Contacts, projects, tasks and your own record types, with fields in named groups, tags on records, projects and chats, saved views, Excel or CSV import on every list, and CSV export from the web app (a cell that would run as a formula in Excel is quoted). Each record type shows the template token of every field, by group, with a copy button. Fields marked sealed show an agent a placeholder, never the value.
@@ -42,6 +42,26 @@ Vyre is the place where they can. It is one product for a team and its agents. Y
 - **Sites.** An agent builds a site, previews it at a private address, and puts it live with one yes from you. Domains show the DNS record to add and check themselves.
 - **Needs you.** One place for everything waiting on a person: approvals, a file or a date an agent asked for, and tasks that got stuck. Each card is typed, so a date ask has a date picker and a file ask has a file picker.
 - **Teams.** Members reach their own things on the team's server: their projects, chats, Flows, skills, vault and MCP servers. A Space-wide Google or Microsoft 365 key lets each member read their own mail, calendar and drive and only theirs. Roles, per-project seat levels and invites with a role are built in.
+
+New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARCHITECTURE.md): a map of the system and one page per feature. To see how a business would run on Vyre, an agent can follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md).
+
+
+## See it
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/readme/chat.webp" alt="An agent in a chat runs the tests, finds the failing date check, fixes it, and asks before a status note goes to a client."><br><sub><b>Chat.</b> An agent runs the tests, fixes the bug and asks before anything goes out.</sub></td>
+    <td width="50%"><img src="docs/images/readme/flows.webp" alt="Flows grouped by area, each written as a plain sentence, with a run page that shows every step."><br><sub><b>Flows.</b> Each Flow reads as a sentence, and every run has its own timeline.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/readme/records.png" alt="A Records list of contacts with their fields."><br><sub><b>Records.</b> Your own objects, fields and links, with views.</sub></td>
+    <td><img src="docs/images/readme/vault.png" alt="The Vault with a login an agent can use without seeing the value."><br><sub><b>Vault.</b> Agents use a credential without ever seeing it.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/readme/agents.png" alt="The Agents screen with each agent's role and projects."><br><sub><b>Agents.</b> Give each agent a role, instructions and its own memory.</sub></td>
+    <td><img src="docs/images/readme/sites.png" alt="Sites with versions, a preview address and a domain."><br><sub><b>Sites.</b> An agent builds and publishes a site on one yes from you.</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
@@ -127,12 +147,18 @@ Step by step: [Install](docs/get-started/install.md). The first hour: [Your firs
 
 This is direction, not a promise of dates. The line-by-line list is in [docs/roadmap.md](docs/roadmap.md); what is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](docs/known-gaps.md).
 
-**Next (0.5.1):**
+**Next (0.5.1):** reliable Flows. See [roadmap/0.5.1.md](roadmap/0.5.1.md).
 
-- **Integrations.** One place to install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
-- **Skills and Plugins screens.** Browse, write, version and roll back skills, and install plugins per agent and project, carried to each provider where the parts translate.
-- **Agent deadlines.** A step that gives work to an agent gets a deadline and a failure path you build in the editor, so a stuck agent hands the work to someone else.
-- **One Chrome extension.** Vault fill, Chrome control for chats and a chat in the browser side panel, in a single extension that signs in like a device.
+- **One chat per Flow.** Every run of a Flow in one conversation.
+- **Agent deadlines.** A step that gives work to an agent gets a deadline that stops the agent, and a failure path you build in the editor.
+- **Records and audit.** Per-record privacy for custom types, write-once fields, and an audit screen for admins.
+
+**After that (0.5.2):** connect and economise. See [roadmap/0.5.2.md](roadmap/0.5.2.md).
+
+- **Integrations.** Install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
+- **Skills and Plugins screens.** Browse, write, version and roll back skills, and install plugins per agent and project.
+- **Agent efficiency.** An eval that gates releases, fewer tools up front, shorter agent docs.
+- **One Chrome extension.** Vault fill, Chrome control for chats and a chat in the browser side panel.
 
 **Later:** Screen Share, and an iPhone app outside sideloading.
 
@@ -146,7 +172,7 @@ VYRE_HOME=$(mktemp -d) bin/vyre up
 bin/vyre call system.echo '{"text":"hi"}'
 ```
 
-Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). How the docs are written: [Writing the docs](docs/CONTRIBUTING-DOCS.md).
+Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). How the docs are written: [Writing the docs](docs/CONTRIBUTING-DOCS.md). Every rule for writing code here: [Development rules](DEVELOPMENT-RULES.md).
 
 ## License
 

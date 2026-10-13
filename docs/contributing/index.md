@@ -88,3 +88,4 @@ CI runs `npm test` and `npm run perf-check` on Ubuntu and macOS, on Node 22 and 
 - [Testing](testing.md)
 - [Writing the docs](../CONTRIBUTING-DOCS.md)
 - [Writing a module](../build/writing-a-module.md)
+- [Development rules](https://github.com/vyre-ai/vyre/blob/main/DEVELOPMENT-RULES.md): every rule for writing code here, why it exists and the check behind it
