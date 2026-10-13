@@ -145,7 +145,7 @@ export { ActivityFeed } from "./records/ActivityFeed";
 export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
-export { groupRelated, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
 export { GroupedList } from "./components/GroupedList";
 export type { Group } from "./components/GroupedList";
 export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
