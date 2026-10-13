@@ -145,3 +145,11 @@ test("trustedLaunch keeps for_person only from a first-party module's call", () 
   for (const meta of [{ caller: "module:team" }, { firstParty: true, caller: "cli" }, { firstParty: true, caller: "mcp" }, { firstParty: false, caller: "module:added" }, undefined]) assert.equal(/** @type {any} */ (trustedLaunch(i, meta)).for_person, undefined, JSON.stringify(meta));
   assert.deepEqual(trustedLaunch({ agent: "a" }, undefined), { agent: "a" });
 });
+
+test("trustedLaunch: run_as and flow_origin come only from the agents module", async () => {
+  const mk = caller => ({ firstParty: true, caller });
+  const i = { agent: "juno", run_as: "ana", flow_origin: { flow: "f" }, for_person: "ana" };
+  assert.deepEqual(trustedLaunch(i, mk("module:agents")), i);
+  for (const c of ["module:planner", "module:stream"]) assert.deepEqual(trustedLaunch(i, mk(c)), { agent: "juno", for_person: "ana" });
+  assert.deepEqual(trustedLaunch(i, { firstParty: false, caller: "mcp" }), { agent: "juno" });
+});

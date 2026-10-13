@@ -5,6 +5,10 @@
    "class": "refused",
    "why": "refused in the body for an unidentified caller; a named agent asks within its own project"
   },
+  "agents.spawn": {
+   "class": "refused",
+   "why": "refused in the body for any call that is not an agent's own thread: a helper is started by an agent, never a plain session"
+  },
   "agents.update": {
    "class": "refused",
    "why": "refused in the body for a plain session: changing agents is the person's"
@@ -45,6 +49,10 @@
    "class": "own",
    "why": "its own artifacts"
   },
+  "ask.many": {
+   "class": "own",
+   "why": "a question card in its own chat only; the answers decide nothing, and what the agent then sends or changes still waits for the person"
+  },
   "bridges.continue": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
@@ -64,6 +72,18 @@
   "chrome.type": {
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "comms.email": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and the email then waits at the Gate for the final words"
+  },
+  "comms.send": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and the text or email then waits at the Gate for the final words"
+  },
+  "computer.use": {
+   "class": "refused",
+   "why": "refused in the body for a session that names no agent; a named agent works on its own computer, and a Mac only for a class the person allowed there"
   },
   "computers.checkout": {
    "class": "refused",
@@ -97,6 +117,10 @@
    "class": "held",
    "why": "only a proposal for the person to approve: nothing is made and nothing is called until the person says yes from their own screen"
   },
+  "connectors.site.propose": {
+   "class": "held",
+   "why": "a proposal only: the person approves it before anything is learned or connected"
+  },
   "design.css.propose": {
    "class": "held",
    "why": "only a proposal for the owner to approve before and after: nothing is drawn until they say yes, and only the Engineer's verified agent claim or a person may file it (a plain session is refused inside the tool)"
@@ -104,6 +128,34 @@
   "design.propose": {
    "class": "held",
    "why": "only a proposal for the owner to approve before and after: nothing changes on any screen until they say yes, and it lists every tool the screen reads and every button runs"
+  },
+  "documents.generate": {
+   "class": "own",
+   "why": "makes a document and files it in the Drive and as a record under the caller's own grants; a missing value refuses by name"
+  },
+  "documents.send": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the signing request and the email that carries its link"
+  },
+  "documents.send-signed": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the link and the email that carries it"
+  },
+  "documents.signed-link": {
+   "class": "held",
+   "why": "outward: held as a card for the person's yes before any link to a signed copy is made"
+  },
+  "documents.signed-link.revoke": {
+   "class": "own",
+   "why": "stopping links is always allowed: it only ends access to signed copies, and a link made afterwards works"
+  },
+  "documents.signing.remind": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the email that carries the signer's link again"
+  },
+  "documents.template.add": {
+   "class": "own",
+   "why": "puts a Word template in the Space's Drive under the caller's own grants (the door refuses a call that proved no person)"
   },
   "files.fetch": {
    "class": "review",
@@ -130,14 +182,6 @@
    "why": "refused in the body for a plain session: github.project.pr.review runs for an agent only when your own words asked for it"
   },
   "github.session.push": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
-  },
-  "github.session.redo": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
-  },
-  "github.session.undo": {
    "class": "refused",
    "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
   },
@@ -277,6 +321,10 @@
    "class": "refused",
    "why": "refused in the body for a plain session: memory.write.restore: this call carries no kernel chain, so personal memory is n"
   },
+  "models.refresh": {
+   "class": "own",
+   "why": "it looks at the provider lists and OpenRouter's public data (reads, at most once a minute) and writes only the registry; it spends nothing and starts no eval"
+  },
   "onboard.setup": {
    "class": "own",
    "why": "the setup step list: a read that is declared a write"
@@ -317,6 +365,22 @@
    "class": "own",
    "why": "files a request for the person to approve; changes nothing else"
   },
+  "previews.open": {
+   "class": "own",
+   "why": "shows a page its server already serves or a file it wrote, as a card in its own chat; a command to run is refused for a model, Vyre's own ports are refused, and the preview is private to the person by default"
+  },
+  "previews.operator": {
+   "class": "own",
+   "why": "a live-screen card in its own chat; the person watches or takes over from it"
+  },
+  "previews.signin": {
+   "class": "own",
+   "why": "a card in its own chat asking the person to sign in; the keyboard is theirs, private, and the agent never sees the password"
+  },
+  "previews.step": {
+   "class": "own",
+   "why": "moves only a card of its own chat (another thread answers not found)"
+  },
   "projects.history": {
    "class": "own",
    "why": "answers the one question about a project's version history"
@@ -337,13 +401,13 @@
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; a domain on a live site is refused to a model, and nothing is served until a person says yes to going live"
   },
-  "publish.preview": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
-  },
   "publish.go": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; held for a person's decision"
+  },
+  "publish.preview": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
   },
   "publish.publish": {
    "class": "refused",
@@ -377,10 +441,6 @@
    "class": "held",
    "why": "held for the person's own words in the conversation"
   },
-  "models.refresh": {
-   "class": "own",
-   "why": "it looks at the provider lists and OpenRouter's public data (reads, at most once a minute) and writes only the registry; it spends nothing and starts no eval"
-  },
   "sidebar.edit": {
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant arranges the person's own layer, which the person can undo"
@@ -389,13 +449,17 @@
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant pins for the person, who can undo it"
   },
+  "sidebar.team": {
+   "class": "held",
+   "why": "the Space default needs the owner or admin role, and an assistant's request is held for the person's yes (ASK_FIRST)"
+  },
   "sidebar.unpin": {
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
   },
-  "sidebar.team": {
-   "class": "held",
-   "why": "the Space default needs the owner or admin role, and an assistant's request is held for the person's yes (ASK_FIRST)"
+  "skills.draft": {
+   "class": "own",
+   "why": "writes a DRAFT only, as the person the call carries; nothing uses it until the level's owner approves"
   },
   "team.add": {
    "class": "refused",
@@ -525,6 +589,10 @@
    "class": "own",
    "why": "undoes the caller's own recorded actions"
   },
+  "vault.agent.fill": {
+   "class": "refused",
+   "why": "refused in the body for a session that names no agent; a named agent signs in its own computer only, with a login lent to it at that origin"
+  },
   "vault.agent.grant": {
    "class": "held",
    "why": "presence floor: the person proves they are here"
@@ -601,17 +669,9 @@
    "class": "own",
    "why": "reads the Space's records as the person the call carries"
   },
-  "connectors.site.propose": {
-   "class": "held",
-   "why": "a proposal only: the person approves it before anything is learned or connected"
-  },
-  "agents.spawn": {
-   "class": "refused",
-   "why": "refused in the body for any call that is not an agent's own thread: a helper is started by an agent, never a plain session"
-  },
-  "skills.draft": {
+  "work.start-project": {
    "class": "own",
-   "why": "writes a DRAFT only, as the person the call carries; nothing uses it until the level's owner approves"
+   "why": "starts a project as the person the call carries; the chain decides who may"
   },
   "work.template.define": {
    "class": "own",
@@ -624,70 +684,6 @@
   "work.template.install": {
    "class": "own",
    "why": "writes a draft template as the person the call carries; going live is the owner's yes"
-  },
-  "work.start-project": {
-   "class": "own",
-   "why": "starts a project as the person the call carries; the chain decides who may"
-  },
-  "vault.agent.fill": {
-   "class": "refused",
-   "why": "refused in the body for a session that names no agent; a named agent signs in its own computer only, with a login lent to it at that origin"
-  },
-  "computer.use": {
-   "class": "refused",
-   "why": "refused in the body for a session that names no agent; a named agent works on its own computer, and a Mac only for a class the person allowed there"
-  },
-  "comms.send": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes, and the text or email then waits at the Gate for the final words"
-  },
-  "documents.template.add": {
-   "class": "own",
-   "why": "puts a Word template in the Space's Drive under the caller's own grants (the door refuses a call that proved no person)"
-  },
-  "documents.generate": {
-   "class": "own",
-   "why": "makes a document and files it in the Drive and as a record under the caller's own grants; a missing value refuses by name"
-  },
-  "documents.signed-link": {
-   "class": "held",
-   "why": "outward: held as a card for the person's yes before any link to a signed copy is made"
-  },
-  "documents.send": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the signing request and the email that carries its link"
-  },
-  "documents.send-signed": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the link and the email that carries it"
-  },
-  "documents.signing.remind": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the email that carries the signer's link again"
-  },
-  "documents.signed-link.revoke": {
-   "class": "own",
-   "why": "stopping links is always allowed: it only ends access to signed copies, and a link made afterwards works"
-  },
-  "ask.many": {
-   "class": "own",
-   "why": "a question card in its own chat only; the answers decide nothing, and what the agent then sends or changes still waits for the person"
-  },
-  "previews.open": {
-   "class": "own",
-   "why": "shows a page its server already serves or a file it wrote, as a card in its own chat; a command to run is refused for a model, Vyre's own ports are refused, and the preview is private to the person by default"
-  },
-  "previews.operator": {
-   "class": "own",
-   "why": "a live-screen card in its own chat; the person watches or takes over from it"
-  },
-  "previews.step": {
-   "class": "own",
-   "why": "moves only a card of its own chat (another thread answers not found)"
-  },
-  "previews.signin": {
-   "class": "own",
-   "why": "a card in its own chat asking the person to sign in; the keyboard is theirs, private, and the agent never sees the password"
   }
  }
 }

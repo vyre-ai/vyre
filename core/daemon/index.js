@@ -695,7 +695,7 @@ async function startLocked(opts, root, p, release) {
       }
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
-      const person = await personChainFor(q.asker || kernel.id.owner);
+      const person = await personChainFor(q.asker || (typeof q.runas === "string" && q.runas) || kernel.id.owner);   // a Flow job acts as its approver (kept as runas by the switchboard), never as the owner
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
@@ -1354,6 +1354,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // A `tailnet:<login>` label is held only for the verified owner's login (tailnetLabelHolds); any other is a guest's, before anything reads the caller.
   if (policy.caller && ownerOverTailnet(policy.caller) && !tailnetLabelHolds(policy.caller, policy.peer, cfg.network)) policy = { ...policy, caller: `tailnet-guest:${String(policy.caller).slice("tailnet:".length)}` };
   let caller = policy.caller || socketCaller(req);
+  // The old bare `mobile` label: nothing on this daemon assigns it any more (the phone arrives as its paired device:<id>), so a call that carries it is an old app or a claim, and is refused in words.
+  if (caller === "mobile") return send(res, 403, { error: { code: "denied", message: "This phone is using an old Vyre app. Update the Vyre app on this phone." } });
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length))))) {
