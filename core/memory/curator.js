@@ -19,6 +19,7 @@
 // Measured on the prototype: the graph is precise for identity and routing, and did NOT make
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
+import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { sourceOf } from "./iq/fix.js";
 import { extract } from "./extract.js";
 import { lesson, within, ENDS } from "./teach.js";
@@ -56,6 +57,7 @@ export const T = {
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
 const yieldNow = () => new Promise(r => setImmediate(r));
+const yieldAndTidy = () => new Promise(r => setImmediate(() => { collectIfHeavy(); r(undefined); }));
 
 export class Curator {
   /**
@@ -209,7 +211,7 @@ export class Curator {
           done.run(session, recall.get(session), this.now());
         });
         since += list.length;
-        if (since >= batch) { since = 0; await yieldNow(); }
+        if (since >= batch) { since = 0; await yieldAndTidy(); }
       }
       // Sessions Recall counts but whose turns we found none of still move their cursor, or
       // they would be asked for again on every pass.
@@ -220,6 +222,7 @@ export class Curator {
     const never = !db.prepare("SELECT 1 FROM memory_runs LIMIT 1").get();
     if (!(turns || full || force || this.dirty || never)) return { recall: true, sessions: need.size, turns, ...this.counts(), changed: 0, ms: Date.now() - t0 };
     this.dirty = false;
+    collectIfHeavy();
     const changed = await this.derive();
     const counts = this.counts();
     const ms = Date.now() - t0;

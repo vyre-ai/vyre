@@ -16,10 +16,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: three perf-check runs
         run: |
-          for i in 1; do
+          for i in 1 2 3; do
             echo "== run $i (load $(cut -d" " -f1-3 /proc/loadavg))"
             rm -f /tmp/perf-trace.txt*
             VYRE_PERF_TRACE=/tmp/perf-trace.txt node scripts/perf-check 2>&1 | grep -E "CPU \(|RSS|heap|FAIL|host load" || true
             echo "-- timeline (every 2.5s)"; awk "NR%5==1" /tmp/perf-trace.txt | head -20
-            echo "-- events"; grep -v -e seal/client -e statusline /tmp/perf-trace.txt.events | sort -n | awk "\$1+0>6" | head -70 | cut -c1-260
           done
