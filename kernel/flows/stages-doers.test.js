@@ -70,7 +70,7 @@ test("with nobody in the Lead seat the lead task goes to the project's owner and
 test("a task's followers each get a note task of their own and the approver gets one; the main task gains no helper and carries neither box; a follower nobody can be is reported and the task is still made", async () => {
   const w = await mk();
   const t = tpl();
-  t.stages[0].tasks = [{ title: "Watched", doer: "teammate:research", checker: "person:per_bob", followers: ["person:per_cy", "role:attorney", "role:nobody-holds-this"], notes: { approver: "Check the dates against [[field:this#due]].", followers: "Read along; do not edit." }, brief: "Do the work.", output: { kind: "note" } }];
+  t.stages[0].tasks = [{ title: "Watched", doer: "teammate:research", checker: "person:per_bob", followers: ["person:per_bob", "role:attorney", "role:nobody-holds-this"], notes: { approver: "Check the dates against [[field:this#due]].", followers: "Read along; do not edit." }, brief: "Do the work.", output: { kind: "note" } }];
   assert.deepEqual(problems(t), []);
   await start(w, {}, t);
   const all = await w.kernel.allTasks();
@@ -79,7 +79,7 @@ test("a task's followers each get a note task of their own and the approver gets
   assert.equal(main.helpers, undefined, "a follower is not a helper: it may not act on the task");
   assert.doesNotMatch(main.note, /Read along|Check the dates/, "neither box is on the doer's task");
   const follows = all.filter((/** @type {any} */ x) => x.title === "Following: Watched");
-  assert.deepEqual(follows.map((/** @type {any} */ x) => x.doer.id).sort(), ["per_cy", ALEX.id].sort(), "one note task per follower who can be one");
+  assert.deepEqual(follows.map((/** @type {any} */ x) => x.doer.id).sort(), ["per_bob", ALEX.id].sort(), "one note task per follower who can be one");
   assert.ok(follows.every((/** @type {any} */ x) => x.output.kind === "note" && /Read along; do not edit\./.test(x.note) && /Task: Watched/.test(x.note)), "each carries the followers' box and what the task is");
   const check = all.find((/** @type {any} */ x) => x.title === "To check: Watched");
   assert.equal(check.doer.id, "per_bob", "the approver gets a note task");
