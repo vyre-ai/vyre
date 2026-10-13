@@ -69,6 +69,8 @@ export function parseUrn(urn) {
 /** The type of every seeded record alias and the space it lives in, so a test can name a record by its alias. "m1" is the Doe estate plan, "c1" Jane Doe. */
 const ALIAS = /** @type {const} */ ([
   [/^c\d+$/, "contact", "juniper"], [/^m\d+$/, "matter", "juniper"], [/^tpl\d+$/, "template", "juniper"], [/^t\d+$/, "trip", "mine"],
+  // the sample CRM (sample-crm.js)
+  [/^o\d+$/, "organization", "juniper"], [/^l\d+$/, "lead", "juniper"], [/^d\d+$/, "deal", "juniper"], [/^a\d+$/, "appointment", "juniper"],
 ]);
 /** The urn of a seeded record, by its alias: "m1" is the Doe estate plan. Projects p1 and p2 are Juniper's, p3 and p4 are Mine. @param {string} alias */
 export function aliasUrn(alias) {

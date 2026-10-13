@@ -39,7 +39,7 @@ export function parsePhonePayload(s) {
 /**
  * @param {{ payload: string, key: { publicKey: string, label?: string, agree?: string, held?: "web" | boolean, enclave?: string, attest?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
  *   avatar?: ArrayLike<number>, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string, expires?: number) => void, fetch?: typeof fetch,
- *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
+ *   ticketWaitMs?: number, onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function addThisDevice(o) {
   /** @type {{ seed: Uint8Array, relay: string } | null} */ let scan;
@@ -64,13 +64,13 @@ export async function addThisDevice(o) {
   /** @type {any} */ let paired;
   try {
     // A typed code's ticket appears at the relay only once the person has typed the ack back on the other device: ask until it does (or the wait runs out).
-    const until = typedEnd && o.timeoutMs === undefined ? typedEnd : Date.now() + (o.timeoutMs ?? 5 * 60_000);
+    const until = o.ticketWaitMs ? Date.now() + o.ticketWaitMs : typedEnd && o.timeoutMs === undefined ? typedEnd : Date.now() + (o.timeoutMs ?? 5 * 60_000);
     for (;;) {
       try {
         paired = await pairTicket(scan.seed, { relay, name: deviceName, ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket, ...(o.about ? { about: o.about } : {}) });
         break;
       } catch (e) {
-        if (o.code === undefined || /** @type {any} */ (e).code !== "ticket_gone" || Date.now() > until || (o.signal && o.signal.aborted)) throw e;
+        if ((o.code === undefined && !o.ticketWaitMs) || /** @type {any} */ (e).code !== "ticket_gone" || Date.now() > until || (o.signal && o.signal.aborted)) throw e;
         await new Promise(res => setTimeout(res, o.pollMs ?? 1000));
       }
     }

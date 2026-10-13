@@ -494,7 +494,7 @@ export function createGrantsStore(cfg) {
       const sees = inv && ((memberOk(me) && (sameActor(inv.issuer, me) || (bound && await bound.allowed(chain, "grants.list", urn("invite", id))))) || (!inv.invitee || inv.invitee === me.id));
       if (!inv || !sees) throw new KernelError("not_found", "no such invite");
       const status = inv.status === "pending" && !(inv.valid_until > clock()) ? "expired" : inv.status;
-      return freeze({ id: inv.id, role: inv.role, ...(inv.custom ? { custom: inv.custom.id } : {}), scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
+      return freeze({ id: inv.id, role: inv.role, ...(inv.custom ? { custom: inv.custom.id } : {}), ...(inv.seats ? { seats: inv.seats } : {}), scope: inv.scope, expires: inv.expires, invitee: inv.invitee, needs_confirm: inv.needs_confirm, confirmed: inv.confirmed, valid_until: inv.valid_until, status, space: { id: cfg.space, ...(cfg.label ? cfg.label() : {}) } });
     },
 
     /**
@@ -723,13 +723,15 @@ export function createGrantsStore(cfg) {
     async inviteCreate(chain, i, o = {}) {
       const issuer = person(chain);
       if (!i || !ROLE_IDS.includes(i.role)) throw new KernelError("bad_input", "an invite names one of the five roles");
-      if (i.custom) checkCustom(i.role, i.custom); if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
+      if (i.custom) checkCustom(i.role, i.custom);
+      if (i.seats !== undefined && !(Array.isArray(i.seats) && i.seats.length <= 64 && i.seats.every((/** @type {any} */ x) => x && typeof x.project === "string" && x.project && x.project.length <= 120 && (x.level === undefined || ["lead", "contributor", "viewer"].includes(x.level))))) throw new KernelError("bad_input", "seats is a list of up to 64 { project, level: lead, contributor or viewer }");
+      if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
       if (i.invitee !== undefined && (typeof i.invitee !== "string" || !i.invitee)) throw new KernelError("bad_input", "invitee is a person id");
       const d = await gate(chain, "grants.invite", urn("invite"), i, o.presence);
       const mine = roleOf(issuer);
       if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(i.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot invite someone as ${i.role}`);
       const contents = { role: i.role, scope: i.scope || null, expires: i.expires ?? null, invitee: i.invitee ?? null };
-      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, ...(i.custom ? { custom: structuredClone(i.custom) } : {}), hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
+      const rec = freeze({ id: `inv_${randomBytes(16).toString("hex")}`, space: cfg.space, ...contents, ...(i.custom ? { custom: structuredClone(i.custom) } : {}), ...(i.seats?.length ? { seats: i.seats.map((/** @type {any} */ x) => ({ project: x.project, level: x.level || "contributor" })) } : {}), hash: sha256(canonical(contents)), issuer: { ...issuer }, status: "pending", needs_confirm: i.role === "admin" || i.role === "owner", confirmed: false, valid_until: clock() + (i.valid_ms ?? 7 * 24 * 3600 * 1000), created_at: clock() });
       invites.set(rec.id, rec);
       await note(chain, "invite.created", urn("invite", rec.id), { invite: rec }, d.decision);
       return rec;
@@ -761,7 +763,7 @@ export function createGrantsStore(cfg) {
       const mine = roleOf(me), all = mine === "owner" || mine === "admin" || mine === "manager";
       return [...invites.values()].filter(v => all || sameActor(v.issuer, me)).map(v => {
         const status = v.status === "pending" && !(v.valid_until > clock()) ? "expired" : v.status;
-        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
+        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), ...(v.seats ? { seats: v.seats } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
       });
     },
     /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */
@@ -797,7 +799,7 @@ export function createGrantsStore(cfg) {
       invites.set(id, freeze({ ...inv, status: "used", used_by: me.id, used_at: clock() }));
       try {
         const r = await applyRole(chain, inv.issuer, { person: me.id, role: inv.role, ...(inv.custom ? { custom: inv.custom } : {}), ...(inv.role === "temp" ? { scope: inv.scope, expires: inv.expires } : {}) }, null);
-        await note(chain, "invite.used", urn("invite", id), { id, by: me.id });
+        await note(chain, "invite.used", urn("invite", id), { id, by: me.id, ...(inv.seats ? { seats: inv.seats, issuer: inv.issuer.id } : {}) });
         return r;
       } catch (e) { invites.set(id, inv); throw e; }
     },
