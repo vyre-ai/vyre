@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "The stage commit to deploy (40 hex). It must be on work/stage-0.2."
+        description: "The stage commit to deploy (40 hex). It must be on work/stage-0.2, work/rc3/stage or main."
         required: true
         type: string
       relay:
@@ -75,8 +75,13 @@ jobs:
           SHA: ${{ inputs.sha }}
         run: |
           printf %s "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::sha must be 40 hex characters"; exit 1; }
-          git fetch -q origin work/stage-0.2
-          git merge-base --is-ancestor "$SHA" origin/work/stage-0.2 || { echo "::error::$SHA is not on work/stage-0.2"; exit 1; }
+          # on a stage (the old one, for old relays, or the current one) or on main; a branch that is none of them is refused
+          ok=0
+          for b in work/stage-0.2 work/rc3/stage main; do
+            git fetch -q origin "$b" 2>/dev/null || continue
+            if git merge-base --is-ancestor "$SHA" "origin/$b"; then ok=1; break; fi
+          done
+          [ "$ok" = 1 ] || { echo "::error::$SHA is not on work/stage-0.2, work/rc3/stage or main"; exit 1; }
           echo "deploying $(git rev-parse --short=12 HEAD): $(git log -1 --format=%s)"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
