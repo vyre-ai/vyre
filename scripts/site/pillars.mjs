@@ -84,7 +84,7 @@ const steps = (items, n) => `<ol class="ar-flow rv" style="--n:${n || items.leng
 const facts = (items) => `<ul class="ar-facts rv">${items.map(([b, s]) => `<li><b>${b}</b>${s}</li>`).join('')}</ul>`;
 const cols3 = (items) => `<div class="ar-outcomes rv">${items.map(([t, p]) => `<div class="ar-out-card pl-oc"><p class="lbl">${t}</p><p>${p}</p></div>`).join('')}</div>`;
 const head = (eyebrowText, h, lead, id) => `<div class="sec-head rv"><p class="eyebrow">${eyebrowText}</p><h2 id="${id}" class="h2">${h}</h2>${lead ? `<p class="lead">${lead}</p>` : ''}</div>`;
-const shot = (file, alt, cap) => `<figure class="pl-shot rv"><div class="frame"><span class="pl-a pl-a1">+</span><span class="pl-b pl-b1">+</span><img src="/media/${file}" width="2000" height="1250" decoding="async" alt="${alt}"></div><figcaption>${cap}</figcaption></figure>`;
+const shot = (file, alt, cap) => `<figure class="pl-shot rv"><div class="frame"><span class="pl-a pl-a1">+</span><span class="pl-b pl-b1">+</span><img src="/media/${file}" width="2000" height="1250" alt="${alt}"></div><figcaption>${cap}</figcaption></figure>`;
 
 export function pillarPages({ esc, eyebrow, crumbs, SITE, REPO, MAP_URL, VERSION }) {
   const doc = (p) => `${REPO}/blob/main/${p}`;
