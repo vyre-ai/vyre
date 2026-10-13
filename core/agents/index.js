@@ -18,6 +18,7 @@
 //
 // The switchboard is used through ctx.call and its events, never by importing it.
 
+import { isStaffRole } from "../../lib/roles/staff.js";
 import { grantReach, revokeReach } from "../../lib/project-reach.js";
 import { mintUuid } from "../../kernel/core/ids.js";
 import fs from "node:fs";
@@ -571,7 +572,7 @@ export default {
         const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
         if (K.owner && canon(person) === canon(String(K.owner))) return true;
         const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
-        return Boolean(m && (m.role === "owner" || m.role === "admin"));
+        return Boolean(m && isStaffRole(m.role));
       },
       chainPerson, roleOf: async person => {
         const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
+import { dayOf } from "../../src/time/show.js";
 import { config, agentDocs } from "./config";
 import { DocsEditor } from "../folderdocs/FolderDocs";
 import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, authorLine, accessRow, addable, workRows, NO_WORK, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
@@ -191,7 +192,7 @@ export function Used({ name }: { name: string }) {
         {v.data && !v.data.lent.length ? <Card><Text tone="muted">{`None. Lend ${name} a login and it signs in to that one site as you, on its own computer. You can take it back at any time.`}</Text></Card> : null}
         {v.data && v.data.lent.length ? (
           <Card flush>
-            {v.data.lent.map((g, i) => <View key={g.id}>{i ? <Divider /> : null}<Row title={g.item} sub={`${g.origin}${g.expires ? `, until ${new Date(g.expires).toLocaleDateString()}` : ""}`} end={<IconButton icon="x" label={`Take ${g.item} back`} onPress={() => config.takeBack(g.id).then(v.reload).catch((e) => showToast(say(e)))} />} /></View>)}
+            {v.data.lent.map((g, i) => <View key={g.id}>{i ? <Divider /> : null}<Row title={g.item} sub={`${g.origin}${g.expires ? `, until ${dayOf(g.expires)}` : ""}`} end={<IconButton icon="x" label={`Take ${g.item} back`} onPress={() => config.takeBack(g.id).then(v.reload).catch((e) => showToast(say(e)))} />} /></View>)}
           </Card>
         ) : null}
         <View className="flex-row"><Button size="sm" kind="secondary" label="Lend a login" onPress={() => setPicking("login")} /></View>

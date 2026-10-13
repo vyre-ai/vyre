@@ -6,9 +6,10 @@ import { facesFor } from "../../src/theme/fonts";
 import { useUiTheme } from "../theme";
 
 /** One-line input shell, label above. `kind` picks the keyboard and the mask; the value is always a string at this layer. */
-export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, inputRef, onKey, autoFocus }: {
+export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, inputRef, onKey, autoFocus, onSubmit }: {
+  /** Pressed Enter in a one-line field. */ onSubmit?: () => void;
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string; kind?: "text" | "number" | "email" | "phone" | "password" | "url" | "date"; /** The accessible name when there is no visible label. */ name?: string;
-  error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string; /** The text input itself, for a screen that moves focus to it (a list's search takes "/"). */ inputRef?: React.Ref<TextInput>; /** A key pressed in it (web: "Escape", "Enter"). */ onKey?: (key: string) => void; autoFocus?: boolean;
+  error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string; /** The text input itself, for a screen that moves focus to it (a list's search takes "/"). */ inputRef?: React.Ref<TextInput>; /** A key pressed in it (web: "Escape", "Enter", "Tab"); the second argument says whether Shift was held and can stop the key's own action. */ onKey?: (key: string, e?: { shiftKey?: boolean; preventDefault?: () => void }) => void; autoFocus?: boolean;
 }) {
   const [focus, setFocus] = useState(false);
   const { color, resolved } = useUiTheme();
@@ -21,7 +22,8 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
       <TextInput
         ref={inputRef}
         autoFocus={autoFocus}
-        onKeyPress={onKey ? (e) => onKey(e.nativeEvent.key) : undefined}
+        onSubmitEditing={onSubmit}
+        onKeyPress={onKey ? (e) => { const n = e.nativeEvent as unknown as { key: string; shiftKey?: boolean }; onKey(n.key, { shiftKey: n.shiftKey, preventDefault: () => (e as unknown as { preventDefault?: () => void }).preventDefault?.() }); } : undefined}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

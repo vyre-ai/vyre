@@ -16961,6 +16961,7 @@ Write a project template as a new draft version: stages, tasks, doers, checklist
 - Input:
   - `body` object or string, required: the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }
   - `note` string
+  - `replace` boolean: save over the newest version when it is a draft, instead of making a new version (for a draft being written)
   - `space` string: the Space it is for (a hosted Space's id from spaces.list); omit for this home's own Space
   - `template` string: template id; omit for a new template
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
@@ -16972,6 +16973,7 @@ work.template.define, run inside another Space by this module for the person (th
 - Input:
   - `body` object or string, required: the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }
   - `note` string
+  - `replace` boolean: save over the newest version when it is a draft, instead of making a new version (for a draft being written)
   - `template` string: template id; omit for a new template
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 

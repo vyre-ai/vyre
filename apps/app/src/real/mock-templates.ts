@@ -72,6 +72,7 @@ export const mockTools: Record<string, (i: any) => unknown> = {
     const body = typeof i.body === "string" ? JSON.parse(i.body) : i.body;
     if (!String(body.name || "").trim()) throw fail("bad_input", "that template is not valid: name the template");
     const id = i.template || `tpl_${slug(body.name)}`; const have = versionsOf(id);
+    if (i.replace && have[0]?.state === "draft") { have[0].name = body.name; have[0].body = JSON.parse(JSON.stringify(body)); have[0].tags = body.tags || []; return shape(have[0]); }
     const v: V = { template: id, version: (have[0]?.version || 0) + 1, name: body.name, state: "draft", owner: "per_you", tags: body.tags || [], note: i.note, body: JSON.parse(JSON.stringify(body)) };
     db.push(v); return shape(v);
   },

@@ -7,6 +7,7 @@ import { Frame, Sec } from "../places/Frame";
 import { flowsRepo, type Def } from "./data";
 import { useFlowsState } from "./store";
 import { RealFlow } from "./RealFlow";
+import { MadeFlowScreen } from "./BuilderScreens";
 import { buildGraph, flowCode, paint, triggerIcon, triggerLine } from "./logic.js";
 
 function SampleFlowScreen() {
@@ -78,5 +79,7 @@ function SampleFlowScreen() {
 /** The sample Flow in a mock build; the real one, from the vyred's flows.* tools, everywhere else. */
 export default function FlowScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { made } = useFlowsState();
+  if (allowsMock() && made.some((m) => m.id === id)) return <MadeFlowScreen id={id ?? ""} />;
   return allowsMock() ? <SampleFlowScreen /> : <RealFlow id={id ?? ""} />;
 }

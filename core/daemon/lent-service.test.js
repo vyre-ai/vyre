@@ -90,3 +90,18 @@ test("a home with no key of its own for the Space refuses to hold a lent compute
   assert.equal(lentServiceFor({ root }) ("spc_aaaaaaaaaaaa", kernel({ spaceAllows: true, memberAccepts: true })).start !== undefined, true);
   await assert.rejects(lentServiceFor({ root })("spc_aaaaaaaaaaaa", kernel({ spaceAllows: true, memberAccepts: true })).start(chain("per_bob", "dev_laptop"), { session: "s1" }), { code: "unavailable" });
 });
+
+test("the session spec carries the asking person's own MCP servers, and only theirs; none or a failing reader leaves the spec as it was", async () => {
+  const root = fs.mkdtempSync(path.join(SCRATCH, "ls-"));
+  const k = kernel({ spaceAllows: true, memberAccepts: true });
+  const asked = [];
+  const mine = { mcpServers: { gmail: { type: "http", url: "https://gmailmcp.googleapis.com/mcp/v1" } } };
+  const svc = lentServiceFor({ root, keyOf: KEY, memberMcpOf: async q => { asked.push(q.person); return q.person === "per_bob" ? mine : null; } });
+  const s = await svc("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s1" });
+  assert.deepEqual(s.memberMcp, mine);
+  assert.deepEqual(asked, ["per_bob"]);
+  const none = await lentServiceFor({ root, keyOf: KEY, memberMcpOf: async () => ({ mcpServers: {} }) })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s2" });
+  assert.equal("memberMcp" in none, false);
+  const boom = await lentServiceFor({ root, keyOf: KEY, memberMcpOf: async () => { throw new Error("locked"); } })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s3" });
+  assert.equal("memberMcp" in boom, false);
+});

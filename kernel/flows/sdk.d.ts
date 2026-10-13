@@ -45,7 +45,7 @@ export const step: Policy & {
 };
 
 export interface FlowDefinition {
-  name: string; label?: string; description?: string;
+  name: string; label?: string; description?: string; /** the group it is listed under, 1 to 60 characters */ group?: string;
   authorship: 'builder' | 'human' | 'model' | 'kit';
   caps?: readonly { action: string; resource: string }[];
   trigger: Trigger;

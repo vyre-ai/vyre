@@ -12,6 +12,9 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["mcp.mine.list", "lists the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
+  ["mcp.mine.add", "adds an MCP server and its token to the person's own vault: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
+  ["mcp.mine.remove", "removes one of the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
   ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
   ["spaces.storage.put", "writes the person's own per-member storage: the person's own act until an assistant's write is decided (lead, 0.2.9)"],
   ["spaces.storage.put-if", "writes the person's own per-member storage if unchanged: the person's own act (lead, 0.2.9)"],

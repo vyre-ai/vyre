@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform, View, type TextInput } from "react-native";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
+import { useUiTheme } from "../theme";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
@@ -23,6 +24,7 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, chips, o
   title: React.ReactNode; noun: string; shown: number; total: number; query: string; onQuery: (q: string) => void; chips: FilterChip[]; onChips: (c: FilterChip[]) => void; def: any; ctx: ListCtx;
   /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
 }) {
+  const { phone } = useUiTheme();
   const ref = useRef<TextInput>(null);
   const [adding, setAdding] = useState(false);
   // "/" jumps to the search, as in most tools a person uses all day (web only; a phone has no keyboard shortcut).
@@ -44,9 +46,9 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, chips, o
         <View className="min-w-0 flex-1">{title}<Text size="caption" tone="label">{narrowed ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</Text></View>
       </View>
       <View className="flex-row flex-wrap items-center gap-s2">
-        <View className="min-w-menu flex-1"><Field name="Search" value={query} onChangeText={onQuery} placeholder={`Search ${noun}   /`} inputRef={ref} onKey={(k) => { if (k === "Escape") { onQuery(""); ref.current?.blur(); } }} /></View>
-        <Button kind="secondary" size="sm" icon="plus" label="Filter" onPress={() => setAdding(true)} />
-        {onImport ? <Button kind="ghost" size="sm" icon="upload" label="Import" onPress={onImport} /> : null}
+        <View className={phone ? "w-full" : "min-w-menu flex-1"}><Field name="Search" value={query} onChangeText={onQuery} placeholder={`Search ${noun}   /`} inputRef={ref} onKey={(k) => { if (k === "Escape") { onQuery(""); ref.current?.blur(); } }} /></View>
+        {phone ? <IconButton kind="secondary" icon="filter" label="Filter" onPress={() => setAdding(true)} /> : <Button kind="secondary" size="sm" icon="plus" label="Filter" onPress={() => setAdding(true)} />}
+        {onImport ? (phone ? <IconButton icon="upload" label="Import" onPress={onImport} /> : <Button kind="ghost" size="sm" icon="upload" label="Import" onPress={onImport} />) : null}
         {actions}
         {chips.length && onSave ? <Button kind="ghost" size="sm" icon="pin" label="Save as view" onPress={onSave} /> : null}
       </View>

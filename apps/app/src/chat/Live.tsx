@@ -20,7 +20,7 @@ export function Caret() {
     a.start();
     return () => a.stop();
   }, [v, still]);
-  return <Animated.Text accessibilityElementsHidden importantForAccessibility="no" style={{ opacity: still ? 0.6 : v, color: color.accent }}>{"\u258D"}</Animated.Text>;
+  return <Animated.Text accessibilityElementsHidden importantForAccessibility="no" style={{ opacity: still ? 0.6 : v, color: color.text }}>{"\u258D"}</Animated.Text>;
 }
 
 /** The mark on the step that is running: it turns, so it is clear which of the lines is the live one. */

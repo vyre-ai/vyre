@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, EmptyState, ErrorState, GroupedList, IconButton, Icon, ListHeader, LoadingState, Menu, Segmented, Sheet, Text, allowsMock, listRows, markRef, showToast, useStore, useUiTheme } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, EmptyState, ErrorState, GroupedList, IconButton, Icon, ListHeader, LoadingState, Menu, Segmented, Sheet, SpaceTag, Text, allowsMock, listRows, markRef, showToast, useStore, useUiTheme } from "@vyre/ui";
 import type { FilterChip, Group } from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
@@ -17,6 +18,7 @@ const store = () => { try { return typeof localStorage !== "undefined" ? localSt
 /** Agents, the home of every agent: header with search and filters, groups a person can make, and a row each that says who it is, what it does, which model, where it works and whether it runs. */
 export function AgentsHome() {
   const router = useRouter();
+  const homeTag = usePlaceText("home");
   const { phone } = useUiTheme();
   const mock = allowsMock();
   const sample = useSettings();
@@ -76,7 +78,7 @@ export function AgentsHome() {
         <View className="flex-row items-center gap-s3">
           <Avatar of={markRef(r.kind === "assistant" ? "assistant" : "teammate", r.name)} size={40} />
           <View className="min-w-0 flex-1 gap-s1">
-            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
+            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>
             <Text size="caption" tone="label" numberOfLines={phone ? 3 : 1}>{[r.model, r.works].join(", ")}</Text>
           </View>
@@ -93,6 +95,7 @@ export function AgentsHome() {
   };
   return (
     <Page title="Agents" top sub={undefined}>
+      <PlaceTag of="home" />
       <Segmented label="Agents" value={tab} onChange={setTab} options={[["agents", "Agents"], ["teammates", "Teammates"]]} />
       {tab === "teammates" ? <TeammatesPage /> : (
         <View className="gap-s3">
@@ -104,7 +107,7 @@ export function AgentsHome() {
           {agents && agents.length ? (
             <>
               <ListHeader title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
-                actions={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
+                actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
               {shown.length ? (
                 <GroupedList groups={groups} items={shown} itemNoun="agents"
                   onChange={({ groups: g, items: it }) => { const p = { ...placed, ...Object.fromEntries(it.map((i) => [i.name, i.group as string])) }; setGroups(g); setPlaced(p); persist(g, p); }}
