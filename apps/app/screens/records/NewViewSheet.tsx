@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Chip, Field, Segmented, Sheet, Switch, Text, showToast, useStore } from "@vyre/ui";
 import { OPS, buildView, fieldChoices, layoutsFor, personalEntry, personalViewsOf, sharedEntry } from "../../ui/views/saved-views.js";
@@ -11,7 +11,7 @@ const ICONS = ["list", "board", "cal", "users", "chart", "star", "pin", "records
  * "New view": pick a type, a layout (List, Table, Board, Calendar), its grouping or date, filters, a sort, a name and an icon, then save it as your own or (an owner or admin) for the whole space,
  * and pin it to the sidebar. The sheet holds the choices; saved-views.js says whether they make a view and what it is. Choices are chips, not menus, because a menu opens in its own layer which a sheet on the web does not let take a press.
  */
-export function NewViewSheet({ open, onClose, types, type: first, space, canShare, onSaved }: { open: boolean; onClose: () => void; types: any[]; type: string; space: string; canShare: boolean; onSaved?: (name: string, type: string) => void }) {
+export function NewViewSheet({ open, onClose, types, type: first, space, canShare, onSaved, preset }: { open: boolean; /** Filters to start from (the list's own, when it is saved as a view). */ preset?: { filters: Filter[] }; onClose: () => void; types: any[]; type: string; space: string; canShare: boolean; onSaved?: (name: string, type: string) => void }) {
   const store = useStore();
   const list = useEffectiveList();
   const [type, setType] = useState(first);
@@ -20,6 +20,7 @@ export function NewViewSheet({ open, onClose, types, type: first, space, canShar
   const [dateField, setDateField] = useState("");
   const [columns, setColumns] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filter[]>([]);
+  useEffect(() => { if (open && preset) { setType(first); setFilters(preset.filters); } }, [open]);
   const [sortField, setSortField] = useState("");
   const [desc, setDesc] = useState(false);
   const [name, setName] = useState("");
