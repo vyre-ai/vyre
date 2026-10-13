@@ -1,0 +1,199 @@
+#!/bin/sh
+# The Mac server proof, on a GitHub macOS runner (.github/workflows/mac-server.yml). It runs the REAL
+# scripts/install-mac-server.sh with the runner's real passwordless sudo, against a test release signed
+# with a throwaway key (release.mjs), and checks what a Mac server must have:
+#   the _vyre account, a root-owned code tree, core.json, the three LaunchDaemons in launchd's SYSTEM
+#   domain (RunAtLoad, so they start at boot with nobody signed in), core answering on its socket,
+#   the relay keys made and used through core, vyred running, the pinned Node and pinned Colima/Lima/
+#   docker binaries that the script checks against their pins (no Homebrew on its PATH), and a clean
+#   uninstall.
+# It cannot reboot the runner and it cannot run Colima's VM (hosted macOS has no nested virtualization).
+# Never run this on a person's Mac: it installs a system service and creates an account.
+set -eu
+
+[ "${GITHUB_ACTIONS:-}" = true ] || { echo "mac-proof: only on a GitHub runner" >&2; exit 2; }
+repo=$(pwd)
+work=${RUNNER_TEMP:-/tmp}/mac-proof
+rm -rf "$work"; mkdir -p "$work"
+ok() { echo "PASS  $*"; }
+# On any failure, show what launchd and the logs know, so a red run explains itself.
+dump() {
+  [ "$?" = 0 ] && return 0
+  echo "::group::state at failure"
+  for l in com.vyre.core com.vyre.vyred com.vyre.colima; do echo "--- $l"; sudo launchctl print "system/$l" 2>&1 | head -n 40 || true; done
+  ls -la "/Library/Application Support/Vyre" 2>&1 || true
+  for f in "${VYRE_HOME:-/nonexistent}"/logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 30 "$f"; }; done 2>/dev/null || true
+  # the service writes its output here (vyre: "its output is in ~/.vyre-proof/logs"), not under VYRE_HOME
+  ls -la "$HOME/.vyre-proof/logs" 2>&1 || true
+  for f in "$HOME/.vyre-proof/logs"/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 40 "$f"; }; done 2>/dev/null || true
+  echo "::endgroup::"
+}
+trap dump EXIT
+bad() { echo "FAIL  $*" >&2; exit 1; }
+
+node scripts/mac-proof/release.mjs "$work"
+node_bin=$(command -v node)
+# The install script verifies the first install against the release key embedded in itself, so the
+# test runs a COPY of it with the throwaway public key put in (the real script has no override).
+key=$(cat "$work/release-key.pub")
+sed "s|^RELEASE_KEY=.*|RELEASE_KEY=$key|" "$repo/scripts/install-mac-server.sh" >"$work/install-mac-server.sh"
+grep -q "^RELEASE_KEY=$key\$" "$work/install-mac-server.sh" || bad "the key did not patch in"
+script=$work/install-mac-server.sh
+
+# No Homebrew, no node on PATH: what a fresh Mac has. The script bundles its own Node and Colima.
+PATH_MIN=/usr/bin:/bin:/usr/sbin:/sbin
+export VYRE_BOX_URL="file://$work/site/"
+export VYRE_HOME="$HOME/.vyre-proof"
+export VYRE_SERVER_DIR="$HOME/.vyre-server"
+
+# The vyre command goes to a profile file in the work folder here (the runner's own home is left alone), and the shell the person types in is not a terminal.
+export VYRE_PROFILE="$work/zprofile" VYRE_LINK_DIRS=""
+echo "::group::install"
+# VYRE_STORE=sqlite is the install line's small built-in store: a hosted runner cannot run Colima, so Records (Twenty) could never start there and the network module would wait for it
+env PATH="$PATH_MIN" VYRE_CODE="" VYRE_STORE=sqlite sh "$script" --yes >"$work/install.out" 2>&1 || { cat "$work/install.out"; bad "the install failed"; }
+cat "$work/install.out"
+echo "::endgroup::"
+# The one line's shape: the five steps, the signature line, and an honest ending that prints no code into a log.
+for h in "[1/5] Checking this Mac" "[2/5] Downloading Vyre" "[3/5] Laying out" "[4/5] Adding the vyre command" "[5/5] Starting Vyre" "The download matches Vyre's signature" "Vyre is running on this Mac."; do
+  grep -qF "$h" "$work/install.out" || bad "the install did not say: $h"
+done
+grep -q "Get your space code on this Mac: vyre space up" "$work/install.out" || bad "the install did not say where to get the space code"
+if grep -q "Your space code:" "$work/install.out"; then bad "a piped install must not print the code into a log"; fi
+# Every dependency a Mac server needs, said in one line each (no Homebrew on this PATH, so each one is the pinned, checksummed download).
+for h in "ok  git runs" "ok  Node v22" "ok  Colima runs" "ok  Lima runs" "ok  the Docker command runs" "ok  gh runs" "ok  Headscale runs" "ok  the network node program is in place" "ok  the Linux computer for agents is sized" "ok  Vyre is a system service that starts at boot" "ok  Colima starts at boot" "ok  vyre is at"; do
+  grep -qF "$h" "$work/install.out" || bad "no dependency line: $h"
+done
+if grep -q "  note  " "$work/install.out"; then grep "  note  " "$work/install.out"; bad "the install left a note: something it needs is missing or failed"; fi
+ok "every dependency line is ok: git, Node, Colima, Lima, Docker, gh, Headscale, the VM size, the boot services"
+ok "the install said its five steps, the signature check, and where to get the space code"
+vyre="$VYRE_SERVER_DIR/bin/vyre"
+grep -qF "$VYRE_SERVER_DIR/bin" "$work/zprofile" || bad "the vyre command was not added to the profile"
+i=0; until "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || [ $i -ge 60 ]; do sleep 2; i=$((i+1)); done
+"$vyre" status 2>&1 | grep -q -E 'answering|modules running' || bad "vyre status never reached running"
+ok "vyre status reaches running"
+# the modules start one at a time after vyred answers: give the network module a minute, as the installer's own wait does
+i=0; until "$vyre" space up >"$work/space.out" 2>&1 && grep -q "Your space code:" "$work/space.out" || [ $i -ge 30 ]; do sleep 2; i=$((i+1)); done
+grep -q "Your space code:" "$work/space.out" || { cat "$work/space.out"; "$vyre" status 2>&1 | head -n 20; "$vyre" modules 2>&1 | head -n 60; bad "vyre space up printed no space code"; }
+ok "vyre space up prints a space code"
+
+# Account and tree.
+dscl . -read /Users/_vyre UniqueID >/dev/null || bad "no _vyre account"
+[ "$(dscl . -read /Users/_vyre UserShell | awk '{print $2}')" = /usr/bin/false ] || bad "_vyre has a login shell"
+ok "the _vyre account exists with no login shell"
+base="/Library/Application Support/Vyre"
+[ "$(stat -f %Su "$base")" = root ] || bad "$base is not root's"
+[ "$(stat -f %Su "$base/current/core/vyre-core/main.js")" = root ] || bad "core's code is not root's"
+[ "$(stat -f %Su "$base/data")" = _vyre ] || bad "core's data is not _vyre's"
+[ "$(stat -f %Lp "$base/data")" = 700 ] || bad "core's data is not 0700"
+ok "the code tree is root's and the data folder is _vyre's, 0700"
+cat "$base/core.json" | grep -q '"socket"' || bad "no core.json"
+[ "$(stat -f %Su "$base/core.json")" = root ] || bad "core.json is not root's"
+
+# LaunchDaemons: system domain, at load.
+for l in com.vyre.core com.vyre.core.update com.vyre.vyred com.vyre.colima; do
+  [ -f "/Library/LaunchDaemons/$l.plist" ] || bad "no plist for $l"
+  [ "$(stat -f %Su "/Library/LaunchDaemons/$l.plist")" = root ] || bad "$l.plist is not root's"
+  sudo launchctl print "system/$l" >"$work/$l.print" 2>&1 || bad "$l is not loaded in the system domain"
+done
+grep -q 'runatload' "$work/com.vyre.core.print" || grep -q 'RunAtLoad' /Library/LaunchDaemons/com.vyre.core.plist || bad "core does not start at load"
+grep -q 'RunAtLoad' /Library/LaunchDaemons/com.vyre.vyred.plist || bad "vyred does not start at load"
+ok "core, update, vyred and colima are LaunchDaemons in the system domain, started at load"
+# A server comes back by itself (core/vyre-core/online.js): the power settings the installer set, and the boot test of the daemons it wrote. (A hosted runner cannot reboot: this is the state a reboot starts from.)
+pm=$(pmset -g)
+for kv in "autorestart 1" "sleep 0" "disksleep 0" "womp 1" "powernap 0"; do
+  k=${kv% *}; v=${kv#* }
+  line=$(printf '%s\n' "$pm" | awk -v k="$k" '$1 == k { print $2; exit }')
+  # a setting this machine does not show cannot be wrong; one that is shown must be what a server wants
+  [ -z "$line" ] || [ "$line" = "$v" ] || bad "pmset $k is $line, a server wants $v"
+done
+ok "the power settings are a server's: start after a power cut, never sleep ($(printf '%s\n' "$pm" | awk '$1 == "autorestart" || $1 == "sleep" { printf "%s %s ", $1, $2 }'))"
+for l in com.vyre.core com.vyre.vyred com.vyre.colima; do
+  sudo launchctl print "system/$l" >/dev/null 2>&1 || bad "$l is not loaded in launchd"
+  [ "$(plutil -extract RunAtLoad raw -o - "/Library/LaunchDaemons/$l.plist")" = true ] || bad "$l has no RunAtLoad"
+  plutil -extract KeepAlive raw -o - "/Library/LaunchDaemons/$l.plist" >/dev/null 2>&1 || bad "$l has no KeepAlive"
+done
+ok "the boot test: core, vyred and colima are loaded, start at load and are kept alive"
+
+# core answers.
+sock=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).socket' "$base/core.json")
+i=0; until [ -S "$sock" ] || [ $i -ge 30 ]; do sleep 1; i=$((i+1)); done
+[ -S "$sock" ] || bad "core's socket is missing"
+cat >"$work/probe.mjs" <<'JS'
+import { coreHello, coreTool, readCoreConfig } from "/Library/Application Support/Vyre/current/lib/vyre-core-client.js";
+import { createCoreKeys } from "/Library/Application Support/Vyre/current/lib/vyre-core-keys.js";
+import crypto from "node:crypto";
+const cfg = readCoreConfig();
+if (!cfg) { console.error("core.json is not trusted"); process.exit(1); }
+const hello = await coreHello(cfg.socket);
+if (!hello) { console.error("core did not say hello"); process.exit(1); }
+const keys = createCoreKeys();
+// With its modules running (the vault makes core's keys at its start) the keys may already be there: ensure is the same call either way.
+if (!(await keys.exists()) && !(await keys.ensure())) { console.error("ensure made nothing"); process.exit(1); }
+if (!(await keys.exists())) { console.error("the keys are not there after ensure"); process.exit(1); }
+const pub = await keys.boxPub();
+const peer = crypto.generateKeyPairSync("x25519");
+const remote = peer.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+const secret = await keys.boxDh(Buffer.from(remote));
+const theirs = crypto.diffieHellman({ privateKey: peer.privateKey, publicKey: crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), pub]), format: "der", type: "spki" }) });
+if (!secret.equals(Buffer.from(theirs))) { console.error("dh disagrees"); process.exit(1); }
+const sig = await keys.routeSign(Buffer.from("hello"));
+const rp = await keys.routePub();
+if (!crypto.verify(null, Buffer.from("hello"), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rp]), format: "der", type: "spki" }), sig)) { console.error("signature does not verify"); process.exit(1); }
+const peerVerdict = await coreTool("keys.exists", {}, { socket: cfg.socket });
+console.log(JSON.stringify({ name: hello.name, version: hello.version, keys: peerVerdict.data, pub: Buffer.from(pub).toString("hex") }));
+JS
+"$node_bin" "$work/probe.mjs" >"$work/probe1.out" || bad "core did not answer as it should"
+cat "$work/probe1.out"
+# A model's process gets nothing: the same call from a process named claude is refused by core.
+cat >"$work/neg.mjs" <<'JS'
+import { coreTool, readCoreConfig } from "/Library/Application Support/Vyre/current/lib/vyre-core-client.js";
+const cfg = readCoreConfig();
+for (const tool of ["keys.box.pub", "keys.box.dh", "keys.route.sign", "keys.ensure"]) {
+  const r = await coreTool(tool, { remote: "AA", message: "AA" }, { socket: cfg.socket });
+  if (!r.error || r.error.code !== "not_person_side") { console.error(tool + " was not refused: " + JSON.stringify(r)); process.exit(1); }
+}
+JS
+cp "$node_bin" "$work/claude"
+"$work/claude" "$work/neg.mjs" || bad "a process named claude was not refused"
+ok "a process running as claude is refused every key call"
+sudo test -f "$base/data/keys.json" || bad "core stored no keys"
+[ "$(sudo stat -f %Su "$base/data/keys.json")" = _vyre ] || bad "keys.json is not _vyre's"
+[ "$(sudo stat -f %Lp "$base/data/keys.json")" = 600 ] || bad "keys.json is not 0600"
+if cat "$base/data/keys.json" >/dev/null 2>&1; then bad "the owner can read core's keys"; fi
+ok "core answers on its socket; the relay keys are made, used and readable by _vyre alone"
+
+# vyred.
+i=0; until [ -f "$VYRE_HOME/vyred.pid" ] && kill -0 "$(cat "$VYRE_HOME/vyred.pid")" 2>/dev/null || [ $i -ge 60 ]; do sleep 1; i=$((i+1)); done
+kill -0 "$(cat "$VYRE_HOME/vyred.pid")" 2>/dev/null || { tail -n 30 "$VYRE_HOME"/logs/* 2>/dev/null || true; bad "vyred is not running"; }
+ok "vyred is running under launchd"
+
+# The pinned downloads were checked by the script itself; make sure they are the real thing.
+[ -x "$VYRE_SERVER_DIR/node-dist/bin/node" ] && "$VYRE_SERVER_DIR/node-dist/bin/node" -v | grep -q '^v22\.' || bad "the bundled Node is not 22"
+"$VYRE_SERVER_DIR/bin/colima" version | head -n 1 || bad "the pinned colima does not run"
+"$VYRE_SERVER_DIR/lima/bin/limactl" --version | head -n 1 || bad "the pinned limactl does not run"
+"$VYRE_SERVER_DIR/bin/docker" --version | head -n 1 || bad "the pinned docker client does not run"
+"$VYRE_SERVER_DIR/bin/gh" --version | head -n 1 || bad "the pinned gh does not run"
+ok "the pinned Node, Colima, Lima, docker client and gh matched their sums and run"
+
+# A second run repairs: same release, nothing breaks, still one core.
+echo "::group::reinstall"
+env PATH="$PATH_MIN" sh "$script" --yes
+echo "::endgroup::"
+sudo launchctl print system/com.vyre.core >/dev/null || bad "core is gone after a second install"
+"$node_bin" "$work/probe.mjs" >"$work/probe2.out" 2>&1 || { cat "$work/probe2.out"; bad "core did not answer after the second install"; }
+[ "$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pub' "$work/probe1.out")" = "$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pub' "$work/probe2.out")" ] || bad "the second install changed core's keys"
+ok "installing again repairs and keeps core's keys"
+
+# Uninstall.
+echo "::group::uninstall"
+env PATH="$PATH_MIN" sh "$script" --uninstall --purge --yes
+echo "::endgroup::"
+if sudo launchctl print system/com.vyre.core >/dev/null 2>&1; then bad "core is still loaded"; fi
+if dscl . -read /Users/_vyre >/dev/null 2>&1; then bad "_vyre is still there"; fi
+[ ! -e "/Library/LaunchDaemons/com.vyre.core.plist" ] || bad "core's plist is still there"
+[ ! -e "$VYRE_SERVER_DIR" ] || bad "the app folder is still there"
+[ ! -e "$HOME/.vyre-server" ] || bad "the server folder is still there"
+! grep -q "vyre: command" "$work/zprofile" || bad "the vyre command's profile line is still there"
+[ ! -e "$VYRE_HOME" ] || bad "the data folder survived --purge"
+ok "uninstall --purge removed the daemons, the account, the files and the vyre command"
+echo "mac-proof: all checks passed"

@@ -925,6 +925,13 @@ test("install-mac-server.sh: the vyre command is a link in a writable folder on 
   const prof = fs.readFileSync(m.env.VYRE_PROFILE, "utf8");
   assert.match(prof, /export MINE=1/);
   assert.equal((prof.match(/# vyre: command/g) || []).length, 2);
+  // The profile adds only the command, after the person's own tools: Vyre's pinned docker, gh and colima never come ahead of theirs.
+  fs.mkdirSync(path.join(m.env.VYRE_SERVER_DIR, "bin"), { recursive: true });
+  for (const t2 of ["docker", "gh"]) fs.writeFileSync(path.join(m.env.VYRE_SERVER_DIR, "bin", t2), "#!/bin/sh\n", { mode: 0o755 });
+  const mine = path.join(m.base, "mine"); fs.mkdirSync(mine);
+  for (const t2 of ["docker", "gh"]) fs.writeFileSync(path.join(mine, t2), "#!/bin/sh\n", { mode: 0o755 });
+  const shown = spawnSync("sh", ["-c", `PATH="${mine}:/usr/bin:/bin"; . "${m.env.VYRE_PROFILE}"; command -v docker; command -v gh; command -v vyre`], { encoding: "utf8" }).stdout.trim().split("\n");
+  assert.deepEqual(shown, [path.join(mine, "docker"), path.join(mine, "gh"), path.join(m.env.VYRE_SERVER_DIR, "cmd", "vyre")]);
   assert.equal(run(m.env, ["--yes", "--from", m.src]).status, 0);
   assert.equal((fs.readFileSync(m.env.VYRE_PROFILE, "utf8").match(/# vyre: command/g) || []).length, 2, "a second run adds nothing");
   assert.equal(run(m.env, ["--uninstall", "--yes"]).status, 0);

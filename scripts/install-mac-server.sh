@@ -60,6 +60,7 @@ SUDO=${VYRE_SUDO:-sudo}
 CORE_BASE=${VYRE_CORE_BASE:-/Library/Application Support/Vyre}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
 SERVER_DIR=${VYRE_SERVER_DIR:-$HOME/.vyre-server}
+CMD_DIR=$SERVER_DIR/cmd
 AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
 # Where the PATH line goes so every shell finds `vyre`: ~/.zshenv (zsh reads it for login, interactive and script shells alike), and ~/.bash_profile when bash is the person's shell or the file exists.
 # VYRE_PROFILE names the one file instead, for tests.
@@ -793,12 +794,14 @@ add_command() {
     ln -sf "$BIN/vyre" "$d/vyre" || continue
     step "vyre is at $d/vyre"; return 0
   done
+  # Only the command goes on PATH, from a folder of its own and after the person's own tools: $BIN also holds Vyre's pinned docker, gh and colima, which must never come ahead of theirs.
+  mkdir -p "$CMD_DIR" && ln -sf "$BIN/vyre" "$CMD_DIR/vyre"
   for pf in $PROFILE_FILES; do
     grep -q '# vyre: command' "$pf" 2>/dev/null && continue
-    printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$pf" || { say "  note  could not write $pf; the command is $BIN/vyre"; continue; }
+    printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="$PATH:%s"  # vyre: command\n' "$CMD_DIR" >>"$pf" || { say "  note  could not write $pf; the command is $BIN/vyre"; continue; }
     PATH_ADDED=1
   done
-  step "vyre is at $BIN/vyre (every new shell finds it by name: $PROFILE_FILES)"
+  step "vyre is at $CMD_DIR/vyre (every new shell finds it by name: $PROFILE_FILES)"
 }
 
 # remove_command: what add_command added, and nothing the person wrote.
@@ -808,8 +811,10 @@ remove_command() {
   done
   for pf in $PROFILE_FILES $HOME/.zprofile; do
     if [ -f "$pf" ] && grep -q '# vyre: command' "$pf"; then
-      grep -v '# vyre: command' "$pf" >"$pf.vyre-new" || true
-      cat "$pf.vyre-new" >"$pf"; rm -f "$pf.vyre-new"
+      # only a clean grep (0 or 1: lines kept, or none left) rewrites the file; an unreadable one is left as it is
+      g=0; grep -v '# vyre: command' "$pf" >"$pf.vyre-new" || g=$?
+      if [ "$g" = 0 ] || [ "$g" = 1 ]; then cat "$pf.vyre-new" >"$pf"; else say "  note  could not read $pf; remove its two '# vyre: command' lines by hand"; fi
+      rm -f "$pf.vyre-new"
     fi
   done
   return 0

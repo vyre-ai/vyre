@@ -67,7 +67,7 @@ if grep -q "  note  " "$work/install.out"; then grep "  note  " "$work/install.o
 ok "every dependency line is ok: git, Node, Colima, Lima, Docker, gh, Headscale, the VM size, the boot services"
 ok "the install said its five steps, the signature check, and where to get the space code"
 vyre="$VYRE_SERVER_DIR/bin/vyre"
-grep -qF "$VYRE_SERVER_DIR/bin" "$work/zprofile" || bad "the vyre command was not added to the profile"
+grep -qF "$VYRE_SERVER_DIR/cmd" "$work/zprofile" || bad "the vyre command was not added to the profile"
 i=0; until "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || [ $i -ge 60 ]; do sleep 2; i=$((i+1)); done
 "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || bad "vyre status never reached running"
 ok "vyre status reaches running"
