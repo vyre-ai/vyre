@@ -19,7 +19,7 @@ export function AssignPicker({ open, onClose, title = "Assign to", actors, onPro
         {groups.length ? groups.map((g) => (
           <View key={g.title}>
             <SectionLabel>{g.title}</SectionLabel>
-            {g.rows.map((a) => <Row key={a.id} lead={<ActorMark who={a as any} />} title={a.name} sub={a.role || (a.family === "person" ? "Person" : "Assistant")} onPress={() => { onPick(a); onClose(); }} />)}
+            {g.rows.map((a) => <Row key={a.id} lead={<ActorMark who={a as any} />} title={a.name} sub={a.role || (a.family === "person" ? "Person" : "Agent")} onPress={() => { onPick(a); onClose(); }} />)}
           </View>
         )) : <Text tone="muted">Nobody matches that.</Text>}
       </View>

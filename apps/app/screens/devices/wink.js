@@ -82,12 +82,12 @@ export const spacesLine = (/** @type {string[]} */ names) => (names.length ? `In
 export const REINSTALL_LINE = "Reinstalling Vyre on this phone resumes as you, because the phone keeps your key. To stop this phone reaching your spaces, remove it below, or remove it from another of your devices.";
 
 /** What removing something does, said before it happens. */
-export function removeText(/** @type {"Device"|"Person"|"Assistant"|"Kit"|"Flow"} */ kind, /** @type {string} */ name, space = "Juniper Studio") {
+export function removeText(/** @type {"Device"|"Person"|"Agent"|"Kit"|"Flow"} */ kind, /** @type {string} */ name, space = "Juniper Studio") {
   const first = name.split(" ")[0];
   return {
     Device: `Removing ${name} stops it opening anything of yours from now on, and what is stored on it is deleted when it next connects or its access runs out. It cannot take back what it has already opened or copied.`,
     Person: `Remove ${name} from ${space}? ${first} loses its projects and servers at once. ${first} keeps their own notes and files.`,
-    Assistant: `Remove ${name}? Its jobs stop at once. What it wrote stays in the records it was written on.`,
+    Agent: `Remove ${name}? Its jobs stop at once. What it wrote stays in the records it was written on.`,
     Kit: `Remove the Kit "${name}"? Its Flows stop and its views are hidden. Your records stay.`,
     Flow: `Turn off and remove "${name}"? Runs in progress finish on the version they started with. New ones stop.`,
   }[kind];
