@@ -19,6 +19,8 @@ export type { MarkRef };
 /** The space badge: 16 at 40 and above, scaled below so it never covers the face. The ring is 2 in the card colour. */
 export const badgePx = (size: number) => (size >= 40 ? 16 : size >= 28 ? 14 : 12);
 const RING = 2;
+/** How far the badge sits outside the mark's corner, so it never covers a monogram's letters. */
+const OUT = 6;
 
 /** The same kind and id as a Row or card names them; the family a screen's actor record carries ("service" is an agent). */
 export function kindOf(family?: string): AvatarKind {
@@ -43,7 +45,7 @@ function Badge({ space, size, ring }: { space: AvatarRef; size: number; ring?: s
   const fill = useCardFill();
   const b = badgePx(size);
   return (
-    <View pointerEvents="none" style={{ position: "absolute", right: -RING, bottom: -RING, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color[fill], alignItems: "center", justifyContent: "center" }}>
+    <View pointerEvents="none" style={{ position: "absolute", right: -RING - OUT, bottom: -RING - OUT, width: b + RING * 2, height: b + RING * 2, borderRadius: (b + RING * 2) * 0.3, backgroundColor: ring ?? color[fill], alignItems: "center", justifyContent: "center" }}>
       <Mark of={{ ...space, kind: "space" }} size={b} />
     </View>
   );
