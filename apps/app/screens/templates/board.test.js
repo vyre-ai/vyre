@@ -108,3 +108,19 @@ test("the start button's words keep an acronym's capitals and take no article", 
   assert.equal(startLabel("ATP client"), "Start ATP client");
   assert.equal(startLabel("Project"), "Start a project");
 });
+
+test("the people a new project is given: the lead and the others, each once, the lead not twice", async () => {
+  const { seatCalls } = await import("./board.ts");
+  assert.deepEqual(seatCalls("rivera", { lead: "per_a", team: ["per_b", "per_a", "per_b", "per_c"] }), [
+    { project: "rivera", person: "per_a", level: "lead" }, { project: "rivera", person: "per_b", level: "contributor" }, { project: "rivera", person: "per_c", level: "contributor" },
+  ]);
+  assert.deepEqual(seatCalls("rivera", { team: ["per_b"] }), [{ project: "rivera", person: "per_b", level: "contributor" }]);
+  assert.deepEqual(seatCalls("rivera", {}), []);
+});
+
+test("Projects of one playbook: the rows whose template it is", async () => {
+  const { ofPlaybook } = await import("./board.ts");
+  const items = [{ row: { data: { template: "tpl_a" } } }, { row: { data: { template: "tpl_b" } } }, { row: { data: {} } }];
+  assert.equal(ofPlaybook(items, "tpl_a").length, 1);
+  assert.equal(ofPlaybook(items, "").length, 3, "no playbook named: all of them");
+});

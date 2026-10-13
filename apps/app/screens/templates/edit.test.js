@@ -221,3 +221,23 @@ test("followers are added and removed once each, and the approver's and follower
   assert.deepEqual(setNote(b, 0, 0, "approver", "  ").stages[0].tasks[0].notes, { followers: "Read along." });
   assert.equal(setNote(setNote(b, 0, 0, "approver", ""), 0, 0, "followers", "").stages[0].tasks[0].notes, undefined);
 });
+
+test("a task is dropped at a place in a stage, in its own or another; a stage is dropped at a place; both keep every task", async () => {
+  const { moveTaskTo, moveStageTo } = await import("./edit.ts");
+  let b = addStage(addStage(base())); // Start, Done, Stage 3, Stage 4
+  b = setTask(addTask(addTask(b, 0), 0), 0, 1, { title: "Second" });
+  b = setTask(b, 0, 2, { title: "Third" });
+  assert.deepEqual(b.stages[0].tasks.map((t) => t.title), ["Gather documents", "Second", "Third"]);
+  assert.deepEqual(moveTaskTo(b, { si: 0, ti: 2 }, { si: 0, ti: 0 }).stages[0].tasks.map((t) => t.title), ["Third", "Gather documents", "Second"]);
+  assert.deepEqual(moveTaskTo(b, { si: 0, ti: 0 }, { si: 0, ti: 3 }).stages[0].tasks.map((t) => t.title), ["Second", "Third", "Gather documents"], "dropped past the end");
+  const across = moveTaskTo(b, { si: 0, ti: 1 }, { si: 2, ti: 0 });
+  assert.deepEqual([across.stages[0].tasks.map((t) => t.title), (across.stages[2].tasks || []).map((t) => t.title)], [["Gather documents", "Third"], ["Second"]]);
+  assert.equal(moveTaskTo(b, { si: 0, ti: 1 }, { si: 0, ti: 1 }), b, "dropped where it was: nothing changes");
+  const emptied = moveTaskTo(setStageGroups(b, 0, { groups: [], items: [b.stages[0].tasks[0]] }), { si: 0, ti: 0 }, { si: 1, ti: 0 });
+  assert.equal(emptied.stages[0].tasks, undefined, "a stage left with no tasks has none");
+  const moved = moveTaskTo(setTask(b, 0, 1, { group: "" }), { si: 0, ti: 1 }, { si: 2, ti: 0 });
+  assert.equal(moved.stages[2].tasks[0].group, undefined, "a task that leaves its stage leaves its group");
+  assert.deepEqual(moveStageTo(b, 3, 1).stages.map((s) => s.name), ["Start", "Stage 4", "Done", "Stage 3"]);
+  assert.deepEqual(moveStageTo(b, 0, 3).stages.map((s) => s.name), ["Done", "Stage 3", "Stage 4", "Start"]);
+  assert.equal(moveStageTo(b, 2, 2), b);
+});
