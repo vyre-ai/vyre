@@ -15,12 +15,12 @@ export const dropIndex = (from: number, dy: number, h: number, n: number): numbe
 export function SortableList<T>({ items, keyOf, rowHeight = 64, onMove, render }: { items: T[]; keyOf: (t: T) => string; rowHeight?: number; onMove: (from: number, to: number) => void; render: (t: T, i: number) => React.ReactNode }) {
   return (
     <View>
-      {items.map((t, i) => <SortableRow key={keyOf(t)} i={i} n={items.length} h={rowHeight} onMove={onMove}>{render(t, i)}</SortableRow>)}
+      {items.map((t, i) => <SortableRow key={keyOf(t)} i={i} n={items.length} last={i === items.length - 1} h={rowHeight} onMove={onMove}>{render(t, i)}</SortableRow>)}
     </View>
   );
 }
 
-function SortableRow({ i, n, h, onMove, children }: { i: number; n: number; h: number; onMove: (from: number, to: number) => void; children: React.ReactNode }) {
+function SortableRow({ i, n, h, last, onMove, children }: { i: number; n: number; last: boolean; h: number; onMove: (from: number, to: number) => void; children: React.ReactNode }) {
   const { color } = useUiTheme();
   const y = useSharedValue(0);
   const held = useSharedValue(0);
@@ -32,7 +32,7 @@ function SortableRow({ i, n, h, onMove, children }: { i: number; n: number; h: n
     .onFinalize(() => { held.value = 0; y.value = withSpring(0, SPRING["spatial.fast"]); });
   const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }, { scale: 1 + held.value * 0.015 }], zIndex: held.value ? 10 : 0, opacity: held.value ? 0.96 : 1 }));
   return (
-    <Animated.View style={[{ minHeight: h, flexDirection: "row", alignItems: "center" }, style]}>
+    <Animated.View style={[{ minHeight: h, flexDirection: "row", alignItems: "center", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.edge }, style]}>
       <GestureDetector gesture={pan}>
         <View accessibilityLabel="Drag to reorder" style={{ width: 32, alignItems: "center", justifyContent: "center", alignSelf: "stretch" }}><Icon name="sort" tone="text-3" /></View>
       </GestureDetector>
