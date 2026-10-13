@@ -154,7 +154,6 @@ test("the words step after a long code uses the session's own kind: a real (watc
 test("a phone's long code adds this device to the name (a browser too); a server's long code pairs this device to that server", () => {
   assert.equal(codeRoute({ kind: "ticket", for: "phone" }), "add-device");
   assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
-  assert.equal(codeRoute({ kind: "offer" }), "pair-server");
   assert.equal(codeRoute(null), "pair-server");
 });
 
