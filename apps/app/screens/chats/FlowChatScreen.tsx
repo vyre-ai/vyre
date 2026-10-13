@@ -66,7 +66,6 @@ export default function FlowChatScreen() {
             <View className="flex-row flex-wrap items-center gap-s2">
               <Button size="sm" label="Send" disabled={busy || !text.trim()} onPress={send} />
               {aim ? <Button size="sm" kind="ghost" label="Back to the whole chat" onPress={() => setAim(null)} /> : null}
-              {target ? <Text size="caption" tone="label">{target.label}</Text> : null}
             </View>
           </Card>
         </View>
