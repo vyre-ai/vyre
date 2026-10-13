@@ -34,7 +34,7 @@ test("a site is every version of one name; its status says who is waiting", { sk
   assert.deepEqual(ss.map((s) => [s.name, s.versions.map((v) => v.version), s.live?.id ?? null, s.current.id, s.status.label]), [
     ["intake", [3, 2, 1], "dep_2", "dep_3", "Preview"], ["menu", [1], null, "dep_5", "Needs you"], ["pricing", [1], null, "dep_4", "Draft"],
   ]);
-  assert.deepEqual(DEPS.map((d) => m.nextStep(d)?.tool ?? null), [null, null, "approve", "preview", "publish"]);
+  assert.deepEqual(DEPS.map((d) => m.nextStep(d)?.tool ?? null), [null, null, "go", "preview", "publish"]);
   assert.equal(m.nextStep({ ...DEPS[1], previous: "dep_1" })?.tool, "rollback");
   assert.deepEqual(DEPS.map(m.stepOf), [4, 3, 1, 0, 2]);
 });
@@ -111,4 +111,105 @@ test("a job run reads as one line with how long ago", async () => {
   const now = 1_000_000_000;
   assert.equal(jobLine({ at: now - 3_600_000, ok: true, seconds: 3.6 }, now), "Ran in 4 s, 1 h ago");
   assert.equal(jobLine({ at: now - 10_000, ok: false, code: 1, message: "it broke" }, now), "Failed, just now");
+});
+
+test("a preview goes live in one yes: its next step is publish.go, and the source sends that tool", async () => {
+  const { sitesSource } = await import("./real-source.ts");
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.nextStep(DEPS[2]), { tool: "go", label: "Approve and go live" });
+  const b = box({ "publish.go": { data: { held: true, task: "task_9", plan: PLAN } } });
+  const r = await sitesSource(b.call).act("go", "dep_3");
+  assert.deepEqual(b.seen, [{ tool: "publish.go", input: { deployment: "dep_3" } }]);
+  assert.equal(m.heldOf(r)?.task, "task_9");
+});
+
+test("the DNS record is three parts to copy; a vyre.run name has none", async () => {
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.recordOf({ type: "TXT", name: "_vyre-challenge.firm.com", value: "vyre-publish=abc", expires_at: 5 }), { type: "TXT", name: "_vyre-challenge.firm.com", value: "vyre-publish=abc" });
+  assert.equal(m.recordOf({ type: "names", host: "firm.vyre.run" }), null);
+  assert.equal(m.recordOf("a string"), null);
+  assert.equal(m.recordOf(null), null);
+});
+
+test("the domain check reads as pending, verified or failed", async () => {
+  const m = await import("./real-model.ts");
+  assert.equal(m.checkOf({ host: "a.com", status: "verified" }).state, "verified");
+  assert.equal(m.checkOf({ host: "a.com", status: "pending" }).state, "pending");
+  assert.match(m.checkOf({ host: "a.com", status: "pending" }, "no TXT record yet").line, /no TXT record yet/);
+  const f = m.checkOf({ host: "a.com", status: "failed" }, "the record does not match");
+  assert.deepEqual([f.state, f.line], ["failed", "the record does not match"]);
+  assert.equal(m.checkOf(undefined).state, "pending");
+  assert.equal(m.CHECK_EVERY_MS, 20000);
+});
+
+test("only an apex name has the apex or www choice, and it is sent with www on", async () => {
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.canonicalChoice("Firm.com"), { apex: "firm.com", www: "www.firm.com" });
+  assert.equal(m.canonicalChoice("www.firm.com"), null);
+  assert.equal(m.canonicalChoice("app.firm.com"), null);
+  assert.equal(m.canonicalChoice("firm.vyre.run"), null);
+  assert.equal(m.canonicalChoice(""), null);
+  assert.deepEqual(m.canonicalInput("firm.com", "www"), { canonical: "www", www: true });
+  assert.deepEqual(m.canonicalInput("firm.com", "apex"), { canonical: "apex", www: true });
+  assert.deepEqual(m.canonicalInput("www.firm.com", "www"), {});
+});
+
+test("domain.add carries the canonical choice", async () => {
+  const { sitesSource } = await import("./real-source.ts");
+  const b = box();
+  await sitesSource(b.call).domainAdd("firm.com", "dep_2", { canonical: "www", www: true });
+  await sitesSource(b.call).domainAdd("www.firm.com", "dep_2");
+  assert.deepEqual(b.seen, [{ tool: "publish.domain.add", input: { host: "firm.com", deployment: "dep_2", canonical: "www", www: true } }, { tool: "publish.domain.add", input: { host: "www.firm.com", deployment: "dep_2" } }]);
+});
+
+test("History rows: who approved, when it went live, and where it answers", async () => {
+  const m = await import("./real-model.ts");
+  const at = new Date(2026, 9, 13, 6, 12).getTime();
+  const st = { dep_2: { ...dep("dep_2", "intake", 2, "Production"), approved_by: "per_abc", published_at: at }, dep_1: { ...dep("dep_1", "intake", 1, "Retired"), approved_by: null, published_at: null } };
+  const rows = m.versionRows([DEPS[1], DEPS[0], DEPS[2]], st, (id) => (id === "per_abc" ? "You" : id));
+  assert.deepEqual(rows.map((r) => [r.version, r.approvedBy, r.wentLive, r.address]), [
+    [2, "You", "13 Oct, 06:12", "intake.example.com"],
+    [1, "Not approved", "Never live", "https://dep_1.preview.example"],
+    [3, "", "", "https://dep_3.preview.example"],
+  ]);
+  assert.equal(rows[0].approverId, "per_abc");
+  assert.equal(rows[1].approverId, null);
+  assert.equal(m.whenText(null), "");
+});
+
+test("the two banners: public door off with something live, and no Docker", async () => {
+  const m = await import("./real-model.ts");
+  assert.match(m.doorBanner({ listening: false }, true) ?? "", /^Online on your devices only/);
+  assert.equal(m.doorBanner({ listening: true }, true), null);
+  assert.equal(m.doorBanner({ listening: false }, false), null);
+  assert.equal(m.doorBanner(null, true), null);
+  assert.match(m.dockerBanner("not_available") ?? "", /^This server has no Docker, so Sites can't go live yet/);
+  assert.equal(m.dockerBanner("forbidden"), null);
+});
+
+test("a private repo presets the grant form: GITHUB_TOKEN, for the build", async () => {
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.repoGrant({ kind: "repo", private: true }), { name: "GITHUB_TOKEN", use: "build" });
+  assert.equal(m.repoGrant({ kind: "repo", private: false }), null);
+  assert.equal(m.repoGrant({ kind: "drive", private: true }), null);
+  assert.equal(m.BLANK.private, false);
+});
+
+test("the env picker: one row per name the site waits on, and the grant check", async () => {
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.waitingRows(["MAILER_KEY", "DB_URL"]).map((r) => r.name), ["MAILER_KEY", "DB_URL"]);
+  assert.deepEqual(m.waitingRows(undefined), []);
+  assert.equal(m.grantProblem("Stripe", "key", "STRIPE_KEY"), null);
+  assert.match(m.grantProblem(null, "key", "STRIPE_KEY") ?? "", /Pick an item/);
+  assert.match(m.grantProblem("Stripe", "key", "stripe key") ?? "", /capitals/);
+});
+
+test("an approver is named from records.actors, You for the viewer, Someone when unnamed", async () => {
+  const m = await import("./real-model.ts");
+  const actors = { actors: [{ id: "per_a", name: "Dana Wine" }, { id: "per_b", name: "per_b" }] };
+  assert.equal(m.approverName(actors, "per_a", "per_z"), "Dana Wine");
+  assert.equal(m.approverName(actors, "per_a", "per_a"), "You");
+  assert.equal(m.approverName(actors, "per_b", null), "Someone");
+  assert.equal(m.approverName(null, "per_q", null), "Someone");
+  assert.equal(m.approverName([{ id: "per_a", name: "Dana Wine" }], "per_a", null), "Dana Wine");
 });

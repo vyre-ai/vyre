@@ -223,6 +223,15 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  "files.linked.list": "dead5a0dd@13 Oct 2026",
+  "files.linked.ls": "92063c9dc@13 Oct 2026",
+  "files.linked.read": "92063c9dc@13 Oct 2026",
+  "files.linked.search": "cf5bcdbc0@13 Oct 2026",
+  "files.linked.tree": "2ef5acf92@13 Oct 2026",
+  "files.linked.status": "cf5bcdbc0@13 Oct 2026",
+  "files.linked.versions": "92063c9dc@13 Oct 2026",
+  "files.linked.mentions.search": "b4e39750c@13 Oct 2026",
+  "google.find": "e3cd9b295@27 Sep 2026",
   "vault.ssh.generate": "77868b367@26 Sep 2026",
   "vault.session.close": "c8d66bc29@26 Sep 2026",
   "vault.clipboard.clear": "c8d66bc29@26 Sep 2026",
@@ -358,6 +367,15 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "files.linked.list": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.ls": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.read": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.search": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.tree": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.status": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.versions": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "files.linked.mentions.search": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
+  "google.find": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
   "vault.ssh.generate": "grant-judged like vault.generate: an agent makes its own ssh key and the private half never leaves the vault",
   "vault.session.close": "closing a session only takes access away, so an agent may",
   "vault.clipboard.clear": "clearing the clipboard only reduces exposure, so an agent may",

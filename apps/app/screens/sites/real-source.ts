@@ -15,12 +15,12 @@ export function sitesSource(call: Call) {
     status: (deployment: string) => ask<Status>("publish.status", { deployment }),
     create: (input: Record<string, unknown>) => ask<{ deployment: Dep }>("publish.create", input),
     preview: (deployment: string) => ask<{ deployment: Dep; logs: string }>("publish.preview", { deployment }),
-    /** approve, publish or rollback: either the new deployment, or the hold to show the person. */
-    act: (tool: "approve" | "publish" | "rollback", deployment: string) => ask<Held | { deployment: Dep }>(`publish.${tool}`, { deployment }),
+    /** approve, publish, go (approve and publish in one yes) or rollback: either the new deployment, or the hold to show the person. */
+    act: (tool: "approve" | "publish" | "go" | "rollback", deployment: string) => ask<Held | { deployment: Dep }>(`publish.${tool}`, { deployment }),
     decide: (input: { task: string; approve: boolean; plan_hash?: string }) => ask<{ outcome: string; deployment?: Dep }>("publish.decide", input),
     retire: (deployment: string) => ask<{ deployment: Dep }>("publish.retire", { deployment }),
-    domainAdd: (host: string, deployment: string) => ask<{ domain: { host: string; status: string }; challenge: unknown }>("publish.domain.add", { host, deployment }),
-    domainVerify: (host: string) => ask<{ verified: boolean; reason?: string; challenge?: unknown }>("publish.domain.verify", { host }),
+    domainAdd: (host: string, deployment: string, opts: { canonical?: "apex" | "www"; www?: boolean } = {}) => ask<{ domain: { host: string; status: string }; challenge: unknown }>("publish.domain.add", { host, deployment, ...opts }),
+    domainVerify: (host: string) => ask<{ verified: boolean; reason?: string; challenge?: unknown; domain?: { host: string; status: string } }>("publish.domain.verify", { host }),
     domainRemove: (host: string) => ask<unknown>("publish.domain.remove", { host }),
     secretGrant: (deployment: string, ref: string, name: string, use: ("build" | "runtime")[]) => ask<Held | { deployment: Dep }>("publish.secret.grant", { deployment, ref, name, use }),
     secretRevoke: (deployment: string, name: string) => ask<{ deployment: Dep }>("publish.secret.revoke", { deployment, name }),
@@ -31,6 +31,8 @@ export function sitesSource(call: Call) {
     /** The edge: start it (builds its Caddy image, brings the project up) or stop it. A box without a way to start containers answers not_available with what to run by hand. */
     edgeUp: () => ask<{ project?: string }>("publish.edge.up"),
     edgeDown: () => ask<unknown>("publish.edge.down"),
+    /** Whether the public door is on (names.status listening). Null when the box does not say. */
+    door: async (): Promise<{ listening?: unknown } | null> => { try { return await ask<{ listening?: unknown }>("names.status"); } catch { return null; } },
     /** The vault's items a secret can come from: names and field names, never a value. */
     vaultItems: async (): Promise<{ name: string; kind: string; fields: string[] }[]> => (await ask<{ items?: { name: string; kind: string; fields: string[] }[] }>("vault.list")).items ?? [],
   };
