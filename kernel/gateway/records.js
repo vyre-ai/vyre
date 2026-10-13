@@ -35,7 +35,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
 }));
 
 /** The Space's set-up: a member reads these and never writes them. */
-const SETUP_TYPES = new Set(["agent", "template", "playbook"]);
+const SETUP_TYPES = new Set(["agent", "template", "playbook", "def-role"]);
 
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },

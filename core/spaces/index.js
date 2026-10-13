@@ -2069,7 +2069,7 @@ export default {
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
-      obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
+      obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
@@ -2078,7 +2078,8 @@ export default {
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
-          const body = { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
+          const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
+          const body = { role: custom ? "member" : i.role === "guest" ? "temp" : i.role, ...(custom ? { custom } : {}), ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
           /** @type {any} */ let rec;
           try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, body); }
           catch (e) {
@@ -2094,7 +2095,8 @@ export default {
           const link = `https://${row.name}/join/${token}`;
           return { id: rec.id, link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
         }
-        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
+        if (!ROLE_IDS.includes(i.role) && i.role !== "guest") throw refuse("A custom role can be invited into only on a space with its own server. Invite as Member, then give the role (roles.assign).", "not_kernel");
+        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role === "guest" ? "temp" : i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
         return { id: r.id, link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
       });
     tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
