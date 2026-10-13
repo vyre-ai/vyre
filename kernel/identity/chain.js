@@ -35,6 +35,9 @@ export const SKEW_MS = 5 * 60_000;
 export const MAX_OPS = 400;
 export const MAX_ENTRIES = 40;
 export const CONTACT_QUORUM = 2;
+/** A relay-held entry (GitHub sign-in, rc.4): it may only add a device marked `via: "github"`, at most RELAY_ADDS a day, and stops signing RELAY_TTL after a full device last signed. */
+export const RELAY_ADDS = 3;
+export const RELAY_TTL = 90 * 24 * 3_600_000;
 export const PERSON_KINDS = Object.freeze(["device", "code", "contact"]);
 export const PREFIX = Object.freeze({ person: "per_", space: "spc_" });
 
@@ -159,7 +162,7 @@ async function verifyEsig(e, message, esig) {
 const verifyEntry = (e, message, sig) => (e.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (e.pub), String(e.rp || ""), message, sig) : verifySig(/** @type {string} */ (e.pub), message, sig));
 
 /**
- * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, agree?: string, held?: "web", enclave?: string, attest?: string }} Entry
+ * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, agree?: string, held?: "web"|"relay", via?: "github", confirmed?: boolean, fresh?: number, adds?: number[], enclave?: string, attest?: string }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
  * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, seenAt?: (seq: number) => number|undefined, now?: number, skewMs?: number }} Ctx
  * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
@@ -181,7 +184,10 @@ async function shapeOfEntry(e, kind) {
   // key kept by the browser): such a key has no say over who speaks for the identity (KP-1). Both are part of the signed entry, so neither can change after the fact.
   const passkey = e.alg === "webauthn-es256";
   if (e.alg !== undefined && !passkey) throw chainError("bad_entry", "an entry's key type is not known");
-  if (e.held !== undefined && e.held !== "web") throw chainError("bad_entry", "an entry is held on the web or says nothing");
+  // `held: "relay"` is a key the relay holds for GitHub sign-in; an older verifier refuses it here, so a chain that holds one fails closed there instead of passing the relay's key off as a full device.
+  if (e.held !== undefined && e.held !== "web" && e.held !== "relay") throw chainError("bad_entry", "an entry is held on the web, by the relay, or says nothing");
+  if (e.held === "relay" && e.kind !== "device") throw chainError("bad_entry", "only a device can be held by the relay");
+  if (e.via !== undefined && (e.via !== "github" || e.kind !== "device" || e.held !== undefined || passkey)) throw chainError("bad_entry", "via says github on a plain device, or nothing");
   if (passkey ? (!pub || pub.length !== 65 || pub[0] !== 4 || typeof e.rp !== "string" || !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(e.rp) || e.held !== undefined || e.kind !== "device") : (!pub || pub.length !== 32 || e.rp !== undefined)) throw chainError("bad_entry", passkey ? "a passkey entry is a device with a P-256 key and the rp it was made for" : "an entry's key is not an Ed25519 key");
   if (e.eid !== await idOfBytes(/** @type {Uint8Array} */ (pub))) throw chainError("bad_entry", "an entry's id is not its key's hash");
   // `enclave` (NK-2): the raw uncompressed P-256 point of a key the phone keeps in its Secure Enclave behind Face ID. It is part of the signed entry, so it is immutable once on the list. Any list
@@ -197,7 +203,7 @@ async function shapeOfEntry(e, kind) {
     if (e.kind !== "device" || !pt || pt.length !== 65 || pt[0] !== 4) throw chainError("bad_entry", "an agreement key is a raw uncompressed P-256 point on a device entry");
   }
   if (e.attest !== undefined && (typeof e.attest !== "string" || e.attest.length > 8192)) throw chainError("bad_entry", "an attestation is a string");
-  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}), ...(e.enclave !== undefined ? { enclave: e.enclave } : {}), ...(e.agree !== undefined ? { agree: e.agree } : {}), ...(e.attest !== undefined ? { attest: e.attest } : {}) };
+  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held ? { held: e.held } : {}), ...(e.via ? { via: e.via } : {}), ...(e.enclave !== undefined ? { enclave: e.enclave } : {}), ...(e.agree !== undefined ? { agree: e.agree } : {}), ...(e.attest !== undefined ? { attest: e.attest } : {}) };
 }
 const cleanLabel = (/** @type {unknown} */ l) => (typeof l === "string" ? l.replace(/[\u0000-\u001f]/g, " ").slice(0, 60) : undefined) || undefined;
 
@@ -275,7 +281,14 @@ export async function applyOp(state, op, ctx = {}) {
       if (signer.enclave && !await verifyEsig(signer, msg, op.esig)) throw chainError("needs_enclave", "a change to who speaks for this identity from a phone also needs its Face ID signature");
       young = youngAt(signer, eff);
       // The recovery code is a way BACK IN, not a way to take over: it can only add a device. That device is a newcomer, and the owner's own devices stay and can remove it.
-      if (signer.kind === "code" && !(op.type === "add" && op.entry && op.entry.kind === "device")) throw chainError("code_limited", "the recovery code can only add a device; sign in with a device to change the list");
+      if (signer.kind === "code" && !(op.type === "confirm" || (op.type === "add" && op.entry && op.entry.kind === "device"))) throw chainError("code_limited", "the recovery code can only add or confirm a device; sign in with a device to change the list");
+      // A device the relay added after a GitHub sign-in (via "github") is limited until a full device or the recovery code confirms it: it signs nothing on the list but its own agreement key.
+      if (signer.via === "github" && !signer.confirmed && op.type !== "agree") throw chainError("limited", "a device added with GitHub cannot change the list until another device confirms it");
+      if (signer.held === "relay") {
+        if (eff - (signer.fresh ?? signer.since) > RELAY_TTL) throw chainError("relay_expired", "the relay's key has not been refreshed by a device of yours in 90 days");
+        if (op.type !== "add" || !op.entry || op.entry.kind !== "device" || op.entry.via !== "github" || op.entry.held !== undefined) throw chainError("relay_limited", "the relay's key can only add a device marked as signed in with GitHub");
+        if ((signer.adds || []).filter(t => eff - t < 24 * 3_600_000).length >= RELAY_ADDS) throw chainError("relay_rate", `the relay's key adds at most ${RELAY_ADDS} devices a day`);
+      }
     }
   }
 
@@ -284,9 +297,21 @@ export async function applyOp(state, op, ctx = {}) {
     case "add": {
       const e = await shapeOfEntry(op.entry, state.kind);
       if (find(state, e.eid)) throw chainError("exists", "that entry is already on the list");
+      if (e.via === "github" && !(signer && signer.held === "relay")) throw chainError("not_allowed", "only the relay's key adds a device marked as signed in with GitHub");
+      // The relay's own key is put on the list by a full device that is not new, never by the relay, a GitHub device or a recovery code.
+      if (e.held === "relay" && (!signer || signer.kind !== "device" || signer.held || signer.via || young)) throw chainError("not_allowed", "a full device a day old or more puts the relay's key on the list");
       if (isSpace ? young : (sensitive(/** @type {Entry} */ (e)) && young)) throw chainError("newcomer", "a sign-in under 24 hours old cannot change the owners, the recovery code or the contacts");
       if (e.kind === "code" && state.entries.some(x => x.kind === "code")) throw chainError("has_code", "there is a recovery code already; replace it");
-      entries.push({ ...e, since: eff, addedBy: signer ? signer.eid : null });
+      entries.push({ ...e, since: eff, addedBy: signer ? signer.eid : null, ...(e.held === "relay" ? { fresh: eff, adds: [] } : {}) });
+      if (signer && signer.held === "relay") entries = entries.map(x => (x.eid === signer.eid ? { ...x, adds: [...(x.adds || []).filter(t => eff - t < 24 * 3_600_000), eff] } : x));
+      break;
+    }
+    case "confirm": {
+      if (isSpace) throw chainError("bad_op", "a space has no devices to confirm");
+      const target = find(state, String(op.target));
+      if (!target || target.via !== "github" || target.confirmed) throw chainError("not_allowed", "only a device added with GitHub and not yet confirmed can be confirmed");
+      if (!signer || signer.held || signer.via || (signer.kind === "device" && young)) throw chainError("not_allowed", "a full device a day old or more, or the recovery code, confirms");
+      entries = entries.map(x => (x.eid === target.eid ? { ...x, confirmed: true } : x));
       break;
     }
     case "remove": {
@@ -297,7 +322,7 @@ export async function applyOp(state, op, ctx = {}) {
         if (isSpace || sensitive(target) || target.since <= /** @type {Entry} */ (signer).since) throw chainError("newcomer", "a sign-in under 24 hours old can remove only newer sign-ins");
       }
       entries = entries.filter(e => e.eid !== target.eid);
-      if (isSpace ? !entries.length : !entries.some(e => e.kind === "device" || e.kind === "code")) throw chainError("last_entry", "that would leave nobody who can sign");
+      if (isSpace ? !entries.length : !entries.some(e => (e.kind === "device" && e.held !== "relay") || e.kind === "code")) throw chainError("last_entry", "that would leave nobody who can sign");
       break;
     }
     case "replace-code": {
@@ -340,6 +365,8 @@ export async function applyOp(state, op, ctx = {}) {
     }
     default: throw chainError("bad_op", "unknown op type");
   }
+  // Any full device's signature refreshes the relay's key: an abandoned link stops being a standing key after RELAY_TTL.
+  if (signer && signer.kind === "device" && !signer.held && !(signer.via && !signer.confirmed)) entries = entries.map(x => (x.held === "relay" ? { ...x, fresh: eff } : x));
   if (entries.length > MAX_ENTRIES) throw chainError("too_many", `at most ${MAX_ENTRIES} entries`);
   return { ...next, entries, seq: op.seq, head: await hashOf(op), ts: op.ts };
 }
@@ -378,6 +405,7 @@ async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
   const dev = find(at, op.via);
   if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
   if (dev.held === "web") throw chainError("web_key", "a key kept by a web page cannot change who owns a space; use your passkey");
+  if (dev.held === "relay" || (dev.via === "github" && !dev.confirmed)) throw chainError("limited", "a device added with GitHub cannot change who owns a space until another device confirms it");
   if (dev.enclave && !await verifyEsig(dev, msg, op.esig)) throw chainError("needs_enclave", "a change to who owns a space from a phone also needs its Face ID signature");
   if (!await verifyEntry(dev, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
   if (ctx.live || (ctx.liveFrom !== undefined && op.seq >= ctx.liveFrom)) await stillOnList(ctx, ops, dev);
@@ -400,6 +428,7 @@ export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
     const { at, ops } = await ownerAt(ctx, e.eid, seq, head);
     const dev = typeof via === "string" ? find(at, via) : undefined;
     if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
+    if (dev.held === "relay" || (dev.via === "github" && !dev.confirmed)) throw chainError("limited", "a device added with GitHub cannot sign for a space until another device confirms it");
     if (ctx.live) await stillOnList(ctx, ops, dev);
     return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e, signing: dev };
   }
