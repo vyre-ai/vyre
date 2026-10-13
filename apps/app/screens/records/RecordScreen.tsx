@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Linking } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, Banner, Button, Chip, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, allowsMock, Banner, Button, Chip, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
 import { useSidebar } from "../shell/sidebar";
 import { RecordTimeline } from "./RecordTimeline";
@@ -48,10 +48,9 @@ export function RecordScreen({ id }: { id: string }) {
       <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2">{admin ? <Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
       <View className="flex-row flex-wrap items-center gap-s2 px-s4 pt-s2">
         {factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>)}
-        {email ? <Button kind="secondary" size="sm" icon="mail" label="Email" onPress={() => void Linking.openURL(`mailto:${email}`)} /> : null}
         {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
       </View>
-      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend} /></View>
+      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>

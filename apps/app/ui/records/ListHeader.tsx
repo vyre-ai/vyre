@@ -19,9 +19,9 @@ export type ListCtx = { me?: string; actors?: { id: string; name: string }[]; li
  * a press removes, and "Save as view". A filter is built from the type's own fields (grouped as the type groups them): the field, how (that kind's own operators), and a value
  * picked, not typed, where the field has choices, people or links. Nothing here knows a record type.
  */
-export function ListHeader({ title, noun, shown, total, query, onQuery, chips, onChips, def, ctx, onSave, saveNote, onImport }: {
+export function ListHeader({ title, noun, shown, total, query, onQuery, chips, onChips, def, ctx, onSave, saveNote, onImport, actions }: {
   title: React.ReactNode; noun: string; shown: number; total: number; query: string; onQuery: (q: string) => void; chips: FilterChip[]; onChips: (c: FilterChip[]) => void; def: any; ctx: ListCtx;
-  /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void;
+  /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
 }) {
   const ref = useRef<TextInput>(null);
   const [adding, setAdding] = useState(false);
@@ -47,6 +47,7 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, chips, o
         <View className="min-w-menu flex-1"><Field name="Search" value={query} onChangeText={onQuery} placeholder={`Search ${noun}   /`} inputRef={ref} onKey={(k) => { if (k === "Escape") { onQuery(""); ref.current?.blur(); } }} /></View>
         <Button kind="secondary" size="sm" icon="plus" label="Filter" onPress={() => setAdding(true)} />
         {onImport ? <Button kind="ghost" size="sm" icon="upload" label="Import" onPress={onImport} /> : null}
+        {actions}
         {chips.length && onSave ? <Button kind="ghost" size="sm" icon="pin" label="Save as view" onPress={onSave} /> : null}
       </View>
       {chips.length || query ? (

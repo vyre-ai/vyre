@@ -1,6 +1,6 @@
 // Your AI keys: make a key for one of your AIs and name it. The AI then acts as you in Vyre, with the access you have and no more; the name is what shows in Activity and approvals afterwards.
 // A key is for `vyre mcp` on this computer, or hosted: a URL and the key for any MCP client over HTTP. Each key has a Revoke that ends it at once. Sending, publishing and paying still wait for your yes.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Switch, Text, showToast } from "@vyre/ui";
@@ -10,6 +10,24 @@ import { mcp } from "./mcp";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); };
+
+/** A secret shown once: dots, Copy, and Reveal for 60 seconds (the vault's rule). A small box on purpose, so it is easy to swap for the library's SecretField when that lands. */
+function SecretBox({ value }: { value: string }) {
+  const [shown, setShown] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const reveal = () => { setShown(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setShown(false), 60_000); };
+  return (
+    <View className="gap-s2">
+      <Text mono selectable={shown}>{shown ? value : "\u2022".repeat(24)}</Text>
+      <View className="flex-row flex-wrap gap-s2">
+        <Button size="sm" label="Copy the key" onPress={() => copy(value)} />
+        {shown ? <Button size="sm" kind="ghost" label="Hide" onPress={() => { setShown(false); if (timer.current) clearTimeout(timer.current); }} /> : <Button size="sm" kind="ghost" label="Reveal for 60 seconds" onPress={reveal} />}
+      </View>
+      <Text size="caption" tone="label">You won't see it again.</Text>
+    </View>
+  );
+}
 
 /** Sample world only (the screenshot pass): the screen with these keys and changes, calling nothing. */
 export type McpSample = { connections: Connection[]; changes: Change[]; made?: Made; ending?: string };
@@ -44,11 +62,9 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
           <Text strong>{`${made.name} has a key`}</Text>
           <Text size="caption" tone="label">{made.local ? "Run the line for your AI once. The key is in a file only your user account can read." : "Paste one of these into the AI's own settings. The key is shown only now; if you lose it, make another."}</Text>
           {made.url ? <Text mono selectable>{made.url}</Text> : null}
-          {!made.local ? <Text mono selectable>{made.key}</Text> : null}
-          <Text mono selectable>{made.snippets.claude}</Text>
+          {!made.local ? <SecretBox value={made.key} /> : null}
           <View className="flex-row flex-wrap gap-s2">
             {made.url ? <Button size="sm" label="Copy the URL" onPress={() => copy(made.url as string)} /> : null}
-            {!made.local ? <Button size="sm" label="Copy the key" onPress={() => copy(made.key)} /> : null}
             <Button size="sm" kind="ghost" label="Copy the Claude Code line" onPress={() => copy(made.snippets.claude)} />
             <Button size="sm" kind="ghost" label="Copy the Codex line" onPress={() => copy(made.snippets.codex)} />
             <Button size="sm" kind="ghost" label="Copy the JSON config" onPress={() => copy(made.snippets.json)} />
