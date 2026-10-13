@@ -15,13 +15,14 @@ import { httpFetch } from "../../lib/http.js";
 
 const TIMEOUT_MS = 30_000;
 const MAX_BYTES = 5_000_000;
+const MAX_FILE_BYTES = 25_000_000;
 
 export const SCOPE = "https://www.googleapis.com/auth/";
 /** The short scope names this module uses, as google.test reports them. */
 export const SCOPES = ["calendar.readonly", "calendar.events", "gmail.readonly", "gmail.compose", "gmail.send"];
 export const DEFAULT_BASE = { calendar: "https://www.googleapis.com", gmail: "https://gmail.googleapis.com", drive: "https://www.googleapis.com" };
 /** Scopes a request may name beyond SCOPES (read-only Drive); google.test does not require them of an account. */
-export const EXTRA_SCOPES = ["drive.readonly"];
+export const EXTRA_SCOPES = ["drive.readonly", "drive"];
 
 /** An API refusal or outage, with Google's status. */
 export class GoogleError extends Error {
@@ -57,28 +58,49 @@ export function client({ creds, fetch: f = httpFetch }) {
     }
     for (let attempt = 0; ; attempt++) {
       const headers = { ...(await creds.headers(acct.auth, { scopes })), accept: "application/json" };
-      if (req.body !== undefined) headers["content-type"] = "application/json";
+      const bytesBody = req.body instanceof Uint8Array;
+      if (req.body !== undefined) headers["content-type"] = bytesBody ? "application/octet-stream" : "application/json";
       // only a precondition may ride along (the calendar sync's If-Match); never anything that could carry or replace a credential
       for (const [k, v] of Object.entries(req.headers || {})) if (/^(if-match|if-none-match)$/i.test(k) && typeof v === "string") headers[k.toLowerCase()] = v;
       let res;
       try {
         res = await f(url, { method: req.method || "GET", headers, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS),
-          ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}) });
+          ...(req.body !== undefined ? { body: bytesBody ? req.body : JSON.stringify(req.body) } : {}) });
       } catch (e) {
         const why = /** @type {any} */ (e)?.name === "TimeoutError" ? "did not answer in 30 s" : "could not be reached";
         throw new GoogleError(`Google ${req.api} ${why}`, { code: "network" });
       }
-      const text = await readCapped(res);
+      // raw: "bytes" is a file's content as it is (Drive, linked folders); the answer is read as bytes, with a larger cap, and an error body is still read as text
+      const asBytes = req.raw === "bytes" && res.ok;
+      const text = asBytes ? "" : await readCapped(res);
+      const bytes = asBytes ? await readBytes(res) : null;
       if (res.status === 401 && attempt === 0) { creds.invalidate(acct.auth, scopes); continue; }
       if (res.status >= 300 && res.status < 400) throw new GoogleError(`Google ${req.api} answered a redirect (${res.status}), which is refused`, { status: res.status });
       let json = null;
       try { json = text ? JSON.parse(text) : {}; } catch {}
       if (!res.ok) throw refusal(req, res.status, json, creds.scrub(text));
+      if (bytes) return { bytes };
       if (req.raw) return { text: creds.scrub(text) };
       return json ?? {};
     }
   }
   return { request };
+}
+
+/** The body as bytes, up to a larger cap, for a file. */
+async function readBytes(res) {
+  if (!res.body) return new Uint8Array(0);
+  const reader = res.body.getReader();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_FILE_BYTES) { await reader.cancel().catch(() => {}); throw new GoogleError(`That file is larger than ${MAX_FILE_BYTES / 1_000_000} MB, which linked folders do not carry`, { code: "too_large" }); }
+    parts.push(value);
+  }
+  return new Uint8Array(Buffer.concat(parts));
 }
 
 /** The body, up to a cap, so a runaway answer cannot fill memory. */
