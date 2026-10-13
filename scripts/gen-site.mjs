@@ -18,11 +18,12 @@ const site = resolve(here, '..', 'site');
 const SITE = 'https://vyre.run';
 // The release the site speaks for. scripts/assemble-site.sh --tag vX.Y.Z passes it as VYRE_SITE_VERSION, so a release updates every page by itself;
 // the default is the newest release this file knows the notes for (RELEASE_NOTES below).
-const VERSION = process.env.VYRE_SITE_VERSION && /^\d+\.\d+\.\d+$/.test(process.env.VYRE_SITE_VERSION) ? process.env.VYRE_SITE_VERSION : '0.2.9';
+const VERSION = process.env.VYRE_SITE_VERSION && /^\d+\.\d+\.\d+$/.test(process.env.VYRE_SITE_VERSION) ? process.env.VYRE_SITE_VERSION : '0.5.0';
 // What each release fixed, in the words the home page and llms-full.txt use. A version with no entry here shows no "out now" line.
 const RELEASE_NOTES = {
   '0.2.1': 'Claude sign-in accepts the pasted code, and the phone app installs properly from the home screen.',
   '0.2.9': 'the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.',
+  '0.5.0': 'people and agents in the same chats, Flows, Playbooks, Records, a Vault for people and agents, Sites, Documents and Signing.',
   '0.2.2': 'Your own phone, Deck and Mac stop locking each other out of a conversation, a session on a server always gets Vyre\u2019s tools, a provider\u2019s only account is its default, and a message you send shows Sending until the server answers.',
 };
 const RELEASE_LINE = RELEASE_NOTES[VERSION] ? `${VERSION} (out now): ${RELEASE_NOTES[VERSION]}` : '';
@@ -49,21 +50,31 @@ const I = {
   ai: ic('<circle cx="14" cy="14" r="9.5"/><path d="M14 8v6l4 2.4"/>'),
   agents: ic('<circle cx="9" cy="10" r="3.2"/><circle cx="19" cy="10" r="3.2"/><path d="M3.5 22c.6-3.6 2.8-5.4 5.5-5.4s4.9 1.8 5.5 5.4M13.5 22c.6-3.6 2.8-5.4 5.5-5.4s4.9 1.8 5.5 5.4"/>'),
   modules: ic('<rect x="4" y="12" width="9" height="9" rx="1.4"/><rect x="15" y="12" width="9" height="9" rx="1.4"/><rect x="9.5" y="4" width="9" height="9" rx="1.4"/><path d="M12 4v-.01M17 4v-.01"/>'),
+  records: ic('<rect x="4" y="5" width="20" height="18" rx="1.8"/><path d="M4 11h20M4 17h20M11 5v18"/>'),
+  flows: ic('<circle cx="7" cy="8" r="2.6"/><circle cx="21" cy="8" r="2.6"/><circle cx="14" cy="21" r="2.6"/><path d="M9.6 8h8.8M8.4 10.3l4.2 8.4M19.6 10.3l-4.2 8.4"/>'),
+  chat: ic('<path d="M5 6.5h18v11.5H13.5L9 22.5V18H5z"/><path d="M10 11h8M10 14.5h5"/>'),
+  stages: ic('<rect x="3.5" y="8" width="6" height="12" rx="1.2"/><rect x="11" y="8" width="6" height="12" rx="1.2"/><rect x="18.5" y="8" width="6" height="12" rx="1.2"/><path d="M6.5 12.5h.01M14 12.5h.01M21.5 12.5h.01"/>'),
+  vault: ic('<rect x="5" y="12" width="18" height="11" rx="2"/><path d="M9 12V9a5 5 0 0 1 10 0v3M14 16.5v3"/>'),
+  sites: ic('<circle cx="14" cy="14" r="9.5"/><path d="M4.5 14h19M14 4.5c3 3 3 16 0 19M14 4.5c-3 3-3 16 0 19"/>'),
+  doc: ic('<path d="M7 3.5h10l5 5v16H7z"/><path d="M17 3.5v5h5M10.5 13h8M10.5 17h8M10.5 21h4"/>'),
+  sign: ic('<path d="M4 22.5c3-6 5-9 6.5-9s.5 4 2.5 4 3-3 5-3 2 2 5 2"/><path d="M4 25h20"/>'),
   people: ic('<circle cx="14" cy="9.5" r="4"/><path d="M5.5 23c.8-4.6 4-7 8.5-7s7.7 2.4 8.5 7"/>'),
 };
 const STAR = `<svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>`;
 const REPO = 'https://github.com/vyre-ai/vyre';
+const MAP_URL = `${REPO}/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md`;
 
 // ---------- layout ----------
 const NAV = [
   ['Product', '/#product'],
   ['Devices', '/#devices'],
+  ['Architecture', '/architecture/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
   const links = NAV.map(([t, h]) => {
-    const cur = (slug === 'direction' && h === '/direction/') ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -85,10 +96,10 @@ const FOOT = `<footer class="foot">
     <div class="foot-grid">
       <div>
         <a class="brand" href="/" aria-label="Vyre, home">${MARK}${WORD}</a>
-        <p class="tag">Your AI command center, on your own machines. Open source, Apache 2.0.</p>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -99,7 +110,7 @@ const FOOT = `<footer class="foot">
 const ORG = { '@type': 'Organization', '@id': `${SITE}/#org`, name: 'Vyre', url: `${SITE}/`, logo: `${SITE}/icon-512.png`, sameAs: ['https://github.com/vyre-ai'] };
 const SOFT = (extra = {}) => ({
   '@type': 'SoftwareApplication', '@id': `${SITE}/#app`, name: 'Vyre', url: `${SITE}/`,
-  description: 'Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, with memory, a vault, teammates and watchers. Reach it from a Mac, a Windows PC, a Linux server or any phone.',
+  description: 'Open-source, self-hosted command center where people and AI agents share chats, records, Flows, a vault, sites and documents. One group chat across Claude, Codex, Grok and OpenRouter. Reach it from a Mac, a Windows PC, a Linux server or any phone.',
   applicationCategory: 'DeveloperApplication', operatingSystem: 'macOS, Windows, Linux, iOS, Android', softwareVersion: VERSION,
   license: 'https://www.apache.org/licenses/LICENSE-2.0', isAccessibleForFree: true,
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }, publisher: { '@id': `${SITE}/#org` },
@@ -177,10 +188,11 @@ const HOME_FAQ = [
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
   ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), scan the code your computer shows, and check that both screens show the same words.'],
-  ['Where does my data live?', 'Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
+  ['Where does my data live?', 'Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
   ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
-  ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.'],
-  ['What stops an agent from doing something I did not ask for?', 'Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.'],
+  ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do.'],
+  ['What stops an agent from doing something I did not ask for?', 'Anything that leaves your server, such as an email, a payment, a deletion or a published page, waits at the Gate until a person has read the exact words and approved them. An agent can ask and cannot approve. A model sees a placeholder where a secret would be. The <a href="/architecture/">architecture page</a> shows how.'],
+  ['Who is Vyre for?', 'Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. <a href="'+MAP_URL+'">Point your AI agent at the repo</a> and it can show how your business would run on Vyre.'],
   ['Is it ready?', `It is ${VERSION}, and what this page shows works today. Some things come next, and the <a href="/direction/">direction page</a> lists them. The <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> list what ${VERSION} does not do yet.`],
 ];
 
@@ -188,15 +200,15 @@ const homeBody = `
 <section class="hero" aria-labelledby="hero-h">
   <div class="wrap">
     <div class="copy">
-      ${eyebrow('Open source. Apache 2.0. Your own subscriptions.')}
-      <h1 id="hero-h" class="display">Your AI command center, <b>on your own machines.</b></h1>
-      <p class="lead">Vyre runs your agents on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.</p>
-      <p class="hero-keep">Your agents keep working when your laptop is closed.</p>
+      ${eyebrow('Open source. Apache 2.0. Self-hosted. Any model.')}
+      <h1 id="hero-h" class="display">Vyre: <b>the agentic command center for AI-native teams</b></h1>
+      <p class="mission">Our mission is to help every professional services team become AI-native.</p>
+      <p class="lead">In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person’s yes.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/start/">Set up Vyre</a>
-        <a class="btn" href="/direction/">See the direction</a>
+        <a class="btn" href="/architecture/">See the architecture</a>
       </div>
-      <p class="hero-note">Free. Needs one AI account.</p>
+      <p class="hero-note">Free. Needs one AI account. <a href="${MAP_URL}">Point your AI agent at the repo</a>.</p>
     </div>
     <div class="stage">
       <canvas class="field" aria-hidden="true"></canvas>
@@ -233,34 +245,22 @@ const homeBody = `
   </div>
 </section>
 
-<section class="sec" id="why" aria-labelledby="why-h">
-  <div class="wrap problem">
-    <div class="art rv" aria-hidden="true"><canvas class="markart"></canvas></div>
-    <div class="rv">
-      ${eyebrow('The problem.')}
-      <h2 id="why-h" class="h2">Your AI work lives in <b>someone else’s tabs.</b></h2>
-      <p class="lead">Each AI account has its own app, its own memory and its own keys. Vyre keeps the work, the memory and the keys in one place you own.</p>
-      <div class="pains">
-        <div><h3>One app per AI</h3><p>Claude, Codex and Grok each keep their own history and their own keys. Switching means starting over.</p></div>
-        <div><h3>An agent that stops when the lid closes</h3><p>An agent on your laptop sleeps when the laptop does. On your server it keeps working, and your phone is the way back in.</p></div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="sec" id="product" aria-labelledby="pieces-h">
   <div class="wrap">
     <div class="sec-head rv">
-      ${eyebrow('Stop starting over.')}
-      <h2 id="pieces-h" class="h2">Plug in <b>what you need.</b></h2>
-      <p class="lead">AI accounts, machines, people, agents and modules all connect the same way.</p>
+      ${eyebrow('What you get in 0.5.')}
+      <h2 id="pieces-h" class="h2">One place for the team, <b>and the agents that work with it.</b></h2>
+      <p class="lead">Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not.</p>
     </div>
-    <div class="pieces rv">
-      <div class="piece"><span class="num">01</span>${I.ai}<h3>AI accounts</h3><p>Claude, Codex, Grok or OpenRouter, from the subscriptions you already pay for. Several per provider.</p></div>
-      <div class="piece"><span class="num">02</span>${I.server}<h3>Machines</h3><p>A Linux server, a Mac that stays on, your Windows PC, your phone. One Vyre across them.</p></div>
-      <div class="piece"><span class="num">03</span>${I.agents}<h3>Agents</h3><p>Teammates with roles and notes. Watchers that act within your rules. They hand work to each other.</p></div>
-      <div class="piece"><span class="num">04</span>${I.modules}<h3>Modules</h3><p>The building blocks you or your agents add: tools, connections and screens.</p></div>
-      <div class="piece"><span class="num">05</span>${I.people}<h3>People</h3><p>Next: team spaces, tagged Cloud, where a team shares a server and each person keeps their own. Your own space is Personal on your devices and My Cloud on your own server. See the <a href="/direction/">direction</a>.</p></div>
+    <div class="pieces p4 rv">
+      <div class="piece"><span class="num">01</span>${I.records}<h3>Records</h3><p>Contacts, projects, tasks and the record types you define, with views, tags and Excel or CSV import. A sealed field shows an agent a placeholder, never the value.</p></div>
+      <div class="piece"><span class="num">02</span>${I.flows}<h3>Flows</h3><p>Start from a person, a schedule, a record change, a stage, a form or a link. Steps find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</p></div>
+      <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p></div>
+      <div class="piece"><span class="num">04</span>${I.stages}<h3>Playbooks and tracks</h3><p>A project template holds stages, the tasks in each and who does each task. Run each kind of work as its own track, with its own Playbook and Flows over shared records.</p></div>
+      <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p></div>
+      <div class="piece"><span class="num">06</span>${I.sites}<h3>Sites</h3><p>An agent builds a site, previews it at a private address and puts it live on your yes. Your own domain shows the DNS record to add.</p></div>
+      <div class="piece"><span class="num">07</span>${I.doc}<h3>Documents</h3><p>Fill your own Word templates from a record and the records linked to it, as Word or PDF. A model never rewrites the document.</p></div>
+      <div class="piece"><span class="num">08</span>${I.sign}<h3>Signing</h3><p>Send a document for signature from a record. The signer needs no account, and the signed copy files back on the record.</p></div>
     </div>
   </div>
 </section>
@@ -268,10 +268,10 @@ const homeBody = `
 <section class="sec" id="accounts" aria-labelledby="acc-h">
   <div class="wrap feat flip">
     <div class="feat-copy rv">
-      <span class="num">02 &middot; Accounts</span>
-      <h2 id="acc-h" class="h2">One session. <b>Every AI account you have.</b></h2>
-      <p class="lead">A session belongs to Vyre, not to one model. Change the model whenever you like and it keeps its memory and its files.</p>
-      ${list([['The model picker', 'Choose the provider, account, model and effort from the composer.'], ['@codex, @grok', 'Add a name to one message to ask another model. The session stays where it was.'], ['See who answered', 'Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.'], ['Images and video', 'What a model generates is saved in the project with its provider and prompt.']])}
+      <span class="num">One chat &middot; Any model</span>
+      <h2 id="acc-h" class="h2">One group chat. <b>Every AI account you have.</b></h2>
+      <p class="lead">A chat belongs to Vyre, not to one model. Change the model whenever you like and the thread, its files and its recall stay.</p>
+      ${list([['The model picker', 'Choose the provider, account, model and effort from the composer.'], ['@codex, @grok', 'Add a name to one message to ask another model. The chat stays where it was.'], ['Agents in roles', 'Anyone in the Space can make an agent and share it with a person or a role as use-only or full. Give one the work, another the review, another the plan.'], ['See who answered', 'Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.']])}
     </div>
     <div class="mock rv"><div class="win" role="img" aria-label="The model picker listing Claude, Codex, Grok and OpenRouter, each from your own account. Sample data.">
       <div class="win-bar"><i></i><i></i><i></i><span class="t">Answer with</span></div>
@@ -280,7 +280,7 @@ const homeBody = `
         <div class="row"><span class="mk">X</span><div class="grow"><b>Codex</b><small>Your ChatGPT sign-in</small></div><span class="st">@codex</span></div>
         <div class="row"><span class="mk">G</span><div class="grow"><b>Grok</b><small>Your xAI account</small></div><span class="st">@grok</span></div>
         <div class="row"><span class="mk">O</span><div class="grow"><b>OpenRouter</b><small>Your key &middot; any model it offers</small></div><span class="st"></span></div>
-        <div class="sysline">Switched to Codex. It has this session’s memory and files.</div>
+        <div class="sysline">Switched to Codex. The thread and its files came with it.</div>
       </div></div></div>
   </div>
 </section>
@@ -288,25 +288,25 @@ const homeBody = `
 <section class="sec" id="agents" aria-labelledby="ag-h">
   <div class="wrap feat">
     <div class="feat-copy rv">
-      <span class="num">03 &middot; Teammates and watchers</span>
-      <h2 id="ag-h" class="h2">Agents with roles <b>that keep working.</b></h2>
-      <p class="lead">A teammate is a named role with its own notes. It hands work to the next one, and watchers act within your rules.</p>
-      ${list([['Teammates', 'A role inside a project, with a charter your agents draft and you edit. You can fill a role with one of your own agents.'], ['Watchers', 'They notice mail, calendar, repo and Slack events, or run on a schedule. Each shows a card before you turn it on: when, what it reads, whether it acts, what it costs.'], ['Inside a wall', 'A watcher runs with no home folder and no network of its own. If the wall is not available, it does not run and says why.']])}
+      <span class="num">Flows and agents</span>
+      <h2 id="ag-h" class="h2">Work that runs the same way <b>every time.</b></h2>
+      <p class="lead">A Flow starts from a trigger and runs steps. A step can give work to a person or to an agent. The agent wakes with the task, the record and the Flow it came from.</p>
+      ${list([['Finish, hand on or say stuck', 'An agent ends a task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.'], ['People in the loop', 'A step can name an assignee, an approver and followers. A person approves a Flow before it runs, and every run has its own page.'], ['Readable dates', 'Text in a step fills in values, such as {today} or {after.starts_at - 1 day as date}, with a date picker to insert them.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="A watcher card: when mail arrives from a client, check it against the project notes, draft a reply, and act only by drafting. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Watcher &middot; client mail</span></div>
+    <div class="mock rv"><div class="win" role="img" aria-label="A Flow card: when an intake form arrives, find or create the contact, give the first draft to an agent, ask a person to approve, then send. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Flow &middot; New intake</span></div>
       <dl class="kv">
-        <dt>When</dt><dd>A client email arrives</dd>
-        <dt>Check</dt><dd>Is it about an open order?</dd>
-        <dt>Do</dt><dd>Draft a reply, held for you</dd>
-        <dt>Reads</dt><dd>Inbox, project notes</dd>
-        <dt>Acts</dt><dd>No. It drafts only.</dd>
-        <dt>Cost</dt><dd>A few cents a run, capped daily</dd>
+        <dt>Starts</dt><dd>A form is submitted</dd>
+        <dt>Step 1</dt><dd>Find or create the contact</dd>
+        <dt>Step 2</dt><dd>Give the first draft to kit, an agent</dd>
+        <dt>Step 3</dt><dd>Ask Alex to approve it</dd>
+        <dt>Step 4</dt><dd>Send, held for Alex’s yes</dd>
       </dl>
-      <div class="sysline">Owned by teammate <b>kit</b> &middot; hands drafts to <b>juno</b></div>
+      <div class="sysline">Approved by <b>Alex</b> before it runs &middot; each run has its own page</div>
     </div></div>
   </div>
 </section>
+
 
 <section class="sec" id="approval" aria-labelledby="ap-h">
   <div class="wrap feat flip">
@@ -328,21 +328,21 @@ const homeBody = `
 <section class="sec" id="memory" aria-labelledby="mem-h">
   <div class="wrap feat">
     <div class="feat-copy rv">
-      <span class="num">05 &middot; Memory and vault</span>
-      <h2 id="mem-h" class="h2">It remembers, <b>and shows you where from.</b></h2>
-      <p class="lead">Every session goes into your memory, and a recalled answer shows its source.</p>
-      ${list([['Ask why', 'A recalled answer opens the call, the thread or the turn it came from. Anything else came from the model, and says so.'], ['A vault, on your server', 'Logins, one-time codes and API keys are sealed on your own machine. Agents use a credential without ever seeing it.'], ['Share and take back', 'Share one item, then revoke it in one step.']])}
+      <span class="num">Vault</span>
+      <h2 id="mem-h" class="h2">Agents use a login <b>without seeing it.</b></h2>
+      <p class="lead">The vault holds passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in groups. Each member also has a vault of their own.</p>
+      ${list([['Share and take back', 'Share an item with a person as Can use or Can edit, then revoke it.'], ['A placeholder, not the value', 'A model sees a placeholder. The real value is put in outside the model, at the moment of sending.'], ['A person says yes', 'Revealing a value, or sending with it, takes a person’s yes.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="A memory answer with its source, and a vault item whose value stays sealed. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Memory</span></div>
-      <div class="msg"><div class="who">You</div>When does Northwind want the drafts, and in what format?</div>
-      <div class="msg"><div class="who"><span class="pill acc">Recalled</span> Northwind weekly, 3 Mar &middot; no model used</div><b>Friday before noon.</b> PDFs named by order number, sent to the team inbox.<div class="why" style="margin-top:8px;font:400 12px var(--mono);color:var(--ink-3)">Why? Open turn 41</div></div>
-      <div class="sysline">Vault</div>
+    <div class="mock rv"><div class="win" role="img" aria-label="A vault item whose value stays sealed, shared with an agent as Can use. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Vault &middot; Billing</span></div>
       <div class="row"><span class="mk sq">&#128274;</span><div class="grow"><b>Northwind billing portal</b><small>Login &middot; one-time code</small></div><span class="sealed">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span></div>
-      <div class="row"><div class="grow"><small>kit used it for the 9 am export. It never saw the value.</small></div></div>
+      <div class="row"><span class="mk vi">k</span><div class="grow"><b>kit</b><small>Can use</small></div><span class="st on">shared</span></div>
+      <div class="row"><span class="mk">A</span><div class="grow"><b>Alex</b><small>Can edit</small></div><span class="st">owner</span></div>
+      <div class="sysline">kit used it for the 9 am export. It never saw the value.</div>
     </div></div>
   </div>
 </section>
+
 
 <section class="sec" id="phone" aria-labelledby="ph-h">
   <div class="wrap feat flip">
@@ -374,12 +374,23 @@ const homeBody = `
       <p class="lead">Vyre is Apache 2.0 and runs on your server. You pay your AI providers, not us.</p>
     </div>
     <div class="cost rv">
-      <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.</p></div>
+      <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. Your data lives on your devices and on servers you or your team run. Vyre doesn’t hold it.</p></div>
       <div><p class="lbl">Your AI</p><p class="big">Your plans</p><p>Claude, Codex, Grok or OpenRouter, on the subscriptions or keys you already have.</p></div>
       <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on.</p></div>
     </div>
   </div>
 </section>
+
+<section class="sec" id="agent-guide" aria-labelledby="agt-h">
+  <div class="wrap">
+    <div class="note rv">
+      <p class="lbl" id="agt-h" style="margin-bottom:8px">For your AI agent</p>
+      <p style="margin:0 0 10px"><b>See how your business would run on Vyre.</b> An agent reads the repo and follows a method that turns a business into members, records, Playbooks, Flows, agents, documents, sites and Gate rules.</p>
+      <p style="margin:0"><a class="btn btn-fill btn-sm" href="${MAP_URL}">Point your AI agent at the repo</a> <a class="btn btn-sm" href="/architecture/">Read the architecture</a></p>
+    </div>
+  </div>
+</section>
+
 
 <section class="sec" id="install" aria-labelledby="in-h">
   <div class="wrap feat">
@@ -409,14 +420,15 @@ const homeBody = `
       <p class="lead">This is direction, not a promise of dates.</p>
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      <div class="piece"><span class="num">Now &middot; 0.3.0</span><h3>Agents that work together</h3><p>Hand-offs you can watch, one yes for a group of messages, any app connected through your vault, signatures inside Vyre, and modules that look like part of Vyre.</p></div>
-      <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Projects with AI teammates</h3><p>Templates with stages and tasks, an Engineer that sets things up with you, skills for every AI, live previews.</p></div>
-      <div class="piece"><span class="num">After that &middot; 0.3.2</span><h3>Documents, messages, publishing</h3><p>Documents made from your templates (signing already works), email and texts from your accounts, sites on your own domain.</p></div>
-      <div class="piece"><span class="num">Later</span><h3>Screen Share and more</h3><p>Watch and take over your agents\' computers, the iPhone App Store app, and a hosted option.</p></div>
+      <div class="piece"><span class="num">Now &middot; 0.5</span><h3>Agents and people, one place</h3><p>Records, Flows, Playbooks, one group chat across providers, a Vault, Sites, Documents and Signing.</p></div>
+      <div class="piece"><span class="num">Next &middot; 0.5.1</span><h3>Flows you can trust</h3><p>One chat per Flow, deadlines on agent steps, a failure panel on every step, and per-record privacy for custom record types.</p></div>
+      <div class="piece"><span class="num">After that &middot; 0.5.2</span><h3>Integrations and skills</h3><p>An Integration wraps an outside app. Clio, Lawmatics, GoHighLevel and DecisionVault are planned, with screens for skills and plugins.</p></div>
+      <div class="piece"><span class="num">Later</span><h3>Screen Share and more</h3><p>Watch and take over your agents' computers, the iPhone App Store app, and a hosted option.</p></div>
     </div>
     <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
   </div>
 </section>
+
 
 <section class="sec" id="faq" aria-labelledby="faq-h">
   <div class="wrap">
@@ -437,10 +449,10 @@ const homeBody = `
 
 page({
   slug: '', path: '/',
-  title: 'Vyre: your AI command center, on your own machines',
-  desc: 'Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.',
-  ogTitle: 'Your AI command center, on your own machines.',
-  ogSub: 'Your agents run on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.',
+  title: 'Vyre: the agentic command center for AI-native teams',
+  desc: 'Open-source, self-hosted command center where people and AI agents share chats, records, Flows, a vault, sites and documents. Built for professional services teams.',
+  ogTitle: 'The agentic command center for AI-native teams.',
+  ogSub: 'Our mission is to help every professional services team become AI-native.',
   body: homeBody, ld: [SOFT(), { '@type': 'WebSite', '@id': `${SITE}/#site`, url: `${SITE}/`, name: 'Vyre', publisher: { '@id': `${SITE}/#org` } }, faqLd(HOME_FAQ)],
 });
 
@@ -538,9 +550,9 @@ devicePage({
     `<b>Press Alt+Space.</b> Ask from anywhere, or open the tray icon.`,
   ] },
   needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
-  gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'A Windows PC is not a home in 0.2.9 and runs no sessions of its own: your PC is a client of a server, a Linux machine or a Mac. The Windows home comes in 0.3.0.'],
+  gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'A Windows PC is a device, never the home: it joins a team or connects to a server that runs on a Linux machine or a Mac that stays on.'],
   faq: [
-    ['Can my Windows PC be the server?', 'Not in 0.2.9. A home runs on a Mac, Linux or a server, and your Windows PC connects to it as a client. The Windows home comes in 0.3.0.'],
+    ['Can my Windows PC be the server?', 'Not yet. The server runs on Linux or on a Mac that stays on, and your Windows PC joins a team or connects to that server.'],
     ['Why does Windows warn me?', 'The app is not code-signed yet. The installer script checks its SHA-256, and updates install only when the Vyre release key signed them.'],
     ['How do I pair a PC?', 'In Settings on a device you already use, add a Windows PC. Type the 13 words or scan the QR code on the PC, then confirm the server’s address and fingerprint.'],
     ['Is there an Alt+Space conflict?', 'The panel opens with Alt+Space. If another app uses that key, change one of them in its settings.'],
@@ -621,7 +633,7 @@ const DIR = `
   <div class="wrap">
     <h2 id="now-h" class="lbl" style="margin-bottom:28px">Where Vyre is today &middot; ${VERSION}</h2>
     <div class="road">
-      <div class="stop now rv"><p class="ver">Released</p><h3>What you can use now</h3><ul><li><b>Set up in minutes</b>Reserve your name, install the app on your Mac or Windows PC, and add a server: a Linux server or a Mac mini that stays on. Add your Android phone from the app.</li><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with automations and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, on your own subscriptions.</li><li><b>A built-in network</b>Your devices reach your server with no VPN to install.</li><li><b>One yes before anything goes out</b>When an assistant wants to send something, it waits for your approval on your phone.</li><li><b>Watch the work</b>See what an assistant is doing as it happens: its latest thought, each step, and a note when it hands a job to a teammate. The teammate\'s steps and report come back into the same conversation.</li><li><b>One yes for a group</b>When an assistant holds several things, such as three emails, they arrive as one card. You read each item\'s exact words, drop or edit any, and say yes once. A sent email is logged on the matching client.</li><li><b>Connect any app that has an API</b>Use a key already in your vault, or import the app\'s API description and approve the connection Vyre drafts. Reading is free; sending, changing and deleting wait for your yes. It works in Flows, watchers and your assistants\' tools.</li><li><b>Signatures inside Vyre</b>Install Documents to send documents for signature on your own server. A signed document is filed on the client and saved to Drive.</li><li><b>Modules that feel built in</b>A module\'s screens, records, steps and triggers show up in Vyre\'s own look, and you arrange your own sidebar. Modules you add cannot pair devices or reach another machine.</li><li><b>Back online by itself</b>A Mac server comes back after a power cut, and the app tells you plainly when it cannot reach your server.</li><li><b>Backups, with one gap</b><code>vyre backup</code> carries your vault, settings and files, not the Space\'s records yet. Keep the server\'s disk backed up too. That comes in 0.3.1.</li></ul></div>
+      <div class="stop now rv"><p class="ver">Released &middot; 0.5</p><h3>What you can use now</h3><ul><li><b>People and agents in the same chats</b>@ a teammate or an agent, # a record, a file or a project. Anyone in the Space can make an agent and share it as use-only or full.</li><li><b>Agents that wake on a task</b>An agent finishes the task, hands it on, or marks it stuck with a plain reason.</li><li><b>Flows</b>Triggers from a person, a schedule, a record change, a stage, a form or a link, and steps that find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</li><li><b>Playbooks</b>Stages, the tasks in each stage, who does each task, and when a stage counts as done.</li><li><b>Records</b>Contacts, projects, tasks and your own record types, with tags, saved views, and Excel or CSV import.</li><li><b>Documents and signing</b>Fill your Word templates from a record, as Word or PDF, and send for signature. A signer needs no account.</li><li><b>Files</b>One Files place for the Space, with linked Google Drive and Dropbox folders.</li><li><b>Vault</b>Ten groups, shared as Can use or Can edit, and a vault of their own for every member.</li><li><b>Sites</b>An agent builds a site and puts it live with one yes from you.</li><li><b>Needs you</b>One place for approvals, asks and stuck tasks, with typed cards.</li><li><b>Teams</b>Roles, per-project seat levels, invites with a role, and a Space-wide Google or Microsoft 365 key for each member\'s own mail, calendar and drive.</li><li><b>Sign in by name</b>Sign in by name replaces the pairing code, and updates need the owner\'s yes.</li></ul></div>
     </div>
   </div>
 </section>
@@ -629,8 +641,8 @@ const DIR = `
   <div class="wrap">
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">Where Vyre is going</h2>
     <div class="road">
-      <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Projects with AI teammates</h3><ul><li><b>Projects</b>A simple project with chats and files, or one made from a template with stages, tasks and AI teammates that do the work and report back.</li><li><b>An Engineer in every workspace</b>Set up templates, automations, screens and connections by talking to it. Every change waits for your approval and can be undone.</li><li><b>Skills and plugins</b>Install a skill once and every AI and agent in your workspace can use it.</li><li><b>Live previews</b>When an agent builds something, a live preview appears in the conversation; share it in one click.</li><li><b>Automations you can trust</b>Every step can prove it worked; failures land in one place with Retry, Skip and Stop.</li><li><b>One timeline</b>Every conversation, email, document and automation that touched a client, in one place.</li><li><b>Backups that carry your records</b>Moving a Space\'s records safely needs a re-key step you approve on a device.</li><li><b>Your own app modules</b>Add your own app as a module, with one approval on your device.</li><li><b>Agents and sessions in one view</b>The chat view in the app, the same on every device.</li></ul></div>
-      <div class="stop rv"><p class="ver">After that &middot; 0.3.2</p><h3>Documents, messages and publishing</h3><ul><li><b>Documents</b>Generate documents from your own templates, filled from your records. Sending for signature already works.</li><li><b>Messages</b>Email and text messages from your own accounts, logged on the client.</li><li><b>Publish</b>Put a website or app online on your own domain, with every version kept and one-tap rollback.</li></ul></div>
+      <div class="stop rv"><p class="ver">Next &middot; 0.5.1</p><h3>Flows you can trust</h3><ul><li><b>One chat per Flow</b>A divider for each run.</li><li><b>Deadlines on agent steps</b>An agent step that runs too long is stopped and takes a timeout path.</li><li><b>A failure panel</b>On every step in the Flows editor.</li><li><b>Per-record privacy</b>For custom record types.</li><li><b>Flow email</b>With CC, BCC and attachments.</li><li><b>An audit screen</b>For admins: who changed what on a record.</li></ul></div>
+      <div class="stop rv"><p class="ver">After that &middot; 0.5.2</p><h3>Integrations and skills</h3><ul><li><b>Integrations</b>An Integration wraps an outside app\'s API and ships its own Flow steps, triggers, connection and agent tools. Clio, Lawmatics, GoHighLevel and DecisionVault are planned.</li><li><b>Make an Integration from an API</b>An agent can build one for your business on your own server.</li><li><b>Skills and Plugins</b>Browse, write, version and roll back skills. Install and enable plugins per agent and project.</li></ul></div>
       <div class="stop rv"><p class="ver">Later</p><h3>And beyond</h3><ul><li><b>Screen Share</b>Watch and take over your agents\' computers and browsers from any device.</li><li><b>iPhone App Store</b>The iPhone app from the App Store, with notifications.</li><li><b>A hosted option</b>A Vyre-hosted home for people without a server.</li></ul></div>
     </div>
   </div>
@@ -651,6 +663,210 @@ page({
   desc: 'Vyre is becoming a workplace where your team and its AI agents do real work together, on a server you own: where it is today and where it is going. Direction, not a promise of dates.',
   ogTitle: 'Where Vyre is going.', ogSub: 'A workplace for your team and its AI agents, on a server you own.',
   body: DIR, ld: [crumbs([['Vyre', `${SITE}/`], ['Direction', `${SITE}/direction/`]])],
+});
+
+// ---------- architecture page ----------
+// The system in one designed view, drawn in HTML and CSS (classes ar-* in v2.css). Wording follows docs/architecture/overview.md.
+const node = (n, t, d) => `<li class="ar-node"><span class="ar-n">${n}</span><b>${t}</b><span>${d}</span></li>`;
+const ARCH = `
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Architecture</p>
+    ${eyebrow('How Vyre is built.')}
+    <h1 class="display">The architecture, <b>on one page.</b></h1>
+    <p class="lead">Vyre is one product for a team and its agents. It runs on a server you own and on the computers your people use. This page shows the layers, how a call is checked, how an agent’s turn runs and how the Gate holds anything that leaves your server.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="ideas-h">
+  <div class="wrap">
+    <h2 id="ideas-h" class="lbl" style="margin-bottom:20px">Three ideas shape all of it</h2>
+    <div class="ar-ideas rv">
+      <div class="piece"><span class="num">01</span><h3>One small trusted core</h3><p>The code that decides who may do what, keeps the history and holds secrets is small and separate. Features are modules around it, and a module cannot invent a new kind of permission.</p></div>
+      <div class="piece"><span class="num">02</span><h3>A person decides</h3><p>Anything that leaves your server waits until a person has seen the exact words and approved them. An agent can ask. It cannot approve.</p></div>
+      <div class="piece"><span class="num">03</span><h3>Secrets stay out of the model’s reach</h3><p>A model sees a placeholder. The real value is put in outside the model, at the moment of sending.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="layers" aria-labelledby="layers-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('The layers.')}
+      <h2 id="layers-h" class="h2">From the app to the kernel, <b>and out to the world.</b></h2>
+      <p class="lead">Every machine runs the same daemon. Its config says whether the machine is a server, a solo Mac or a device that joins a server, and that picks which modules start.</p>
+    </div>
+
+    <div class="ar-sys rv" role="group" aria-label="The layers of Vyre, top to bottom: surfaces, the relay, the daemon with its door, modules and kernel, and beside the daemon a person’s own computer and outside services.">
+      <div class="ar-main">
+        <div class="ar-layer">
+          <p class="ar-tag">Surfaces</p>
+          <div class="ar-cols3">
+            <div class="ar-box"><b>The Vyre app</b><span>Web, iPhone, Android, Mac and Windows</span></div>
+            <div class="ar-box"><b>The vyre command line</b><span>For the terminal on any machine</span></div>
+            <div class="ar-box"><b>Outside AI tools</b><span>Connected over MCP</span></div>
+          </div>
+        </div>
+
+        <div class="ar-paths" aria-hidden="false">
+          <div class="ar-path"><span>Straight to the door</span><i class="ar-line"></i></div>
+          <div class="ar-path ar-relay"><i class="ar-line"></i><div class="ar-box ar-dash"><b>Relay</b><span>Away from home, an encrypted path to a server with no open port</span></div><i class="ar-line"></i></div>
+        </div>
+
+        <div class="ar-daemon">
+          <p class="ar-tag ar-tag-acc">One daemon on each machine</p>
+          <div class="ar-door"><b>Door</b><span>Works out who is calling, builds that caller’s chain and applies the role’s tool list</span></div>
+          <i class="ar-down" aria-hidden="true"></i>
+          <div class="ar-mods">
+            <div class="ar-mod"><p class="lbl">Work</p><ul><li>Chats</li><li>Tasks</li><li>Records</li><li>Flows</li><li>Agents</li><li>Documents</li></ul></div>
+            <div class="ar-mod"><p class="lbl">Keep</p><ul><li>Files</li><li>Vault</li><li>Memory</li></ul></div>
+            <div class="ar-mod ar-out"><p class="lbl">Outward</p><ul><li>Gate</li><li>Publish</li><li>Connections</li></ul></div>
+            <div class="ar-mod ar-run"><p class="lbl">Run</p><ul><li>Sessions</li><li>Providers</li><li>Model routing</li></ul></div>
+          </div>
+          <i class="ar-down" aria-hidden="true"></i>
+          <div class="ar-kernel">
+            <p class="ar-tag">Kernel</p>
+            <div class="ar-cols5">
+              <div class="ar-cell"><b>Identity</b><span>Keys and devices</span></div>
+              <div class="ar-cell"><b>Grants</b><span>And five roles</span></div>
+              <div class="ar-cell"><b>Event log</b><span>Hash-linked</span></div>
+              <div class="ar-cell"><b>Flow runner</b><span>Runs Flows</span></div>
+              <div class="ar-cell"><b>Sealing</b><span>Secrets, in a child process</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ar-side">
+        <div class="ar-hook ar-hook-run">
+          <span class="ar-chip">Run</span>
+          <div class="ar-box"><b>A person’s own computer</b><span>Sandboxed sessions in an encrypted workspace, computer use, the Mac app</span></div>
+        </div>
+        <div class="ar-hook ar-hook-out">
+          <span class="ar-chip">Outward, only after a person’s yes</span>
+          <div class="ar-box"><b>Outside services</b><span>Mail, calendar, Drive, Dropbox, payments and DNS</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ar-table rv">
+      <div><p class="lbl">Kernel</p><p>Identity, grants and the five roles, the event log, tasks and approvals, sealing, and the Flows engine. Almost no dependencies, and the same code runs on a server, a phone and a browser.</p></div>
+      <div><p class="lbl">Core modules</p><p>The services features are made of: records, chats, files, vault, the Gate, agents, sessions, publishing, documents and connections. Each is a folder with a manifest.</p></div>
+      <div><p class="lbl">Apps</p><p>One Expo codebase for web, iPhone and Android, and the Mac and Windows shells around it. They talk to the daemon’s API and never read a store directly.</p></div>
+      <div><p class="lbl">Relay</p><p>Lets a paired device reach a server with no open port. It carries only encrypted traffic between devices that proved each other’s keys.</p></div>
+      <div><p class="lbl">Local helpers</p><p>Code on a person’s own computer: running a Space’s sessions in a sandbox, computer use, the Mac app.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="call" aria-labelledby="call-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('How a call flows.')}
+      <h2 id="call-h" class="h2">Every caller goes <b>through the same check.</b></h2>
+      <p class="lead">A person in the app, an agent in a session, a Flow step and an outside AI over MCP all make calls the same way.</p>
+    </div>
+    <ol class="ar-flow ar-flow5 rv">
+      ${node(1, 'The caller', 'A person, an agent or a Flow calls a tool by name.')}
+      ${node(2, 'The door', 'Builds the chain from facts the daemon verified itself, then applies the role’s tool list.')}
+      ${node(3, 'Authorize', 'The kernel answers allow, ask or deny for this chain, this action and this resource.')}
+      ${node(4, 'The tool', 'A module tool does the work. Every read and write of a record goes through one gateway.')}
+      ${node(5, 'The log', 'Every decision and change is an event: who, what, when and the full chain.')}
+    </ol>
+    <div class="ar-outcomes rv">
+      <div class="ar-out-card ar-allow"><p class="lbl">Allow</p><p>The tool runs as that chain, writes what changed and returns the result.</p></div>
+      <div class="ar-out-card ar-ask"><p class="lbl">Ask</p><p>The call is held and becomes a task for a person.</p></div>
+      <div class="ar-out-card ar-deny"><p class="lbl">Deny</p><p>The caller is told the thing is not found. The real reason goes to the log.</p></div>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>The chain is never a name or a header.</b>It is the paired device, the signed session, the agent that person started and the Flow step. The call has the intersection of what every link may do, so an agent never has more than the person who started it.</li>
+      <li><b>The log can be checked.</b>Events are hash-linked and checkpointed, so a rollback is detectable.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="turn" aria-labelledby="turn-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('How an agent’s turn runs.')}
+      <h2 id="turn-h" class="h2">A message or a task in, <b>tool calls back through the door.</b></h2>
+    </div>
+    <ol class="ar-flow ar-flow5 rv">
+      ${node(1, 'A message or a task', 'A message in a chat, or a task given to an agent by a person, a tool or a Flow step.')}
+      ${node(2, 'Model routing', 'Starts headless sessions and streams them to every surface. A chat is a Vyre thread, so changing provider mid-conversation loses nothing.')}
+      ${node(3, 'Session driver', 'One driver for each provider: Claude, Codex, Grok or OpenRouter, on the account you added.')}
+      ${node(4, 'The provider', 'Claude Code, Codex and Grok run as their own command-line agents with only Vyre’s tools connected.')}
+      ${node(5, 'Vyre’s tools', 'Every tool call the model makes comes back through the door, as the person or agent the session belongs to.')}
+    </ol>
+    <div class="ar-where rv">
+      <div class="ar-box"><b>On a person’s own computer</b><span>A sandbox and an encrypted workspace that opens only while the Space leases its key. The chat shows where it runs.</span></div>
+      <div class="ar-box"><b>On the server</b><span>When a session does not run on a person’s computer, it runs here. A chat can move between the two with its turns.</span></div>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>Waking on a task.</b>The agent starts one job session with the task, its record and where it came from. It finishes the task, hands it on, or marks it stuck, and a job that ends without doing so is marked stuck with the reason.</li>
+      <li><b>Instructions.</b>Each agent and each project has an AGENTS.md. A session starts in its project’s folder and reads it natively.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="gate" aria-labelledby="gate-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('The Gate.')}
+      <h2 id="gate-h" class="h2">Everything that leaves your server <b>waits for a person.</b></h2>
+      <p class="lead">The Gate is the hold queue for an email, a text, a post, a payment, a delete and a publication.</p>
+    </div>
+    <ol class="ar-flow ar-flow6 rv">
+      ${node(1, 'Wants to send', 'An agent or a Flow asks, with the text, the recipient and the reason.')}
+      ${node(2, 'Held', 'The request appears in Needs you.')}
+      ${node(3, 'A person reads', 'They read the exact words and edit them if they want.')}
+      ${node(4, 'Approves', 'With a hardware proof over those exact words. It works once.')}
+      ${node(5, 'The Vault', 'The credential is fetched at send time. The model never sees it.')}
+      ${node(6, 'Sent', 'Exactly the approved words.')}
+    </ol>
+    <ul class="ar-facts rv">
+      <li><b>An agent cannot approve, revise or reject.</b>Those calls refuse an agent caller.</li>
+      <li><b>The proof is a signature over the exact request.</b>It is made on the person’s own device with Face ID, Touch ID, Windows Hello or a passkey, and works once for that act only.</li>
+      <li><b>Outward is declared, not guessed.</b>A connector marks each operation as read, draft, change, send, spend or delete, and anything undeclared cannot be called.</li>
+      <li><b>A failed send goes back to held.</b>Two screens approving at once send once.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="data" aria-labelledby="data-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      ${eyebrow('Where data lives.')}
+      <h2 id="data-h" class="h2">On your server and <b>on your devices.</b></h2>
+    </div>
+    <div class="ar-data rv">
+      <div><p class="lbl">Records</p><p>The built-in SQLite store, or one Twenty CRM database for each Space behind the same interface.</p></div>
+      <div><p class="lbl">Files</p><p>The Space’s Drive: encrypted chunks over local disk, S3 or a device. Linked Google Drive and Dropbox folders stay at the source and are read through each person’s own account.</p></div>
+      <div><p class="lbl">Vault items</p><p>Sealed at rest. A member’s own vault opens with their own master password and Secret Key.</p></div>
+      <div><p class="lbl">Sealed fields</p><p>Only inside the sealing process, a separate child process.</p></div>
+      <div><p class="lbl">Keys that prove a person is there</p><p>Hardware on the person’s device: Secure Enclave, TPM, StrongBox or a passkey. They never reach the server.</p></div>
+      <div><p class="lbl">Chat sessions</p><p>The machine that ran them. A chat can move between a person’s computer and the server with its turns.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="go-h">
+  <div class="wrap">
+    <div class="note rv">
+      <p class="lbl" id="go-h" style="margin-bottom:8px">Go deeper</p>
+      <p style="margin:0 0 12px">Every claim on this page is explained in the repository, with the code paths. <a href="${REPO}/blob/main/docs/architecture/overview.md">The architecture overview</a> takes ten minutes. <a href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> lists one page for each feature. An AI agent can follow <a href="${MAP_URL}">Map your business onto Vyre</a> to see how a business would run on it.</p>
+      <p style="margin:0"><a class="btn btn-sm" href="${REPO}/blob/main/docs/architecture/overview.md">Read the overview</a> <a class="btn btn-sm" href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
+page({
+  slug: 'architecture', path: '/architecture/',
+  title: 'Vyre architecture: layers, calls, agent turns and the Gate',
+  desc: 'How Vyre is built, on one page: the layers from the app to the kernel, how a call is checked, how an agent’s turn runs, and the Gate that holds anything that leaves your server.',
+  ogTitle: 'The architecture, on one page.', ogSub: 'Layers, how a call is checked, how an agent’s turn runs, and the Gate.',
+  body: ARCH, ld: [crumbs([['Vyre', `${SITE}/`], ['Architecture', `${SITE}/architecture/`]])],
 });
 
 // ---------- start page ----------
@@ -815,7 +1031,7 @@ ${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defe
 
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
-const SUMMARY = 'Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.';
+const SUMMARY = 'Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person\'s yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.';
 
 const LLMS = `# Vyre
 
@@ -826,7 +1042,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 ## Start here
 - [Home](${SITE}/): what Vyre is and what it does
 - [Get started](${SITE}/start/): the steps, from the Vyre app to pairing your server
-- [Get started](${SITE}/start/): the steps in order
+- [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
@@ -841,6 +1057,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [agents.md](${SITE}/agents.md): guidance for AI agents that install or operate Vyre
 - [sitemap.xml](${SITE}/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
+- [Map your business onto Vyre](${MAP_URL}): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
 `;
 
 const FULL = `# Vyre, in full
@@ -850,15 +1067,19 @@ ${SUMMARY}
 Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
-- One session runs Claude, Codex, Grok or OpenRouter. Each reply shows which model wrote it. You can switch model mid-session (the new model gets a summary of the conversation) or address one model for a single message with an @, such as @codex.
-- Several accounts per provider are supported and kept apart on the server.
-- Teammates are named roles inside a project with their own notes and a charter; they hand work to each other. A person can fill a role with one of their own agents.
-- Watchers run on events, schedules or Gmail pushes. Each is shown as a card (when, check, do, what it reads, whether it acts, cost) before it is turned on. Watchers run inside a wall with no home folder and no sockets; where the wall is unavailable a watcher does not run and says why.
-- Memory records every session. A recalled answer shows its source (the call, thread or turn) and says when no model was used. Corrections and Forget are supported, with undo.
-- The vault holds credentials sealed on your own machine. Agents use a credential without seeing its value. A Mac unlocks it with Touch ID or a password.
-- "Asking is approving": your own words approve an action. Touch ID or Face ID is for pairing, vault secrets, and sends, posts or payments nobody asked for.
-- Vyre Computer lets an agent drive your own Chrome. Agent computers, GitHub, generated images and video saved to the project, and a daily spend cap are included.
-- Modules are the building blocks you or your agents add. Each declares who may call each tool.
+- People and agents in the same chats. @ a teammate or an agent, # a record, a file or a project. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
+- Agents wake on a task and finish it: the agent ends the task as done, hands it on, or marks it stuck with a plain reason. Each agent and each project has an AGENTS.md instructions file.
+- One group chat across providers. Claude, Codex, Grok and OpenRouter answer in the same chat through the sign-ins and keys you add. Give agents different jobs: a team that does the work, one model that reviews, one that plans.
+- Flows run the same way every time. A trigger (a person, a schedule with business hours and holidays, a record change, a stage, a form, a link or a watcher), then steps: find, create, update, find-or-create, wait for a time, a date or an event, ask, assign, call a connected service, run an agent. A person approves a Flow before it runs, and each run has its own page.
+- Playbooks are project templates: stages, the tasks in each stage, who does each task, and when a stage counts as done. Each kind of work can run as its own track, with its own Playbook and Flows over shared records.
+- Records: contacts, projects, tasks and your own record types, with fields in named groups, tags, saved views, Excel or CSV import, and CSV export from the web app. Fields marked sealed show an agent a placeholder, never the value.
+- Documents fill your own Word templates from a record and the records linked to it, as Word or PDF. Signing sends a document for signature from a record; the signer needs no account, and the signed copy files back on the record.
+- Files: one Files place for the Space, with linked Google Drive and Dropbox folders read through each person's own account.
+- The Vault holds passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in groups, shared as Can use or Can edit. Agents use a credential without seeing it.
+- Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
+- Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
+- Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
+- Architecture: see ${SITE}/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
@@ -876,31 +1097,27 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
 
 ## What it costs
-Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
+Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it.
 
 ## Where your data lives
-Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
+Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Releases
 ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
 ## Direction (not a promise of dates)
-- Now, 0.3.0: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends. Watch an assistant's work as it happens. One yes for a group of held messages, each read in full. Connect any app that has an API from a key in your Vault. Signatures inside Vyre (Documents). Modules that look and act like part of Vyre. A Mac server that comes back after a power cut. Backups carry your vault, settings and files, not the Space's records yet.
-- Next, 0.3.1: projects with AI teammates, backups that carry your records, your own app modules.
-- After that, 0.3.2: documents made from your templates, messages from your own accounts, publishing.
+- Now, 0.5: the features above.
+- Next, 0.5.1: one chat per Flow, deadlines on agent steps, a failure panel on every step, per-record privacy for custom record types, Flow email with CC, BCC and attachments, an audit screen for admins.
+- After that, 0.5.2: Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are planned), a Skills screen and a Plugins screen.
 - Later: Screen Share (watch and take over your agents' computers and Chrome, on every device).
 - Later: a Vyre-hosted home for people without a server.
 
 ## Known gaps in ${VERSION}
-- Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Screen Share (live view and computer use) comes later; Chrome control works today.
-- The Mac server installer has not run on a real Mac yet.
-- Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
-- Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.
-- Only the answer fan-out across models is proven; per-model plan and diff blocks are not.
-- Parallel Chrome tabs read within one Chrome; a tab for each agent is not built.
-- Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler.
-- The Mac app is built on your Mac, not downloaded. The Windows app is not code-signed yet, and the first Windows install is not signature-checked.
+- A member can read every row of a record type the Space defined itself; per-record privacy for custom types is planned for 0.5.1.
+- An agent step has no deadline yet. A session that ends without finishing is marked stuck.
+- A Flow email cannot yet carry CC, BCC or attachments.
+- CSV export is in the web app; a phone does not offer it yet.
+- The Mac and Windows apps are not signed with a store identity yet, and the iPhone app is built from source.
 See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
 
 ## FAQ
@@ -909,12 +1126,13 @@ ${HOME_FAQ.map(([q, a]) => `### ${q}\n${strip(a)}`).join('\n\n')}
 
 const AGENTS = `# agents.md: for AI agents that read vyre.run
 
-Vyre is an open-source command center for AI agents, run on machines the user owns. This file says what you can do with this site and what you must not do.
+Vyre is the agentic command center for AI-native teams: open source, self-hosted, run on machines the user owns. This file says what you can do with this site and what you must not do.
 
 ## What you can do
 - Read any page and the machine-readable files: ${SITE}/llms.txt, ${SITE}/llms-full.txt, ${SITE}/sitemap.xml.
 - Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
-- Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) and direction (${SITE}/direction/). Direction is not a promise of dates.
+- Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) the architecture (${SITE}/architecture/) and direction (${SITE}/direction/). Direction is not a promise of dates.
+- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do
@@ -968,7 +1186,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

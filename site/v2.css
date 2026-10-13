@@ -352,3 +352,115 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .btn .star-ic { color: currentColor; }
 .foot a.star-link { display: inline-flex; align-items: center; gap: 7px; }
 .foot a.star-link .star-ic { color: var(--accent); }
+
+/* Home: the mission line, and a four-up grid for the 0.5 pieces */
+.hero .mission { margin: 22px auto 0; font-size: clamp(19px, 2.2vw, 24px); font-weight: 500; letter-spacing: -.015em; color: var(--ink); max-width: 28em; line-height: 1.3; }
+.hero .mission + .lead { margin-top: 16px; }
+.hero-note a { color: var(--accent); }
+.pieces.p4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1060px) { .pieces.p4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .pieces.p4 { grid-template-columns: 1fr; } .pieces.p4 .piece { min-height: 0; } }
+
+/* Architecture page: the system drawn in HTML and CSS. Every colour is a token above, so light and dark follow the theme. */
+.ar-ideas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.ar-ideas .piece { min-height: 0; }
+@media (max-width: 860px) { .ar-ideas { grid-template-columns: 1fr; } }
+
+.ar-sys { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 0 56px; align-items: stretch; }
+.ar-main { display: flex; flex-direction: column; min-width: 0; }
+.ar-tag { margin: 0 0 12px; font: 500 11px/1.4 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.ar-tag-acc { color: var(--accent); }
+.ar-layer { border: 1px solid var(--line); background: var(--panel); padding: 16px 16px 18px; }
+.ar-cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ar-cols5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.ar-box, .ar-cell, .ar-door { background: var(--bg); border: 1px solid var(--line-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ar-box b, .ar-cell b, .ar-door b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.ar-box span, .ar-cell span, .ar-door span { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.ar-dash { border-style: dashed; border-color: var(--accent); background: var(--accent-wash); }
+
+/* Two ways in: straight to the door, or through the relay */
+.ar-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; }
+.ar-path { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 0 14px; text-align: center; }
+.ar-path > span { font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
+.ar-line { display: block; width: 0; height: 22px; border-left: 1.5px solid var(--accent); position: relative; }
+.ar-line::after { content: ""; position: absolute; left: -6px; bottom: -1px; width: 10px; height: 7px; background: var(--accent); clip-path: polygon(0 0, 100% 0, 50% 100%); transform: translateX(.5px); }
+.ar-relay .ar-box { width: 100%; text-align: left; }
+
+.ar-daemon { border: 1.5px solid var(--accent); background: var(--panel); padding: 16px 16px 18px; position: relative; }
+.ar-daemon::after { content: ""; position: absolute; top: -1px; right: -1px; width: 22px; height: 22px; background: linear-gradient(225deg, var(--bg) 0 47%, var(--accent) 47% 53%, transparent 53%); }
+.ar-door { border-left: 4px solid var(--accent); }
+.ar-down { display: block; width: 0; height: 18px; margin: 4px auto; border-left: 1.5px solid var(--line-2); }
+.ar-mods { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.ar-mod { background: var(--bg); border: 1px solid var(--line-2); padding: 12px 14px; min-width: 0; }
+.ar-mod .lbl { margin: 0 0 8px; }
+.ar-mod ul { list-style: none; margin: 0; padding: 0; }
+.ar-mod li { font-size: 14px; padding: 3px 0; border-top: 1px dashed var(--line); color: var(--ink); }
+.ar-mod li:first-child { border-top: 0; }
+.ar-out { border-color: var(--accent); }
+.ar-kernel { background: var(--sunk); border: 1px solid var(--line-2); padding: 14px 14px 16px; }
+.ar-kernel .ar-tag { margin-bottom: 10px; }
+.ar-kernel .ar-cell { background: var(--panel); }
+
+/* Beside the daemon: the person's own computer, and the outside world */
+.ar-side { display: flex; flex-direction: column; justify-content: space-around; gap: 28px; padding-top: 200px; }
+.ar-hook { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.ar-hook::before { content: ""; position: absolute; left: -56px; top: 50%; width: 56px; border-top: 1.5px dashed var(--accent); }
+.ar-chip { align-self: flex-start; font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); padding: 5px 8px; background: var(--accent-wash); }
+.ar-table { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 28px; margin-top: 40px; }
+.ar-table > div { border-top: 1px dashed var(--line-2); padding: 14px 0; }
+.ar-table .lbl { margin: 0 0 6px; color: var(--accent); }
+.ar-table p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+
+@media (max-width: 960px) {
+  .ar-sys { grid-template-columns: 1fr; }
+  .ar-side { padding-top: 0; flex-direction: column; gap: 22px; margin-top: 0; }
+  .ar-hook { padding-top: 26px; }
+  .ar-hook::before { left: 50%; top: 0; width: 0; height: 26px; border-top: 0; border-left: 1.5px dashed var(--accent); }
+  .ar-side { margin-top: 0; }
+  .ar-cols5 { grid-template-columns: repeat(2, 1fr); }
+  .ar-mods { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  .ar-cols3 { grid-template-columns: 1fr; }
+  .ar-paths { grid-template-columns: 1fr; padding: 0; }
+  .ar-path:first-child { padding-bottom: 0; }
+  .ar-layer, .ar-daemon { padding: 14px 12px 16px; }
+  .ar-cols5 { grid-template-columns: 1fr 1fr; }
+}
+
+/* Step flows: how a call flows, how a turn runs, the Gate */
+.ar-flow { --n: 5; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 26px; counter-reset: ar; }
+.ar-flow6 { --n: 6; }
+.ar-node { position: relative; background: var(--panel); border: 1px solid var(--line); padding: 16px 14px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ar-node b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.ar-node > span:last-child { font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.ar-n { font: 500 11px/1 var(--mono); letter-spacing: .08em; color: var(--accent); }
+.ar-node:not(:last-child)::after { content: ""; position: absolute; right: -22px; top: 22px; width: 18px; height: 12px; background: var(--accent); clip-path: polygon(0 36%, 58% 36%, 58% 0, 100% 50%, 58% 100%, 58% 64%, 0 64%); }
+@media (max-width: 1100px) {
+  .ar-flow, .ar-flow6 { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 30px; }
+  .ar-node:not(:last-child)::after { right: auto; left: 50%; top: auto; bottom: -24px; transform: translateX(-50%) rotate(90deg); }
+  .ar-node:nth-child(2n):not(:last-child)::after { left: -22px; bottom: auto; top: 50%; transform: rotate(135deg); }
+}
+@media (max-width: 620px) {
+  .ar-flow, .ar-flow6 { grid-template-columns: 1fr; }
+  .ar-node:nth-child(n):not(:last-child)::after { left: 50%; right: auto; top: auto; bottom: -24px; transform: translateX(-50%) rotate(90deg); }
+}
+.ar-outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 32px; }
+.ar-out-card { border: 1px solid var(--line); border-top: 3px solid var(--line-2); background: var(--panel); padding: 14px 16px; }
+.ar-out-card .lbl { margin: 0 0 6px; }
+.ar-out-card p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+.ar-allow { border-top-color: var(--ok); } .ar-allow .lbl { color: var(--ok); }
+.ar-ask { border-top-color: var(--accent); } .ar-ask .lbl { color: var(--accent); }
+.ar-deny { border-top-color: var(--ink-3); }
+@media (max-width: 760px) { .ar-outcomes { grid-template-columns: 1fr; } }
+.ar-facts { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 28px; }
+.ar-facts li { border-top: 1px dashed var(--line-2); padding: 12px 0; font-size: 15px; color: var(--ink-2); }
+.ar-facts li b { display: block; color: var(--ink); font-weight: 600; }
+.ar-where { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 32px; }
+@media (max-width: 700px) { .ar-where { grid-template-columns: 1fr; } }
+.ar-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; }
+.ar-data > div { border-top: 1px dashed var(--line-2); padding: 14px 0; }
+.ar-data .lbl { margin: 0 0 6px; color: var(--accent); }
+.ar-data p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+
+.note .btn + .btn { margin-left: 8px; }

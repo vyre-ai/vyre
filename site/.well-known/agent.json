@@ -1,9 +1,9 @@
 {
   "schema_version": "1",
   "name": "Vyre",
-  "description": "Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.",
+  "description": "Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.",
   "url": "https://vyre.run/",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "license": "Apache-2.0",
   "docs": {
     "llms": "https://vyre.run/llms.txt",

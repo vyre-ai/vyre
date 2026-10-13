@@ -1,0 +1,261 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre architecture: layers, calls, agent turns and the Gate</title>
+  <meta name="description" content="How Vyre is built, on one page: the layers from the app to the kernel, how a call is checked, how an agent’s turn runs, and the Gate that holds anything that leaves your server.">
+  <link rel="canonical" href="https://vyre.run/architecture/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/architecture/">
+  <meta property="og:title" content="Vyre architecture: layers, calls, agent turns and the Gate">
+  <meta property="og:description" content="How Vyre is built, on one page: the layers from the app to the kernel, how a call is checked, how an agent’s turn runs, and the Gate that holds anything that leaves your server.">
+  <meta property="og:image" content="https://vyre.run/og/architecture.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The architecture, on one page.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre architecture: layers, calls, agent turns and the Gate">
+  <meta name="twitter:description" content="How Vyre is built, on one page: the layers from the app to the kernel, how a call is checked, how an agent’s turn runs, and the Gate that holds anything that leaves your server.">
+  <meta name="twitter:image" content="https://vyre.run/og/architecture.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Architecture","item":"https://vyre.run/architecture/"}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=5d6c24c686">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/architecture/" aria-current="page">Architecture</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Architecture</p>
+    <p class="eyebrow">How Vyre is built.</p>
+    <h1 class="display">The architecture, <b>on one page.</b></h1>
+    <p class="lead">Vyre is one product for a team and its agents. It runs on a server you own and on the computers your people use. This page shows the layers, how a call is checked, how an agent’s turn runs and how the Gate holds anything that leaves your server.</p>
+  </div>
+</section>
+
+<section class="sec" style="padding-top:56px" aria-labelledby="ideas-h">
+  <div class="wrap">
+    <h2 id="ideas-h" class="lbl" style="margin-bottom:20px">Three ideas shape all of it</h2>
+    <div class="ar-ideas rv">
+      <div class="piece"><span class="num">01</span><h3>One small trusted core</h3><p>The code that decides who may do what, keeps the history and holds secrets is small and separate. Features are modules around it, and a module cannot invent a new kind of permission.</p></div>
+      <div class="piece"><span class="num">02</span><h3>A person decides</h3><p>Anything that leaves your server waits until a person has seen the exact words and approved them. An agent can ask. It cannot approve.</p></div>
+      <div class="piece"><span class="num">03</span><h3>Secrets stay out of the model’s reach</h3><p>A model sees a placeholder. The real value is put in outside the model, at the moment of sending.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="layers" aria-labelledby="layers-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The layers.</p>
+      <h2 id="layers-h" class="h2">From the app to the kernel, <b>and out to the world.</b></h2>
+      <p class="lead">Every machine runs the same daemon. Its config says whether the machine is a server, a solo Mac or a device that joins a server, and that picks which modules start.</p>
+    </div>
+
+    <div class="ar-sys rv" role="group" aria-label="The layers of Vyre, top to bottom: surfaces, the relay, the daemon with its door, modules and kernel, and beside the daemon a person’s own computer and outside services.">
+      <div class="ar-main">
+        <div class="ar-layer">
+          <p class="ar-tag">Surfaces</p>
+          <div class="ar-cols3">
+            <div class="ar-box"><b>The Vyre app</b><span>Web, iPhone, Android, Mac and Windows</span></div>
+            <div class="ar-box"><b>The vyre command line</b><span>For the terminal on any machine</span></div>
+            <div class="ar-box"><b>Outside AI tools</b><span>Connected over MCP</span></div>
+          </div>
+        </div>
+
+        <div class="ar-paths" aria-hidden="false">
+          <div class="ar-path"><span>Straight to the door</span><i class="ar-line"></i></div>
+          <div class="ar-path ar-relay"><i class="ar-line"></i><div class="ar-box ar-dash"><b>Relay</b><span>Away from home, an encrypted path to a server with no open port</span></div><i class="ar-line"></i></div>
+        </div>
+
+        <div class="ar-daemon">
+          <p class="ar-tag ar-tag-acc">One daemon on each machine</p>
+          <div class="ar-door"><b>Door</b><span>Works out who is calling, builds that caller’s chain and applies the role’s tool list</span></div>
+          <i class="ar-down" aria-hidden="true"></i>
+          <div class="ar-mods">
+            <div class="ar-mod"><p class="lbl">Work</p><ul><li>Chats</li><li>Tasks</li><li>Records</li><li>Flows</li><li>Agents</li><li>Documents</li></ul></div>
+            <div class="ar-mod"><p class="lbl">Keep</p><ul><li>Files</li><li>Vault</li><li>Memory</li></ul></div>
+            <div class="ar-mod ar-out"><p class="lbl">Outward</p><ul><li>Gate</li><li>Publish</li><li>Connections</li></ul></div>
+            <div class="ar-mod ar-run"><p class="lbl">Run</p><ul><li>Sessions</li><li>Providers</li><li>Model routing</li></ul></div>
+          </div>
+          <i class="ar-down" aria-hidden="true"></i>
+          <div class="ar-kernel">
+            <p class="ar-tag">Kernel</p>
+            <div class="ar-cols5">
+              <div class="ar-cell"><b>Identity</b><span>Keys and devices</span></div>
+              <div class="ar-cell"><b>Grants</b><span>And five roles</span></div>
+              <div class="ar-cell"><b>Event log</b><span>Hash-linked</span></div>
+              <div class="ar-cell"><b>Flow runner</b><span>Runs Flows</span></div>
+              <div class="ar-cell"><b>Sealing</b><span>Secrets, in a child process</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ar-side">
+        <div class="ar-hook ar-hook-run">
+          <span class="ar-chip">Run</span>
+          <div class="ar-box"><b>A person’s own computer</b><span>Sandboxed sessions in an encrypted workspace, computer use, the Mac app</span></div>
+        </div>
+        <div class="ar-hook ar-hook-out">
+          <span class="ar-chip">Outward, only after a person’s yes</span>
+          <div class="ar-box"><b>Outside services</b><span>Mail, calendar, Drive, Dropbox, payments and DNS</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ar-table rv">
+      <div><p class="lbl">Kernel</p><p>Identity, grants and the five roles, the event log, tasks and approvals, sealing, and the Flows engine. Almost no dependencies, and the same code runs on a server, a phone and a browser.</p></div>
+      <div><p class="lbl">Core modules</p><p>The services features are made of: records, chats, files, vault, the Gate, agents, sessions, publishing, documents and connections. Each is a folder with a manifest.</p></div>
+      <div><p class="lbl">Apps</p><p>One Expo codebase for web, iPhone and Android, and the Mac and Windows shells around it. They talk to the daemon’s API and never read a store directly.</p></div>
+      <div><p class="lbl">Relay</p><p>Lets a paired device reach a server with no open port. It carries only encrypted traffic between devices that proved each other’s keys.</p></div>
+      <div><p class="lbl">Local helpers</p><p>Code on a person’s own computer: running a Space’s sessions in a sandbox, computer use, the Mac app.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="call" aria-labelledby="call-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">How a call flows.</p>
+      <h2 id="call-h" class="h2">Every caller goes <b>through the same check.</b></h2>
+      <p class="lead">A person in the app, an agent in a session, a Flow step and an outside AI over MCP all make calls the same way.</p>
+    </div>
+    <ol class="ar-flow ar-flow5 rv">
+      <li class="ar-node"><span class="ar-n">1</span><b>The caller</b><span>A person, an agent or a Flow calls a tool by name.</span></li>
+      <li class="ar-node"><span class="ar-n">2</span><b>The door</b><span>Builds the chain from facts the daemon verified itself, then applies the role’s tool list.</span></li>
+      <li class="ar-node"><span class="ar-n">3</span><b>Authorize</b><span>The kernel answers allow, ask or deny for this chain, this action and this resource.</span></li>
+      <li class="ar-node"><span class="ar-n">4</span><b>The tool</b><span>A module tool does the work. Every read and write of a record goes through one gateway.</span></li>
+      <li class="ar-node"><span class="ar-n">5</span><b>The log</b><span>Every decision and change is an event: who, what, when and the full chain.</span></li>
+    </ol>
+    <div class="ar-outcomes rv">
+      <div class="ar-out-card ar-allow"><p class="lbl">Allow</p><p>The tool runs as that chain, writes what changed and returns the result.</p></div>
+      <div class="ar-out-card ar-ask"><p class="lbl">Ask</p><p>The call is held and becomes a task for a person.</p></div>
+      <div class="ar-out-card ar-deny"><p class="lbl">Deny</p><p>The caller is told the thing is not found. The real reason goes to the log.</p></div>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>The chain is never a name or a header.</b>It is the paired device, the signed session, the agent that person started and the Flow step. The call has the intersection of what every link may do, so an agent never has more than the person who started it.</li>
+      <li><b>The log can be checked.</b>Events are hash-linked and checkpointed, so a rollback is detectable.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="turn" aria-labelledby="turn-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">How an agent’s turn runs.</p>
+      <h2 id="turn-h" class="h2">A message or a task in, <b>tool calls back through the door.</b></h2>
+    </div>
+    <ol class="ar-flow ar-flow5 rv">
+      <li class="ar-node"><span class="ar-n">1</span><b>A message or a task</b><span>A message in a chat, or a task given to an agent by a person, a tool or a Flow step.</span></li>
+      <li class="ar-node"><span class="ar-n">2</span><b>Model routing</b><span>Starts headless sessions and streams them to every surface. A chat is a Vyre thread, so changing provider mid-conversation loses nothing.</span></li>
+      <li class="ar-node"><span class="ar-n">3</span><b>Session driver</b><span>One driver for each provider: Claude, Codex, Grok or OpenRouter, on the account you added.</span></li>
+      <li class="ar-node"><span class="ar-n">4</span><b>The provider</b><span>Claude Code, Codex and Grok run as their own command-line agents with only Vyre’s tools connected.</span></li>
+      <li class="ar-node"><span class="ar-n">5</span><b>Vyre’s tools</b><span>Every tool call the model makes comes back through the door, as the person or agent the session belongs to.</span></li>
+    </ol>
+    <div class="ar-where rv">
+      <div class="ar-box"><b>On a person’s own computer</b><span>A sandbox and an encrypted workspace that opens only while the Space leases its key. The chat shows where it runs.</span></div>
+      <div class="ar-box"><b>On the server</b><span>When a session does not run on a person’s computer, it runs here. A chat can move between the two with its turns.</span></div>
+    </div>
+    <ul class="ar-facts rv">
+      <li><b>Waking on a task.</b>The agent starts one job session with the task, its record and where it came from. It finishes the task, hands it on, or marks it stuck, and a job that ends without doing so is marked stuck with the reason.</li>
+      <li><b>Instructions.</b>Each agent and each project has an AGENTS.md. A session starts in its project’s folder and reads it natively.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="gate" aria-labelledby="gate-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The Gate.</p>
+      <h2 id="gate-h" class="h2">Everything that leaves your server <b>waits for a person.</b></h2>
+      <p class="lead">The Gate is the hold queue for an email, a text, a post, a payment, a delete and a publication.</p>
+    </div>
+    <ol class="ar-flow ar-flow6 rv">
+      <li class="ar-node"><span class="ar-n">1</span><b>Wants to send</b><span>An agent or a Flow asks, with the text, the recipient and the reason.</span></li>
+      <li class="ar-node"><span class="ar-n">2</span><b>Held</b><span>The request appears in Needs you.</span></li>
+      <li class="ar-node"><span class="ar-n">3</span><b>A person reads</b><span>They read the exact words and edit them if they want.</span></li>
+      <li class="ar-node"><span class="ar-n">4</span><b>Approves</b><span>With a hardware proof over those exact words. It works once.</span></li>
+      <li class="ar-node"><span class="ar-n">5</span><b>The Vault</b><span>The credential is fetched at send time. The model never sees it.</span></li>
+      <li class="ar-node"><span class="ar-n">6</span><b>Sent</b><span>Exactly the approved words.</span></li>
+    </ol>
+    <ul class="ar-facts rv">
+      <li><b>An agent cannot approve, revise or reject.</b>Those calls refuse an agent caller.</li>
+      <li><b>The proof is a signature over the exact request.</b>It is made on the person’s own device with Face ID, Touch ID, Windows Hello or a passkey, and works once for that act only.</li>
+      <li><b>Outward is declared, not guessed.</b>A connector marks each operation as read, draft, change, send, spend or delete, and anything undeclared cannot be called.</li>
+      <li><b>A failed send goes back to held.</b>Two screens approving at once send once.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="data" aria-labelledby="data-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where data lives.</p>
+      <h2 id="data-h" class="h2">On your server and <b>on your devices.</b></h2>
+    </div>
+    <div class="ar-data rv">
+      <div><p class="lbl">Records</p><p>The built-in SQLite store, or one Twenty CRM database for each Space behind the same interface.</p></div>
+      <div><p class="lbl">Files</p><p>The Space’s Drive: encrypted chunks over local disk, S3 or a device. Linked Google Drive and Dropbox folders stay at the source and are read through each person’s own account.</p></div>
+      <div><p class="lbl">Vault items</p><p>Sealed at rest. A member’s own vault opens with their own master password and Secret Key.</p></div>
+      <div><p class="lbl">Sealed fields</p><p>Only inside the sealing process, a separate child process.</p></div>
+      <div><p class="lbl">Keys that prove a person is there</p><p>Hardware on the person’s device: Secure Enclave, TPM, StrongBox or a passkey. They never reach the server.</p></div>
+      <div><p class="lbl">Chat sessions</p><p>The machine that ran them. A chat can move between a person’s computer and the server with its turns.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" aria-labelledby="go-h">
+  <div class="wrap">
+    <div class="note rv">
+      <p class="lbl" id="go-h" style="margin-bottom:8px">Go deeper</p>
+      <p style="margin:0 0 12px">Every claim on this page is explained in the repository, with the code paths. <a href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/overview.md">The architecture overview</a> takes ten minutes. <a href="https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> lists one page for each feature. An AI agent can follow <a href="https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md">Map your business onto Vyre</a> to see how a business would run on it.</p>
+      <p style="margin:0"><a class="btn btn-sm" href="https://github.com/vyre-ai/vyre/blob/main/docs/architecture/overview.md">Read the overview</a> <a class="btn btn-sm" href="https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See it <b>working.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>
