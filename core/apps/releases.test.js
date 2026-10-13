@@ -73,7 +73,7 @@ test("the manifest names the signed file, and the APK is served signed and immut
   // The key is the vault's, granted to this module alone, and releases.cert names the same certificate.
   const item = (await b.d().registry.call("vault.list", {}, "cli")).data.items.find(x => x.name === "android-release-key");
   assert.deepEqual(item.grants, [{ module: "releases" }]);
-  assert.equal((await b.d().registry.call("releases.cert", {}, OWNER)).data.cert_sha256, man.cert_sha256);
+  assert.equal((await b.d().registry.call("releases.cert", {}, "cli")).data.cert_sha256, man.cert_sha256);
   assert.equal((await b.d().registry.call("releases.cert", {}, "mcp")).error.code, "denied", "Claude does not handle the release key");
 
   // Signed once: the cached file is reused, not signed again.
