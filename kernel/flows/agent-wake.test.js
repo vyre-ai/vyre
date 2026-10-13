@@ -54,7 +54,7 @@ test("end to end with no person: the agent closes its task and the run goes on t
   assert.equal(woke.length, 1);
   const id = (await w.runner.listRuns())[0].id;
   assert.equal((await w.runner.getRun(id)).state, "waiting", "the run waits on the agent's task");
-  await w.kernel.completeTask(woke[0].task, { evidence: { note: "Drafted and filed." } });   // the agent's own act, under [assigner, agent]
+  await w.kernel.completeTask(woke[0].task);   // the agent's own act, under [assigner, agent]
   await settle(w);
   const done = await w.runner.getRun(id);
   assert.equal(done.state, "done", JSON.stringify(done.error || done.waiting));
