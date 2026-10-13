@@ -20,9 +20,9 @@ const tpl = () => ({
   ],
 });
 const mk = () => world({ kernel: "real", cat: stagedCatalog() });
-async function start(/** @type {any} */ w, /** @type {any} */ data = {}) {
+async function start(/** @type {any} */ w, /** @type {any} */ data = {}, /** @type {any} */ template = tpl()) {
   const k = w.kernel, sys = k.sysChain();
-  const r = await k.records.create(sys, "project", { name: "Rivera", slug: `r-${Math.random().toString(36).slice(2, 7)}`, status: "active", template: "tpl_matter", template_version: "1", template_stage: "Opening", template_snapshot: snapshotOf(tpl(), { id: "tpl_matter", version: 1 }), ...data });
+  const r = await k.records.create(sys, "project", { name: "Rivera", slug: `r-${Math.random().toString(36).slice(2, 7)}`, status: "active", template: "tpl_matter", template_version: "1", template_stage: "Opening", template_snapshot: snapshotOf(template, { id: "tpl_matter", version: 1 }), ...data });
   await w.stages.enter({ urn: r.urn, type: "project", id: r.id, stage: "Opening", entry: "start" });
   await settle(w);
   return r;
@@ -65,4 +65,28 @@ test("with nobody in the Lead seat the lead task goes to the project's owner and
   assert.equal(await by(w2, "Lead task"), undefined);
   assert.ok(w2.stageEvents.some((/** @type {any} */ e) => e.type === "stage.error" && /Lead seat/.test(e.data.why)), "it says nobody holds the Lead seat");
   assert.ok(await by(w2, "Role task"), "the other tasks are still made");
+});
+
+test("a task's followers are its helpers and the approver's and followers' notes reach the task, each under who it is for; a follower nobody can be is reported and the task is still made", async () => {
+  const w = await mk();
+  const t = tpl();
+  t.stages[0].tasks = [{ title: "Watched", doer: "teammate:research", checker: "person:per_bob", followers: ["person:per_bob", "role:attorney", "role:nobody-holds-this"], notes: { approver: "Check the dates against [[field:this#due]].", followers: "Read along; do not edit." }, brief: "Do the work.", output: { kind: "note" } }];
+  assert.deepEqual(problems(t), []);
+  await start(w, {}, t);
+  const task = await by(w, "Watched");
+  assert.ok(task, "the task is made");
+  assert.deepEqual((task.helpers || []).map((/** @type {any} */ h) => h.id).sort(), [ALEX.id, "per_bob"].sort(), "its followers are its helpers");
+  assert.match(task.note, /For the approver: Check the dates against \[\[field:this#due\]\]\./);
+  assert.match(task.note, /For followers: Read along; do not edit\./);
+  assert.ok(w.stageEvents.some((/** @type {any} */ e) => e.type === "stage.notice" && /nobody-holds-this/.test(e.data.why)), "the follower nobody can be is said");
+});
+
+test("the shape of followers and notes: actor strings, and plain text of at most 4000 characters", () => {
+  const bad = (/** @type {(k: any) => void} */ f, /** @type {RegExp} */ re, /** @type {string} */ at) => { const t = tpl(); f(t.stages[0].tasks[0]); assert.ok(problems(t).some((p) => re.test(p.message) && p.path.endsWith(at)), JSON.stringify(problems(t))); };
+  bad((k) => { k.followers = "person:x"; }, /followers are a list/, "followers");
+  bad((k) => { k.followers = ["somebody"]; }, /followers are a list/, "followers");
+  bad((k) => { k.followers = Array.from({ length: 21 }, (_, i) => `person:p${i}`); }, /at most 20/, "followers");
+  bad((k) => { k.notes = { approver: 5 }; }, /notes is/, "notes");
+  bad((k) => { k.notes = { other: "x" }; }, /notes is/, "notes");
+  bad((k) => { k.notes = { followers: "x".repeat(4001) }; }, /at most 4000/, "notes");
 });
