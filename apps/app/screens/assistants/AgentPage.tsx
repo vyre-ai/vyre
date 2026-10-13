@@ -7,6 +7,9 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Fi
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { Page, Sec } from "../places/Frame";
 import { agent } from "./agent";
+import { useChats } from "../../src/state/chats";
+import { assistantChatRoute, startChat } from "../../src/state/start-chat";
+import { chatHas } from "../agents/home-model.js";
 import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, type AgentFull, type Computer, type UsageFull, type Watcher } from "./agent-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
@@ -15,11 +18,11 @@ type Tab = "instructions" | "context" | "models" | "used" | "activity";
 const TABS: [Tab, string][] = [["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["used", "Where it is used"], ["activity", "Activity"]];
 
 export default function AgentPage() {
-  const { name } = useLocalSearchParams<{ name: string }>();
+  const { name, tab: want } = useLocalSearchParams<{ name: string; tab?: string }>();
   const who = String(name || "");
   const [a, setA] = useState<AgentFull | null | undefined>(undefined);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState<Tab>("instructions");
+  const [tab, setTab] = useState<Tab>(TABS.some(([k]) => k === want) ? (want as Tab) : "instructions");
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
@@ -30,6 +33,7 @@ export default function AgentPage() {
       {a ? (
         <>
           <Header a={a} />
+          <Chats a={a} />
           <Tabs items={TABS} value={tab} onChange={setTab} />
           {tab === "instructions" ? <Instructions name={a.name} /> : null}
           {tab === "context" ? <Context name={a.name} /> : null}
@@ -52,6 +56,25 @@ function Header({ a }: { a: AgentFull }) {
         {a.kind === "assistant" ? <Chip>Your assistant</Chip> : null}
       </View>
     </View>
+  );
+}
+
+/** New chat with this agent, and the chats it is already in (each opens in Chat). The assistant has the one pinned chat and no new ones. */
+function Chats({ a }: { a: AgentFull }) {
+  const router = useRouter();
+  const chats = useChats();
+  const [busy, setBusy] = useState(false);
+  const go = (r: string) => router.push(r as never);
+  const isAsst = a.kind === "assistant";
+  const mine = chats.rows.filter((c) => chatHas(c, a.name));
+  const talk = () => { setBusy(true); (isAsst ? assistantChatRoute() : startChat({ people: [], agents: [a.name] }).then((x) => { if ("chat" in x) return `/u/chats/${encodeURIComponent(x.chat)}`; showToast(x.say); return ""; })).then((r) => { if (r) go(r); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
+  return (
+    <Sec title="Chats">
+      <Card flush>
+        <Row title={isAsst ? "Open your assistant chat" : `New chat with ${a.name}`} sub={isAsst ? "One chat, always at the top of Chat." : undefined} onPress={busy ? undefined : talk} />
+        {mine.map((c) => <View key={c.id}><Divider /><Row title={c.title || "Chat"} sub={c.line || undefined} onPress={() => go(`/u/chats/${encodeURIComponent(c.id)}`)} /></View>)}
+      </Card>
+    </Sec>
   );
 }
 

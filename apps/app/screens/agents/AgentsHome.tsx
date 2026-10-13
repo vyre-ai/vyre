@@ -9,7 +9,10 @@ import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
 import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
-import { AGENT_GROUPS, agentRow, agentsDef, asRecords, loadGroups, saveGroups } from "./home-model.js";
+import { AGENT_GROUPS, agentRow, agentsDef, asRecords, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
+import { useChats } from "../../src/state/chats";
+import { useMembers } from "../spaces/state";
+import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 
 type Row = ReturnType<typeof agentRow>;
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -35,12 +38,18 @@ export function AgentsHome() {
   const saved = useMemo(() => { const s = store(); return s ? loadGroups(s) : { groups: [], placed: {} }; }, []);
   const [groups, setGroups] = useState<Group[]>(saved.groups.length ? saved.groups : AGENT_GROUPS.map(([, t]) => ({ name: t })));
   const [placed, setPlaced] = useState<Record<string, string>>(saved.placed);
-  const load = useCallback(() => { if (mock) return; setErr(""); agentsList().then(setLive).catch((e) => setErr(say(e))); }, [mock]);
+  const load = useCallback(() => { setErr(""); agentsList().then(setLive).catch((e) => setErr(say(e))); }, [mock]);
   useEffect(load, [load]);
+  // Owners and admins may share and delete any agent; anyone else only the agents they made. The sample world is the owner's.
+  const role = useMembers((m) => m.spaces.find((x) => x.id === m.space)?.role);
+  const staff = mock || role === "owner" || role === "admin";
+  const chats = useChats();
+  const [listFor, setListFor] = useState<string | null>(null);
   const persist = (g: Group[], p: Record<string, string>) => { const s = store(); if (s) saveGroups(s, { groups: g, placed: p }); };
 
-  const agents: any[] | null = mock ? sample.assistants.map((a) => ({ name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", status: a.paused ? "stopped" : "idle", thread: "x", model: a.model, instructions: String(a.role).replace(/^Your assistant/, "Your agent").replace(/^Assistant of/, "Agent of"), autonomy: a.autonomy, id: a.id, ...(a.name === "rev" ? { made_by: "other", shares: [{ person: me || "me", level: "use" }] } : {}) })) : live;
-  const rows: Row[] = useMemo(() => (agents ?? []).map((a) => agentRow(a, me)), [agents, me]);
+  // The sample world answers the same agents.list the page reads (mock-agents.ts); only the pause and autonomy a person sets here are layered on it.
+  const agents: any[] | null = live && mock ? live.map((a) => { const x = sample.assistants.find((y) => y.name === a.name); return x ? { ...a, status: x.paused ? "stopped" : "idle", autonomy: x.autonomy } : a; }) : live;
+  const rows: Row[] = useMemo(() => visibleAgents((agents ?? []).map((a) => agentRow(a, me)), me), [agents, me]);
   const titleOf = (id: string) => AGENT_GROUPS.find(([g]) => g === id)?.[1] ?? id;
   const items = rows.map((r) => ({ ...r, group: placed[r.name] ?? titleOf(r.group) }));
   const def = useMemo(() => agentsDef(rows), [rows]);
@@ -54,7 +63,12 @@ export function AgentsHome() {
     setBusy(r.name);
     (stopped ? agentResume(r.name) : agentStop(r.name)).then(() => { showToast(stopped ? `${r.name} is working again.` : `Paused ${r.name}. It keeps its notes.`); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(null));
   };
-  const open = (r: Row) => router.push(`/u/assistants/${encodeURIComponent(r.name)}` as never);
+  const open = (r: Row, tab?: string) => router.push(`/u/assistants/${encodeURIComponent(r.name)}${tab ? `?tab=${tab}` : ""}` as never);
+  const go = (route: string) => router.push(route as never);
+  const talk = (r: Row) => { setBusy(r.name); startChat({ people: [], agents: [r.name] }).then((x) => { if ("chat" in x) go(`/u/chats/${encodeURIComponent(x.chat)}`); else showToast(x.say); }).catch((e) => showToast(say(e))).finally(() => setBusy(null)); };
+  const withIt = (r: Row) => chats.rows.filter((c) => chatHas(c, r.name));
+  const assistantChat = (r: Row) => { setBusy(r.name); assistantChatRoute().then(go).finally(() => setBusy(null)); };
+  const press = (r: Row) => (r.kind === "assistant" ? assistantChat(r) : open(r));
   const move = (r: Row, g: string) => { const p = { ...placed, [r.name]: g }; setPlaced(p); persist(groups, p); };
 
   const rowCard = (r: Row & { group?: string }) => {
@@ -63,22 +77,19 @@ export function AgentsHome() {
       <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${r.name} works: ${AUTONOMY.find(([k]) => k === r.autonomy)?.[1]}`} className="flex-row items-center gap-s1 rounded-chip bg-hover px-s2" style={{ minHeight: 26 }}><Text size="caption" medium tone="muted">{AUTONOMY.find(([k]) => k === r.autonomy)?.[1] ?? r.autonomy}</Text><Icon name="chevron-down" size={12} tone="label" /></Pressable>}
         items={(AUTONOMY as [string, string][]).map(([k, l]) => ({ label: l, selected: r.autonomy === k, onPress: () => { const a = sample.assistants.find((x) => x.name === r.name); if (a) sample.setAutonomy(a.id, k); } }))} />
     ) : null;
+    const mine = withIt(r);
+    const run: Record<string, (x?: { to?: string }) => void> = { open: () => open(r), chat: () => assistantChat(r), "new-chat": () => talk(r), chats: () => (mine.length === 1 ? go(`/u/chats/${encodeURIComponent(mine[0].id)}`) : setListFor(r.name)), pause: () => flip(r), share: () => open(r, "used"), delete: () => setConfirm(r.name), move: (x) => x?.to && move(r, x.to) };
     const menu = (
-      <Menu trigger={<IconButton icon="more" label={`${r.name}, more`} />} items={[
-        { label: "Open", onPress: () => open(r) },
-        ...(r.canPause ? [{ label: paused ? "Resume" : "Pause", onPress: () => flip(r) }] : []),
-        { label: "Share", onPress: () => open(r) },
-        ...(!mock && !r.builtin && r.kind !== "assistant" ? [{ label: "Delete", onPress: () => setConfirm(r.name) }] : []),
-        ...groups.filter((g) => g.name !== (placed[r.name] ?? titleOf(r.group as string))).slice(0, 6).map((g) => ({ label: `Move to ${g.name}`, onPress: () => move(r, g.name) })),
-      ]} />
+      <Menu trigger={<IconButton icon="more" label={`${r.name}, more`} />}
+        items={rowActions(r, { me, staff, chats: mine.length, groups: groups.map((g) => g.name), placed: placed[r.name] ?? titleOf(r.group as string), canDelete: !mock }).map((a) => ({ label: a.label, onPress: () => run[a.key]?.(a) }))} />
     );
     const status = <Chip tone={paused ? "warn" : r.status === "Running now" ? "ok" : "plain"}>{r.status}</Chip>;
     return (
-      <Pressable accessibilityRole="button" accessibilityLabel={`Open ${r.name}`} onPress={() => open(r)} disabled={busy === r.name} className="gap-s2 p-s3">
+      <Pressable accessibilityRole="button" accessibilityLabel={r.kind === "assistant" ? "Open your assistant" : `Open ${r.name}`} onPress={() => press(r)} disabled={busy === r.name} className="gap-s2 p-s3">
         <View className="flex-row items-center gap-s3">
           <Avatar of={markRef(r.kind === "assistant" ? "assistant" : "teammate", r.name)} size={40} />
           <View className="min-w-0 flex-1 gap-s1">
-            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
+            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{r.kind === "assistant" ? <Chip>Your assistant</Chip> : null}{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>
             <Text size="caption" tone="label" numberOfLines={phone ? 3 : 1}>{[r.model, r.works].join(", ")}</Text>
           </View>
@@ -117,6 +128,11 @@ export function AgentsHome() {
           ) : null}
         </View>
       )}
+      <Sheet open={!!listFor} onClose={() => setListFor(null)} title={listFor ? `Chats with ${listFor}` : undefined}>
+        <View className="gap-s1">
+          {(listFor ? chats.rows.filter((c) => chatHas(c, listFor)) : []).map((c) => <Pressable key={c.id} accessibilityRole="button" onPress={() => { setListFor(null); go(`/u/chats/${encodeURIComponent(c.id)}`); }} className="rounded-card p-s2"><Text>{c.title || "Chat"}</Text></Pressable>)}
+        </View>
+      </Sheet>
       <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm ? `Delete ${confirm}?` : undefined}>
         <Text tone="muted">It stops working for good and its notes go with it. If it is running, pause it first; the box will say so.</Text>
         <View className="flex-row gap-s2"><Button kind="primary" label="Delete" loading={busy === confirm} onPress={() => confirm && remove(confirm)} /><Button kind="ghost" label="Cancel" onPress={() => setConfirm(null)} /></View>

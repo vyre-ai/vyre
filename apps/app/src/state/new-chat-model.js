@@ -21,5 +21,24 @@ export function createInput(o) {
   return { ...(title ? { title } : {}), people: [], agents: o.agent && !o.agent.assistant ? [o.agent.name] : [] };
 }
 
+/**
+ * The New chat picker's three groups: your assistant, the people on the team (never you), and the agents the Agents screen shows. Each filtered by the search words.
+ * @param {{ agents: { name: string, kind?: string, assistant?: boolean }[], people: { id: string, name: string, role?: string }[], me?: string, q?: string }} o
+ * @returns {{ assistant: { name: string } | null, people: { id: string, name: string, role?: string }[], agents: { name: string }[] }}
+ */
+export function pickerGroups(o) {
+  const w = String(o.q ?? "").trim().toLowerCase();
+  const hit = (/** @type {string} */ n) => !w || n.toLowerCase().includes(w);
+  const asst = o.agents.find((a) => a.assistant || a.kind === "assistant") ?? null;
+  return {
+    assistant: asst && (hit(asst.name) || hit("your assistant")) ? { name: asst.name } : null,
+    people: o.people.filter((p) => p.id !== o.me && p.name && hit(p.name)),
+    agents: o.agents.filter((a) => a !== asst && hit(a.name)).map((a) => ({ name: a.name })),
+  };
+}
+
+/** The work.chat.create people and agents for what was picked (ids of people, names of agents). Picking only your assistant is not a selection here: it opens the pinned chat. @param {{ people: string[], agents: string[] }} sel */
+export const inputFor = (sel) => ({ people: [...new Set(sel.people)], agents: [...new Set(sel.agents)] });
+
 /** The new chat's id out of what work.chat.create answers: { chat, title, project, people, agents }. @param {any} r */
 export const chatIdOf = (r) => (typeof r?.chat === "string" && r.chat ? r.chat : null);

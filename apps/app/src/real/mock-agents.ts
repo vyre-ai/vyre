@@ -1,5 +1,8 @@
 // The agent page's tools answered from memory, for the sample build (EXPO_PUBLIC_VYRE_MOCK=1) only: an Intake assistant with its instructions, two context files, a Claude login with an API token behind it, and its use in a chat and a flow.
 // The shapes are the box's own (core/agents/config.js, core/sessions); what a person changes stays for the session.
+import { loadAssistants } from "../../screens/settings/data";
+import { WHO } from "../store-core/mock-ids.js";
+
 const AGENTS_MD = `You are the intake assistant for Juniper Studio.
 
 When a new inquiry arrives:
@@ -53,7 +56,12 @@ const accounts = [
 const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
-  "agents.list": () => [...Object.keys(W).map(agentOf), ...["research", "scribe"].map((n) => ({ name: n, label: n[0].toUpperCase() + n.slice(1), kind: "agent", role: n }))],
+  // One list for the Agents screen and the agent page, so every row opens: the sample world's assistants and agents (settings/data.ts), then the two that carry sample pages.
+  "agents.list": () => [
+    ...loadAssistants().map((a) => ({ uid: `agt_${a.id}`, name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", model: a.model, effort: "medium", projects: ["juniper"], computer: false, status: a.paused ? "stopped" : "idle", thread: "x", autonomy: a.autonomy, id: a.id,
+      instructions: String(a.role), made_by: a.id === "iris" ? WHO.chris : a.id === "rev" ? WHO.chris : WHO.alex, ...(a.id === "rev" ? { shares: [{ person: WHO.alex, level: "use" }] } : {}) })),
+    ...Object.keys(W).map((n) => ({ ...agentOf(n), made_by: WHO.alex })),
+  ],
   "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
   "sessions.models.get": () => ({ aliases: { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" } }),
   "watchers.list": () => [],
