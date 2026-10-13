@@ -20,22 +20,27 @@ import { agentFill } from "./agent-fill.js";
 import { totp } from "./totp.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
+import { BIN as PINNED_SHELL } from "../../scripts/install-test-chrome.mjs";
 
-const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+// The same browser on every box: VYRE_CHROME, else the pinned chrome-headless-shell CI installs, else the Mac app. Not CHROME_BIN: the GitHub runner sets it to its own Chrome, which did not come up under CI.
+const CHROME_BIN = [process.env.VYRE_CHROME, PINNED_SHELL, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find(p => p && fs.existsSync(p)) || PINNED_SHELL;
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
+const IS_SHELL = /headless-shell/.test(CHROME_BIN);
 const fake = label => `fixture-${label}-${crypto.randomBytes(10).toString("hex")}`;
 const SEED = "JBSWY3DPEHPK3PXP";
 
 /** One headless Chrome with its own profile; resolves to its DevTools port. */
 async function chrome(t) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-chrome-"));
-  const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
+  const child = spawn(CHROME_BIN, [...(IS_SHELL ? [] : ["--headless=new"]), "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: ["ignore", "ignore", "pipe"], detached: true });
+  let stderr = "";
+  child.stderr.on("data", c => { stderr = (stderr + c).slice(-2000); });
   t.after(async () => { try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch {} await new Promise(r => setTimeout(r, 200)); try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {} });
   for (let i = 0; i < 400; i++) {
     try { const port = Number(fs.readFileSync(path.join(dir, "DevToolsActivePort"), "utf8").split("\n")[0]); if (port && (await fetch(`http://127.0.0.1:${port}/json/version`)).ok) return port; } catch {}
     await new Promise(r => setTimeout(r, 50));
   }
-  throw new Error("Chrome did not come up");
+  throw new Error(`Chrome did not come up (${CHROME_BIN}): ${stderr}`);
 }
 
 /** The login-page replica. `mode`: "one" (username and password on one page) or "two" (username page, then password page, then a code page). Every credential POST is logged. */

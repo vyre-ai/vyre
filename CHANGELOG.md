@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(tests): CI red zero. The `vyre mcp` help assertion follows the command's own usage and summary (the verbs gained connect, list and revoke, so the pinned text was stale), and agent-fill drives the pinned chrome-headless-shell (VYRE_CHROME, else the one CI installs, else the Mac app) instead of the GitHub runner's CHROME_BIN, which did not come up; the failure now prints Chrome's stderr. The no-sentinel assertions are unchanged.
 - fix(runner tests): the chaos script sets VYRE_LENT_AGENT_DEV=1 (a Space naming the fake agent by path is only obeyed on a development tree, since dfaf6651f), and the Mac dev-server preview test accepts the Mac's own refusal of a port the chat does not own for the dead-port case; the 502 and the no-leak assertions are unchanged.
 - ci(runner): lent-mac.yml also runs homesandbox, hardening, mac-hosted, home-network and rv2-seatbelt tests on the hosted Mac, so the macOS-only sandbox tests (internet block, Mach denies, keychain, clipboard, Finder events, profiles, home profile) run in a workflow that has a Mac instead of skipping everywhere.
 - fix(tests): the G01 walk gives the teammate a sign-in of her own (an item and a Claude account that serve her person alone) before her turn, so it runs on her account and never the home's; it also asserts she is refused with account_required before she has one.

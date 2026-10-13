@@ -20,7 +20,7 @@ import { start } from "../../daemon/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
 import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
 import { startFakeGoogle } from "../../../lib/connectors/testing/fake-google.js";
-import { INSTALL_LINE } from "./mcp.js";
+import mcpCommand, { INSTALL_LINE } from "./mcp.js";
 import { CLIENT_PUT } from "./connect.js";
 import { allowLoopbackForTests } from "../../../lib/http.js";
 allowLoopbackForTests();   // this file runs its fakes on loopback
@@ -216,7 +216,9 @@ shardTest("connect: a Google account with domain-wide delegation, and the scopes
 shardTest("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the line and runs claude only with --yes", async t => {
   const v = await vyred(t);
   const help = await vyre(v.root, ["help"]);
-  assert.match(help.out, /vyre mcp \[serve \| design \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
+  // The help line is the command's own usage and summary, so the test follows them when the verbs change.
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(help.out, new RegExp(esc(mcpCommand.usage) + "\\s+" + esc(mcpCommand.summary)));
   assert.match(help.out, /vyre connect/);
 
   // A fake claude that writes down what it was asked to do.
