@@ -15,7 +15,7 @@ export const EXAMPLES = Object.freeze({
   filter: { id: "open", kind: "filter", from: "steps.who.rows", where: "record.status == \"Open\"" },
   create: { id: "make", kind: "create", type: "matter", set: { client: { expr: "trigger.client" }, stage: "Intake" } },
   update: { id: "mark", kind: "update", type: "matter", record: { expr: "steps.make.record.id" }, set: { stage: "Active" } },
-  upsert: { id: "save", kind: "upsert", type: "client", match: { email: { expr: "trigger.email" } }, set: { name: { expr: "trigger.name" } } },
+  upsert: { id: "save", kind: "upsert", type: "client", match: { email: { expr: "trigger.email" } }, set: { name: { expr: "trigger.name" } }, update: {} },
   remove: { id: "drop", kind: "remove", type: "matter", record: { expr: "steps.make.record.id" } },
   decide: { id: "big", kind: "decide", if: "trigger.amount > 1000", then: [{ id: "alert", kind: "assign", to: "role:partner", title: "Large payment", output: { kind: "note" } }], else: [] },
   repeat: { id: "each", kind: "repeat", over: "steps.who.rows", as: "row", max: 50, steps: [{ id: "tag", kind: "update", type: "client", record: { expr: "row.id" }, set: { tagged: true } }] },
@@ -65,13 +65,18 @@ export function cheatsheet() {
   out.push("- `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.");
   out.push("- `call` step `with=<earlier send step>`: this send rides that step's yes (one question names both; the earlier tool must list this one in its `covers`; same path, not out of a loop or lane).");
   out.push("- `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).");
+  out.push("- Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.");
+  out.push("- `ask` goes to `person:<id>` or `role:<name>`, never an agent.");
+  out.push("- Email: `call action=comms.email resource=vyre://space/comms input={to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.");
   out.push("- A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.");
   out.push("", "## If it can fail");
   out.push(`- timeout_ms ${POLICY_LIMITS.timeoutMin}-${POLICY_LIMITS.timeoutMax}; retry false | {attempts 1-${POLICY_LIMITS.attempts}, backoff_ms n | [n...], on [${RETRY_CODES.join(", ")}]}. Defaults: ${Object.entries(POLICY).map(([k, p]) => `${k} ${ms(/** @type {any} */ (p).timeout_ms)} x${/** @type {any} */ (p).attempts}`).join(", ")}; other kinds do not retry. A refusal is never retried.`);
   out.push("- on_fail={then: continue|stop, steps}: steps run if this one fails for good (they read `error.code`, `error.message`, `error.step`); `continue` carries on, `stop` (default) fails the run after them. No on_fail inside an on_fail.");
   out.push("- verify={check: `output.record`, essential: true|false, say: \"what was checked\"} or {readback: true} on create, update, upsert, stage. Put an essential verify on every step that changes something.", "");
-  out.push("## Expressions", `- Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for datetime(x, tz), which prints "Wed 14 Oct, 2:00 pm"), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].`);
+  out.push("## Expressions", `- Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for the time functions), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].`);
   out.push("- An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.");
+  out.push("- Text with values is one expression: `\"Hi \" + text(trigger.after.name) + \" at \" + format(trigger.after.starts_at, \"weekdaytime\", tz)`. A missing value is empty text; a sealed field prints its placeholder. The builder writes it from \"Hi {name}\".");
+  out.push("- Times: `format(t, \"weekdaytime\", tz)` prints \"Sat 31 Oct, 9:00 am\"; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, \"time\", tz, -1, \"day\")` moves first. `addtime(t, 2, \"hours\", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving). Use one call; they nest only two deep.");
   out.push(`- Functions: ${Object.keys(FUNCTIONS).join(", ")}. Nothing else is callable.`, "");
   out.push("## Limits", `- ${LIMITS.steps} steps a Flow, ${LIMITS.depth} levels of nesting, repeat at most ${LIMITS.repeatMax}, a Code step's source at most ${LIMITS.codeSource / 1024} KB. Step ids: lowercase letters, digits, underscores, starting with a letter.`);
   out.push("- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; tools_call flows.propose checks it and runs its test cases first.");

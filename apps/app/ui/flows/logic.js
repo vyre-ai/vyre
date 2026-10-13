@@ -215,21 +215,34 @@ const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
 const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
-const TOKEN = /\{([a-z0-9_.]+)\}/gi;
+const FORMATS = ["date", "time", "datetime", "weekday", "weekdaytime", "iso"];
+/** `{ref}`, `{ref + 2 hours}`, `{ref - 1 day}`, each optionally `as date`, `as time`, `as datetime`, `as weekday`, `as weekdaytime` or `as iso`. The ref is a field, `{now}` or `{today}`. */
+const TOKEN = /\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
 const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
 let DATE_TOKENS = new Map();
-/** What a token reads when it sits inside text: a date or time field is written as people read it, a helper as its own call, anything else as text. @param {string} t */
-const partExpr = (t) => {
-  if (HELPERS[t]) return HELPERS[t];
-  const kind = DATE_TOKENS.get(t);
-  return kind === "datetime" ? `datetime(${tokenExpr(t)}, tz)` : kind === "date" ? `date(${tokenExpr(t)})` : `text(${tokenExpr(t)})`;
+/**
+ * What a token reads when it sits inside text. A date or time field is written as people read it ("Wed 14 Oct, 2:00 pm", in the Space's zone; a date-only field has no zone), a helper as its own
+ * call, a time moved by an amount or printed in a named format as `format(ref, "weekdaytime", tz, -1, "day")`, anything else as text.
+ * @param {string} t @param {string} [sign] @param {string} [n] @param {string} [unit] @param {string} [fmt]
+ */
+const partExpr = (t, sign, n, unit, fmt) => {
+  const base = t === "now" || t === "today" ? "now" : tokenExpr(t);
+  const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
+  if (!sign && !fmt) {
+    if (HELPERS[t]) return HELPERS[t];
+    return kind === "datetime" ? `datetime(${base}, tz)` : kind === "date" ? `date(${base})` : `text(${base})`;
+  }
+  const dateOnly = kind === "date";
+  const f = (fmt || "").toLowerCase() || (dateOnly || t === "today" ? "weekday" : "weekdaytime");
+  return `format(${base}, "${f}", ${dateOnly ? '"UTC"' : "tz"}${sign ? `, ${sign === "-" ? "-" : ""}${Number(n)}, "${String(unit).toLowerCase()}"` : ""})`;
 };
 /**
  * A text value the person typed. A whole value like {email} reads that field of what started the Flow. Text with tokens inside, like "Hello {name}, ...", becomes one expression that joins the
  * pieces (`"Hello " + text(trigger.name) + ", ..."`), so the braces are filled in when the step runs; a missing value reads as empty. A date or time field inside text is written as people read it
- * ("Wed 14 Oct, 2:00 pm", in the Space's zone), and {now} and {today} are the time and the date now. Text with no token is the text itself.
+ * ("Wed 14 Oct, 2:00 pm", in the Space's zone), {now} and {today} are the time and the date now, and a time can be moved and formatted: {after.starts_at - 1 day}, {now + 2 hours as time}.
+ * Text with no token is the text itself.
  * @param {string} t
  */
 export const val = (t) => {
@@ -240,24 +253,33 @@ export const val = (t) => {
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(partExpr(x[1])); at = x.index + x[0].length; }
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
   if (at < s.length) parts.push(lit(s.slice(at)));
   return { expr: parts.join(" + ") };
 };
-const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\))';
+const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
+/** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
+const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
-  if (!TEMPLATE.test(e) || !/(?:text|date|datetime)\(/.test(e)) return null;
+  if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format)\(/.test(e)) return null;
   let out = "";
   for (const p of e.match(TEMPLATE_PART) || []) {
     if (p.startsWith('"')) { out += unlit(p); continue; }
+    const f = /^format\(([a-z0-9_.]+), "([a-z]+)", (tz|"UTC")(?:, (-?\d+), "([a-z]+)")?\)$/.exec(p);
+    if (f) {
+      const ref = refToken(f[1]);
+      if (!ref || !FORMATS.includes(f[2])) return null;
+      const dflt = f[3] === "tz" ? "weekdaytime" : "weekday";
+      out += `{${ref}${f[4] === undefined ? "" : ` ${Number(f[4]) < 0 ? "-" : "+"} ${Math.abs(Number(f[4]))} ${f[5]}`}${f[2] === dflt ? "" : ` as ${f[2]}`}}`;
+      continue;
+    }
     const call = /^(text|date|datetime)\(([a-z0-9_.]+)/.exec(p) || [];
     const n = call[2] || "";
     if (n === "now" && call[1] !== "text") out += call[1] === "date" ? "{today}" : "{now}";
-    else if (/^trigger\.([a-z0-9_.]+)$/i.test(n)) out += `{${n.slice(8)}}`;
-    else if (/^(?:steps|event|row|item)\./.test(n)) out += `{${n}}`;
+    else if (refToken(n) && n !== "now") out += `{${refToken(n)}}`;
     else return null;
   }
   return out;

@@ -316,3 +316,19 @@ test("a date or time field inside text is written as people read it, and {now} a
   assert.deepEqual(val("{today}"), { expr: "date(now, tz)" });
   assert.deepEqual(dateChoices(d, "wait2", o).map(([t]) => t).filter((t) => t === "{now}" || t === "{today}"), [], "a wait cannot wait for the helpers");
 });
+
+test("a time in text can be moved by an amount and printed in a named format", () => {
+  const o = { types: [{ name: "appointment", label: "Appointment", fields: [{ name: "starts_at", label: "Starts", kind: "datetime" }, { name: "due", label: "Due", kind: "date" }] }], agents: [], templates: [], roles: [], people: [] };
+  const d = (body) => ({ name: "R", trigger: { kind: "created", type: "appointment" }, steps: [{ id: "sms1", kind: "sms", to: "+15550100", body }] });
+  const expr = (body) => toDefinition(d(body), o).steps[0].input.body.expr;
+  assert.equal(expr("See you {after.starts_at - 1 day}"), '"See you " + format(trigger.after.starts_at, "weekdaytime", tz, -1, "day")');
+  assert.equal(expr("{after.starts_at + 2 hours as time}"), 'format(trigger.after.starts_at, "time", tz, 2, "hours")');
+  assert.equal(expr("Due {after.due + 1 month}"), '"Due " + format(trigger.after.due, "weekday", "UTC", 1, "month")', "a date-only field has no zone");
+  assert.equal(expr("Sent {now - 30 minutes as time}"), '"Sent " + format(now, "time", tz, -30, "minutes")');
+  assert.equal(expr("At {after.starts_at as iso}"), '"At " + format(trigger.after.starts_at, "iso", tz)');
+  for (const body of ["See you {after.starts_at - 1 day}", "{after.starts_at + 2 hours as time}", "Due {after.due + 1 month}", "At {after.starts_at as iso}", "Sent {now - 30 minutes as time} on {today}"]) {
+    const def = toDefinition(d(body), o);
+    assert.deepEqual(checkFlow(def), []);
+    assert.equal(fromDefinition(def).steps[0].body, body, body);
+  }
+});
