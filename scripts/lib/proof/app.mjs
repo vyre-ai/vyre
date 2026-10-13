@@ -291,7 +291,7 @@ export function createApp(o) {
 
   /**
    * The inviter confirms the words the invitee reads to them (an admin or owner invite waits for this), as the app does it: over the paired peer stream, the home asking this app's key for its yes.
-   * @param {{ space: string, id: string, words: string, signPresence: (card: any) => Promise<any> }} a
+   * @param {{ space: string, id: string, name: string, words?: string, signPresence: (card: any) => Promise<any> }} a
    */
   async function confirmInvite(a) {
     if (!me || !pairing) throw new Error("this app has no identity or no server yet");
@@ -299,7 +299,13 @@ export function createApp(o) {
     const peer = await openServerPeer(conn);
     try {
       const wire = kernelWire(peer, a.space, { person: me.id, signPresence: a.signPresence });
-      return await confirmTeamInvite({ wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory }, a.id, a.words);
+      const { WORDS } = await import("../../../relay/client/words.js");
+      const { resolveSpace, spaceFingerprint, fingerprintWords } = await import("../../../apps/app/src/real/join-team.js");
+      const dirDeps = { wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory, words: /** @type {string[]} */ (WORDS) };
+      // the words the invitee reads out are the Space's own, the four its join card shows; the app's confirm checks what is typed against them (work/rc3/invite-words)
+      const rec = await resolveSpace({ fetch: dirDeps.fetch, base: dirDeps.base }, String(a.name).replace(/\.vyre\.run$/, ""), null);
+      const words = a.words || fingerprintWords(dirDeps.words, spaceFingerprint(rec.id, String(rec.payload.rootPublic)));
+      return await confirmTeamInvite(dirDeps, a.id, String(words), a.name);
     } finally { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } }
   }
 

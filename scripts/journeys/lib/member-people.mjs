@@ -16,7 +16,7 @@ export async function joinOne({ w, team, who, role = "member" }) {
   const invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: r.name, role, signPresence: async (/** @type {any} */ card) => mac.presenceSigner.proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
   invite.close();
   // an invite to the admin role waits for the owner to confirm the words the invitee reads out (the kernel records them; it has nothing to compare them with)
-  if (role === "admin") await mac.confirmInvite({ space: team.space, id: invite.id, words: "walk words for the admin", signPresence: async (/** @type {any} */ card) => mac.presenceSigner.proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
+  if (role === "admin") await mac.confirmInvite({ space: team.space, id: invite.id, name: team.label, signPresence: async (/** @type {any} */ card) => mac.presenceSigner.proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
   const sg = app.presenceSigner, chain = chainOf(team.space, app.identity.id);
   const joined = await app.joinTeam({ link: invite.link, signPresence: async (/** @type {any} */ req) => sg.proof(chain, req.op, req.fields), presenceKey: async () => sg.enrolment(app.identity.id) });
   assert.equal(joined.joined.joined, true, `${who} joined`);
