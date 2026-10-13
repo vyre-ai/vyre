@@ -152,7 +152,9 @@ export async function confirmInviteWords(id: string, words: string) {
   const s = active.get();
   if (!s?.id) throw Object.assign(new Error("There is no space to invite people to yet."), { code: "no_space" });
   const t = await import("../../src/real/team-join");
-  return (await t.invitesHere()) ? t.confirmTeamInviteWords(s.id, id, words.trim()) : tool("spaces.invites.confirm", { space: s.id, id, words: words.trim() });
+  // The words are checked against the space's own before any confirm path, as Settings' invite does (b153908ff), then confirmed on the team wire or by the home's tool.
+  await t.checkInviteWordsFor(s.id, id, words.trim(), s.name);
+  return (await t.invitesHere()) ? t.confirmTeamInviteWords(s.id, id, words.trim(), s.name) : tool("spaces.invites.confirm", { space: s.id, id, words: words.trim() });
 }
 
 
