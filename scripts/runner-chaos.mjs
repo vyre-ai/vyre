@@ -48,7 +48,6 @@ if (role === "home") {
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
   await mk(k.chains.fromFacts({ kind: "device", device_key_id: DEVICE, person: BOB, path: "direct" }), { side: "member_accepts", member: BOB, device: DEVICE, device_key: DEVICE });
-  const agentDir = path.dirname(agentPath);
   const resumes = path.join(root, "resumes.jsonl");
   // the server's side of a chat carried on from a computer: where its transcript goes, and the server's own checkpoint store
   const placeOf = session => ({ file: path.join(root, "server-projects", "p", `${session}.jsonl`), root: path.join(root, "server-projects"), native: session, cwd: path.join(root, "server-cwd") });
@@ -69,7 +68,7 @@ if (role === "home") {
       const onDisk = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean) : [];
       fs.appendFileSync(resumes, JSON.stringify({ session: i.session, epoch: i.epoch, reason: i.reason, turn: cp ? cp.turn : null, seq: cp ? cp.seq : null, lines: lines.length, loaded, loadError, onDisk }) + "\n");
     },
-    specFor: async () => ({ command: process.execPath, args: [agentPath], env: { VYRE_AUTO_TURN_MS: "1200" }, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }) });
+    specFor: async () => ({ command: "claude", args: [], env: { VYRE_AUTO_TURN_MS: "1200" }, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   home.watch(500);
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const dispatch = withKernelCall(async () => { throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); }, { serverFor: s => (s === SPACE ? server : null), personOf: d => (d === DEVICE ? BOB : null), pathOf: () => "wink" });
@@ -146,7 +145,7 @@ else if (role === "lender") {
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: DEVICE, deviceKey: DEVICE }) }) },
   };
   seams.set(base, { heartbeatMs: BEAT_MS, now: () => Date.now() + faults.skew, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
-  process.env.VYRE_CLAUDE_BIN = path.join(agentDir, "agent.js");   // a chat's process the home spawns here runs the fake agent ("claude" resolves to it)
+  process.env.VYRE_CLAUDE_BIN ||= path.join(agentDir, "agent.js");   // the Space names "claude"; this computer resolves it to the fake agent (the orchestrator sets the shared copy, so the sandbox check finds it)
   const h = await mod.start(ctx);
   const run = (tool, input) => tools.get(tool).run(input, { caller: "cli" });
   const r = await run("runner.start", { space: SPACE, session });
@@ -181,7 +180,7 @@ else {
   const [homePort, ctlPort, proxyPort] = [await free(), await free(), await free()];
   const children = new Set();
   const spawnLogged = (name, argv, env = {}) => {
-    const c = spawn(process.execPath, argv, { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"], detached: false });
+    const c = spawn(process.execPath, argv, { env: { ...process.env, VYRE_CLAUDE_BIN: path.join(agentHome, "agent.js"), ...env }, stdio: ["pipe", "pipe", "pipe"], detached: false });
     const events = []; let buf = "";
     c.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); try { events.push(JSON.parse(l)); } catch { /* a log line */ } if (process.env.CHAOS_VERBOSE) log(name, l.slice(0, 200)); } });
     c.stderr.on("data", d => { if (process.env.CHAOS_VERBOSE || /rror/.test(String(d))) log(name, "stderr", String(d).trim().slice(0, 300)); });
