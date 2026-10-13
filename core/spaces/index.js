@@ -37,6 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
+import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch } from "../../lib/release-build.js";
@@ -186,6 +187,7 @@ export default {
     /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
     const attestMessage = (/** @type {string} */ space, /** @type {string} */ nonce) => `vyre-space-attest-v1\n${space}\n${nonce}`;
     const spaceFingerprint = (/** @type {string} */ chainId, /** @type {string} */ rootPublic) => crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${chainId}\n${rootPublic}`).digest("hex").slice(0, 32);
+    const confirmTries = triesCounter();
     const wordList = Array.isArray(WORDS) ? WORDS : String(WORDS).split(/\s+/).filter(Boolean);
     const fingerprintWords = (/** @type {string|null|undefined} */ hex) => {
       if (!hex) return null;
@@ -2113,7 +2115,16 @@ export default {
       const row = spaceOf(i.space);
       await gate(row.id, undefined, meta);
       if (!kernelHandle(row.id)) throw refuse("Only an invite made through the space's kernel waits for confirmation.", "not_kernel");
-      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta, row.id), String(i.id), String(i.words)));
+      // The words are THIS Space's (derived from its id and root key, the same four the join card shows): a wrong, empty or another Space's words are refused and nothing is confirmed. They prove the invitee is looking
+      // at this Space, not who the invitee is. The expected words are never shown to the inviter.
+      const id = String(i.id);
+      if (confirmTries.spent(id)) throw refuse(TOO_MANY, "too_many_tries");
+      const expected = fingerprintWords((await invitePin(row)).rk);
+      if (!expected) throw refuse("This Space's words cannot be checked from here yet. Try again in a minute, or ask the owner.", "unavailable");
+      if (!sameWords(i.words, expected)) { confirmTries.miss(id); throw refuse(WORDS_REFUSED, "words_mismatch"); }
+      const done = out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta, row.id), id, String(i.words)));   // the words as typed: the inviter's proof is over exactly them
+      confirmTries.clear(id);
+      return done;
     });
     tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async (i, meta) => {
       const row = spaceOf(i.space);

@@ -124,3 +124,23 @@ export function createChainAdmit(o) {
     async stillListed(identity, entry) { return (await this.status(identity, entry)).state; },
   };
 }
+
+/**
+ * A ceiling on chain hellos, applied BEFORE any chain is fetched or signature checked, so a stranger hammering the door cannot make this server hammer the directory. The relay passes the box only the device's key, not an
+ * address, so the ceilings are per channel key and box-wide. @param {{ now?: () => number, perKey?: number, total?: number, windowMs?: number }} [o]
+ * @returns {(key: string) => boolean} true when this hello may go on
+ */
+export function createRateGate(o = {}) {
+  const clock = o.now || Date.now, perKey = o.perKey ?? 10, total = o.total ?? 120, windowMs = o.windowMs ?? 60_000;
+  /** @type {Map<string, number[]>} */ const by = new Map();
+  /** @type {number[]} */ let all = [];
+  return key => {
+    const t = clock();
+    all = all.filter(x => t - x < windowMs);
+    const mine = (by.get(key) || []).filter(x => t - x < windowMs);
+    if (all.length >= total || mine.length >= perKey) { by.set(key, mine); return false; }
+    all.push(t); by.set(key, [...mine, t]);
+    if (by.size > 2000) by.delete(/** @type {string} */ (by.keys().next().value));
+    return true;
+  };
+}

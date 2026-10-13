@@ -47,7 +47,11 @@ test("an agent with no project runs in its own folder: AGENTS.md and CLAUDE.md a
 });
 
 test("an agent working in a project runs in the project's folder and is told both: its own instructions for how it works, the project's for the work", { timeout: 120_000 }, async t => {
-  const { ada, ben, launches, project } = await world(t);
+  const { d, ada, ben, launches, project } = await world(t);
+  /** @type {any[]} */ const seen = [];
+  const tl = /** @type {any} */ (d.registry).tools.get("threads.launch"), realRun = tl.run;
+  tl.run = (/** @type {any} */ i, /** @type {any} */ m, /** @type {any[]} */ ...r) => { seen.push(i); return realRun(i, m, ...r); };
+  t.after(() => { tl.run = realRun; });
   fs.writeFileSync(path.join(project.home, "AGENTS.md"), "Always cite the file number.\n");
   const made = await ada("agents.create", { name: "intake", kind: "agent", projects: [project.slug], instructions: "Draft replies." });
   assert.equal(made.error, undefined, JSON.stringify(made.error));
@@ -59,5 +63,10 @@ test("an agent working in a project runs in the project's folder and is told bot
   const text = appended(run);
   assert.ok(text.includes(`${project.home}/AGENTS.md`), "the project's instructions by path");
   assert.match(text, /agt_[A-Za-z0-9-]+\/AGENTS\.md/, "and the agent's own");
+  const own = /(agt_[A-Za-z0-9-]+)\/AGENTS\.md/.exec(text);
+  assert.ok(own, "its own folder named");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].read_only.length, 1, "exactly one read-only folder");
+  assert.ok(seen[0].read_only[0].endsWith(`/agents/${own[1]}`), "and it is its own agent folder: " + seen[0].read_only[0]);
   assert.match(text, /your own instructions for how you work, then the project's instructions for the work itself/);
 });

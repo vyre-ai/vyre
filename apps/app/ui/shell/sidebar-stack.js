@@ -12,6 +12,7 @@ export const PANELS = Object.freeze([
   { id: "drive", title: "Files", root: "/u/files", prefixes: ["/u/files", "/u/drive"] },
   { id: "agents", title: "Agents", root: "/u/assistants", prefixes: ["/u/assistants"] },
   { id: "flows", title: "Flows", root: "/u/flows", prefixes: ["/u/flows"] },
+  { id: "build", title: "Build", root: "/u/playbooks", prefixes: ["/u/playbooks", "/u/templates", "/u/settings/customize", "/u/kits"] },
   { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about", "/u/install"] },
 ]);
 

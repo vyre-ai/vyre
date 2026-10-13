@@ -30,7 +30,7 @@ test("the list groups active rules by kind in a fixed order, and the sentence is
   assert.deepEqual(groups(l.rules).map((g) => [g.title, g.rules.map((r) => r.id)]), [["Never", ["r1", "r2"]], ["Always ask", ["r3"]]]);
   assert.equal(groups(l.rules)[0].rules[0].view, "V r1");
   assert.deepEqual(disabled(l.rules).map((r) => r.id), ["rx"]);
-  assert.deepEqual(l.proposals.map(proposer), ["the assistant kit", "a member"]);
+  assert.deepEqual(l.proposals.map(proposer), ["the agent kit", "a member"]);
 });
 
 test("define, propose, enable, disable, accept, dismiss and remove are one call each; the id-only calls carry only the id", { skip: !strip }, async () => {

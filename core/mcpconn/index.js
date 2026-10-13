@@ -123,7 +123,7 @@ export default {
       input: obj({ id: { type: "string", maxLength: 60 } }, ["id"]), callers: PEOPLE,
       run: async (/** @type {any} */ input) => {
         const r = /** @type {any} */ (db.prepare("SELECT * FROM mcpconn_connections WHERE id = ?").get(String(input.id)));
-        if (!r) throw refuse("no such key (mcpconn.list shows them)", "not_found");
+        if (!r) throw refuse("no such key. Open Settings > Your AI keys to see yours, or run vyre mcp list", "not_found");
         if (r.revoked_at == null) db.prepare("UPDATE mcpconn_connections SET revoked_at = ? WHERE id = ?").run(now(), String(r.id));
         try { const f = JSON.parse(fs.readFileSync(keyPath(), "utf8")); if (f && f.id === r.id) fs.rmSync(keyPath(), { force: true }); } catch { /* no file, or not this one */ }
         stopChild(String(r.id));

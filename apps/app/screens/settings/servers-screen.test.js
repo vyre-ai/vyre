@@ -27,3 +27,13 @@ test("settings lists Servers whether or not anything is paired", async () => {
   const rows = settingsGroups("Juniper Studio").flatMap((g) => g.rows);
   assert.ok(rows.some((r) => r[2] === "/u/settings/servers"));
 });
+
+test("servers screen: a server connected from the list says so and has a Remove", () => {
+  assert.match(src, /Connected to \$\{r\.name\} from your list/);
+  assert.match(src, /label="Remove"/);
+});
+
+test("the chain pairing is off by default: a listed server answers server_not_ready until the server side is signed", () => {
+  const app = fs.readFileSync(new URL("../../src/real/space-list-app.ts", import.meta.url), "utf8");
+  assert.match(app, /let chainPairer: ChainPairer = async \(\) => \{ throw[^}]*server_not_ready/);
+});

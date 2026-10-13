@@ -20,12 +20,15 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
-  "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
+  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
   "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
   "memory.answer", "memory.ask", "memory.brief", "memory.card", "memory.context", "memory.decisions", "memory.facts", "memory.graph", "memory.prompt", "memory.relevant",
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
+  // Documents: reading a template and making a document from one. The handlers run on HER chain (lib/gateway-door.js), so the Drive and every record named are judged by what she may read and write; a
+  // record she cannot read is refused by name (documents.members.test.js). Sending for signature, the waiting list and reminders stay owner-only: they send as the Space's mail and list everyone's requests.
+  "documents.generate", "documents.template.get", "documents.template.list",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
@@ -95,8 +98,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.catalogue", "design.css", "design.css.propose", "design.css.status", "design.css.verify", "design.decide", "design.proposals", "design.propose",
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
-  "documents.generate", "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.waiting", "documents.template.add", "documents.template.get", "documents.template.list",
+  "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
+  "documents.signing.remind", "documents.signing.waiting", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
@@ -231,7 +234,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
 export const SELF_GATED = Object.freeze(new Set([
-  "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
+  "vault.access.get", "vault.access.set", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
   "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",
@@ -276,8 +279,8 @@ export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
 export const TOOL_GROUPS = Object.freeze({
   mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send"]),
   calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "connectors.calendar.today"]),
-  documents: Object.freeze(["documents.generate", "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
-    "documents.signing.waiting", "documents.template.add", "documents.template.get", "documents.template.list"]),
+  documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
+    "documents.signing.waiting", "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
     "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
   publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),

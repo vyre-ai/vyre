@@ -232,7 +232,13 @@ export async function agentLaunchGuard(sb, i, who, owner) {
 }
 
 /** The launch input with `for_person` kept only when a first-party module made the call (anyone else's is dropped: a person's own words never say who the work is for). @param {any} i @param {any} meta */
-export const trustedLaunch = (i, meta) => { if (!i || i.for_person === undefined || (meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"))) return i; const { for_person: _drop, ...rest } = i; return rest; };
+export const trustedLaunch = (i, meta) => {
+  if (!i) return i;
+  const first = Boolean(meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"));
+  const { for_person, read_only, ...rest } = i;
+  // `for_person` from any first-party module; `read_only` (one folder the session may read, its own agent folder) only from the agents module: nobody else widens what a sandbox can read.
+  return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}) };
+};
 
 /** The first person on a kernel chain (a member's session chain carries her and the assistant: she is who asks). @param {any} chain @returns {string | null} */
 const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };

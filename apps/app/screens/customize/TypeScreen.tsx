@@ -24,8 +24,8 @@ export function TypeScreen() {
   const [names, setNames] = useState<Record<number, string>>({});
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
   useEffect(() => { if (def) setLabel(def.label); }, [def?.name]);
-  if (!def && loading) return <Page title="Customize" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
-  if (!def) return <Page title="Customize" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
+  if (!def && loading) return <Page title="Objects" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
+  if (!def) return <Page title="Objects" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
   const types = defs.map((d) => ({ name: d.name, label: d.label, plural: (d.plural as string) ?? `${d.label}s` }));
   const self = types.find((t) => t.name === def.name)!;
   const groups: Group[] = def.groups ?? [];
@@ -93,7 +93,7 @@ export function TypeScreen() {
     </View>
   );
   return (
-    <Page title={def.label ? `${self.plural}` : "Type"} sub="Customize" back="/u/settings/customize">
+    <Page title={def.label ? `${self.plural}` : "Type"} sub="Objects" back="/u/settings/customize">
       {working ? <Banner><Text strong>{`Setting up ${def.label} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
       <View className={phone ? "gap-s3" : "flex-row items-start gap-s4"}>
         {list}
