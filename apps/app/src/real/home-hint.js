@@ -32,3 +32,22 @@ export function parseHomeHint(text) {
 
 /** Does the server this hint names admit chain devices? An old server's hint has no flag, so the app offers it no chain sign-in. @param {HomeHint | null} h */
 export const offersChainSignIn = (h) => Boolean(h && h.chainHello === 1);
+
+const HINT_KEY = "vyre.home-hint";
+
+/**
+ * The device's one stored home hint, over a keyed text store. `store` takes the object or its JSON text and keeps it only if it is a pinned route; `load` gives it back or null. The first vault read on a device
+ * with no pairing asks the hint's server (the pinned box). @param {{ get(k: string): Promise<string | null>, set(k: string, v: string): Promise<void>, del(k: string): Promise<void> }} kv
+ */
+export function makeHintStore(kv) {
+  return {
+    /** @param {unknown} hint @returns {Promise<boolean>} */
+    async store(hint) {
+      const h = parseHomeHint(typeof hint === "string" ? hint : JSON.stringify(hint ?? null));
+      if (!h) return false;
+      try { await kv.set(HINT_KEY, serializeHomeHint(h)); return true; } catch { return false; }
+    },
+    /** @returns {Promise<HomeHint | null>} */
+    async load() { try { return parseHomeHint(await kv.get(HINT_KEY)); } catch { return null; } },
+  };
+}
