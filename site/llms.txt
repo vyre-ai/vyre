@@ -58,4 +58,4 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [sitemap.xml](https://vyre.run/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
-- [The prompt to give your AI agent](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md): two lines that send an agent to https://vyre.run/agenthome.md
+- [The prompt to give your AI agent](https://vyre.run/docs/for-agents/PROMPT.md): two lines that send an agent to https://vyre.run/agenthome.md

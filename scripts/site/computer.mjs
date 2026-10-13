@@ -46,7 +46,7 @@ function overview({ SITE, REPO, MAP_URL, eyebrow, crumbs }) {
     <p class="crumbs"><a href="/">Vyre</a> / Computer</p>
     ${eyebrow('Vyre Computer.')}
     <h1 class="display">Agents that work <b>on real computers.</b></h1>
-    <p class="lead">Some work has no API: a portal, a court site, a practice-management page, a desktop app. Vyre Computer is how an agent does that work. It tries the site’s own interface first, uses the screen last, signs in without seeing a password, and stops at anything that sends, posts or pays until a person approves it.</p>
+    <p class="lead">Some work has no API: a portal, a government site, a back-office page, a desktop app. Vyre Computer is how an agent does that work. It tries the site’s own interface first, uses the screen last, signs in without seeing a password, and stops at anything that sends, posts or pays until a person approves it.</p>
     <div class="btn-row"><a class="btn btn-fill" href="/computer/chrome/">Install Vyre for Chrome</a><a class="btn" href="/computer/architecture/">Read how it works</a></div>
   </div>
 </section>
@@ -93,7 +93,7 @@ function overview({ SITE, REPO, MAP_URL, eyebrow, crumbs }) {
     <div class="cp-cards cp-cards5 rv">
       ${card('Vault', 'Logins are filled without the model seeing them. Tag a login with <code>#Name</code> and the Vault types the username, password and one-time code into the agent’s computer. While it does, the agent’s hands refuse every read and input, and the fill ends on its own within a minute. Your own Chrome is never typed into by Vyre: you type, or the Vault’s fill extension does, with Touch ID.')}
       ${card('Agents', 'Each agent has its own computer and can start, stop and read only that one. A named agent holds a grant from you. In Chrome it posts its plan before its first action, and you can interject, edit a step that has not started, or stop it.')}
-      ${card('Flows', 'Teach Vyre a site once and make it a Connection. A Flow’s “Call a service” step then runs the site’s operations with no model in the loop, and anything that is not a read is held. A court docket search can run on a schedule this way.')}
+      ${card('Flows', 'Teach Vyre a site once and make it a Connection. A Flow’s “Call a service” step then runs the site’s operations with no model in the loop, and anything that is not a read is held. A public-records search can run on a schedule this way.')}
       ${card('Needs you', 'A held act is a card with the site, the control and the field values it would send. When a site’s login runs out, one quiet card says “Sign in to the site again” and closes itself when the site answers.')}
       ${card('The Gate', 'A send, a post, a payment or a delete made through a computer waits at the Gate. An agent can ask and cannot approve. If the page changed since the act was held, the release is refused and nothing happens.')}
     </div>
@@ -112,7 +112,7 @@ function overview({ SITE, REPO, MAP_URL, eyebrow, crumbs }) {
       <li><b>A computer for each agent</b><span>A container with a desktop, Chrome and a terminal. Its home folder and Chrome profile survive a restart. Limits are set per agent: <code>vyre agents computer kit limits --cpus 2 --memory 4</code>.</span></li>
       <li><b>Take-over</b><span>A person takes the keyboard and the agent’s hands refuse input until the person gives it back. A person signing in privately also blinds the agent: its reads are refused too.</span></li>
       <li><b>Lending a computer to a Space</b><span>A member lends a Mac or Linux computer. The Space’s sessions run there inside a sandbox (macOS seatbelt, Linux bubblewrap) whose network reaches only the AI provider and the Space, in an encrypted workspace that opens while the Space leases its key (one hour, renewed while access holds). Either side takes it back in one tap. A session moves to the server when the lid closes.</span></li>
-      <li><b>Sign-in handed to the Vault</b><span>The agent says <code>computer.use { do: "signin", login }</code> and never receives the login. When you turn egress on, chosen sites (a bank, a court) leave through your own Mac so they see your address, and fail closed if the Mac is away.</span></li>
+      <li><b>Sign-in handed to the Vault</b><span>The agent says <code>computer.use { do: "signin", login }</code> and never receives the login. When you turn egress on, chosen sites (a bank, a tax authority) leave through your own Mac so they see your address, and fail closed if the Mac is away.</span></li>
     </ul>
   </div>
 </section>
@@ -376,7 +376,7 @@ function architecture({ SITE, REPO, eyebrow, crumbs }) {
       <p class="lead">Each pass through the loop leaves the next one cheaper. The highlight moves through the stages as the loop runs.</p>
     </div>
     <ol class="ar-flow cp-seq cp-seq5 rv" aria-label="The control loop in five stages">
-      ${node('01', 'Agent', 'Asks in words: “list the contacts tagged estate plan.” A named agent must hold your grant.')}
+      ${node('01', 'Agent', 'Asks in words: “list the contacts tagged renewal.” A named agent must hold your grant.')}
       ${node('02', 'Plan', 'Posts its steps first. You see them, can interject, and can stop it.')}
       ${node('03', 'Site API call', 'The best learned read, called from inside your page with your login.')}
       ${node('04', 'Result', 'Checked for a 2xx and redacted. If it fails, the page is driven instead.')}
@@ -440,7 +440,7 @@ function architecture({ SITE, REPO, eyebrow, crumbs }) {
       ${node('06', 'Released', 'The page is hashed again. Same signature: it runs. Changed: refused, nothing done.')}
     </ol>
     <div class="cp-hold rv">
-      <div class="cp-card" aria-hidden="true"><p class="lbl">Needs you</p><b>kit wants to press Send on app.example.com</b><small>Control: button Send &middot; To: dana@example.com &middot; Subject: Engagement letter</small><div class="cp-btns"><span class="cp-yes">Approve</span><span>Decline</span></div></div>
+      <div class="cp-card" aria-hidden="true"><p class="lbl">Needs you</p><b>kit wants to press Send on app.example.com</b><small>Control: button Send &middot; To: sam@example.com &middot; Subject: Your quote</small><div class="cp-btns"><span class="cp-yes">Approve</span><span>Decline</span></div></div>
       <div class="ar-outcomes">
         <div class="ar-out-card ar-allow"><p class="lbl">Approved, page unchanged</p><p>The act runs once, with the page’s own login.</p></div>
         <div class="ar-out-card ar-ask"><p class="lbl">Page changed since the hold</p><p>Refused with code <code>changed</code>. Look again and ask again.</p></div>

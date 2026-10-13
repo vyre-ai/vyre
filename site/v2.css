@@ -623,3 +623,20 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
   .pl-o1 { opacity: 1; } .pl-o2 { opacity: 0; }
 }
 @media (max-width: 600px) { .pl-anim .lbl::after { content: " (swipe to see all)"; } }
+
+/* grouped navigation: Product, Solutions, Resources open on hover or focus, no script */
+.nav-grp { position: relative; display: flex; align-items: center; }
+.nav-grp > .nav-top::after { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 0 2px 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.nav-pop { position: absolute; top: 100%; left: 0; min-width: 210px; display: none; flex-direction: column; background: var(--bg); border: 1px solid var(--line); padding: 6px; box-shadow: 0 14px 30px -18px rgba(0,0,0,.35); }
+.nav-grp:hover .nav-pop, .nav-grp:focus-within .nav-pop { display: flex; }
+.nav-pop a { padding: 13px 14px; }
+.nav-pop a:hover { background: var(--sunk); }
+.piece .more { margin-top: auto; font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); text-decoration: none; padding-top: 6px; }
+.piece .more:hover { text-decoration: underline; }
+@media (max-width: 880px) {
+  .nav-grp { display: block; }
+  .nav-grp > .nav-top { display: block; color: var(--ink-2); }
+  .nav-grp > .nav-top::after { display: none; }
+  .nav-pop { position: static; display: block; border: 0; box-shadow: none; padding: 0 0 0 14px; min-width: 0; background: transparent; }
+  .nav-pop a { padding: 14px 0; }
+}

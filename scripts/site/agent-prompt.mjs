@@ -248,9 +248,14 @@ export function mapBody({ MAP_URL, REPO, eyebrow }) {
       <a href="/start/"><b>Get started</b>Install Vyre and pair your server.</a>
       <a href="/direction/"><b>Direction</b>What comes next, by version.</a>
       <a href="${MAP_URL}"><b>The method</b>The steps your agent follows.</a>
-      <a href="${REPO}/blob/main/docs/architecture/features/records.md"><b>Records</b>Objects you shape, linked in any web.</a>
-      <a href="${REPO}/blob/main/docs/architecture/features/flows.md"><b>Flows</b>Triggers, steps and approvals.</a>
-      <a href="${REPO}/blob/main/docs/architecture/features/mcp-and-engineer.md"><b>MCP and the Engineer</b>How an agent connects and builds.</a>
+      <a href="/records/"><b>Records</b>Objects you shape, linked in any web.</a>
+      <a href="/vault/"><b>Vault</b>Credentials agents use without seeing.</a>
+      <a href="/flows/"><b>Flows</b>Triggers, steps and approvals.</a>
+      <a href="/agents/"><b>Agents</b>Instructions, memory and access.</a>
+      <a href="/computer/"><b>Computer</b>Work in sites that have no API.</a>
+      <a href="/for/"><b>For industries</b>Vyre mapped to your kind of firm.</a>
+      <a href="/compare/"><b>Compare</b>How the approaches differ.</a>
+      <a href="${SITE}/docs/architecture/features/mcp-and-engineer"><b>MCP and the Engineer</b>How an agent connects and builds.</a>
     </div>
   </div>
 </section>

@@ -4,13 +4,13 @@
 
 import { INDUSTRIES } from './industries-data.mjs';
 
-const MAP_DOC = 'https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md';
-const FEAT = 'https://github.com/vyre-ai/vyre/blob/main/docs/architecture/features';
+const MAP_DOC = 'https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md';
+const FEAT = 'https://vyre.run/docs/architecture/features';
 
 const TAG_HREF = {
-  Flows: `${FEAT}/flows.md`, Records: `${FEAT}/records.md`, Agents: `${FEAT}/agents.md`, 'Needs you': `${FEAT}/tasks-and-needs-you.md`,
-  Gate: `${FEAT}/gate.md`, Documents: `${FEAT}/documents-and-signing.md`, Signing: `${FEAT}/documents-and-signing.md`,
-  Playbooks: `${FEAT}/tasks-and-needs-you.md`, Connections: 'https://github.com/vyre-ai/vyre/blob/main/docs/using/connectors.md', Vault: `${FEAT}/vault.md`,
+  Flows: `${FEAT}/flows`, Records: `${FEAT}/records`, Agents: `${FEAT}/agents`, 'Needs you': `${FEAT}/tasks-and-needs-you`,
+  Gate: `${FEAT}/gate`, Documents: `${FEAT}/documents-and-signing`, Signing: `${FEAT}/documents-and-signing`,
+  Playbooks: `${FEAT}/tasks-and-needs-you`, Connections: 'https://vyre.run/docs/using/connectors', Vault: `${FEAT}/vault`,
 };
 
 export function buildIndustries(h) {
@@ -200,10 +200,10 @@ export function buildIndustries(h) {
 </section>
 ${connectsTo([
   ['Architecture', '/architecture/', 'The layers, how a call is checked and how the Gate holds an outward act.'],
-  ['Flows', `${FEAT}/flows.md`, 'Triggers, steps, waits, failure paths and how a run is replayed.'],
-  ['Records and Playbooks', `${FEAT}/records.md`, 'Types, fields, stage sets, sealed values and views.'],
-  ['Documents and signing', `${FEAT}/documents-and-signing.md`, 'Fill your Word templates from a record and send them for signature.'],
-  ['The Gate', `${FEAT}/gate.md`, 'Why nothing leaves the Space until a person approves the exact words.'],
+  ['Flows', `${FEAT}/flows`, 'Triggers, steps, waits, failure paths and how a run is replayed.'],
+  ['Records and Playbooks', `${FEAT}/records`, 'Types, fields, stage sets, sealed values and views.'],
+  ['Documents and signing', `${FEAT}/documents-and-signing`, 'Fill your Word templates from a record and send them for signature.'],
+  ['The Gate', `${FEAT}/gate`, 'Why nothing leaves the Space until a person approves the exact words.'],
   ['Direction', '/direction/', 'What comes next, including Integrations in 0.5.2.'],
   ...others.slice(0, 2).map((o) => [`For ${o.short.toLowerCase()}`, `/for/${o.slug}/`, 'The same journey for another kind of firm.']),
 ])}

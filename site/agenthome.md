@@ -60,7 +60,7 @@ If a page does not load, carry on with the others.
 - https://vyre.run/sitemap.xml : the current list of every page, since pages are added over time.
 - https://vyre.run/llms.txt, https://vyre.run/llms-full.txt, https://vyre.run/agents.md : machine-readable summaries and rules.
 
-**The docs.** Every doc is a Markdown file in the repository under docs/ (https://github.com/vyre-ai/vyre/tree/main/docs), and the rendered docs are also published under https://vyre.run/docs/ at the same path. Fetch the raw file from GitHub for the most exact text, and when a rendered page is not live yet, use the raw file.
+**The docs.** Every doc is a Markdown file in the repository under docs/ (https://github.com/vyre-ai/vyre/tree/main/docs), and the rendered docs are also published under https://vyre.run/docs/ at the same path. Add .md to a docs address for the raw Markdown, for example https://vyre.run/docs/using/mobile.md. The repository holds the same files.
 
 - docs/index.md : the front door to the docs.
 - docs/get-started/ : install, first day, troubleshooting, running without Docker.

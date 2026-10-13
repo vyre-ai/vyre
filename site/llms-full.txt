@@ -17,7 +17,7 @@ Release 0.5.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Lice
 - Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
-- Architecture: see https://vyre.run/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
+- Architecture: see https://vyre.run/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.
 - The four pillars in depth: https://vyre.run/vault/ (sealed credentials, use-only grants, leases), https://vyre.run/records/ (custom types, links, link hops in tokens, sealed fields), https://vyre.run/flows/ (triggers, approved versions, the runner, holds) and https://vyre.run/agents/ (instructions, memory, access, waking on a task).
 
 ## Vyre Computer

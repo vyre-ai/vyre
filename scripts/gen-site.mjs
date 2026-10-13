@@ -83,23 +83,17 @@ const MAP_URL = 'https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS';
 
 // ---------- layout ----------
 const NAV = [
-  ['Product', '/#product'],
-  ['Devices', '/#devices'],
-  ['Computer', '/computer/'],
-  ['Architecture', '/architecture/'],
-  ['Downloads', '/downloads/'],
-  ['Industries', '/for/'],
-  ['Compare', '/compare/'],
-  ['Direction', '/direction/'],
-  ['Docs', '/docs/'],
-  ['Map your business', '/map/'],
-  ['Open source', '/#open'],
+  { t: 'Product', h: '/#product', items: [['Records', '/records/'], ['Flows', '/flows/'], ['Agents', '/agents/'], ['Vault', '/vault/'], ['Computer', '/computer/']] },
+  { t: 'Solutions', h: '/for/', items: [['For industries', '/for/'], ['Compare', '/compare/'], ['Map your business', '/map/']] },
+  { t: 'Resources', h: '/docs/', items: [['Docs', '/docs/'], ['Architecture', '/architecture/'], ['Downloads', '/downloads/'], ['Direction', '/direction/']] },
+  { t: 'Open source', h: '/#open' },
 ];
 function nav(slug) {
-  const links = NAV.map(([t, h]) => {
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/') || (slug.startsWith('for') && h === '/for/') || (slug.startsWith('compare') && h === '/compare/')) ? ' aria-current="page"' : '';
-    return `<a href="${h}"${cur}>${t}</a>`;
-  }).join('');
+  const isCur = (h) => { const seg = h.split('#')[0].split('/')[1]; return !!seg && (slug === seg || slug.startsWith(seg + '/')); };
+  const a = (t, h) => `<a href="${h}"${isCur(h) ? ' aria-current="page"' : ''}>${t}</a>`;
+  const links = NAV.map((g) => g.items
+    ? `<div class="nav-grp"><a class="nav-top" href="${g.h}"${g.items.some(([, h]) => isCur(h)) ? ' aria-current="page"' : ''}>${g.t}</a><div class="nav-pop">${g.items.map(([t, h]) => a(t, h)).join('')}</div></div>`
+    : a(g.t, g.h)).join('');
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="wrap">
@@ -123,7 +117,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">Roadmap</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="https://vyre.run/docs/roadmap/README">Roadmap</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -217,7 +211,7 @@ const HOME_FAQ = [
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do.'],
   ['What stops an agent from doing something I did not ask for?', 'Anything that leaves your server, such as an email, a payment, a deletion or a published page, waits at the Gate until a person has read the exact words and approved them. An agent can ask and cannot approve. A model sees a placeholder where a secret would be. The <a href="/architecture/">architecture page</a> shows how.'],
   ['Who is Vyre for?', 'Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. <a href="'+MAP_URL+'">Point your AI agent at the repo</a> and it can show how your business would run on Vyre.'],
-  ['Is it ready?', `It is ${VERSION}, and what this page shows works today. What comes next is labelled with its version on the <a href="/direction/">direction page</a> and in the <a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">roadmap</a>.`],
+  ['Is it ready?', `It is ${VERSION}, and what this page shows works today. What comes next is labelled with its version on the <a href="/direction/">direction page</a> and in the <a href="https://vyre.run/docs/roadmap/README">roadmap</a>.`],
 ];
 
 const homeBody = `
@@ -269,11 +263,11 @@ const homeBody = `
       <p class="lead">Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not.</p>
     </div>
     <div class="pieces p4 rv">
-      <div class="piece"><span class="num">01</span>${I.records}<h3>Records</h3><p>Contacts, projects, tasks and the record types you define, with views, tags and Excel or CSV import. A sealed field shows an agent a placeholder, never the value.</p></div>
-      <div class="piece"><span class="num">02</span>${I.flows}<h3>Flows</h3><p>Start from a person, a schedule, a record change, a stage, a form or a link. Steps find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</p></div>
-      <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p></div>
+      <div class="piece"><span class="num">01</span>${I.records}<h3>Records</h3><p>Contacts, projects, tasks and the record types you define, with views, tags and Excel or CSV import. A sealed field shows an agent a placeholder, never the value.</p><a class="more" href="/records/">Records in depth &rarr;</a></div>
+      <div class="piece"><span class="num">02</span>${I.flows}<h3>Flows</h3><p>Start from a person, a schedule, a record change, a stage, a form or a link. Steps find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</p><a class="more" href="/flows/">Flows in depth &rarr;</a></div>
+      <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p><a class="more" href="/agents/">Agents in depth &rarr;</a></div>
       <div class="piece"><span class="num">04</span>${I.stages}<h3>Playbooks and tracks</h3><p>A project template holds stages, the tasks in each and who does each task. Run each kind of work as its own track, with its own Playbook and Flows over shared records.</p></div>
-      <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p></div>
+      <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p><a class="more" href="/vault/">Vault in depth &rarr;</a></div>
       <div class="piece"><span class="num">06</span>${I.sites}<h3>Sites</h3><p>An agent builds a site, previews it at a private address and puts it live on your yes. Your own domain shows the DNS record to add.</p></div>
       <div class="piece"><span class="num">07</span>${I.doc}<h3>Documents</h3><p>Fill your own Word templates from a record and the records linked to it, as Word or PDF. A model never rewrites the document.</p></div>
       <div class="piece"><span class="num">08</span>${I.sign}<h3>Signing</h3><p>Send a document for signature from a record. The signer needs no account, and the signed copy files back on the record.</p></div>
@@ -575,7 +569,7 @@ devicePage({
     ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept. The release signs the app’s files, so a changed file is refused.'],
   ] },
   steps: { h: 'Install the file, <b>then scan.</b>', items: [
-    `<b>Install the app.</b> Android: download Vyre-android.apk from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> on the phone, open it, and allow installs when Android asks. iPhone: there is no App Store app yet; build the app and install it with Xcode, as the <a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/mobile.md">phone guide</a> shows. Both are sideloaded.`,
+    `<b>Install the app.</b> Android: download Vyre-android.apk from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> on the phone, open it, and allow installs when Android asks. iPhone: there is no App Store app yet; build the app and install it with Xcode, as the <a href="https://vyre.run/docs/using/mobile">phone guide</a> shows. Both are sideloaded.`,
     `<b>Scan the code.</b> In the Vyre app on your computer, choose Add your phone. It shows a code. Scan it with the phone.`,
     `<b>Confirm the words.</b> The phone and the computer show the same words. Say yes only if they match.`,
   ] },
@@ -832,7 +826,7 @@ const ARCH = `
     <div class="note rv">
       <p class="lbl" id="go-h" style="margin-bottom:8px">Go deeper</p>
       <p style="margin:0 0 12px">Every claim on this page is explained in the repository, with the code paths. <a href="/docs/architecture/overview">The architecture overview</a> takes ten minutes. <a href="/docs/project/ARCHITECTURE">ARCHITECTURE.md</a> lists one page for each feature. An AI agent can follow <a href="${MAP_URL}">Map your business onto Vyre</a> to see how a business would run on it.</p>
-      <p style="margin:0"><a class="btn btn-sm" href="${REPO}/blob/main/docs/architecture/overview.md">Read the overview</a> <a class="btn btn-sm" href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></p>
+      <p style="margin:0"><a class="btn btn-sm" href="${SITE}/docs/architecture/overview">Read the overview</a> <a class="btn btn-sm" href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></p>
     </div>
   </div>
 </section>
@@ -897,7 +891,7 @@ ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Sideloaded apps.</strong> The Mac app has no Apple Developer ID signature yet and the Android app is not on a store, so you install both from the file.</li>
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li>
 </ul>
-<p>What comes next, by version: <a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">the roadmap</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
+<p>What comes next, by version: <a href="https://vyre.run/docs/roadmap/README">the roadmap</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
 ${part('?', 'trouble', 'If something goes wrong', `<ul>
 <li>The app says the reservation code is not valid: it lasts 24 hours and works once. Reserve the name again on vyre.run/setup.</li>\n<li>The app says the line expired, or two servers used it: press <em>Start again</em> for a new line.</li>
 <li>The words do not match: press <em>They don’t match</em>, then start again. It means the line was not run on your server.</li>
@@ -1048,7 +1042,7 @@ ${llmsDocs(SITE)}
 - [sitemap.xml](${SITE}/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](${MAP_URL}): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
-- [The prompt to give your AI agent](${REPO}/blob/main/docs/for-agents/PROMPT.md): two lines that send an agent to ${SITE}/agenthome.md
+- [The prompt to give your AI agent](${SITE}/docs/for-agents/PROMPT.md): two lines that send an agent to ${SITE}/agenthome.md
 `;
 
 const FULL = `# Vyre, in full
@@ -1070,7 +1064,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
-- Architecture: see ${SITE}/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
+- Architecture: see ${SITE}/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.
 - The four pillars in depth: ${SITE}/vault/ (sealed credentials, use-only grants, leases), ${SITE}/records/ (custom types, links, link hops in tokens, sealed fields), ${SITE}/flows/ (triggers, approved versions, the runner, holds) and ${SITE}/agents/ (instructions, memory, access, waking on a task).
 
 ${COMPUTER_FULL(SITE, REPO)}
@@ -1130,7 +1124,7 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) the architecture (${SITE}/architecture/) and direction (${SITE}/direction/). Direction is not a promise of dates.
 - Follow ${SITE}/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
-- Start at ${SITE}/agenthome.md (HTML twin: ${SITE}/agenthome/). It is the entry point for agents: what Vyre is, a map of the site and the docs, how to operate, the questions to ask, the method for mapping a business (https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md) and how to help set Vyre up today. The prompt that sends you there is https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md; ${SITE}/map/ tailors it. When you have mapped the business, offer to set Vyre up for the user over Vyre\'s MCP.
+- Start at ${SITE}/agenthome.md (HTML twin: ${SITE}/agenthome/). It is the entry point for agents: what Vyre is, a map of the site and the docs, how to operate, the questions to ask, the method for mapping a business (https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md) and how to help set Vyre up today. The prompt that sends you there is https://vyre.run/docs/for-agents/PROMPT.md; ${SITE}/map/ tailors it. When you have mapped the business, offer to set Vyre up for the user over Vyre\'s MCP.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do

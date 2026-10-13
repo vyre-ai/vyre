@@ -124,7 +124,7 @@ export function downloadsPage(ctx) {
       ${card('Mac', 'Intel', 'For a Mac with an Intel chip. Open the dmg and drag Vyre to Applications.', ASSETS.macIntel, `${DL}/${ASSETS.macIntel}`)}
       ${card('Windows', 'Windows installer', 'A tray app with an Alt+Space panel. Run the installer; Windows may ask you to confirm it.', ASSETS.windows, `${DL}/${ASSETS.windows}`)}
       ${card('Android', 'Android APK', 'Open the file on the phone and allow installs from your browser or Files app when Android asks.', ASSETS.android, `${DL}/${ASSETS.android}`)}
-      <div class="dl-card rv"><p class="lbl">iPhone</p><h3>Install with Xcode</h3><p>There is no App Store app yet. Build the app and install it on your phone with Xcode.</p><p class="file">sideloaded</p><div class="btn-row"><a class="btn btn-fill btn-sm" href="${REPO}/blob/main/docs/using/mobile.md">Read the steps</a></div></div>
+      <div class="dl-card rv"><p class="lbl">iPhone</p><h3>Install with Xcode</h3><p>There is no App Store app yet. Build the app and install it on your phone with Xcode.</p><p class="file">sideloaded</p><div class="btn-row"><a class="btn btn-fill btn-sm" href="/docs/using/mobile">Read the steps</a></div></div>
       ${webCard}
     </div>
     <p class="dl-sub"><span>More on each device:</span><a href="/mac/">Mac</a><a href="/windows/">Windows</a><a href="/phone/">Phone</a><a href="/linux/">Linux server</a></p>
@@ -135,7 +135,7 @@ export function downloadsPage(ctx) {
     <div class="sec-head rv"><h2 id="srv-h" class="h2">Put the server <b>on a machine you own.</b></h2></div>
     <div class="dl-two">
       <div class="rv"><h3>Linux server</h3><p>A Linux machine you can reach with sudo. Run the line as yourself, not as root. The installer asks before it adds anything.</p>${term('curl -fsSL vyre.run/i | sh')}<p><a href="/linux/">Read the Linux server page</a></p></div>
-      <div class="rv"><h3>A Mac that stays on</h3><p>Run the same line in Terminal on that Mac. It asks for the Mac's password once so Vyre can start when the Mac starts.</p>${term('curl -fsSL vyre.run/i | sh')}<p><a href="/mac/">Read the Mac page</a></p></div>
+      <div class="rv"><h3>A Mac that stays on</h3><p>Run this line in Terminal on that Mac. It asks for the Mac's password once so Vyre can start when the Mac starts.</p>${term('curl -fsSL vyre.run/box/install-mac-server.sh | sh')}<p><a href="/mac/">Read the Mac page</a></p></div>
     </div>
   </div>
 </section>

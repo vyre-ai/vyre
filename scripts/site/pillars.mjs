@@ -23,16 +23,16 @@ const ANIM_VAULT = `${SVG_OPEN('A sealed value in motion. An agent asks to use t
   <text class="pl-m pl-hold-lbl" x="395" y="92" text-anchor="middle">held for a yes</text>
 </svg>`;
 
-const ANIM_RECORDS = `${SVG_OPEN('Three linked records, Task, Matter and Client. A highlight hops along the links for the token task.matter.client.phone and lands on the client&rsquo;s phone number. Sample data.')}
-  <g class="pl-bx"><rect x="10" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="24" y="62">TASK</text><text class="pl-t" x="24" y="86">Send the letter</text><text class="pl-s" x="24" y="108">matter</text><text class="pl-s" x="24" y="126">links to a Matter</text></g>
-  <g class="pl-bx"><rect x="275" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="289" y="62">MATTER</text><text class="pl-t" x="289" y="86">Estate plan, Reyes</text><text class="pl-s" x="289" y="108">client</text><text class="pl-s" x="289" y="126">links to a Client</text></g>
-  <g class="pl-bx"><rect x="540" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="554" y="62">CLIENT</text><text class="pl-t" x="554" y="86">Dana Reyes</text><text class="pl-s" x="554" y="108">phone</text><text class="pl-t pl-ph" x="554" y="126">+1 415 555 0190</text></g>
+const ANIM_RECORDS = `${SVG_OPEN('Three linked records, Task, Project and Client. A highlight hops along the links for the token task.project.client.phone and lands on the client&rsquo;s phone number. Sample data.')}
+  <g class="pl-bx"><rect x="10" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="24" y="62">TASK</text><text class="pl-t" x="24" y="86">Send the quote</text><text class="pl-s" x="24" y="108">project</text><text class="pl-s" x="24" y="126">links to a Project</text></g>
+  <g class="pl-bx"><rect x="275" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="289" y="62">PROJECT</text><text class="pl-t" x="289" y="86">Kitchen remodel, Reyes</text><text class="pl-s" x="289" y="108">client</text><text class="pl-s" x="289" y="126">links to a Client</text></g>
+  <g class="pl-bx"><rect x="540" y="40" width="210" height="104" rx="6"/><text class="pl-m" x="554" y="62">CLIENT</text><text class="pl-t" x="554" y="86">Sam Reyes</text><text class="pl-s" x="554" y="108">phone</text><text class="pl-t pl-ph" x="554" y="126">+1 415 555 0190</text></g>
   <rect class="pl-lit pl-lit-a" x="10" y="40" width="210" height="104" rx="6"/><rect class="pl-lit pl-lit-b" x="275" y="40" width="210" height="104" rx="6"/><rect class="pl-lit pl-lit-c" x="540" y="40" width="210" height="104" rx="6"/>
   <path class="pl-ln" d="M220 92h55"/><path class="pl-ln" d="M485 92h55"/>
-  <text class="pl-s" x="247" y="84" text-anchor="middle">matter</text><text class="pl-s" x="512" y="84" text-anchor="middle">client</text>
-  <text class="pl-s" x="247" y="112" text-anchor="middle">tasks</text><text class="pl-s" x="512" y="112" text-anchor="middle">matters</text>
+  <text class="pl-s" x="247" y="84" text-anchor="middle">project</text><text class="pl-s" x="512" y="84" text-anchor="middle">client</text>
+  <text class="pl-s" x="247" y="112" text-anchor="middle">tasks</text><text class="pl-s" x="512" y="112" text-anchor="middle">projects</text>
   <circle class="pl-hop" cx="220" cy="92" r="6"/>
-  <text class="pl-tok" x="380" y="190" text-anchor="middle"><tspan class="pl-k0">{task</tspan><tspan class="pl-k1">.matter</tspan><tspan class="pl-k2">.client</tspan><tspan class="pl-k3">.phone}</tspan></text>
+  <text class="pl-tok" x="380" y="190" text-anchor="middle"><tspan class="pl-k0">{task</tspan><tspan class="pl-k1">.project</tspan><tspan class="pl-k2">.client</tspan><tspan class="pl-k3">.phone}</tspan></text>
   <text class="pl-s pl-res" x="380" y="214" text-anchor="middle">prints +1 415 555 0190</text>
 </svg>`;
 
@@ -62,18 +62,18 @@ const ANIM_AGENTS = `${SVG_OPEN('A task wakes an agent. The task is ready and it
 </svg>`;
 
 // ---------- diagrams ----------
-const GRAPH_RECORDS = `${SVG_OPEN('Four record types joined by links, each with a named inverse. A task links to a matter, a matter to a client, a client to an organization. A computed field on the client totals the fees of its matters.', '0 0 760 250')}
+const GRAPH_RECORDS = `${SVG_OPEN('Four record types joined by links, each with a named inverse. A task links to a project, a project to a client, a client to an organization. A computed field on the client totals the fees of its projects.', '0 0 760 250')}
   <g class="pl-bx"><rect x="10" y="30" width="150" height="62" rx="6"/><text class="pl-t" x="85" y="58" text-anchor="middle">Task</text><text class="pl-s" x="85" y="76" text-anchor="middle">stage, due, doer</text></g>
-  <g class="pl-bx"><rect x="215" y="30" width="150" height="62" rx="6"/><text class="pl-t" x="290" y="58" text-anchor="middle">Matter</text><text class="pl-s" x="290" y="76" text-anchor="middle">stage set, fee</text></g>
+  <g class="pl-bx"><rect x="215" y="30" width="150" height="62" rx="6"/><text class="pl-t" x="290" y="58" text-anchor="middle">Project</text><text class="pl-s" x="290" y="76" text-anchor="middle">stage set, fee</text></g>
   <g class="pl-bx"><rect x="420" y="30" width="150" height="62" rx="6"/><text class="pl-t" x="495" y="58" text-anchor="middle">Client</text><text class="pl-s" x="495" y="76" text-anchor="middle">a Contact with a role</text></g>
   <g class="pl-bx"><rect x="630" y="30" width="120" height="62" rx="6"/><text class="pl-t" x="690" y="58" text-anchor="middle">Organization</text><text class="pl-s" x="690" y="76" text-anchor="middle">one firm</text></g>
   <path class="pl-ln" d="M160 52h55"/><path class="pl-ln" d="M365 52h55"/><path class="pl-ln" d="M570 52h60"/>
-  <text class="pl-m" x="188" y="44" text-anchor="middle">matter</text><text class="pl-m" x="393" y="44" text-anchor="middle">client</text><text class="pl-m" x="600" y="44" text-anchor="middle">org</text>
-  <text class="pl-s" x="188" y="72" text-anchor="middle">tasks</text><text class="pl-s" x="393" y="72" text-anchor="middle">matters</text><text class="pl-s" x="600" y="72" text-anchor="middle">people</text>
+  <text class="pl-m" x="188" y="44" text-anchor="middle">project</text><text class="pl-m" x="393" y="44" text-anchor="middle">client</text><text class="pl-m" x="600" y="44" text-anchor="middle">org</text>
+  <text class="pl-s" x="188" y="72" text-anchor="middle">tasks</text><text class="pl-s" x="393" y="72" text-anchor="middle">projects</text><text class="pl-s" x="600" y="72" text-anchor="middle">people</text>
   <path class="pl-ln" d="M495 92V132"/>
-  <g class="pl-bx pl-comp"><rect x="370" y="132" width="250" height="44" rx="6"/><text class="pl-t" x="495" y="159" text-anchor="middle">Client.fees = total of its matters</text></g>
+  <g class="pl-bx pl-comp"><rect x="370" y="132" width="250" height="44" rx="6"/><text class="pl-t" x="495" y="159" text-anchor="middle">Client.fees = total of its projects</text></g>
   <text class="pl-s" x="380" y="212" text-anchor="middle">A link names its inverse. Set one side and the other side appears on the target type.</text>
-  <text class="pl-s" x="380" y="232" text-anchor="middle">A token walks the links: {task.matter.client.phone}</text>
+  <text class="pl-s" x="380" y="232" text-anchor="middle">A token walks the links: {task.project.client.phone}</text>
 </svg>`;
 
 // ---------- small page builders ----------
@@ -182,7 +182,7 @@ ${closing}`;
 
 ${animSec('r1-h', 'A token hops the links', 'One token <b>reaches across your data.</b>',
     'A Link field points at another type. A token walks those links, so a task can print its client&rsquo;s phone without anyone copying it. Flows and Documents use the same tokens.',
-    [['The shape is object, link, field', 'The nested form is ' + code('{object.link.field}') + ', as in ' + code('{matter.client.phone}') + '. A token reaches up to three links deep.'], ['Links go both ways', 'A link to many records adds a named inverse field on the target, so a client lists its matters without a second definition.'], ['One copy of the truth', 'A phone changes in one record and every Flow and document that reads it prints the new number.']],
+    [['The shape is object, link, field', 'The nested form is ' + code('{object.link.field}') + ', as in ' + code('{project.client.phone}') + '. A token reaches up to three links deep.'], ['Links go both ways', 'A link to many records adds a named inverse field on the target, so a client lists its projects without a second definition.'], ['One copy of the truth', 'A phone changes in one record and every Flow and document that reads it prints the new number.']],
     ANIM_RECORDS, 'Animation: a token walks three linked records')}
 
 <section class="sec" aria-labelledby="r2-h"><div class="wrap">
@@ -191,7 +191,7 @@ ${animSec('r1-h', 'A token hops the links', 'One token <b>reaches across your da
     ['Fields, twenty kinds', 'Text, rich text, number, money, boolean, date, date and time, choice, multi-choice, rating, URL, link, actor, file, address, phones, emails, URLs, stage and sealed.'],
     ['Field switches', 'Required, unique, hidden (the data stays), hidden from named roles, visible if, required if, computed, and a group.'],
     ['Groups', 'Fields sit in groups on the record page, so a long type stays readable.'],
-    ['Links and inverses', 'One type links to another, one or many. Links chain: a task to a matter, the matter to a client, the client to an organization.'],
+    ['Links and inverses', 'One type links to another, one or many. Links chain: a task to a project, the project to a client, the client to an organization.'],
     ['Stage sets', 'One type can follow several tracks. While a condition on a record holds, it follows that set of stages. The first set that holds wins.'],
     ['Views', 'A type stores its own views: list, board, calendar, page or dashboard, with columns, grouping, a filter and a sort. Pin one to the sidebar.'],
     ['Sealed fields', 'A field that holds a reference, not the value. A model sees whether it is present and valid, never what it says.'],
@@ -203,8 +203,8 @@ ${animSec('r1-h', 'A token hops the links', 'One token <b>reaches across your da
   ${head('The data model.', 'Types, links and totals, <b>in one diagram.</b>', 'A type definition holds fields, stages, stage sets, views, rules and groups. A role on a type, such as client or prospect, says it points at a contact or organization. The types below are an example.', 'r3-h')}
   <div class="pl-diagram rv">${GRAPH_RECORDS}</div>
   ${facts([
-    ['Stage sets pick the track.', 'A personal-injury track and an estate-planning track can live on one type, chosen by a field on each record. The stage field offers every stage name across the sets.'],
-    ['A computed field can total.', 'It can sum the records that link to it, such as the fees of every matter of a client.'],
+    ['Stage sets pick the track.', 'A residential-job track and a commercial-job track can live on one type, chosen by a field on each record. The stage field offers every stage name across the sets.'],
+    ['A computed field can total.', 'It can sum the records that link to it, such as the fees of every project of a client.'],
     ['Kits bring a starting point.', 'A Kit adds types, Flows and Playbooks for a kind of business. A person adds their own in Customize.'],
     ['Edits do not collide.', 'An update carries the version it read, and a stale one is refused as a version conflict.'],
   ])}
@@ -273,7 +273,7 @@ ${animSec('f1-h', 'A Flow, running', 'A trigger fires, the steps run, <b>and a p
     ['A watcher', 'Something new in a watched place, such as a mailbox or a folder.'],
     ['Logic and records', 'If and else, for each, side by side, wait, wait for someone&rsquo;s yes. Find, look up, filter, create, update, find or create, remove, move to a stage.'],
     ['Send, AI and work', 'Send an email or a text. Call a web address. Hand to an agent, sort into groups, pull out facts. Assign a task, start a project, run another Flow.'],
-    ['Tokens', 'Text takes values such as ' + code('{client.first_name}') + ', ' + code('{today}') + ' and ' + code('{matter.client.phone}') + ', with an offset and a format. Expressions are parsed, never run as code.'],
+    ['Tokens', 'Text takes values such as ' + code('{client.first_name}') + ', ' + code('{today}') + ' and ' + code('{project.client.phone}') + ', with an offset and a format. Expressions are parsed, never run as code.'],
   ])}
 </div></section>
 

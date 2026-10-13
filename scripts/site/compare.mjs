@@ -201,7 +201,7 @@ const PAGES = [
       ['Shaped to your business', 'Define record types and fields in your own words, link them, and give each kind of work its own Playbook and Flows.'],
     ],
     diagram: [
-      ['Your system of record', 'Holds the client, the matter or engagement and the bill'],
+      ['Your system of record', 'Holds the client, the project or engagement and the bill'],
       ['A connection and a Flow web step', 'Read what is needed, where the vendor provides an API'],
       ['Vyre’s agents prepare the work', 'A draft, a document from a template, a summary'],
       ['A person approves', 'The Gate releases it, and the record is updated'],
@@ -230,7 +230,7 @@ const PAGES = [
 
 export function buildCompare(h) {
   const { page, eyebrow, faqHtml, faqLd, crumbs, SITE, REPO, MAP_URL } = h;
-  const feat = (f) => `${REPO}/blob/main/docs/architecture/features/${f}.md`;
+  const feat = (f) => `${SITE}/docs/architecture/features/${f}`;
   const LINKS = { FLOWS: feat('flows'), GATE: feat('gate'), VAULT: feat('vault'), AGENTS: feat('agents'), TASKS: feat('tasks-and-needs-you'), RECORDS: feat('records'), SESSIONS: feat('sessions-and-models'), MCP: feat('mcp-and-engineer'), DOCS: feat('documents-and-signing'), MAP: MAP_URL };
   const href = (k) => LINKS[k] || k;
 
