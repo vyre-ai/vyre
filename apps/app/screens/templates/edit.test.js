@@ -145,3 +145,99 @@ test("an assistant's task can wait for a person's yes, written in a line; a pers
   const person = setTask(b, 0, 0, { doer: "role:attorney" });
   assert.equal(person.stages[0].tasks[0].needs_yes, undefined, "moving the task to a person drops the approval line");
 });
+
+test("a stage's tasks sit in named groups: a task is put in one, a rename or a delete keeps the tasks, and a stage that loses its groups keeps its tasks", async () => {
+  const { setStageGroups, groupsOf } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, {});
+  b = setStageGroups(b, 0, { groups: [{ name: "Documents" }, { name: "Client calls" }], items: b.stages[0].tasks });
+  assert.deepEqual(groupsOf(b.stages[0]), [{ name: "Documents" }, { name: "Client calls" }]);
+  b = setTask(b, 0, 0, { group: "Documents" });
+  assert.equal(b.stages[0].tasks[0].group, "Documents");
+  b = setStageGroups(b, 0, { groups: [{ name: "Papers" }, { name: "Client calls" }], items: b.stages[0].tasks.map((t) => (t.group === "Documents" ? { ...t, group: "Papers" } : t)) });
+  assert.equal(b.stages[0].tasks[0].group, "Papers");
+  b = setStageGroups(b, 0, { groups: [{ name: "Client calls" }], items: b.stages[0].tasks.map(({ group, ...t }) => t) });
+  assert.equal(b.stages[0].tasks[0].group, undefined);
+  assert.equal(b.stages[0].tasks.length, 1, "deleting a group keeps its tasks");
+  assert.equal(setStageGroups(b, 0, { groups: [], items: b.stages[0].tasks }).stages[0].groups, undefined, "no groups: the field is gone");
+});
+
+test("removing a stage's last group of tasks never leaves a task naming a group its stage no longer has, and a renamed task group fails the save in words", async () => {
+  const { setStageGroups } = await import("./edit.ts");
+  let b = setStageGroups(setTask(base(), 0, 0, {}), 0, { groups: [{ name: "Documents" }], items: [{ ...base().stages[0].tasks[0], group: "Documents" }] });
+  b = setStageGroups(b, 0, { groups: [], items: b.stages[0].tasks });
+  assert.equal(b.stages[0].tasks[0].group, undefined);
+  assert.deepEqual(missing(b), []);
+});
+
+test("how projects move: stages in order, in any order, or none; the default is in order and writes nothing", async () => {
+  const { setStageMode, stageModeOf, STAGE_MODES } = await import("./edit.ts");
+  assert.deepEqual(STAGE_MODES.map(([v]) => v), ["ordered", "any", "none"]);
+  assert.equal(stageModeOf(base()), "ordered");
+  assert.equal(setStageMode(base(), "ordered").stage_mode, undefined);
+  assert.equal(setStageMode(base(), "any").stage_mode, "any");
+  assert.equal(stageModeOf(setStageMode(base(), "none")), "none");
+});
+
+test("a stage is done when every task, the needed ones, or a sign-off says; sign-off asks who, and the line below says what happens next", async () => {
+  const { setDoneWhen, setSignOff, doneWhenOf, nextLine, DONE_WHEN, setStageMode } = await import("./edit.ts");
+  assert.deepEqual(DONE_WHEN.map(([v]) => v), ["all", "needed", "sign_off"]);
+  let b = addStage(base()); // Start, Done, Stage 3
+  assert.equal(doneWhenOf(b.stages[0]), "needed");
+  assert.equal(setDoneWhen(b, 0, "needed").stages[0].done_when, undefined, "the default writes nothing");
+  b = setDoneWhen(b, 0, "all");
+  assert.equal(b.stages[0].done_when, "all");
+  b = setDoneWhen(b, 0, "sign_off");
+  assert.deepEqual(missing(b), ["Choose who signs off Start."]);
+  b = setSignOff(b, 0, "role:attorney");
+  assert.deepEqual(missing(b), []);
+  assert.equal(nextLine(b, 0), "Then it waits for the attorney to sign it off, and moves to Done.");
+  assert.equal(nextLine(setDoneWhen(b, 0, "all"), 0), "Then the project moves to Done.", "leaving sign-off forgets the signer");
+  assert.equal(setDoneWhen(b, 0, "all").stages[0].sign_off, undefined);
+  assert.equal(nextLine(b, 2), "The last stage: the project ends here.");
+  assert.equal(nextLine(setStageMode(base(), "any"), 0), "Then a person moves the project on.");
+});
+
+test("the project lead can sign a stage off, and the line says so", async () => {
+  const { setDoneWhen, setSignOff, nextLine } = await import("./edit.ts");
+  const b = setSignOff(setDoneWhen(addStage(base()), 0, "sign_off"), 0, "lead");
+  assert.deepEqual(missing(b), []);
+  assert.equal(nextLine(b, 0), "Then it waits for the project lead to sign it off, and moves to Done.");
+});
+
+test("followers are added and removed once each, and the approver's and followers' notes are kept as text", async () => {
+  const { addFollower, removeFollower, setNote, noteOf } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, {});
+  b = addFollower(b, 0, 0, "role:attorney");
+  b = addFollower(b, 0, 0, "person:per_bob");
+  b = addFollower(b, 0, 0, "role:attorney");
+  assert.deepEqual(b.stages[0].tasks[0].followers, ["role:attorney", "person:per_bob"]);
+  b = removeFollower(b, 0, 0, "role:attorney");
+  assert.deepEqual(b.stages[0].tasks[0].followers, ["person:per_bob"]);
+  assert.equal(removeFollower(b, 0, 0, "person:per_bob").stages[0].tasks[0].followers, undefined, "no followers: the field is gone");
+  b = setNote(b, 0, 0, "approver", "Check the dates.");
+  b = setNote(b, 0, 0, "followers", "Read along.");
+  assert.deepEqual(b.stages[0].tasks[0].notes, { approver: "Check the dates.", followers: "Read along." });
+  assert.equal(noteOf(b.stages[0].tasks[0], "approver"), "Check the dates.");
+  assert.deepEqual(setNote(b, 0, 0, "approver", "  ").stages[0].tasks[0].notes, { followers: "Read along." });
+  assert.equal(setNote(setNote(b, 0, 0, "approver", ""), 0, 0, "followers", "").stages[0].tasks[0].notes, undefined);
+});
+
+test("a task is dropped at a place in a stage, in its own or another; a stage is dropped at a place; both keep every task", async () => {
+  const { moveTaskTo, moveStageTo, setStageGroups } = await import("./edit.ts");
+  let b = addStage(addStage(base())); // Start, Done, Stage 3, Stage 4
+  b = setTask(addTask(addTask(b, 0), 0), 0, 1, { title: "Second" });
+  b = setTask(b, 0, 2, { title: "Third" });
+  assert.deepEqual(b.stages[0].tasks.map((t) => t.title), ["Gather documents", "Second", "Third"]);
+  assert.deepEqual(moveTaskTo(b, { si: 0, ti: 2 }, { si: 0, ti: 0 }).stages[0].tasks.map((t) => t.title), ["Third", "Gather documents", "Second"]);
+  assert.deepEqual(moveTaskTo(b, { si: 0, ti: 0 }, { si: 0, ti: 3 }).stages[0].tasks.map((t) => t.title), ["Second", "Third", "Gather documents"], "dropped past the end");
+  const across = moveTaskTo(b, { si: 0, ti: 1 }, { si: 2, ti: 0 });
+  assert.deepEqual([across.stages[0].tasks.map((t) => t.title), (across.stages[2].tasks || []).map((t) => t.title)], [["Gather documents", "Third"], ["Second"]]);
+  assert.equal(moveTaskTo(b, { si: 0, ti: 1 }, { si: 0, ti: 1 }), b, "dropped where it was: nothing changes");
+  const emptied = moveTaskTo(setStageGroups(b, 0, { groups: [], items: [b.stages[0].tasks[0]] }), { si: 0, ti: 0 }, { si: 1, ti: 0 });
+  assert.equal(emptied.stages[0].tasks, undefined, "a stage left with no tasks has none");
+  const moved = moveTaskTo(setTask(b, 0, 1, { group: "" }), { si: 0, ti: 1 }, { si: 2, ti: 0 });
+  assert.equal(moved.stages[2].tasks[0].group, undefined, "a task that leaves its stage leaves its group");
+  assert.deepEqual(moveStageTo(b, 3, 1).stages.map((s) => s.name), ["Start", "Stage 4", "Done", "Stage 3"]);
+  assert.deepEqual(moveStageTo(b, 0, 3).stages.map((s) => s.name), ["Done", "Stage 3", "Stage 4", "Start"]);
+  assert.equal(moveStageTo(b, 2, 2), b);
+});

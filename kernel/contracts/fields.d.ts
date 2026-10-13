@@ -65,6 +65,8 @@ export interface FieldDefinition {
   readonly hidden?: boolean;
   /** Roles (owner, admin, manager, member, temp, or a Kit's own) that never see this field: not on a read, a list, a filter, a total or a search, and not writable by them. */
   readonly hidden_from?: readonly string[];
+  /** The section of the type this field is shown in (a name from the type's `groups`). Presentation only, never a permission: no group means the default section, shown first. */
+  readonly group?: string;
   /**
    * Worked out when a record is read, never stored, never written, never filtered on; a number, text, boolean, date or datetime field. Either an Expression over this
    * type's other stored fields (`days_since(last_contact)`), or a total over the records of another type that link here (`over`: `{ type: "matter", via: "client", fn: "sum",
@@ -144,6 +146,8 @@ export interface TypeDefinition {
    * (to `contact` or `organization`) that says who holds it. `ended` lists the stages that mean the role is over (it stays a record, it is just not current).
    */
   readonly role?: { readonly link: string; readonly ended?: readonly string[] };
+  /** The sections of the type in the order shown (at most 20, names 1 to 60 characters, none twice in any case); a field names one in `group`. Presentation only. A rename is one change_types that rewrites the names. */
+  readonly groups?: readonly { readonly name: string; readonly collapsed?: boolean }[];
 }
 
 /** How a field is shown. */

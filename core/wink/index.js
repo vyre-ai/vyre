@@ -788,6 +788,8 @@ export function createWink(inject = {}) {
         vaultmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("vault.mcp.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the outside agents' MCP (core/outside, team/contracts/ext-agents.md): exactly POST /agents-mcp; null while that module is not there, so the gate answers its plain 404
         agentsmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("outside.mcp.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+        // the person's connected AI over streamable HTTP (core/mcpconn): exactly POST /mcp; null while that module is not there
+        personmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("mcpconn.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         share: async () => { try { const r = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); const d = r && r.data; return d && d.on && d.available && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the app modules' own hosts: the apps' front (a loopback listener the appmods module owns) and the hosts of the apps that are installed and running; null without either
         apps: async () => {
