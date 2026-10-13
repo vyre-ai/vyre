@@ -12,6 +12,8 @@ import { starterBody } from "./compose";
 import { cardOf, filterRows, playbookPath, PLAYBOOK, TEMPLATES_LABEL } from "./board";
 import { duplicateBody } from "./use";
 import { useMayMakeTemplates } from "./role";
+import { DescribeSheet } from "./DescribeSheet";
+import { openEngineer } from "../engineer/openEngineer";
 import { templates } from "./templates";
 
 type Lib = Awaited<ReturnType<typeof templates.library>>;
@@ -32,6 +34,7 @@ export default function TemplatesScreen() {
   const [query, setQuery] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
+  const [describing, setDescribing] = useState(false);
   const [starting, setStarting] = useState<TemplateRow | null>(null);
   const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
   useEffect(load, [load]);
@@ -74,7 +77,7 @@ export default function TemplatesScreen() {
       actions={mayMake ? <Menu trigger={<Button kind="primary" size="sm" icon="plus" label="New playbook" />} items={[
         { label: "New blank playbook", onPress: () => void startBlank() },
         { label: "From a kit", onPress: () => setShowKits(true) },
-        { label: "Describe a playbook to the Engineer", onPress: () => router.push("/u/engineer" as never) },
+        { label: "Describe a playbook to the Engineer", onPress: () => setDescribing(true) },
       ]} /> : undefined}>
       <Field name="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} />
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
@@ -84,7 +87,7 @@ export default function TemplatesScreen() {
           {[
             { t: "Start blank", b: "Write the stages and tasks as a list.", on: () => void startBlank(), go: true },
             { t: "Start from a kit", b: "Add a playbook a Kit ships, then change it.", on: () => setShowKits(true), go: true },
-            { t: "Describe it", b: "Tell the Engineer what the work is and it drafts one.", on: () => router.push("/u/engineer" as never), go: true },
+            { t: "Describe it", b: "Tell the Engineer what the work is and it drafts one.", on: () => setDescribing(true), go: true },
           ].map((o) => (
             <Pressable key={o.t} accessibilityRole="button" accessibilityLabel={o.t} onPress={o.on} style={{ width: phone ? "100%" : 300 }}>
               <Card><View className="gap-s1 p-s4"><Text strong>{o.t}</Text><Text size="caption" tone="muted">{o.b}</Text></View></Card>
@@ -107,6 +110,7 @@ export default function TemplatesScreen() {
           </Card>
         </Sec>
       ) : showKits ? <Card><EmptyState title="No Kits to add from" body="None of your Kits ships a playbook yet." /></Card> : null}
+      <DescribeSheet open={describing} title="Describe a playbook" question="What kind of work is this playbook for?" placeholder="For example: taking on a new estate planning client, from the first call to the signed documents" cta="Ask the Engineer" onClose={() => setDescribing(false)} onSend={(words) => { setDescribing(false); openEngineer(router, { source: "playbook", words }); }} />
       <StartSheet noun={starting ? (bodies[starting.template]?.noun?.one || starting.noun?.one || "project") : "project"} open={starting !== null} busy={busy === "start"} onClose={() => setStarting(null)} onStart={(n, x) => void start(n, x)} />
     </Frame>
   );

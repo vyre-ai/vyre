@@ -13,6 +13,8 @@ import { TaskPanel } from "./TaskPanel";
 import { TemplateEditor } from "./TemplateEditor";
 import { useMayMakeTemplates } from "./role";
 import { templates } from "./templates";
+import { DescribeSheet } from "./DescribeSheet";
+import { openEngineer } from "../engineer/openEngineer";
 import * as E from "./edit";
 import { canPublish, checklist, DEFAULT_NAME, NOUN_SUGGESTIONS, publishWords, saveState, typeKey, type At } from "./compose";
 
@@ -50,6 +52,7 @@ export default function TemplateScreen() {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const [publishOpen, setPublishOpen] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const load = useCallback(() => {
     setErr("");
@@ -96,6 +99,7 @@ export default function TemplateScreen() {
     <Frame back={playbookPath()} title={title} sub={cur ? `${draft?.noun ? `Its projects are called ${draft.noun.many}. ` : ""}${stateWord(cur.state)}, version ${cur.version}` : undefined}
       actions={cur ? <>
         <View className="flex-row items-center gap-s2"><Switch on={test !== null || testing} onChange={(v: boolean) => void doTest(v)} label="Test mode" /><Text size="caption" tone="muted">Test mode</Text></View>
+        {mayMake ? <Button kind="ghost" size="sm" label="Improve with the Engineer" onPress={() => setDescribing(true)} /> : null}
         {live ? <Button kind="primary" size="sm" label={`Start a ${noun.toLowerCase()}`} onPress={() => setStartOpen(true)} /> : null}
       </> : undefined}>
       {err ? <Card flush><ErrorState title="That playbook did not load" reason={err} retry={load} /></Card> : null}
@@ -141,6 +145,7 @@ export default function TemplateScreen() {
           {mayMake ? <Sec title="Settings"><TemplateEditor body={draft} onChange={setDraft} part="settings" /></Sec> : null}
         </>
       ) : null}
+      <DescribeSheet open={describing} title="Improve this playbook" question="What should be better?" placeholder="For example: add a review step before signing" cta="Ask the Engineer" onClose={() => setDescribing(false)} onSend={(words) => { setDescribing(false); openEngineer(router, { source: "playbook", ref: template, words, intent: "change" }); }} />
       <Sheet open={publishOpen} onClose={() => setPublishOpen(false)} title={`Publish ${draft?.name || "this playbook"}`}>
         <View className="gap-s3 p-s4">
           <Text tone="muted">{publishWords({ name: draft?.name || "", noun: draft?.noun, stages: draft?.stages || [], live: live?.version ?? null })}</Text>

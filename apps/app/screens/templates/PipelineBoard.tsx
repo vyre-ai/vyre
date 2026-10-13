@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { Platform, Pressable, ScrollView, View } from "react-native";
-import { AvatarStack, Button, Card, Chip, Field, Menu, IconButton, Text } from "@vyre/ui";
+import { AvatarStack, Button, Card, Chip, Field, Menu, IconButton, StatusPill, Text } from "@vyre/ui";
 import type { Body } from "./model";
 import * as E from "./edit";
-import { boardColumns, stageProgress, type Card as TaskCard, type Person } from "./board";
+import { boardColumns, type Card as TaskCard, type Person } from "./board";
 import { usePhone } from "../places/Page";
 import { applyStageSet, setLabel, STAGE_SETS, type At, type KeyResult } from "./compose";
 
@@ -110,8 +110,8 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
     <DragBox key={col.index} className="gap-s2" style={phone ? undefined : { width: COLUMN_WIDTH }} onDrop={editable ? (w) => dropColumn(w, col.index, col.tasks.length) : undefined}>
       <DragBox className="flex-row items-center gap-s2" what={editable && !none ? `stage:${col.index}` : undefined}>
         <View className="min-w-0 flex-1">
-          {compose && !none ? <Field name={`Name of stage ${col.index + 1}`} value={col.name} onChangeText={(v: string) => onChange(E.renameStage(body, col.index, v))} /> : <View className="flex-row flex-wrap items-center gap-s2"><Text strong numberOfLines={1}>{col.name}</Text>{none ? null : <Chip>{stageProgress(col.index, cols.length)}</Chip>}</View>}
-          {col.rule ? <Text size="caption" tone="label" numberOfLines={2}>{col.rule}</Text> : null}
+          {compose && !none ? <Field name={`Name of stage ${col.index + 1}`} value={col.name} onChangeText={(v: string) => onChange(E.renameStage(body, col.index, v))} /> : <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{col.name}</Text>{none ? null : <StatusPill at={col.index + 1} of={cols.length} />}</View>}
+          {col.rule ? <Text size="caption" tone="label">{col.rule}</Text> : null}
         </View>
         {editable && !none ? (
           <Menu trigger={<IconButton icon="more" label={`${col.name}, more`} />} items={[
@@ -140,7 +140,7 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
   if (phone) return <View className="gap-s5">{cols.map(column)}{add}</View>;
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View className="flex-row items-start gap-s4 pb-s3">{cols.map(column)}{add}</View>
+      <View className="flex-row items-start gap-s4 pb-s3 pr-s6">{cols.map(column)}{add}</View>
     </ScrollView>
   );
 }
