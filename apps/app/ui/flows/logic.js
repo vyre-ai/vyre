@@ -216,7 +216,7 @@ const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
 /** The label of the field a "changed" trigger watches. @param {Options} o @param {Trigger} t */
-export const fieldLabel = (o, t) => ((o.types.find((x) => x.name === t.type) || { fields: [] }).fields.find((f) => f.name === t.field) || { label: t.field }).label;
+export const fieldLabel = (o, t) => (((o.types.find((x) => x.name === t.type) || {}).fields || []).find((f) => f.name === t.field) || { label: t.field }).label;
 
 const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "flow";
 
