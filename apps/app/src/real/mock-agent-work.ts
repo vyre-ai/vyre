@@ -6,7 +6,7 @@ const ALL = [
   t("th_intake_job1", "intake", { purpose: "job", last: now - 45 * 60_000, status: "working" }),
   t("th_intake_job2", "intake", { purpose: "job", last: now - 5 * 3_600_000, status: "idle" }),
   t("th_intake_chat2", "intake", { purpose: "agent", name: "Conflict check for the Harlow matter", last: now - 26 * 3_600_000, status: "idle" }),
-  t("th_intake_job3", "intake", { purpose: "job", last: now - 3 * 86_400_000, status: "stopped", stopped_reason: "exit 1" }),
+  t("th_intake_job3", "intake", { purpose: "job", last: now - 3 * 86_400_000, status: "stopped", stopped_reason: "exited 1" }),
   t("th_refunds_job", "refunds", { purpose: "job", last: now - 2 * 3_600_000 }),
 ];
 export const mockAgentWorkTools: Record<string, (i: any) => unknown> = {

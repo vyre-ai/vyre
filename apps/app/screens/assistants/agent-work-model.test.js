@@ -11,7 +11,7 @@ const rows = [
   { id: "t1", agent: "intake", name: "intake", purpose: "agent", status: "idle", asks: 0, last: NOW - 3_600_000 },
   { id: "t2", agent: "intake", name: "intake", purpose: "job", status: "working", asks: 0, last: NOW - 60_000 },
   { id: "t3", agent: "intake", name: "Draft the reply", purpose: "chat", status: "waiting", asks: 1, last: NOW - 120_000 },
-  { id: "t4", agent: "intake", name: "intake", purpose: "job", status: "stopped", stopped_reason: "exit 1", last: NOW - 9_000_000 },
+  { id: "t4", agent: "intake", name: "intake", purpose: "job", status: "stopped", stopped_reason: "exited 1", last: NOW - 9_000_000 },
   { id: "t5", agent: "refunds", name: "refunds", purpose: "job", status: "idle", last: NOW },
   { id: "t6", agent: "intake", purpose: "helper", status: "idle", archived: 1, last: NOW },
   null,
