@@ -28,6 +28,7 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
+import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -56,6 +57,10 @@ export const MIGRATIONS = [
   // this table is the one place that says a thread is one, so agents.scope can narrow it and the activity feed can nest it.
   `CREATE TABLE agents_subs (id TEXT PRIMARY KEY, parent TEXT NOT NULL, parent_thread TEXT NOT NULL, thread TEXT, label TEXT NOT NULL, only TEXT, project TEXT, state TEXT NOT NULL DEFAULT 'running', result TEXT, at INTEGER NOT NULL, ended INTEGER);
    CREATE INDEX agents_subs_thread ON agents_subs (thread)`,
+  // The configuration page (core/agents/config.js): folders linked as context, and the Vault item names put at an agent's disposal.
+  ...CONFIG_MIGRATIONS,
+  // One thread per (agent, person) for a person who chats on their own AI account: her words never ride on another person's sign-in.
+  `CREATE TABLE agents_person_threads (agent TEXT NOT NULL, person TEXT NOT NULL, thread TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, person))`,
 ];
 
 /**
@@ -130,6 +135,8 @@ export default {
     const db = ctx.store.db;
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
+    /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
+    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -149,7 +156,7 @@ export default {
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name} (agents.list shows them)`), { code: "not_found" }); return a; };
-    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(shape), log: m => ctx.log(m) });
+    const mirror = createMirror({ kernel: () => ctx.kernel, rows: async () => Promise.all(db.prepare("SELECT * FROM agents_agents").all().map(async r => { const a = shape(r); return { ...a, users: config ? await config.sharedLine(a) : [] }; })), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
@@ -291,24 +298,38 @@ export default {
     };
 
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
-    const launch = async (a, { prompt, resume, job, project, forPerson } = {}) => {
-      const creds = await credentials(a);
+    /**
+     * The chatter's OWN AI sign-in, when she has a real one (not the home's, not the owner's): in a chat an agent runs on the account of the person talking to it,
+     * never on the agent's credentials; those are for flows and jobs (nobody to ask). Null when she has none, so the agent's own are used as before.
+     * @param {any} a @param {string | undefined} person
+     */
+    const ownAccount = async (a, person) => {
+      if (!person || person === "automation") return null;
+      const r = await ctx.call("sessions.accounts.resolve", { provider: "claude", person, agent: a.name }).catch(() => null);
+      const acct = r && !r.error ? r.data : null;
+      return acct && !acct.synthetic && acct.person === person ? acct : null;
+    };
+    const launch = async (a, { prompt, resume, job, project, forPerson, own } = {}) => {
+      const creds = own ? { auth: "ambient" } : await credentials(a);
       // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
       let caps = "";
       if (a.kind === "assistant") {
         const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
         if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
       }
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
-        ...(forPerson ? { for_person: forPerson } : {}) };
+        ...(forPerson ? { for_person: forPerson } : {}),
+        // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
+        ...(own ? { account: String(own.id), person: forPerson } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
       if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
-      db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
+      if (own) db.prepare("INSERT INTO agents_person_threads (agent, person, thread, at) VALUES (?,?,?,?) ON CONFLICT(agent, person) DO UPDATE SET thread = excluded.thread, at = excluded.at").run(a.name, String(forPerson), t.id, Date.now());
+      else db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
     };
 
@@ -329,6 +350,27 @@ export default {
     const checkProjects = p => {
       if (p === undefined) return;
       if (p !== "*" && !(Array.isArray(p) && p.every(x => typeof x === "string"))) throw new Error('projects must be "*" or a list of project slugs');
+    };
+
+
+    /**
+     * An agent a non-staff person makes or edits can never exceed her: projects only ones she can read herself, never "*"; a computer, the personal-memory flag and credentials are the owner's and the admins'.
+     * @param {any} meta @param {{ projects?: any, computer?: any, auth?: any, personal?: any }} i
+     */
+    const clamp = async (meta, i) => {
+      if (await seesFull(meta)) return;
+      const deny = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "denied" });
+      if (i.projects === "*") throw deny("only the owner or an admin gives an agent every project; pick the projects you work in");
+      if (Array.isArray(i.projects) && i.projects.length) {
+        const me = await personOf(meta);
+        for (const slug of i.projects) {
+          const may = me ? await ctx.call("work.project.may-read", { project: String(slug), person: me }).catch(() => null) : null;
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw deny(`you cannot read the project ${slug} yourself, so an agent of yours cannot have it`);
+        }
+      }
+      if (i.computer) throw deny("only the owner or an admin gives an agent a computer");
+      if (i.personal === true) throw deny("only the owner or an admin lets an agent read personal memory");
+      if (i.auth && typeof i.auth === "object" && Object.keys(i.auth).length) throw deny("an agent's credentials are the owner's to pick; leave them out and it runs on the AI account of whoever asks it, or ask the owner");
     };
 
     /** Only the assistant may drive other sessions, from inside its own thread. */
@@ -490,6 +532,22 @@ export default {
       },
     });
 
+    config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+      changed: () => { void mirror.schedule(); },
+      staffOf: async person => {
+        if (!K) return true;
+        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        if (K.owner && canon(person) === canon(String(K.owner))) return true;
+        const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        return Boolean(m && (m.role === "owner" || m.role === "admin"));
+      },
+      chainPerson, roleOf: async person => {
+        const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        if (m && m.role) return String(m.role);
+        return null;
+      },
+      setWords: (a, text, by) => { writeVersion(a, { instructions: text.trim() || null }, { by, approved_by: by }); void mirror.schedule(); } });
+
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
@@ -522,6 +580,7 @@ export default {
         if (String(i.name).trim().toLowerCase() === "assistant" && kind !== "assistant") throw new Error("assistant is the name of your assistant: pick another name for this agent");
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
+        await clamp(meta, i);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
         // created, rather than one whose memory access silently does not match what it says.
@@ -561,6 +620,7 @@ export default {
         // A built-in agent keeps its shape: only its words, model and effort change.
         if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
+        await clamp(meta, { projects: i.projects, computer: i.computer, auth: i.auth, personal: i.personal });
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
         const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };
@@ -623,14 +683,18 @@ export default {
         };
         // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
         // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
+        // A thread on the chatter's own account is the agents module's: her words go in as this module (the thread's account is hers already), not as a chat she was never put in.
+        let ownThread = false;
         const sendWords = async thread => {
           await capNotice(thread);
-          if (!byPerson) return use("threads.send", { thread, text: i.text, surface });
+          if (!byPerson || ownThread) return use("threads.send", { thread, text: i.text, surface });
           const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };
         const a = must(i.agent);
+        // A person talks to an agent, the assistant included (it sees every project), only if it is theirs or shared with them (Can use or Can edit); the owner and the admins always may.
+        if (isPerson(caller) && config && (await config.levelOf(meta0, a)) === "none") throw Object.assign(new Error(`${a.name} is not shared with you. Ask its owner for Can use.`), { code: "denied" });
         const surface = i.surface || String(caller || "vyre");
         // whoever the call acts for (her own session's person included), so the gate judges her when the agent starts for her words
         const forPerson = (await personOf(meta0)) || undefined;
@@ -646,17 +710,22 @@ export default {
           ctx.events.on("thread.stopped", e => { if (e.thread === thread) finish({ ok: false, note: `the thread stopped: ${e.payload.reason}` }); }),
         ];
         try {
-          const cur = a.thread ? (await ctx.call("threads.get", { thread: a.thread, limit: 1 })).data?.thread : null;
+          // a person with her own AI sign-in talks to the agent on a thread of her own, on her own account
+          const own = a.kind === "agent" ? await ownAccount(a, forPerson) : null;
+          ownThread = Boolean(own);
+          const mineRow = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(forPerson))) : null;
+          const curId = own ? (mineRow ? String(mineRow.thread) : null) : a.thread;
+          const cur = curId ? (await ctx.call("threads.get", { thread: curId, limit: 1 })).data?.thread : null;
           if (!cur) {
             // A new thread learns its id only from the launch, so the listeners key on it after;
             // the reply cannot beat a model's first token back.
-            const t = await launch(a, { forPerson });
+            const t = await launch(a, { forPerson, own });
             thread = t.id;
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
-            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson });
+            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson, own });
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
@@ -830,6 +899,8 @@ export default {
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
+        if (config) await config.clearShared(a).catch(() => {});
+        for (const t of ["agents_context_links", "agents_vault_items"]) db.prepare(`DELETE FROM ${t} WHERE agent = ?`).run(a.name);
         await mirror.schedule();
         return { agent: a.name, deleted: true };
       },

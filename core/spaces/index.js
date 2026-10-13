@@ -81,7 +81,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
-import { httpFetch } from "../../lib/http.js";
+import { httpFetch } from "../../lib/http.js"; import { entryView } from "./entry-view.js";
 import { chosenServer } from "./chosen-server.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
@@ -2069,7 +2069,7 @@ export default {
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
-      obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
+      obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, seats: { type: "array", items: { type: "object" }, description: "Projects the joiner is put on when they accept: [{ project, level: lead | contributor | viewer }], contributor by default" }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
@@ -2078,8 +2078,18 @@ export default {
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
-          const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
-          const body = { role: custom ? "member" : i.role === "guest" ? "temp" : i.role, ...(custom ? { custom } : {}), ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
+          const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../../lib/roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
+          const seats = Array.isArray(i.seats) ? i.seats : [];
+          if (seats.length) {
+            const me = String(k.chain.hops[0].actor.id), mine = ((await kernelHandle(row.id).gateway.grants.members.list(k.chain)) || []).find((/** @type {any} */ m) => m.person === me);
+            for (const st of seats) {
+              const r = /** @type {any} */ (await ctx.call("work.project.seat", { project: String(st && st.project), person: me }).catch(() => null));
+              const seat = r && r.data;
+              if (!seat || !seat.exists) throw refuse(`There is no project "${st && st.project}" in this space. Pick one from the project list, then invite again.`, "not_found");
+              if (!(seat.owner || seat.level === "lead" || (mine && (mine.role === "owner" || mine.role === "admin")))) throw refuse(`You are not a lead on "${st.project}", so you cannot put someone on it. Ask the project's owner or a lead, or take it out of the invite.`, "not_allowed");
+            }
+          }
+          const body = { ...(seats.length ? { seats: seats.map((/** @type {any} */ x) => ({ project: String(x.project), ...(x.level ? { level: String(x.level) } : {}) })) } : {}), role: custom ? "member" : i.role === "guest" ? "temp" : i.role, ...(custom ? { custom } : {}), ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) };
           /** @type {any} */ let rec;
           try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, body); }
           catch (e) {
@@ -2346,7 +2356,7 @@ export default {
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
       // the same fields spaces.identity.lookup returns: the door that admits a device reads this list (identityEntry), and a passkey's alg and rp and a held key's `held` decide whether its hello is taken at all
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
+      return { id, seq: r.pin.seq, head: r.pin.head, entries: r.state.entries.map(entryView) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
@@ -2371,7 +2381,7 @@ export default {
       // The guarded client may refuse the directory address itself (plain http, not public) before any request: the refusal names that cause.
       try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { const w = String(/** @type {any} */ (e)?.why || ""); throw refuse(`The names directory could not be reached; wait a minute and try again.${w === "not_https" ? " The directory address was refused: it is plain http." : /^(not_public|bad_url|credentials_in_url)$/.test(w) ? ` The directory address was refused (${w}).` : ""}`, "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
+      return { entries: r.state.entries.map(entryView) };
     }, { internal: true });
     // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
     tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
@@ -2388,7 +2398,7 @@ export default {
       const at = Date.now(), st = await C.verifyChain(r.ops, { now: at });
       return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
     }, { internal: true });
-    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
+    tool("spaces.identity.state", "A person's identity list as verified now: the chain's id, seq and head, and each entry's id, kind, key, age and founder flag. Read live each call. For the transport's personOf and a server's chain admission.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     // The devices of a person you share a space with, as public data only: each listed device's id and its key-agreement point (`agree`, the key a chat key is wrapped to). No label, no signing key, no other
     // field. The caller must be that person or share a space with them (both members of one space this device knows); a stranger gets nothing, the same answer as a person with no such devices.
     /** The public devices of a person the caller shares a space with (see spaces.identity.devices). @param {any} i @param {any} meta */

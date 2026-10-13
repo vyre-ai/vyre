@@ -44,3 +44,37 @@ test("servers: the add door is always worded the same, and says one Space per se
   assert.equal(ADD.action, "Add another server");
   assert.match(ADD.body, /one Space/i);
 });
+
+import { FOUND, foundRows, foundLine } from "./servers-model.js";
+
+const entry = (n, box) => ({ kind: "server", id: box, name: n, relay: "wss://r", route: "r".repeat(26), box });
+
+test("found on your other devices: a listed server this device lacks is a row with a Connect button, named, with where it lives", () => {
+  const rows = foundRows({ found: [entry("my droplet", "k".repeat(43))], confirm: [], failed: [] });
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].name, rows[0].action], ["my droplet", "Connect"]);
+  assert.equal(FOUND.title, "Found on your other devices");
+});
+
+test("found on your other devices: an entry with no pin is named for confirmation and has no Connect button", () => {
+  const rows = foundRows({ found: [], confirm: [entry("old one", "short")], failed: [] });
+  assert.equal(rows[0].action, null);
+  assert.match(rows[0].sub, /code from that server/);
+});
+
+test("found on your other devices: a server that refused says so in its row and can be tried again", () => {
+  const rows = foundRows({ found: [], confirm: [], failed: [{ entry: entry("team server", "m".repeat(43)), code: "server_not_ready", message: "That server does not admit this device yet." }] });
+  assert.equal(rows[0].action, "Try again");
+  assert.match(rows[0].sub, /does not admit/);
+});
+
+test("found on your other devices: nothing found is no section, and the line counts what is", () => {
+  assert.deepEqual(foundRows({ found: [], confirm: [], failed: [] }), []);
+  assert.equal(foundLine(1), "1 server your other devices use");
+  assert.equal(foundLine(2), "2 servers your other devices use");
+});
+
+test("copy has no em dash and no section sign", () => {
+  const text = JSON.stringify([FOUND, foundRows({ found: [], confirm: [entry("x", "short")], failed: [] })]);
+  assert.doesNotMatch(text, /—|§/);
+});

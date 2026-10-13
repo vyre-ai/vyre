@@ -23,6 +23,12 @@ export function templatesSource(call: Call) {
       const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.flows) ? r.flows : [];
       return rows.map((x) => ({ id: String(x.id), name: String(x.label || x.name || x.id), active: Boolean(x.active) }));
     },
+    /** The assistants of this Space a task can be given to. */
+    agents: async (): Promise<{ id: string; name: string }[]> => {
+      const r = await ask<any>("agents.list");
+      const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.agents) ? r.agents : [];
+      return rows.map((x) => ({ id: String(x.name || x.id), name: String(x.label || x.name || x.id) })).filter((x) => x.id);
+    },
     /** A draft template made from a project: its stages when it ran a template, else its tasks and team (a free-flow project). */
     fromProject: (project: string, name?: string): Promise<Version> => ask("work.template.from-project", { project, ...(name ? { name } : {}) }),
     /** Start a project from the live version: its team, its pinned stages and the first stage's tasks. */

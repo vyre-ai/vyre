@@ -1,8 +1,9 @@
 // The living gallery: every block and a few whole screens, drawn from generated fixtures (apps/app/ui/blocks/fixtures.generated.json) with no box behind them. The picture tests
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
+import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, Markdown, MatchWords, PasswordField, ProviderRow, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -146,6 +147,9 @@ function Sample({ name }: { name: string }) {
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
   }
+  if (name === "shell") return <ShellStates />;
+  if (name.startsWith("shell-")) return <ShellSample state={name.slice(6) as "main"} />;
+  if (name === "space-tiles") return <SpaceTileSheet />;
   if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
   if (name === "explain-card") return <ExplainCard text="It ran because the stage moved to Engagement. It made Welcome note and handed Send the welcome email to an assistant. It is waiting for a person (step Approve the email)." />;
   if (name === "record-timeline") {
@@ -206,10 +210,35 @@ function StartingSample() {
   return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
+/** The guided-flow kit (FlowStep, Stack, CodeField, CodeDisplay, MatchWords, PasswordField, ChoiceList, ProviderRow) in one page: /gallery?f=flow-kit. */
+function FlowKit() {
+  const [code, setCode] = useState("WINK-7QMK");
+  const [pw, setPw] = useState("river amber");
+  const [pick, setPick] = useState<"a" | "b">("a");
+  return (
+    <FlowStep steps={{ labels: ["Identity", "Master password", "Inference", "Space", "Ready"], current: 1 }} onBack={() => {}} title="Flow step" lead="Back, the step strip, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
+      <CodeField label="Code field" prefix="WINK" value={code} onChangeText={setCode} />
+      <CodeDisplay label="Code display" code="WINK-7QMK-4P2X" note="Good for 10 min." />
+      <MatchWords label="Match words" words={["river", "amber", "stone", "quiet"]} note="Check them against your server." />
+      <PasswordField label="Password field" meter value={pw} onChangeText={setPw} />
+      <ChoiceList label="Choice list" value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "You need a server.", icon: "space" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "users" }]} />
+      <Card flush>
+        <ProviderRow provider="claude" title="Claude" sub="Sign in with your Claude subscription." state="idle" onConnect={() => {}} />
+        <ProviderRow provider="codex" title="Codex" sub="Sign in with your ChatGPT account." state="connected" onConnect={() => {}} onTest={() => {}} />
+        <ProviderRow provider="grok" title="Grok" sub="Sign in with your Grok account." state="failed" problem="Sign-in did not finish." onConnect={() => {}} />
+      </Card>
+      <Stack row gap={2}><Text tone="label">Stack, row, gap 2</Text><Text tone="muted">Stack</Text></Stack>
+    </FlowStep>
+  );
+}
+
 export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
+  if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);
   if (given) FX.given = { title: String(given.title ?? "Screen"), screens: { [form]: given } };

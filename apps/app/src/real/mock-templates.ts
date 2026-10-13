@@ -3,14 +3,25 @@
 type V = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string; tags: string[]; note?: string; body: any };
 
 const task = (title: string, doer: string, extra: any = {}) => ({ title, doer, output: { kind: "note" }, ...extra });
+const DAY = 86_400_000;
 const MATTER = {
   name: "Estate plan", noun: { one: "Matter", many: "Matters" }, description: "From the first call to the signed documents.", tags: ["estate"],
   roles: [{ role: "attorney", lead: true }, { role: "paralegal" }],
   stages: [
-    { name: "Opening", owner: "role:attorney", tasks: [task("Run the conflict check", "role:paralegal"), task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" } })] },
-    { name: "Initial Administration", tasks: [task("Gather the family's documents", "role:paralegal"), task("Open the estate file", "role:paralegal")] },
-    { name: "Inventory", tasks: [task("List assets and debts", "role:paralegal"), task("Review the inventory", "role:attorney", { output: { kind: "decision" } })] },
-    { name: "Ongoing Administration", tasks: [task("Send the quarterly update to the family", "role:attorney")] },
+    { name: "Opening", owner: "role:attorney", tasks: [
+      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY }),
+      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY }),
+      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY }),
+    ] },
+    { name: "Initial Administration", tasks: [
+      task("Gather the family's documents", "role:paralegal", { due_offset_ms: 7 * DAY }),
+      task("Open the estate file", "lead", { due_offset_ms: 2 * DAY }),
+    ] },
+    { name: "Inventory", tasks: [
+      task("List assets and debts", "teammate:research", { due_offset_ms: 14 * DAY }),
+      task("Review the inventory", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 5 * DAY }),
+    ] },
+    { name: "Ongoing Administration", tasks: [task("Send the quarterly update to the family", "lead")] },
     { name: "Closing" },
   ],
 };
@@ -57,4 +68,5 @@ export const mockTools: Record<string, (i: any) => unknown> = {
   "work.template.from-project": (i) => mockTools["work.template.define"]({ body: { ...MATTER, name: `${i.name || "Rivera Family Trust"} (copy)` }, note: "made from a project" }),
   "work.start-project": (i) => { const v = versionsOf(i.template).find((x) => x.state === "live"); if (!v) throw fail("bad_state", "that template has no live version: put a version live first"); return { project: `vyre://mock/project/${slug(i.name)}`, slug: slug(i.name), template: i.template, version: v.version, stage: v.body.stages[0].name, teammates: [], tasks_made: (v.body.stages[0].tasks || []).length }; },
   "flows.list": () => ({ flows: [] }),
+  "agents.list": () => [{ name: "research", label: "Research" }, { name: "scribe", label: "Scribe" }],
 };

@@ -1,0 +1,18 @@
+# The GitHub sign-in escrow (escrow/worker/index.js): its own Worker and domain so the relay holds nothing of a person's. Deploying needs the lead's approval.
+# Secrets (never in vars): ESCROW_RELAY_SECRET (32+ chars, the same value as the relay's), ESCROW_KEK_<kid> (32 random bytes, base64url) and ESCROW_KEK_CURRENT (the kid in use).
+name = "vyre-escrow"
+main = "index.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+routes = [{ pattern = "escrow.vyre.run", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "ESCROW"
+class_name = "Escrow"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Escrow"]
+
+[observability]
+enabled = false

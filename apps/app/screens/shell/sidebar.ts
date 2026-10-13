@@ -54,16 +54,18 @@ export const effective = (base: Entry[] | null, mine: Entry[]): Entry[] => merge
 const safeIcon = (name: string) => ((ICON_NAMES as readonly string[]).includes(name) ? name : "box");
 
 /** The catalog layout draws from: this build's places and the installed module screens. */
-export const catalogOf = (modules: ModuleScreens[]) => ({ flags: PLACE_FLAGS, modules });
+export const catalogOf = (modules: ModuleScreens[], admin = false) => ({ flags: PLACE_FLAGS, modules, admin });
 
 /** The nav definition the shell draws for a Space. */
 export function useNavDef(space: string): NavDef {
-  const { base, mine, modules } = useSidebar();
+  const { base, mine, modules, canSetDefault } = useSidebar();
+  // The Build group is for an owner or an admin; the sample world (no box) shows it so the whole sidebar can be seen.
+  const admin = MOCK || canSetDefault;
   return useMemo(() => {
-    const nav = navDef(layout(effective(base, mine) as never, catalogOf(modules)));
+    const nav = navDef(layout(effective(base, mine) as never, catalogOf(modules, admin)));
     const fix = (items: NavDef["items"]) => items.map((it) => ({ ...it, icon: safeIcon(it.icon) as never }));
     return { items: fix(nav.items), more: fix(nav.more), bottom: fix(nav.bottom), groups: (nav.groups ?? []).map((g) => ({ name: g.name, items: fix(g.items) })) };
-  }, [base, mine, modules, space]);
+  }, [base, mine, modules, space, admin]);
 }
 
 /** Replace a whole list, for me or (if the role allows) for the team. */
