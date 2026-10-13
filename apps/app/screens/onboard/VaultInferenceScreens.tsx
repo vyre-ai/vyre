@@ -3,6 +3,8 @@ import { Linking } from "react-native";
 import { Banner, Button, Card, CodeDisplay, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { DEMO } from "./flow-model.js";
+import { createVault, holdResetKit, homeHintText, openVault } from "./real-vault";
+import { linkGithub } from "./real-github";
 import { claudeConnected, finishSignIn, followSignIn, saveKey, startSignIn, type Flow, type Step } from "./real-inference";
 import type { AiState, ScreenProps } from "./types";
 
@@ -44,7 +46,7 @@ export function VaultIntro({ go, back, steps }: ScreenProps) {
     <FlowStep steps={steps} onBack={back} title="Let's set up your vault" lead="Your vault holds your AI accounts, passwords and keys, locked so that only you can open it."
       primary={{ label: "Create my master password", onPress: () => go("master.set") }}>
       <Card flush>
-        <Row dense lead={<IconTile name="lock" />} title="Only you can open it" sub="One master password, typed once on each device." />
+        <Row dense lead={<IconTile name="lock" />} title="Only you can open it" sub="One master password. A new device is approved from another device first." />
         <Divider inset={60} />
         <Row dense lead={<IconTile name="devices" />} title="It lives with you" sub="On your devices, and sealed inside each space you join." />
         <Divider inset={60} />
@@ -60,6 +62,7 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
   const [say, setSay] = useState("");
   const [made, setMade] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [hint, setHint] = useState("");
   const open = async () => {
     setBusy(true); setSay("");
     const r = await createVault(ctx.master, ctx.reset);
@@ -67,12 +70,19 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
     if (!r.ok) { setSay(r.say); return; }
     // The password is not needed again: the prototype keeps it only to pretend to check it on the next screen.
     if (!MOCK) set({ master: "" });
+    // A new person who came in with GitHub: tie it to the name now that the vault has its Secret Key. Linking can wait for Settings if it fails, so it never blocks the flow.
+    if (ctx.github && !ctx.reset) {
+      const l = await linkGithub(ctx.githubSession ?? null, ctx.github);
+      if (!l.ok) showToast(l.say);
+    }
+    if (r.recoverySecret) { setHint(await homeHintText()); setMade(r.recoverySecret); } else go("inf.pick");
   };
   if (made) {
     return (
       <FlowStep steps={steps} title="Save your vault recovery secret" lead="This page can open your vault and sign in as you. Keep it like a house key: printed or in a safe place, never in email or chat."
         primary={{ label: "Continue", disabled: !saved, onPress: () => { setMade(null); go("inf.pick"); } }}>
         <CodeDisplay label="Vault recovery secret" code={made} note="If you forget your master password, this sets a new one. It is shown once." />
+        {hint ? <CodeDisplay label="Home hint" code={hint} note="Not secret. It tells a new device where your vault lives. Keep it with the kit." /> : null}
         <Banner tone="warn" icon="warning">Keep it apart from your identity recovery code if you can. Anyone with both can sign in as you and open your vault. If you lose this and your master password, your vault cannot be opened, and Vyre cannot get it back.</Banner>
         <Stack row gap={3} align="center" justify="between"><Text>I saved my vault recovery secret</Text><Switch label="I saved my vault recovery secret" on={saved} onChange={setSaved} /></Stack>
       </FlowStep>
@@ -104,7 +114,7 @@ export function MasterEnter({ ctx, set, go, back, steps }: ScreenProps) {
     if (r.ok) go("inf.pick"); else setSay(r.say);
   };
   return (
-    <FlowStep steps={steps} onBack={back} title="Open your vault here" lead="Type your master password once on this device. After that, Touch ID, Windows Hello or your phone's lock opens it."
+    <FlowStep steps={steps} onBack={back} title="Open your vault here" lead="This device is approved. Type your master password to open your vault here. After that, Touch ID, Windows Hello or your phone's lock opens it."
       primary={{ label: "Open my vault", disabled: !pw || busy, loading: busy, onPress: () => { void open(); } }}
       secondary={{ label: "I forgot it: use my recovery kit", onPress: () => { set({ reset: true }); go("id.recover"); } }}>
       <PasswordField label="Master password" name="Master password" value={pw} onChangeText={(v) => { setPw(v); setSay(""); }} error={say || undefined} />

@@ -32,11 +32,12 @@ test("the rail is wide when expanded and slim when folded", () => {
   assert.ok(railWidth(true, 248) < 80 && railWidth(true, 248) >= 56);
 });
 
-test("a path inside a place drills the sidebar into that place's panel; the place's own front page shows the main sidebar", () => {
+test("opening a place, or a path inside it, drills the sidebar into that place's panel", () => {
   assert.equal(panelFor("/u/project/p1"), "projects");
-  assert.equal(panelFor("/u/projects"), null);
+  assert.equal(panelFor("/u/projects"), "projects", "opening Projects shows the list of projects");
   assert.equal(panelFor("/u/chats/c9"), "chats");
-  assert.equal(panelFor("/u/chats"), null);
+  assert.equal(panelFor("/u/chats"), "chats");
+  assert.equal(panelFor("/u/projects", "?side=main"), null, "Back shows the main sidebar");
   assert.equal(panelFor("/u/records/contact"), "records");
   assert.equal(panelFor("/u/record/r1"), "records");
   assert.equal(panelFor("/u/drive/folder-1"), "drive");

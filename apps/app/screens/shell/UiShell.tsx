@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "expo-router";
 import { EmptyState, LoadingState, Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
 import { useNavDef, useSidebar } from "./sidebar";
 import { PanelLoader, usePanel } from "./panels";
+import { NewViewHost } from "../records/NewViewHost";
 import { useSpaceLogos } from "../../ui/marks/useSpaceLogos";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
@@ -84,6 +85,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       <ApprovalSheet />
       <FindHost />
       <PanelLoader id={panelId} />
+      <NewViewHost />
     </Shell>
   );
 }
