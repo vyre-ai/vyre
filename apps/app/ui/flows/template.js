@@ -63,7 +63,7 @@ export function insertList(d, stepId, o, opt = {}) {
   /** The fields of an object as items, and through each link field the fields of the object it points to, up to three links deep: {after.spouse.name}. A link to several reads as its names joined by commas. */
   const fieldItems = (/** @type {string} */ type, /** @type {string} */ path, /** @type {string} */ words, /** @type {number} */ hops, /** @type {string} */ al) => {
     /** @type {Item[]} */ const rows = [];
-    for (const f of fieldsOf(type)) {
+    for (const f of /** @type {any[]} */ (fieldsOf(type))) {
       if (isLink(f)) {
         if (hops < 3 && rows.length < 300) rows.push(...fieldItems(f.to, `${path}.${f.name}`, `${words}${f.label} \u00b7 `, hops + 1, `${al}.${f.name}`).map((i) => (f.many ? { ...i, note: i.note ?? "Several: the names are joined with commas" } : i)));
       } else rows.push(item(`{${path}.${f.name}}`, `${words}${f.label}`, f, `{${al}.${f.name}}`));
@@ -163,7 +163,7 @@ export const addressPicks = (groups) => groups.flatMap((g) => g.items.filter((i)
 export function dateRefs(groups) {
   const like = (/** @type {string} */ t) => /(^|[._])(date|time|start|end|starts|ends|due|[a-z]+_at|[a-z]+_on|[a-z]+_date)$/i.test(t.replace(/\}$/, ""));
   const found = groups.filter((g) => g.title !== "Helpful values").flatMap((g) => g.items.filter((i) => i.date || like(i.token)).map((i) => ({ ...i, label: g.object ? `${g.object} · ${i.label}` : i.label })));
-  return [...found, { token: "", label: "Now", known: false, note: "Coming next" }];
+  return [...found, { token: "", alias: "", label: "Now", known: false, note: "Coming next" }];
 }
 
 export const DATE_DIRS = /** @type {[string, string][]} */ ([["before", "before"], ["at", "at"], ["after", "after"]]);
