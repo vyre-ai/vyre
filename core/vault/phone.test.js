@@ -18,7 +18,7 @@ async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystor
   const d = await start({ root, presence, log: () => {} });
   t.after(() => d.stop());
   if (at) /** @type {any} */ (globalThis).__lastDaemon = d;
-  return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { ...meta, person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" } } : meta);
+  return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" }, ...meta } : meta);
 }
 
 test("the phone adds a login and reads the state; a model, a guest and an agent cannot add", async t => {
@@ -69,7 +69,7 @@ test("the personal vault from the phone with no presence (a browser session, a d
   await home("vault.account.lock", {}, "cli");
   // the same daemon cannot be restarted with another verifier here, so ask a daemon whose verifier finds nobody: it has no account, but the refusal comes before the tool runs
   const none = await daemon(t, { keystore: "file" }, absent);
-  const r = await none("vault.account.unlock-phone", { password: pw }, PHONE);
+  const r = await none("vault.account.unlock-phone", { password: pw }, PHONE, { person: null });
   // a device with nobody there is refused either at the person session or at presence: the phone is never let in without the person
   assert.ok(["presence_required", "person_session_required"].includes(r.error && r.error.code), JSON.stringify(r));
 });
