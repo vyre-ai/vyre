@@ -13,7 +13,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
-  "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
+  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
   "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
