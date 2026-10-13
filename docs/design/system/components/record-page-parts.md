@@ -2,7 +2,7 @@
 title: Record page parts
 summary: The header, the related sections and the one timeline that make up a record page.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

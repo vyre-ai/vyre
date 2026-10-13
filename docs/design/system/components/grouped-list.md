@@ -2,7 +2,7 @@
 title: Grouped list
 summary: Items in named groups that can be added, renamed, reordered and collapsed. The one component every sectioned list uses.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

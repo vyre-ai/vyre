@@ -2,6 +2,7 @@
 // from its first chunk (files.drive.read). The box refuses secrets and anything outside a share; a refusal reads as "not available".
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Sheet, Tabs, Text, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
@@ -18,6 +19,7 @@ type Tab = "space" | "shared" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
+  const router = useRouter();
   const driveTag = usePlaceText("home");
   const [tab, setTab] = useState<Tab>("space");
   const [made, setMade] = useState(0);
@@ -92,7 +94,7 @@ export default function RealDrive() {
   ) : <LoadingState rows={3} />;
 
   return (
-    <Frame title="Files" sub="The space's files with their versions, and the box's own folders.">
+    <Frame title="Files" sub="The space's files with their versions, and the box's own folders." actions={<Button kind="secondary" size="sm" icon="file" label="Documents" onPress={() => router.push("/u/documents" as never)} />}>
       <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
       {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
