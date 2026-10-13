@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BUILT_INS, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
+import { ADMIN_ONLY, BUILT_INS, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
 import { bodyOf, catalogueOf, mockSource, projectsOf, roleOf, rolesOf, rolesSource, typesOf } from "./source.js";
 
 test("the built-ins are Admin, Member and Guest, Guest is temp on the wire, manager is not among them", () => {
@@ -142,6 +142,8 @@ test("a role goes to the box as id lists, a level per type and hidden fields apa
   assert.equal(bodyOf(newRole("member", "Q", builtInRoles())).where.kind, "my_projects");
   assert.equal(catalogueOf({ can: [{ id: "view", label: "See", gloss: "g" }], tools: [{ id: "mail", label: "Mail" }] })?.tools[0][0], "mail");
   assert.equal(catalogueOf(null), null);
+  assert.deepEqual(catalogueOf({ can: [{ id: "view", label: "See", gloss: "g", needs: "member" }, { id: "reveal", label: "Reveal", needs: "admin" }] })?.can.map((c) => c[3]), ["member", "admin"]);
+  assert.ok(ADMIN_ONLY.includes("reveal") && ADMIN_ONLY.includes("kits") && !ADMIN_ONLY.includes("view"));
 });
 
 test("a refused call is said in words", () => {

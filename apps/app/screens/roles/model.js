@@ -47,6 +47,11 @@ export const CAN_DO = [
   ["computers", "Use computers", "Run sessions on a computer."],
 ];
 
+/** Switches a custom role (a Member at heart) cannot hold: the box refuses them, so the screen shows them unavailable. The box's catalogue says which (`needs`); this is the list until it answers. */
+export const ADMIN_ONLY = ["customize", "kits", "services", "reveal"];
+/** The line under an unavailable switch. */
+export const ADMIN_ONLY_LINE = "Only admins can do this.";
+
 /** Section 2, Where. */
 export const WHERE = [
   ["space", "The whole space", "Every project in the space."],

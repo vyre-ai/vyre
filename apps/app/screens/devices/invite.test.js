@@ -13,7 +13,7 @@ test("an owner invites as admin, member or guest (temp); an admin below admin; a
 });
 
 test("an invite carries the chosen projects, and none when none are chosen", () => {
-  assert.deepEqual(createInput({ space: "s", role: "paralegal", anyone: true, projects: ["p1", "p2"] }), { space: "s", role: "paralegal", projects: ["p1", "p2"] });
+  assert.deepEqual(createInput({ space: "s", role: "paralegal", anyone: true, projects: ["p1", "p2"] }), { space: "s", role: "paralegal", scope: ["p1", "p2"] });
   assert.deepEqual(createInput({ space: "s", role: "member", anyone: true, projects: [] }), { space: "s", role: "member" });
 });
 

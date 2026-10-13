@@ -12,8 +12,9 @@ import { MOCK_PROJECTS } from "./mock.js";
  * projects to add them to and, for a Guest, when it ends. `role` is what the box is sent; Guest is "temp". Reads the space's roles itself and falls back to the built-ins
  * when the box does not list roles.
  */
-export function InviteRolePicker({ actor, role, onRole, projects, onProjects, days, onDays }: {
+export function InviteRolePicker({ actor, role, onRole, projects, onProjects, days, onDays, withCustom = MOCK }: {
   actor: string | undefined; role: string; onRole: (id: string) => void; projects: string[]; onProjects: (ids: string[]) => void; days: string; onDays: (v: string) => void;
+  /** Offer the space's own roles too. The real invite tool takes only the built-in roles today, so a real invite lists those alone. */ withCustom?: boolean;
 }) {
   const [roles, setRoles] = useState<Role[]>(() => builtInRoles());
   const [known, setKnown] = useState<{ id: string; name: string }[]>(MOCK ? MOCK_PROJECTS : []);
@@ -21,7 +22,7 @@ export function InviteRolePicker({ actor, role, onRole, projects, onProjects, da
   useEffect(() => { let live = true; void source().read().then((w) => { if (live) { setRoles(w.roles); if (w.projects.length) setKnown(w.projects); } }).catch(() => {}); return () => { live = false; }; }, []);
   const list = MOCK ? known : spaceProjects.length ? spaceProjects : known;
   const names = useMemo(() => Object.fromEntries(list.map((p) => [p.id, p.name])), [list]);
-  const choices = useMemo(() => inviteChoices(actor, roles, names), [actor, roles, names]);
+  const choices = useMemo(() => inviteChoices(actor, withCustom ? roles : roles.filter((r) => r.builtin), names), [actor, roles, names, withCustom]);
   useEffect(() => { if (choices.length && !choices.some((c) => c.id === role)) onRole(choices.find((c) => c.id === "member")?.id ?? choices[0].id); }, [choices, role]);
   return <RolePicker roles={choices} value={role} onChange={onRole} projects={list} chosen={projects} onChosen={onProjects} guest="temp" ends={days} onEnds={onDays} endOptions={TEMP_DAYS as [string, string][]} />;
 }

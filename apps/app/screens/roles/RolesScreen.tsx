@@ -4,7 +4,7 @@ import { Banner, Button, Card, Chip, ControlRow, Divider, EmptyState, ErrorState
 import { Footnote, Page, Sec } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
-import { ACCESS, CAN_DO, TOOLS, WHERE, builtInName, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
+import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, WHERE, builtInName, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
 
 /** Settings, Roles: the space's roles with how many people hold each; open one to edit its four sections. Owner and admin only. */
@@ -94,7 +94,11 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
       {locked ? <Banner icon="shield"><Text>{`${role.name} is built in. Duplicate it to make a version you can change.`}</Text></Banner> : null}
 
       <Sec title="1. Can do">
-        <Card flush>{(world.catalogue?.can ?? CAN_DO).map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.can[k]} locked={locked} onToggle={(v) => edit((x) => setCan(x, k, v))} /></View>)}</Card>
+        <Card flush>{(world.catalogue?.can ?? CAN_DO.map(([k, t, l]) => [k, t, l, ADMIN_ONLY.includes(k) ? "admin" : "member"])).map(([k, title, line, needs], i) => {
+            // A custom role is a Member at heart: what only an admin can do is shown unavailable, so the screen never offers what the box refuses.
+            const out = !locked && needs === "admin";
+            return <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={out ? ADMIN_ONLY_LINE : line} on={out ? false : !!r.can[k]} locked={locked || out} onToggle={(v) => edit((x) => setCan(x, k, v))} /></View>;
+          })}</Card>
       </Sec>
 
       <Sec title="2. Where">

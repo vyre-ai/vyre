@@ -92,7 +92,7 @@ export function bodyOf(r) {
 /** @param {any} d */
 export function catalogueOf(d) {
   if (!d) return null;
-  const can = (Array.isArray(d.can) ? d.can : []).filter((/** @type {any} */ c) => c && c.id).map((/** @type {any} */ c) => [String(c.id), String(c.label || c.id), String(c.gloss || "")]);
+  const can = (Array.isArray(d.can) ? d.can : []).filter((/** @type {any} */ c) => c && c.id).map((/** @type {any} */ c) => [String(c.id), String(c.label || c.id), String(c.gloss || ""), c.needs === "admin" ? "admin" : "member"]);
   const tools = (Array.isArray(d.tools) ? d.tools : []).filter((/** @type {any} */ t) => t && t.id).map((/** @type {any} */ t) => [String(t.id), String(t.label || t.id), ""]);
   return can.length || tools.length ? { can, tools } : null;
 }
