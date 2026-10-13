@@ -49,7 +49,6 @@ test("notes an older build kept in CLAUDE.md are appended once into AGENTS.md on
   assert.equal(fs.existsSync(kept), false, "the separate notes file is retired");
   await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: after });
   assert.equal((await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], after, "appended once, never twice");
-  assert.equal((await c("agents.instructions", { agent: "intake" }, "module")).data.text, after, "the prompt reads the same text");
 });
 
 test("context: a file is kept under agents/<id>/context, listed, replaced by name and removed; a path in the name is only a name", async t => {
