@@ -277,6 +277,13 @@ export const TOOL_GROUPS = Object.freeze({
     "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree"]),
 });
 
+/**
+ * The groups a role can really turn on today. A group not here is accepted by the role record but ignored at the door, because its handlers still use the OWNER's connected accounts and signed-in computer, not the
+ * member's own: mail and calendar (the Space's Gmail/Google), computers and browser (an agent's computer and browser signed in as the owner). Each moves here when its handlers scope to the caller's own
+ * account or project and a test as a member proves it. documents, files and publish act in the Space's own drive and as the Space (not a person's private account); a role that turns them on says so in plain words.
+ */
+export const SCOPED_GROUPS = Object.freeze(["documents", "files", "publish"]);
+
 /** The group a tool belongs to, or undefined. */
 export const GROUP_OF = Object.freeze(new Map(Object.entries(TOOL_GROUPS).flatMap(([group, tools]) => tools.map(t => /** @type {[string, string]} */ ([t, group])))));
 

@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { MEMBER_MAY, OWNER_ONLY, GUEST_MAY, TOOL_GROUPS, GROUP_OF, PLUMBING, SELF_GATED } from "./door-lists.js";
+import { MEMBER_MAY, OWNER_ONLY, GUEST_MAY, TOOL_GROUPS, GROUP_OF, PLUMBING, SELF_GATED, SCOPED_GROUPS } from "./door-lists.js";
 import { refusal, guestRefusal } from "./door-gate.js";
 import { TOOL_IDS } from "../roles/catalogue.js";
 import { request, call } from "../daemon/client.js";
@@ -62,32 +62,42 @@ test("a Guest has the smaller list: sign-in, chat, shared records and files only
 
 test("a custom role turns on exactly the groups it names, for the people who hold it, and no more; a change is read at the next call", { timeout: 300_000 }, async t => {
   const { as, owner } = await rig(t);
-  await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["mail", "documents"] } });
+  await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["files", "documents"] } });
   await owner("roles.assign", { person: MEMBER, role: "mailer" });
-  for (const tool of TOOL_GROUPS.mail.concat(TOOL_GROUPS.documents)) assert.ok(!gated(await as("member", tool), tool), `${tool}: the Mailer has it`);
-  for (const tool of [...TOOL_GROUPS.calendar, ...TOOL_GROUPS.computers, ...TOOL_GROUPS.publish, ...TOOL_GROUPS.browser, ...TOOL_GROUPS.files]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: not in her groups`);
+  for (const tool of TOOL_GROUPS.files.concat(TOOL_GROUPS.documents)) assert.ok(!gated(await as("member", tool), tool), `${tool}: the Mailer has it`);
+  for (const tool of [...TOOL_GROUPS.calendar, ...TOOL_GROUPS.computers, ...TOOL_GROUPS.publish, ...TOOL_GROUPS.browser, ...TOOL_GROUPS.mail]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: not in her groups`);
   // never wider than a Member in what a group does not hold: the set-up tools of the same areas, the owner's other tools
   for (const tool of ["mail.test", "google.accounts", "google.connect", "connectors.connection.list", "settings.set", "spend.raise", "publish.domain.add", "computers.pause", "mcp.servers", "vault.list"]) {
     assert.ok(!(await as("member", tool)).data, `${tool}: a custom role never opens it`);
   }
-  assert.ok(met(await as("member", "mail.test"), refusal("mail.test")), "mail.test is set-up, not in the mail group");
-  assert.ok(met(await as("member2", "mail.accounts"), refusal("mail.accounts")), "a Member who does not hold the role has none of it");
-  // the role is edited: the holder loses mail at her next call
+  assert.ok(met(await as("member2", "files.search"), refusal("files.search")), "a Member who does not hold the role has none of it");
+  // the role is edited: the holder loses files at her next call
   await owner("roles.update", { id: "mailer", role: { tools: ["documents"] } });
-  assert.ok(met(await as("member", "mail.accounts"), refusal("mail.accounts")), "mail is off after the role changed");
+  assert.ok(met(await as("member", "files.search"), refusal("files.search")), "files is off after the role changed");
   assert.ok(!gated(await as("member", "documents.template.list"), "documents.template.list"), "documents is still on");
   // the person goes back to Member
   await owner("roles.assign", { person: MEMBER, role: "member" });
   assert.ok(met(await as("member", "documents.template.list"), refusal("documents.template.list")), "a plain Member again");
 });
 
+test("a group whose handlers still use the owner's accounts is ignored at the door even when a role names it: mail, calendar, computers, browser", { timeout: 300_000 }, async t => {
+  const { as, owner, names, tokens } = await rig(t);
+  assert.deepEqual([...SCOPED_GROUPS].sort(), ["documents", "files", "publish"]);
+  await owner("roles.create", { role: { label: "Everything", base: "member", can: ["view"], tools: ["mail", "calendar", "computers", "browser", "documents"] } });
+  await owner("roles.assign", { person: MEMBER, role: "everything" });
+  for (const g of ["mail", "calendar", "computers", "browser"]) for (const tool of TOOL_GROUPS[g]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: the ${g} group is not open to a member yet`);
+  assert.ok(!gated(await as("member", "documents.template.list"), "documents.template.list"), "a scoped group named in the same role still opens");
+  const list = await names(tokens.member);
+  assert.ok(!list.has("mail.accounts") && !list.has("computers.list") && !list.has("chrome.open") && list.has("documents.template.list"), "and her tool list agrees");
+});
+
 test("a member's tool list shows what her role allows: a Guest fewer, a custom role its groups", { timeout: 300_000 }, async t => {
   const { owner, names, tokens } = await rig(t);
-  await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["mail"] } });
+  await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["files"] } });
   await owner("roles.assign", { person: MEMBER, role: "mailer" });
   const plain = await names(tokens.member2), mailer = await names(tokens.member), guest = await names(tokens.guest), boss = await names(tokens.owner);
-  assert.ok(!plain.has("mail.accounts") && !plain.has("computers.list"), "a plain Member's list has no mail or computers");
-  assert.ok(mailer.has("mail.accounts") && mailer.has("mail.send") && !mailer.has("computers.list") && !mailer.has("mail.test"), "the Mailer's list has the mail group only");
+  assert.ok(!plain.has("mail.accounts") && !plain.has("files.search"), "a plain Member's list has no mail or files");
+  assert.ok(mailer.has("files.search") && !mailer.has("mail.accounts") && !mailer.has("computers.list"), "the role's list has the files group only");
   assert.ok(guest.has("records.list") && guest.has("stream.send") && !guest.has("agents.create") && !guest.has("mail.accounts"), "a Guest's list is the smaller one");
   assert.ok(guest.size < plain.size, "a Guest sees fewer tools than a Member");
   assert.ok(boss.has("mail.accounts") && boss.has("computers.list"), "the owner's list is whole");
