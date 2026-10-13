@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { isCredentialFile } from "../../lib/credfiles.js";
 
 const NOFOLLOW = fs.constants.O_NOFOLLOW || 0, NONBLOCK = fs.constants.O_NONBLOCK || 0;
 const cwd = process.cwd();   // the sandbox starts it in <work>/files; the workspace root is its parent
@@ -38,6 +39,7 @@ process.stdin.on("end", () => {
   let files = 0, total = 0;
   for (const root of req.roots) {
     for (const rel of walk(path.join(work, root.dir), root.dir)) {
+      if (root.dir !== "files" && isCredentialFile(rel)) continue;   // an agent's sign-in is never read, let alone sent (the runner refuses it again)
       let fdn = -1;
       try {
         const full = path.join(work, rel);

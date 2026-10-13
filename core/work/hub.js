@@ -17,6 +17,7 @@
 
 import os from "node:os";
 import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
+import { projectDir } from "../../lib/files/layout.js";
 import { projectTeamOf } from "../../kernel/gateway/ownership.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
 import { SEAT_LEVELS, levelOfSeat, VIEWER_WORDS } from "../../lib/seat-levels.js";
@@ -63,7 +64,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
     // project. With a Drive, the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
     const plain = !kernel.drive;
-    let rec = plain ? made : await kernel.records.update(chain(), PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
+    let rec = plain ? made : await kernel.records.update(chain(), PROJECT, made.id, { drive_path: projectDir(made.id) }, made.version);
     // The marker is the CALLER's own write (drive.write on its chain): a person who cannot write Drive cannot make a project, and the record is taken back so none is left half made.
     // `markerBy`: a team member's project (core/work/member-projects.js) has its marker written by the work module, since her role holds no Drive action; the folder is her new project's own, named by the record's id
     try { await folderMarker(rec, markerBy || caller || chain(), true); }
@@ -137,7 +138,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return moved;
   }
   /** A Project's Drive folder: its own field, or (in the instant between its creation and the hub setting it) the same id-named path. @param {any} proj */
-  const rootOf = proj => proj.data.drive_path || (kernel.drive ? `Projects/${proj.id}` : "");
+  const rootOf = proj => proj.data.drive_path || (kernel.drive ? projectDir(proj.id) : "");
 
   /** One write at a time per chat: a run's events arrive close together (started, working, waiting), each handler reads the record and writes it back, and two at once would lose one. @type {Map<string, Promise<any>>} */
   const lanes = new Map();

@@ -48,11 +48,11 @@ export function CalendarView({ def, rows, env, onOpen, view, noFilter }: { def: 
             const today = k === isoDay(now);
             return (
               <View key={k} className={cn("min-w-0 gap-s1 p-s2", phone ? (i > 0 ? "border-t border-edge" : "") : cn("min-h-cell flex-1", i > 0 && "border-l border-edge"), today && "bg-selected")}>
-                <Text size="caption" strong tone={today ? "accent" : "label"}>{`${WEEKDAYS[i]} ${Number(k.slice(8))}`}</Text>
+                <Text size="caption" strong tone={today ? "default" : "label"}>{`${WEEKDAYS[i]} ${Number(k.slice(8))}`}</Text>
                 {ev.map((r: any) => (
-                  <Pressable key={r.urn} accessibilityRole="button" accessibilityLabel={`${titleOf(def, r, vd)}, ${fmtTime(val(r, f.name))}`} onPress={() => onOpen?.(r)} className="min-w-0 self-stretch rounded-chip bg-accent-wash px-s2 py-s1">
+                  <Pressable key={r.urn} accessibilityRole="button" accessibilityLabel={`${titleOf(def, r, vd)}, ${fmtTime(val(r, f.name))}`} onPress={() => onOpen?.(r)} className="min-w-0 self-stretch rounded-chip bg-selected px-s2 py-s1">
                     <Text size="caption" tone="label" numberOfLines={1}>{fmtTime(val(r, f.name))}</Text>
-                    <Text size="caption" strong tone="accent" numberOfLines={2}>{titleOf(def, r, vd)}</Text>
+                    <Text size="caption" strong numberOfLines={2}>{titleOf(def, r, vd)}</Text>
                   </Pressable>
                 ))}
                 {!ev.length && phone ? <Text size="caption" tone="label">Nothing</Text> : null}
@@ -76,12 +76,12 @@ export function CalendarView({ def, rows, env, onOpen, view, noFilter }: { def: 
                   {d ? (
                     <Pressable accessibilityRole="button" accessibilityLabel={`${MONTHS[ym.m]} ${d}${ev.length ? `, ${ev.length} ${vd.plural.toLowerCase()}` : ""}`} disabled={!ev.length} onPress={() => setDay(picked ? null : key)} className="min-w-0 gap-s1 self-stretch items-center">
                       <Text size="caption" tone={ev.length ? "default" : "label"} strong={!!ev.length}>{String(d)}</Text>
-                      {phone && ev.length ? <View className="h-s2 w-s2 rounded-full bg-accent" /> : null}
+                      {phone && ev.length ? <View className="h-s2 w-s2 rounded-full bg-primary" /> : null}
                     </Pressable>
                   ) : null}
                   {!phone ? ev.map((r: any) => (
-                    <Pressable key={r.urn} accessibilityRole="button" accessibilityLabel={titleOf(def, r, vd)} onPress={() => onOpen?.(r)} className="min-w-0 self-stretch rounded-chip bg-accent-wash px-s2 py-s1">
-                      <Text size="caption" strong tone="accent" numberOfLines={1}>{titleOf(def, r, vd)}</Text>
+                    <Pressable key={r.urn} accessibilityRole="button" accessibilityLabel={titleOf(def, r, vd)} onPress={() => onOpen?.(r)} className="min-w-0 self-stretch rounded-chip bg-selected px-s2 py-s1">
+                      <Text size="caption" strong numberOfLines={1}>{titleOf(def, r, vd)}</Text>
                     </Pressable>
                   )) : null}
                 </View>

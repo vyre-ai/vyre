@@ -214,7 +214,7 @@ import { readFileSync as readSrc } from "node:fs";
 test("a record's reveal and fill go to the box held for the owner's yes: the page carries no simulated proof, and the store link routes both calls through the held door", () => {
   const page = readSrc(new URL("./RecordPage.tsx", import.meta.url), "utf8");
   assert.equal(/simulatedProof/.test(page), false);
-  assert.match(page, /Hidden from AI; your assistant sees a placeholder/);
+  assert.match(page, /Hidden from AI; your agent sees a placeholder/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
   assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
 });

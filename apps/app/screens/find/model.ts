@@ -89,7 +89,7 @@ export function sessionHits(base: Base, q: string, recall: unknown): Row[] {
 export const projectHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.projects.filter((p) => hasAll(`${p.name} ${p.slug}`, ws)).map((p) => ({ key: `p:${p.slug}`, kind: "project", title: p.name, href: `/u/project/${encodeURIComponent(p.slug)}` })); };
 export function peopleHits(base: Base, q: string): Row[] {
   const ws = words(q);
-  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your assistant" : a.instructions.split("\n")[0] || "agent", href: "/u/assistants" }));
+  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your agent" : a.instructions.split("\n")[0] || "agent", href: "/u/assistants" }));
   const people = base.records.filter((r) => r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r): Row => ({ key: `r:${r.id}`, kind: "person", title: r.title, sub: r.sub.slice(0, 60), href: `/u/record/${r.id}` }));
   return [...agents, ...people];
 }
@@ -114,11 +114,11 @@ export const factHits = (d: unknown): Row[] => arr(d).filter((f) => f.text).map(
 export function driveHits(d: unknown): Row[] {
   const list = arr((d as { results?: unknown } | null)?.results);
   return list.filter((x) => typeof x.path === "string").map((x): Row => ({ key: `d:${x.path}`, kind: "file", title: str(x.name) || String(x.path).split("/").pop() || "", sub: str(x.chat) ? `In a chat you are in, ${shortDir(x.path)}` : shortDir(x.path),
-    href: str(x.chat) ? `/u/chats/${encodeURIComponent(str(x.chat))}` : "/u/drive" }));
+    href: str(x.chat) ? `/u/chats/${encodeURIComponent(str(x.chat))}` : "/u/files" }));
 }
 
 /** Where a mentions.search result opens; null reads only. */
-export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/drive" : null);
+export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/files" : null);
 /** mentions.search: names the box can find beyond what Find already searches (vault names, Drive, artifacts, GitHub), one section per kind. Records and sessions are Find's own, so they are left out;
  * a provider that was late or locked is named in a note. Names only, never a value. */
 export function mentionSections(d: unknown): { sections: Section[]; note: string } {
@@ -163,7 +163,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
   if (want("people")) { add("people", "People", peopleHits(base, q)); if (sc === "all") add("records", "Records", recordHits(base, q)); }
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
-  if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Drive", driveHits(fetched.drive));
+  if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Files", driveHits(fetched.drive));
   if (want("memory") && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   return out;

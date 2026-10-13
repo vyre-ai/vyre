@@ -7,7 +7,7 @@
 //   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
 //   --android   the Android app (Vyre-android.apk and Vyre_<version>_android.apk) must be in the release
 //   --android-release  (a publish) every APK in the release must be signed by Vyre's own Android release key: its certificate's SHA-256 is pinned below, and a debug-signed or differently signed APK is refused
-//   --mac       the Lumen Mac app (Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, stable names) must be in the release
+//   --mac       the Vyre Mac app (Vyre-aarch64.dmg and Vyre-x86_64.dmg, stable names) must be in the release
 //   --pulled   the release carries images: release.json names them by digest and compose.yml pins them (required for a release that boxes pull)
 //   --pubkey   SHA256SUMS.sig must be a valid Ed25519 signature by this key over "vyre-release-sums\n" + SHA256SUMS (the format every updater reads)
 // Exit 0 when everything holds; otherwise every problem is printed, one per line, and the exit is 1.
@@ -84,9 +84,9 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, and
     }
   }
 
-  // The Lumen Mac app: the stable names the site's picker links to, one per architecture, listed in SHA256SUMS.
+  // The Vyre Mac app: the stable names the site's picker links to, one per architecture, listed in SHA256SUMS.
   if (mac) {
-    for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) if (!listed.has(f)) problems.push(`the Mac app ${f} is not in the release`);
+    for (const f of ["Vyre-aarch64.dmg", "Vyre-x86_64.dmg"]) if (!listed.has(f)) problems.push(`the Mac app ${f} is not in the release`);
   }
 
   // appbuild.json: the signed list of the web app's files (lib/app-build.js), listed in SHA256SUMS, naming this version, every hash a sha256 and index.html on it.

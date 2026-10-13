@@ -18,14 +18,15 @@ export function ChoiceList<T extends string>({ options, value, onChange, label }
         const on = o.value === value;
         return (
           <PressableScale key={o.value} accessibilityRole="radio" accessibilityLabel={o.title} accessibilityState={{ selected: on }} onPress={() => onChange(o.value)} depth={0.985}
+            {...({ onKeyDown: (e: { key: string; preventDefault: () => void }) => { if (e.key === " ") { e.preventDefault(); onChange(o.value); } } } as object)}
             style={{ flexDirection: "row", alignItems: "center" }}>
-            <View className={cn("w-full flex-row items-center gap-s3 rounded-card border p-s4", on ? "border-accent bg-accent-wash" : "border-edge bg-surface-2")}>
-              {o.icon ? <IconTile name={o.icon} size={40} tone={on ? "accent" : "text-2"} /> : null}
+            <View className={cn("w-full flex-row items-center gap-s3 rounded-card border p-s4", on ? "border-primary bg-selected" : "border-edge bg-surface-2")}>
+              {o.icon ? <IconTile name={o.icon} size={40} tone={on ? "text" : "text-2"} /> : null}
               <View className="min-w-0 flex-1 gap-s1">
                 <Text strong>{o.title}</Text>
                 {o.sub ? <Text size="secondary" tone="muted">{o.sub}</Text> : null}
               </View>
-              {on ? <Icon name="ok" tone="accent" /> : null}
+              {on ? <Icon name="ok" tone="text" /> : null}
             </View>
           </PressableScale>
         );

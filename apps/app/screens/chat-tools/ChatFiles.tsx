@@ -44,7 +44,7 @@ export function ChatFiles({ chat }: { chat: string }) {
 
   if (err) return <Card flush><ErrorState title="The files did not load" reason={err} retry={load} /></Card>;
   if (!files) return <LoadingState rows={4} />;
-  if (!files.length) return <EmptyState title="No files yet" body="Files you drop into this chat, and files an assistant makes here, show up here. They are encrypted to the people in the chat." />;
+  if (!files.length) return <EmptyState title="No files yet" body="Files you drop into this chat, and files an agent makes here, show up here. They are encrypted to the people in the chat." />;
   const g = groupFiles(files);
   const section = (title: string, list: ChatFile[]) => list.length ? (
     <View>
@@ -64,7 +64,7 @@ export function ChatFiles({ chat }: { chat: string }) {
                 {shown[f.path]?.image ? <Image accessibilityLabel={f.name} source={{ uri: shown[f.path].image }} style={{ width: "100%", height: 240 }} resizeMode="contain" /> : null}
                 {shown[f.path]?.pdf ? (Platform.OS === "web" ? createElement("iframe", { title: f.name, src: shown[f.path].pdf, style: { width: "100%", height: 420, border: 0, borderRadius: 8 } }) : <Text tone="muted">PDFs open from Drive on this device.</Text>) : null}
                 {shown[f.path]?.failed ? <Banner tone="warn">This file could not be opened here.</Banner> : null}
-                {!canPreview(f) ? <Text tone="muted">No preview here. Open it from Drive.</Text> : null}
+                {!canPreview(f) ? <Text tone="muted">No preview here. Open it from Files.</Text> : null}
               </View>
             ) : null}
           </View>

@@ -92,6 +92,7 @@ export const project = {
     { name: "due", label: "Due", kind: "date" },
     { name: "brief", label: "Brief", kind: "file" },
     { name: "notes", label: "Notes", kind: "rich_text" },
+    { name: "template", label: "Template", kind: "text" },
   ],
 };
 

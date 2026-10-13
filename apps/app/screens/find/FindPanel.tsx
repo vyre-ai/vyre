@@ -82,7 +82,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
     return () => document.removeEventListener("keydown", key);
   }, []);
   const mentionNote = fetched.mentions !== undefined && line.length >= MIN ? mentionSections(fetched.mentions).note : "";
-  const assistant = all.assistant || "the assistant";
+  const assistant = all.assistant || "the agent";
   const targetName = target ? String(target.name || target.id.slice(0, 8)) : "";
 
   const go = (href: string) => { onDone?.(); router.push(href as never); };
@@ -113,7 +113,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         return;
       }
       // Anything else asks the assistant, and its thread opens.
-      if (!all.assistant) { setDone("No assistant is set up yet."); return; }
+      if (!all.assistant) { setDone("No agent is set up yet."); return; }
       setDone(`Asking ${assistant}.`);
       const r = await find.ask(all.assistant, line);
       if (r.thread) { go(`/u/chats/${r.thread}`); return; }

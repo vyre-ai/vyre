@@ -1,5 +1,7 @@
 // The template tools answered from memory, for the sample build (EXPO_PUBLIC_VYRE_MOCK=1) only: a Matter and a Campaign template, live, and a draft; what a person makes or changes stays for the session.
 // The shapes are the box's own (core/work/templates.js shape and list), so the screens run the same code against it.
+import { getStore } from "../store-core/store.js";
+
 type V = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string; tags: string[]; note?: string; body: any };
 
 const task = (title: string, doer: string, extra: any = {}) => ({ title, doer, output: { kind: "note" }, ...extra });
@@ -8,16 +10,16 @@ const MATTER = {
   name: "Estate plan", noun: { one: "Matter", many: "Matters" }, description: "From the first call to the signed documents.", tags: ["estate"],
   roles: [{ role: "attorney", lead: true }, { role: "paralegal" }],
   stages: [
-    { name: "Opening", owner: "role:attorney", tasks: [
-      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY }),
-      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY }),
-      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY }),
+    { name: "Opening", owner: "role:attorney", groups: [{ name: "Documents" }, { name: "Client calls" }], tasks: [
+      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY, group: "Documents" }),
+      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY, group: "Documents", checker: "role:paralegal", followers: ["person:alex"], notes: { approver: "Check the signature page and the date.", followers: "For your information; no action needed." } }),
+      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY, group: "Client calls", required: false }),
     ] },
-    { name: "Initial Administration", tasks: [
+    { name: "Initial Administration", done_when: "all", tasks: [
       task("Gather the family's documents", "role:paralegal", { due_offset_ms: 7 * DAY }),
       task("Open the estate file", "lead", { due_offset_ms: 2 * DAY }),
     ] },
-    { name: "Inventory", tasks: [
+    { name: "Inventory", done_when: "sign_off", sign_off: "role:attorney", tasks: [
       task("List assets and debts", "teammate:research", { due_offset_ms: 14 * DAY }),
       task("Review the inventory", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 5 * DAY }),
     ] },
@@ -26,7 +28,7 @@ const MATTER = {
   ],
 };
 const CAMPAIGN = {
-  name: "Ad campaign", noun: { one: "Campaign", many: "Campaigns" }, description: "A paid campaign from brief to report.", tags: ["marketing"],
+  name: "Ad campaign", stage_mode: "any", noun: { one: "Campaign", many: "Campaigns" }, description: "A paid campaign from brief to report.", tags: ["marketing"],
   roles: [{ role: "strategist", lead: true }, { role: "designer" }],
   stages: [
     { name: "Brief", tasks: [task("Write the brief", "role:strategist")] },
@@ -35,12 +37,23 @@ const CAMPAIGN = {
     { name: "Report" },
   ],
 };
+const ATP = {
+  name: "ATP (AI Transformation Partnership)", noun: { one: "ATP client", many: "ATP clients" }, description: "A client's first ninety days of AI work with us.", tags: ["atp"],
+  roles: [{ role: "consultant" }, { role: "intake" }],
+  stages: [
+    { name: "Intake", done_when: "all", tasks: [task("Book the kickoff call", "role:intake", { due_offset_ms: 1 * DAY }), task("Collect the client's tools and logins", "person:alex", { due_offset_ms: 3 * DAY }), task("Research the client's firm and market", "teammate:research", { due_offset_ms: 2 * DAY })] },
+    { name: "Audit", done_when: "sign_off", sign_off: "person:alex", tasks: [task("Map how the firm works today", "role:consultant", { due_offset_ms: 7 * DAY }), task("Agree the first three automations", "lead", { output: { kind: "decision" }, due_offset_ms: 10 * DAY })] },
+    { name: "Build", tasks: [task("Build the first automation", "teammate:research", { needs_yes: ["turning anything on for the client"], due_offset_ms: 21 * DAY }), task("Review it with the client", "lead", { due_offset_ms: 25 * DAY, required: false })] },
+    { name: "Handover", tasks: [task("Train the client's team", "role:consultant", { due_offset_ms: 5 * DAY })] },
+  ],
+};
 const DRAFT = { name: "Client onboarding", description: "What happens in a new client's first week.", stages: [{ name: "Welcome", tasks: [task("Send the welcome email", "role:owner")] }, { name: "Done" }] };
 
 const db: V[] = [
   { template: "tpl_estate-plan", version: 2, name: "Estate plan", state: "live", owner: "per_you", tags: ["estate"], body: MATTER },
   { template: "tpl_estate-plan", version: 1, name: "Estate plan", state: "retired", owner: "per_you", tags: ["estate"], body: { ...MATTER, noun: undefined } },
   { template: "tpl_ad-campaign", version: 1, name: "Ad campaign", state: "live", owner: "per_you", tags: ["marketing"], body: CAMPAIGN },
+  { template: "tpl_atp", version: 1, name: ATP.name, state: "live", owner: "per_you", tags: ["atp"], body: ATP },
   { template: "tpl_client-onboarding", version: 1, name: "Client onboarding", state: "draft", owner: "per_you", tags: [], body: DRAFT },
 ];
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50);
@@ -66,7 +79,14 @@ export const mockTools: Record<string, (i: any) => unknown> = {
   "work.template.test": (i) => { const v = versionsOf(i.template).find((x) => x.version === i.version)!; return { ok: true, lines: v.body.stages.flatMap((s: any, n: number) => [`Stage ${n + 1}: ${s.name}`, ...(s.tasks || []).map((t: any) => `  ${t.title} (${t.doer})`)]), totals: `${v.body.stages.length} stages` }; },
   "work.template.library": () => ({ templates: [] }),
   "work.template.from-project": (i) => mockTools["work.template.define"]({ body: { ...MATTER, name: `${i.name || "Rivera Family Trust"} (copy)` }, note: "made from a project" }),
-  "work.start-project": (i) => { const v = versionsOf(i.template).find((x) => x.state === "live"); if (!v) throw fail("bad_state", "that template has no live version: put a version live first"); return { project: `vyre://mock/project/${slug(i.name)}`, slug: slug(i.name), template: i.template, version: v.version, stage: v.body.stages[0].name, teammates: [], tasks_made: (v.body.stages[0].tasks || []).length }; },
+  // the sample store keeps the project, pinned to the playbook as the box does, so the screen that opens it finds it
+  "work.start-project": async (i) => {
+    const v = versionsOf(i.template).find((x) => x.state === "live"); if (!v) throw fail("bad_state", "that playbook has no live version: publish a version first");
+    const b = v.body;
+    const made = await getStore().create("project", { title: i.name, template: i.template, template_stage: b.stages[0].name, template_snapshot: JSON.stringify({ name: b.name, ...(b.noun ? { noun: b.noun } : {}), stages: b.stages }) });
+    return { project: `vyre://mock/project/${made.id}`, slug: slug(i.name), template: i.template, version: v.version, stage: b.stages[0].name, teammates: [], tasks_made: (b.stages[0].tasks || []).length };
+  },
+  "work.project.level": () => ({ ok: true }),
   "flows.list": () => ({ flows: [] }),
   "agents.list": () => [{ name: "research", label: "Research" }, { name: "scribe", label: "Scribe" }],
 };

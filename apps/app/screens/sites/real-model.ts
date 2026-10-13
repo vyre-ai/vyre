@@ -72,7 +72,7 @@ export type Draft = { name: string; kind: "repo" | "drive"; ref: string; image: 
 export const BLANK: Draft = { name: "", kind: "repo", ref: "", image: "static", command: "" };
 export const SOURCES: { kind: Draft["kind"]; title: string; body: string; hint: string }[] = [
   { kind: "repo", title: "From a repo", body: "Builds the folder you point at.", hint: "github.com/owner/repo, or a path in a project" },
-  { kind: "drive", title: "From a Drive folder", body: "Publishes the pages in a folder.", hint: "A Drive folder path" },
+  { kind: "drive", title: "From a Files folder", body: "Publishes the pages in a folder.", hint: "A Files folder path" },
 ];
 
 /** The input publish.create takes, or the first thing wrong with the draft in words. */
@@ -92,7 +92,7 @@ const REFUSALS: Record<string, string> = {
   forbidden: "You may not do that in this space.",
   needs_approval: "A person has to decide that first.",
   approval_mismatch: "What would change is different from what you saw. Ask again.",
-  model_cannot_approve: "A person decides this, not an assistant.",
+  model_cannot_approve: "A person decides this, not an agent.",
   already_decided: "That request was already decided.",
   presence_required: "That needs you. Approve on this device, then try again.",
   no_previous: "There is no earlier version to go back to.",

@@ -15,7 +15,7 @@ export function stateFrom(d) {
 }
 
 /** The line under an area's switch. @param {boolean} off */
-export const areaLine = (off) => (off ? "Your assistant cannot use this." : "Your assistant may use this.");
+export const areaLine = (off) => (off ? "Your agent cannot use this." : "Your agent may use this.");
 
 /** The call a switch makes: off narrows, on restores. @param {string} id @param {boolean} on */
 export const switchCall = (id, on) => ({ tool: on ? "assistant.access.restore" : "assistant.access.narrow", input: { screens: [id] } });
@@ -29,11 +29,11 @@ export function toolCall(typed) {
 }
 
 /** What the page says when a call is refused. @param {string | undefined} code @param {string} message */
-export const refusal = (code, message) => (code === "denied" ? "Only you can change what your assistant may do." : code === "presence_required" || code === "presence_denied" ? "Turning something back on needs your approval. Approve on this device, then try again." : message || "That did not go through.");
+export const refusal = (code, message) => (code === "denied" ? "Only you can change what your agent may do." : code === "presence_required" || code === "presence_denied" ? "Turning something back on needs your approval. Approve on this device, then try again." : message || "That did not go through.");
 
 /** How many things are off, for the line under the page title. @param {AccessState | null} s */
 export function summary(s) {
   if (!s) return "";
   const n = s.tools.length + s.screens.filter((x) => x.off).length;
-  return n ? `${n} ${n === 1 ? "thing is" : "things are"} turned off for your assistant.` : "Your assistant can do what you can do. Turn off anything you do not want it to touch.";
+  return n ? `${n} ${n === 1 ? "thing is" : "things are"} turned off for your agent.` : "Your agent can do what you can do. Turn off anything you do not want it to touch.";
 }

@@ -9,26 +9,26 @@ type Tool = (name: string, input?: Record<string, unknown>) => Promise<any>;
 const SEEN = "vyre.space-list.seen";
 const PENDING = "vyre.space-list.pending";
 
-/** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. Until it lands, a server answers `server_not_ready`. */
+/** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. A server that does not admit it answers `server_not_ready`. */
 type ChainPairer = (e: { relay: string; route: string; box: string; name: string }) => Promise<Pairing>;
 let connecting = 0;
+/** The real pairer: the relay client dials the listed server with a chain hello signed by this device's chain key. An older server closes the connection, and the answer is `server_not_ready`. */
 const realChainPairer: ChainPairer = async (e) => {
+  const { makeChainPairer } = await import("./chain-pairer.js");
+  const { connect } = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
+  const { chainHello } = await import("@vyre/relay-client/chainhello.js");
+  const { relayCrypto, relayKeyStore, about, deviceName, presenceKey } = await import("../api/relay");
   const { loadIdentity } = await import("../identity/store");
-  const mine = await loadIdentity().catch(() => null);
-  const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
-  const client = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
-  const { chainHello } = (await import("@vyre/relay-client/chainhello.js")) as unknown as { chainHello: (o: unknown) => Promise<unknown> };
-  const { chainPair } = await import("./chain-pair.js");
-  const crypto = relayCrypto() as unknown as { sha256: (b: Uint8Array) => Promise<Uint8Array> };
-  const p = await chainPair({ id: e.box, ...e }, {
-    who: mine ? { id: mine.id, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) } : null,
-    crypto, keyStore: relayKeyStore(), about, name: deviceName(), connect: client.connect, chainHello,
-  });
-  return p as unknown as Pairing;
+  const mine = await loadIdentity();
+  const crypto = relayCrypto();
+  return makeChainPairer({
+    connect, crypto, keyStore: relayKeyStore(), about, deviceName, presenceKey,
+    chainHelloFor: mine ? (pub, box, presencePublicKey) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, ...(presencePublicKey ? { presencePublicKey } : {}), identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), ...(/^[a-z0-9.-]{3,253}$/.test(String(mine.name || "").toLowerCase()) ? { name: String(mine.name).toLowerCase() } : {}) }) : null,
+  })(e);
 };
 /**
- * Off until the server's chain admission (design B, lane 2) is signed and the server reports it: a listed server then answers `server_not_ready` and the person pairs it with a code. Turn it on with
- * `setChainPairer(realChainPairer)` only behind that capability; this branch must not ship with it on alone.
+ * Off until the app offers chain sign-in only to servers that answer the chain hello (rc1-d's condition) and the server's chain admission is signed: a listed server then answers `server_not_ready` and the person
+ * pairs it with a code. Turn it on with `setChainPairer(realChainPairer)` only behind that; this branch must not ship with it on.
  */
 let chainPairer: ChainPairer = async () => { throw Object.assign(new Error("That server does not admit this device yet. Pair it with a code from that server."), { code: "server_not_ready" }); };
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }

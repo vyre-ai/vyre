@@ -79,13 +79,39 @@ export async function claimNewName(raw: string): Promise<Outcome<{ name: string;
 }
 
 /**
- * Sign in on a new device by name: this device asks, a device that is already signed in shows three words and the person approves there. The old typed pairing code is gone and is not
- * accepted here. NOT BUILT on the server side: no relay or directory call takes a request by name yet, so this says so and points at the recovery kit. In MOCK the prototype answers.
- * `onWords` gets the three words to match, `onAck` is kept for the approving device's confirmation. Resolves the name this device now holds.
+ * Sign in on a new device by name: this device asks on the relay, a device that is already signed in shows the same three words and the person approves there. No code is typed. The name is
+ * resolved first so a join that lands on another identity is refused. Resolves the name this device now holds. `onWords` gets the three words to match.
  */
 export async function requestSignIn(o: { name: string; onWords: (w: string[]) => void; signal?: AbortSignal }): Promise<Outcome<{ name: string }>> {
   if (MOCK) { o.onWords(SIGNIN_WORDS); await slow(900); return { ok: true, name: nameOf(o.name) || "alex" }; }
-  return { ok: false, say: "Approving from your other device is not available in this build yet. Nothing was added. Use your recovery kit to sign in." };
+  try {
+    const { addDeviceToName, addSay } = await import("../../src/identity/add-device");
+    const who = await resolveId(o.name);
+    try {
+      const r = await addDeviceToName({ byName: nameOf(o.name), ...(who ? { expectIdentity: who } : {}), deviceLabel: deviceLabel(), onWords: (w) => o.onWords(w.split(/\s+/).filter(Boolean)), ...(o.signal ? { signal: o.signal } : {}) });
+      return { ok: true, name: r.name };
+    } catch (e) { return { ok: false, say: askSay(code(e)) ?? addSay(code(e)) }; }
+  } catch { return { ok: false, say: "Vyre could not start signing in. Nothing was added. Try again, or use your recovery kit." }; }
+}
+
+const askSay = (c: string | undefined): string | undefined => {
+  if (c === "bad_name") return "That is not a Vyre name. Go back and type the name you chose.";
+  if (c === "rate_limited") return "Too many sign-in requests for that name. Wait a minute, then ask again.";
+  if (c === "expired") return "Nobody approved in 2 minutes. Open Vyre on a device where you are signed in, then ask again, or use your recovery kit.";
+  if (c === "denied") return "Your other device said no, or the words did not match. Nothing was added. Ask again, or use your recovery kit.";
+  if (c === "cancelled") return "Signing in was cancelled.";
+  if (c === "unreachable") return "Vyre cannot reach the relay right now. Nothing was added. Try again in a minute.";
+  return undefined;
+};
+
+/** The identity id the directory holds for a name, or "" when it cannot be read (the join is then not pinned; the pairing still needs the other device's yes). */
+async function resolveId(raw: string): Promise<string> {
+  try {
+    const { DIRECTORY } = await import("../../src/real/install");
+    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(nameOf(raw))}`, { headers: { accept: "application/json" }, cache: "no-store" });
+    const body = await r.json().catch(() => null);
+    return r.ok && body?.data?.id ? String(body.data.id) : "";
+  } catch { return ""; }
 }
 
 /** Sign in with the recovery code from the kit: the form is checked first, then the existing recovery (restore.ts), which puts this device's key on the name's list. */

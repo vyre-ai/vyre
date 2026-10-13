@@ -92,9 +92,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/mcp/index.js": {
-   "count": 1,
+   "count": 2,
    "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending); plus mcp.mine.* (member-mcp): the store backend's tool name is always one of vault.me.store.get/put/list/remove (literal at the call sites in lib/member-mcp.js), relayed as the member; the callee's caller list allows module and its handler judges the person from the chain"
   },
   "core/memory/index.js": {
    "count": 2,

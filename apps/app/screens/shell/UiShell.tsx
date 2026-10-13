@@ -3,9 +3,11 @@ import { ApprovalSheet } from "./ApprovalSheet";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { EmptyState, LoadingState, Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
+import { sectionOf, stepSection } from "../build/sections.js";
+import { EmptyState, LoadingState, Shell, allowsMock, backTo, nowCount, useAppearance, useWorld } from "@vyre/ui";
 import { useNavDef, useSidebar } from "./sidebar";
 import { PanelLoader, usePanel } from "./panels";
+import { NewViewHost } from "../records/NewViewHost";
 import { useSpaceLogos } from "../../ui/marks/useSpaceLogos";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
@@ -55,6 +57,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     const on = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key === ",") { e.preventDefault(); router.push("/u/settings" as never); return; }
+      if (e.key.toLowerCase() === "b" && arranged.bottom.some((b) => b.id === "build")) { e.preventDefault(); router.push("/u/playbooks" as never); return; }
       const n = Number(e.key);
       const to = n >= 1 && n <= 4 ? arranged.items[n - 1]?.href : undefined;
       if (to) { e.preventDefault(); router.push(to as never); }
@@ -62,6 +65,18 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
   }, [router, arranged]);
+  // Inside Build, up and down move through its list and Escape folds back to the main sidebar, as in Settings.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined" || sectionOf(path) === null) return;
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) return;
+      if (e.key === "Escape") { const to = backTo(path, ""); if (to) { e.preventDefault(); router.push(to as never); } return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { const to = stepSection(sectionOf(path), e.key === "ArrowDown" ? 1 : -1); if (to) { e.preventDefault(); router.replace(to as never); } }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [path, router]);
   // On a Basic personal space (no server) the places that need a server say so, and offer the team spaces and a server of the person's own.
   const showing = DATA.spaces.find((x) => x.id === space);
   const teams = DATA.spaces.filter((x) => x.id !== "all" && !x.basic);
@@ -84,6 +99,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       <ApprovalSheet />
       <FindHost />
       <PanelLoader id={panelId} />
+      <NewViewHost />
     </Shell>
   );
 }

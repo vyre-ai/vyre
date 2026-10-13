@@ -32,3 +32,13 @@ test("a failure that is not the store being away is said and not retried", async
   assert.equal(calls, 1);
   assert.match(lines[0], /did not follow the roster \(no such type agent\)/);
 });
+
+test("an agent's record carries its folder, its projects and who may use it, so agents are queryable like any record", async () => {
+  const { recordOf, AGENT } = await import("./mirror.js");
+  const r = recordOf({ ...ROW, projects: ["juniper", "harlow"], users: ["per_ana (use)", "role paralegal (edit)"] });
+  assert.equal(r.folder, "agents/agt_1");
+  assert.equal(r.projects, "juniper, harlow");
+  assert.equal(r.users, "per_ana (use), role paralegal (edit)");
+  assert.equal(recordOf({ ...ROW, projects: "*" }).projects, "*");
+  for (const f of ["folder", "projects", "users"]) assert.ok(AGENT.fields.some(x => x.name === f), `${f} is a field of the type`);
+});

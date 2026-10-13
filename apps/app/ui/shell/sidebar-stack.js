@@ -9,14 +9,13 @@ export const PANELS = Object.freeze([
   { id: "projects", title: "Projects", root: "/u/projects", prefixes: ["/u/project", "/u/projects"] },
   { id: "chats", title: "Chat", root: "/u/chats", prefixes: ["/u/chats"] },
   { id: "records", title: "Records", root: "/u/records/contact", prefixes: ["/u/records", "/u/record"] },
-  { id: "drive", title: "Drive", root: "/u/drive", prefixes: ["/u/drive"] },
+  { id: "drive", title: "Files", root: "/u/files", prefixes: ["/u/files", "/u/drive"] },
   { id: "agents", title: "Agents", root: "/u/assistants", prefixes: ["/u/assistants"] },
   { id: "flows", title: "Flows", root: "/u/flows", prefixes: ["/u/flows"] },
+  { id: "build", title: "Build", root: "/u/playbooks", prefixes: ["/u/playbooks", "/u/templates", "/u/settings/customize", "/u/kits"] },
   { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about", "/u/install"] },
 ]);
 
-/** Panels that open on the place's own front page too: Records (its front page is a list) and Settings (its sections are the panel). */
-const FRONT_DRILLS = ["records", "settings"];
 const clean = (/** @type {string} */ p) => (String(p || "").split("?")[0].replace(/\/+$/, "") || "/");
 const params = (/** @type {string | undefined} */ search) => new URLSearchParams(String(search || "").replace(/^\?/, ""));
 
@@ -25,11 +24,8 @@ export function panelFor(path, search) {
   if (params(search).get("side") === "main") return null;
   const p = clean(path);
   for (const panel of PANELS) {
-    const front = clean(panel.root);
     const inside = panel.prefixes.some((x) => p === x || p.startsWith(x + "/"));
     if (!inside) continue;
-    // the front page itself shows the main sidebar, except where the root is itself a records list
-    if (p === front && !FRONT_DRILLS.includes(panel.id)) return null;
     return panel.id;
   }
   return null;

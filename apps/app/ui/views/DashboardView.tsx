@@ -13,7 +13,7 @@ function Bars({ bars, max }: { bars: [string, number][]; max: number }) {
         <View key={label} accessibilityLabel={`${label}, ${n}`} className="flex-row items-center gap-s3">
           <Text size="caption" className="w-24" numberOfLines={1}>{label}</Text>
           <View className="h-s2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <View className="h-s2 rounded-full bg-accent" style={{ width: `${barPct(n, max)}%` }} />
+            <View className="h-s2 rounded-full bg-primary" style={{ width: `${barPct(n, max)}%` }} />
           </View>
           <Text size="caption" strong mono className="w-8 text-right">{String(n)}</Text>
         </View>

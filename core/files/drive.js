@@ -58,7 +58,8 @@ import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
 import { browse } from "./browse.js";
-import { mentions, MIGRATIONS as MENTION_MIGRATIONS } from "./mentions.js";
+import { mentions } from "./mentions.js";
+import { filesMigrations } from "./migrations.js";
 import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 
 /**
@@ -531,7 +532,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       },
     });
 
-    ctx.store.migrate(MENTION_MIGRATIONS);
+    ctx.store.migrate(filesMigrations());
     /** @type {{ tagged: Function }} */
     const box = { tagged: () => null };
     const { resolve: resolveIn } = browse(ctx, { g, folder, shares, tagged: (t, s, r) => box.tagged(t, s, r) });

@@ -51,7 +51,12 @@ export function lentServiceFor(o) {
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http", "preview"].map(n => [n, refuse])));
     }
     const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
-      specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
+      specFor: async i => {
+        const spec = o.lentSpec ? await o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null);
+        // the person's own MCP servers (member-mcp), read for the person this lease is for and no one else; none when they have none, are locked, or the reader fails
+        const mine = spec && o.memberMcpOf && i && typeof i.person === "string" ? await Promise.resolve(o.memberMcpOf({ space: i.space, person: i.person })).catch(() => null) : null;
+        return mine && mine.mcpServers && Object.keys(mine.mcpServers).length ? { ...spec, memberMcp: mine } : spec;
+      } });
     const old = live.get(space); if (old && typeof old.stopWatching === "function") old.stopWatching();
     live.set(space, made); liveK.set(space, k); made.stopWatching = made.watch();
     return made;

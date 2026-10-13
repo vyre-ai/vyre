@@ -6,6 +6,8 @@
 import { presence } from "./presence.js";
 
 const PEOPLE = ["cli", "local"];
+/** The person's paired phone or other device, whose call always carries presence (a call from one has no terminal or Mac login behind it). */
+const DEVICES = ["mobile", "device"];
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const password = { type: "string" };
 
@@ -14,14 +16,30 @@ const password = { type: "string" };
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
 export function register({ vault, tool }) {
-  tool("vault.account.create", PEOPLE,
-    "Set the password for your personal vault. Returns your Secret Key once: print it on the recovery kit, it is not shown again.",
+  tool("vault.account.create", [...PEOPLE, ...DEVICES],
+    "Set the password for your personal vault. Returns your recovery secret once, for the recovery kit; a terminal also gets the Secret Key. Neither is shown again.",
     obj({ password }, ["password"]),
     async (input, { caller }) => {
-      const r = await vault.createAccount(input, caller);
-      return { ...r, advice: "Keep the Secret Key on your recovery kit with your password. Without both, the personal vault cannot be opened on a new device." };
+      const { secretKey, ...r } = await vault.createAccount(input, caller);
+      // The Secret Key stays in this device's own store. Only the owner's own terminal or local surface is given it; an app is not, since nothing in an app needs it and it should not cross a wire.
+      return { ...r, ...(PEOPLE.includes(caller) ? { secretKey } : {}), advice: "Keep the recovery secret on your recovery kit. With it, a forgotten password can be replaced. Without it and the password, the personal vault cannot be opened again." };
     },
-    presence("Set a password for your personal vault", () => "Set a password for your personal vault and make its Secret Key"));
+    presence("Set a password for your personal vault", () => "Set a password for your personal vault and make its recovery secret"));
+
+  // The recovery secret from the kit replaces a forgotten password. From any of the person's own surfaces it carries the person's yes (a phone's call has no terminal or Mac login behind it);
+  // five wrong secrets in a row wait 30 s and double to 15 minutes. The answer never carries a key.
+  tool("vault.account.reset", [...PEOPLE, ...DEVICES], "Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password. It is for a forgotten password, not a break-in: it does not rotate the vault key.",
+    obj({ recovery: password, password }, ["recovery", "password"]), (input, { caller }) => vault.resetAccount(input, caller),
+    presence("Set a new password for your personal vault", () => "Set a new password for your personal vault with your recovery kit"));
+
+  // The person's own device carries the Secret Key (escrow, a new device); never a model or a module. The person's yes is asked.
+  tool("vault.account.export-secret-key", [...PEOPLE, ...DEVICES], "Give your own device your account's Secret Key to carry to a new device or an escrow. Never shown on screen.",
+    obj({}), (_input, { caller }) => vault.exportSecretKey(caller),
+    presence("Take your vault's Secret Key", () => "Take the Secret Key of your personal vault to carry it to another device"));
+
+  tool("vault.account.import-secret-key", [...PEOPLE, ...DEVICES], "Put your account's Secret Key on this device, so your master password opens the vault here.",
+    obj({ secretKey: password }, ["secretKey"]), (input, { caller }) => vault.importSecretKey(input, caller),
+    presence("Put your vault's Secret Key on this device", () => "Put the Secret Key of your personal vault on this device"));
 
   tool("vault.account.unlock", [...PEOPLE, "deck", "capsule"], "Unlock your personal vault (logins, cards, notes, one-time codes) with its password, or with Touch ID once enrolled.",
     obj({ password, method: { type: "string", enum: ["password", "touchid"] } }), (input, { caller }) => {

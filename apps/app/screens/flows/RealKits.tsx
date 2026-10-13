@@ -36,7 +36,7 @@ export function RealKits() {
   const offer = lib && rows ? available(lib, rows) : [];
   const newer = lib && rows ? updatesOf(rows, lib) : {};
   return (
-    <Frame back="/u/flows" title="Kits" sub="Ready-made record types, Flows and views for a kind of work. Installing one is a grant you approve.">
+    <Frame back="/u/flows" title="Kits" sub="Ready-made objects, Flows and views for a kind of work. Installing one is a grant you approve.">
       <Sec title="Installed">
         {err ? <Card flush><ErrorState title="Kits did not load" reason={err} retry={load} /></Card> : null}
         {rows === null && !err ? <LoadingState rows={3} /> : null}

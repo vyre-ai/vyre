@@ -1,31 +1,43 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, SpaceTag, Text } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, Field, Icon, IconButton, allowsMock, LoadingState, Row, SectionLabel, SpaceTag, Text, showToast } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
-import { showingJoined } from "../../src/real/team-join";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { treeOf, type Body } from "../templates/model";
+import { ChatsList } from "../chats/ChatsList";
+import { chatsFrom, chatsOrdered, sampleChats, type ChatRow } from "../chats/chats-model.js";
+import { useChatMenu } from "../chats/useChatMenu";
+import { playbookPath } from "../templates/board";
+import { dayOf } from "../../src/time/show.js";
 
-type Chat = { chat: string; title?: string; status?: string; last_active?: string };
-
-/** A project's chats (work.chat.list by short name): the ones the person is in open, the others only show that they exist. */
-export function ChatsPane({ slug }: { slug: string }) {
+/** A project's chats (work.chat.list for the project, by short name or record id): the same rows and the same row menu as the Chat list; the ones the person is in open, the others only show that they exist. */
+export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; name?: string }) {
   const router = useRouter();
-  const [rows, setRows] = useState<Chat[] | null>(null);
-  useEffect(() => { void callT<{ chats?: Chat[] }>("work.chat.list", { project: slug, limit: 50 }).then((r) => setRows(r.error ? [] : r.data?.chats ?? [])); }, [slug]);
+  const [rows, setRows] = useState<ChatRow[] | null>(null);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    // The sample world has no box: its chats are the sample ones filed under this project's name .
+    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const now = Date.now();
+      const estate: ChatRow[] = /estate/i.test(name ?? "") ? [
+        { id: "demo-estate-1", title: "Draft the trust funding letter", project: name ?? "", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 40 * 60_000, line: "Draft ready: the assets to move are listed", asks: 0, unread: 0, open: true },
+        { id: "demo-estate-2", title: "Questions for the Does", project: name ?? "", people: ["alex"], agents: ["juno"], models: [], providers: ["claude"], status: "idle", last: now - 5 * 3_600_000, line: "Four questions for Tuesday's call", asks: 0, unread: 0, open: true },
+        { id: "demo-estate-3", title: "Pour-over will checklist", project: name ?? "", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 26 * 3_600_000, line: "Witness and notary steps", asks: 0, unread: 0, open: true },
+      ] : [];
+      setRows([...estate, ...all.filter((c) => c.project === name)]); return; }
+    void callT("work.chat.list", { project: refId, limit: 50 }).then((r) => setRows(r.error ? [] : chatsOrdered(chatsFrom(r.data))));
+  }, [refId, n, name]);
+  const { menu, sheets } = useChatMenu(rows ?? [], () => setN((x) => x + 1));
+  const [now] = useState(Date.now());
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      <View className="flex-row"><Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => router.push(`/u/chats/new?project=${encodeURIComponent(slug)}` as never)} /></View>
-      {rows.length === 0 ? <EmptyState title="No chats yet" body="Start one here and it belongs to this project." /> : (
-        <Card flush>
-          {rows.map((c, i) => (<View key={c.chat}>{i ? <Divider /> : null}<Row title={c.title || "New chat"} sub={c.status} onPress={() => router.push(`/u/chats/${c.chat}` as never)} /></View>))}
-        </Card>
-      )}
+      <View className="flex-row"><Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => router.push(`/u/chats/new?project=${encodeURIComponent(slug || refId)}` as never)} /></View>
+      {rows.length === 0 ? <EmptyState title="No chats yet" body="Start one here and it belongs to this project." /> : <ChatsList rows={rows} now={now} places={null} menu={menu} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />}
+      {sheets}
     </View>
   );
 }
@@ -35,45 +47,80 @@ export function FilesPane({ id }: { id: string }) {
   const fileTag = usePlaceText("showing");
   const router = useRouter();
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
-  // a member of a joined team lists the project's files through the team's door (files.list: the owner's and team's only); her own Drive screens are her home's
-  useEffect(() => {
-    void showingJoined().catch(() => false).then(async (joined) => {
-      if (!joined) return spaceList(undefined, `Projects/${id}/files`).then((r) => r.entries);
-      const r = await callT<{ files?: { name: string }[] }>("files.list", { project: id });
-      if (r.error) throw new Error(r.error.message);
-      return (r.data?.files ?? []).map((f) => ({ name: f.name, path: `Projects/${id}/files/${f.name}` }));
-    }).then(setRows).catch(() => setRows([]));
-  }, [id]);
+  // The Files screen's own door (files.drive.space.list); files.list is not a tool any module registers.
+  useEffect(() => { void spaceList(undefined, `Projects/${id}/files`).then((r) => setRows(r.entries.filter((e) => e.path && (allowsMock() || String(e.path).startsWith(`Projects/${id}/files/`))))).catch(() => setRows([])); }, [id]);
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Drive" onPress={() => router.push("/u/drive" as never)} /></View>
+      <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Files" onPress={() => router.push("/u/files" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
-        <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}</Card>
+        <Card flush>{rows.slice(0, 5).map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row dense title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}{rows.length > 5 ? <><Divider /><Row dense title={`${rows.length - 5} more in Files`} chevron onPress={() => router.push("/u/files" as never)} /></> : null}</Card>
       )}
     </View>
   );
 }
 
-/** What the project's agents have learned here: the Space's facts, the agent's own and this project's, never another project's (memory.space.recall with the project). */
+type Fact = { id: string; urn?: string; text: string; source?: string; scope?: string; by?: string; filed_at?: string | number; kind?: string };
+/** "From a chat", "From a file" or "Added by hand", and where to open it. */
+function sourceOf(f: Fact): { line: string; href: string | null } {
+  const s = String(f.source || "");
+  const chat = /^(?:chat|session|thread):(.+)$/.exec(s);
+  if (chat) return { line: "From a chat", href: `/u/chats/${encodeURIComponent(chat[1])}` };
+  if (s.startsWith("vyre://") || s.includes("/files/")) return { line: "From a file", href: "/u/files" };
+  return { line: s ? `From ${s}` : "Added by hand", href: null };
+}
+const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : dayOf(n); };
+
+/** What this project has learned (memory.space.recall for the project): each item says what was learned, where it came from and when, with Pin, Edit and Forget, and an "Add a memory" field (memory.space.file, memory.space.retire, memory.pin). */
 export function MemoryPane({ id }: { id: string }) {
-  const [rows, setRows] = useState<{ id: string; text: string; scope?: string; by?: string }[] | null>(null);
-  useEffect(() => { void callT<{ facts?: any[] }>("memory.space.recall", { project: id, limit: 50 }).then((r) => setRows(r.error ? [] : r.data?.facts ?? [])); }, [id]);
+  const router = useRouter();
+  const [rows, setRows] = useState<Fact[] | null>(null);
+  const [n, setN] = useState(0);
+  const [adding, setAdding] = useState("");
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  useEffect(() => { void callT<{ facts?: Fact[] }>("memory.space.recall", { project: id, limit: 50 }).then((r) => setRows(r.error ? [] : r.data?.facts ?? [])); }, [id, n]);
+  const again = () => setN((x) => x + 1);
+  const fail = (e?: { message: string }) => { if (e) showToast(e.message || "That did not go through."); else again(); };
+  const add = async () => { const t = adding.trim(); if (!t) return; const r = await callT("memory.space.file", { text: t, source: "note:by-hand", kind: "note", scope: `project:${id}` }); if (!r.error) setAdding(""); fail(r.error); };
+  const forget = async (f: Fact) => fail((await callT("memory.space.retire", { id: f.id })).error);
+  const pin = async (f: Fact) => fail((await callT("memory.pin", { node: f.urn || f.id, scope: `project:${id}` })).error);
+  const saveEdit = async (f: Fact) => { if (!editing || !editing.text.trim()) return; const r = await callT("memory.space.file", { text: editing.text.trim(), source: f.source || "note:by-hand", kind: f.kind || "note", scope: `project:${id}` }); if (r.error) { fail(r.error); return; } await callT("memory.space.retire", { id: f.id }); setEditing(null); again(); };
   if (rows === null) return <LoadingState rows={3} />;
-  if (!rows.length) return <EmptyState title="Nothing remembered yet" body="Facts agents file in this project show here, with where each came from." />;
-  return <Card flush>{rows.map((f, i) => (<View key={f.id}>{i ? <Divider /> : null}<Row title={f.text} sub={f.by} end={f.scope && f.scope.startsWith("project:") ? <Chip>This project</Chip> : undefined} /></View>))}</Card>;
+  return (
+    <View className="gap-s2">
+      {rows.length ? (
+        <Card flush>
+          {rows.map((f, i) => {
+            const src = sourceOf(f);
+            return (
+              <View key={f.id}>{i ? <Divider /> : null}
+                {editing?.id === f.id ? (
+                  <View className="gap-s2 p-s3"><Field name="Edit this memory" value={editing.text} onChangeText={(t) => setEditing({ id: f.id, text: t })} multiline lines={3} /><View className="flex-row gap-s2"><Button size="sm" label="Save" onPress={() => void saveEdit(f)} /><Button size="sm" kind="ghost" label="Cancel" onPress={() => setEditing(null)} /></View></View>
+                ) : (
+                  <Row dense title={f.text} sub={[src.line, whenOf(f.filed_at), f.by].filter(Boolean).join(" · ")} onPress={src.href ? () => router.push(src.href as never) : undefined}
+                    end={<View className="flex-row"><IconButton icon="pin" label="Pin this memory" onPress={() => void pin(f)} /><IconButton icon="edit" label="Edit this memory" onPress={() => setEditing({ id: f.id, text: f.text })} /><IconButton icon="trash" label="Forget this memory" onPress={() => void forget(f)} /></View>} />
+                )}
+              </View>
+            );
+          })}
+        </Card>
+      ) : <EmptyState title="Nothing remembered yet" body="What is learned in this project's chats and files shows here, with where it came from." />}
+      <Field name="Add a memory" value={adding} onChangeText={setAdding} placeholder="Something every chat here should remember" />
+      <View className="self-start"><Button size="sm" kind="secondary" label="Add a memory" disabled={!adding.trim()} onPress={() => void add()} /></View>
+    </View>
+  );
 }
 
 /** The project's stages and tasks as it was pinned at start, with the stage it is in marked. */
 export function StagesPane({ snapshot, stage, template }: { snapshot: string; stage?: string; template?: string }) {
   const router = useRouter();
   let body: Body | null = null;
-  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Template"), stages: j.stages || [] }; } catch { body = null; }
+  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Playbook"), stages: j.stages || [] }; } catch { body = null; }
   if (!body) return <EmptyState title="No stages" body="This project's stages could not be read." />;
   const tree = treeOf(body);
   return (
     <View className="gap-s3">
-      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the template" onPress={() => router.push(`/u/templates/${template}` as never)} /></View> : null}
+      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the playbook" onPress={() => router.push(playbookPath(template) as never)} /></View> : null}
       <Card flush>
         {tree.map((l, i) => {
           const here = l.depth === 0 && stage && l.text.replace(/^\d+\.\s*/, "") === stage;

@@ -25,6 +25,7 @@ import path from "node:path";
 import * as M from "./folders.js";
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
+import { readDocs, listContext } from "../../lib/folder-docs.js";
 
 /** A chat's session id, as Claude Code and the switchboard both mint it (crypto.randomUUID). A
  * subagent's "<parent>/agent-<id>" is not a chat, so it is refused. */
@@ -543,7 +544,10 @@ export class Projects {
     // The project's room by slug: its folders alone could name a project that holds this one.
     const r = await this.call("memory.facts", { room: p.slug, project_cwds: p.workspaces, limit: 10 });
     if (!r.error) facts = Array.isArray(r.data) ? r.data : Array.isArray(r.data?.facts) ? r.data.facts : [];
-    const text = compose({ project: p, threads, facts });
+    // the project's own instructions and reference items, from its folder: what its people wrote for every chat in it
+    let instructions = "", refs = [];
+    try { instructions = readDocs(p.home)["AGENTS.md"] || readDocs(p.home)["CLAUDE.md"]; refs = listContext(p.home).map(c => c.name); } catch { /* a folder that is not there has none */ }
+    const text = compose({ project: p, threads, facts, instructions, refs });
     return { project: p.slug, candidates: [], text };
   }
 

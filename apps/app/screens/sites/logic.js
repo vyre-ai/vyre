@@ -2,7 +2,7 @@
 // Rolling back and granting a secret are plain edits of the list. Nothing here knows how a build runs.
 
 export const PIPE = ["Build", "Preview", "Checks", "Go live", "Production"];
-export const SOURCES = /** @type {const} */ ({ github: "GitHub repo", drive: "Drive folder", artifact: "Assistant artifact" });
+export const SOURCES = /** @type {const} */ ({ github: "GitHub repo", drive: "Files folder", artifact: "Agent artifact" });
 
 /** @typedef {{ v: string, st: 'live'|'preview'|'old', by: string, when: string, msg: string, pipe: ('done'|'cur'|'')[] }} Dep */
 /** @typedef {{ id: string, name: string, type: 'App'|'Site', sp: string, src: [string, string, string], dom: { name: string, ok: boolean }, sec: Record<string, boolean>, dep: Dep[], logs: { build: string[], run: string[] } }} Site */

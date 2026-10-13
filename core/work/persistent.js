@@ -16,12 +16,8 @@ export function createPersistent({ db, kernel, agentOf }) {
   const ensure = () => db.exec("CREATE TABLE IF NOT EXISTS work_persistent (person TEXT NOT NULL, kind TEXT NOT NULL, chat TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (person, kind))");
   ensure();
   const personOf = (/** @type {any} */ chain) => { const h = chain && chain.hops && chain.hops.length === 1 ? chain.hops[0] : null; if (!h || h.actor.kind !== "person") throw fail("not_allowed", "a persistent chat is a person's own: it is asked for by that person, directly"); return h.actor; };
-  /** May this person have a chat of this kind: anyone for the assistant, an owner or an admin for the Engineer. */
-  const mayHave = (/** @type {any} */ person, /** @type {string} */ kind) => {
-    if (kind === "assistant") return true;
-    const role = kernel().members && kernel().members.roleOf ? kernel().members.roleOf({ kind: "person", id: person.id, space: kernel().space }) : null;
-    return role === "owner" || role === "admin";
-  };
+  /** May this person have a chat of this kind: anyone, for both. The Engineer is an ordinary agent on the person's own chain and model: it can only build what that person can (owner ruling 13 Oct 03:19Z). */
+  const mayHave = (/** @type {any} */ _person, /** @type {string} */ _kind) => true;
   const kindOk = (/** @type {unknown} */ k) => { if (!KINDS.includes(/** @type {string} */ (k))) throw fail("bad_input", `kind is one of ${KINDS.join(", ")}`); return /** @type {string} */ (k); };
   const row = (/** @type {string} */ person, /** @type {string} */ kind) => (ensure(), db).prepare("SELECT chat FROM work_persistent WHERE person = ? AND kind = ?").get(person, kind);
 
@@ -35,7 +31,7 @@ export function createPersistent({ db, kernel, agentOf }) {
     /** @param {any} chain @param {{ kind: string, chat: string }} i */
     async pin(chain, i) {
       const person = personOf(chain), kind = kindOk(i.kind);
-      if (!mayHave(person, kind)) throw fail("not_allowed", kind === "engineer" ? "@Engineer is for an owner or an admin of this Space" : "not allowed");
+      if (!mayHave(person, kind)) throw fail("not_allowed", "not allowed");
       const chat = String(i.chat || "");
       const have = row(person.id, kind);
       if (have && String(have.chat) === chat) return { kind, chat, existing: true };
