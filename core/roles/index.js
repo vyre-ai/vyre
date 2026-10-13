@@ -49,7 +49,7 @@ export default {
       const id = String(i.id), b = BUILTIN_VIEW.find(x => x.id === id || x.kernel === id);
       if (b) return { role: { id: b.id, label: b.label, description: b.description, builtin: true, base: b.id } };
       const c = (await readRoles(d.gateway, d.chain)).get(id);
-      if (!c) throw refuse(`There is no role "${id}". roles.list shows the roles of this Space.`, "not_found");
+      if (!c) throw refuse(`There is no role "${id}". Pick one from the role list in Settings, or ask an owner or admin.`, "not_found");
       return { role: { ...c.role, builtin: false } };
     });
 
@@ -81,7 +81,7 @@ export default {
     tool("roles.update", "Change a custom role. The people who hold it get the new access at once. Owner and admin only.", obj({ space: str, id: str, role: { type: "object" } }, ["id", "role"]), "write", async (i, d) => {
       const mine = await staff(d);
       const c = (await readRoles(d.gateway, d.chain)).get(String(i.id));
-      if (!c) throw refuse(`There is no custom role "${i.id}". roles.list shows the roles of this Space.`, "not_found");
+      if (!c) throw refuse(`There is no custom role "${i.id}". Pick one from the role list in Settings, or ask an owner or admin.`, "not_found");
       const t = await types(d.gateway, d.chain);
       const next = checkRole({ ...c.role, ...(i.role && typeof i.role === "object" ? i.role : {}), id: c.role.id }, { types: t });
       if (!mayHold(mine, next.base) || !mayHold(mine, c.role.base)) throw refuse("Only an owner changes a role that starts from Admin. Ask the owner.", "not_allowed");
@@ -99,7 +99,7 @@ export default {
     tool("roles.remove", "Delete a custom role. Refused while anyone holds it. Owner and admin only.", obj({ space: str, id: str }, ["id"]), "write", async (i, d) => {
       const mine = await staff(d);
       const c = (await readRoles(d.gateway, d.chain)).get(String(i.id));
-      if (!c) throw refuse(`There is no custom role "${i.id}". roles.list shows the roles of this Space.`, "not_found");
+      if (!c) throw refuse(`There is no custom role "${i.id}". Pick one from the role list in Settings, or ask an owner or admin.`, "not_found");
       if (!mayHold(mine, c.role.base)) throw refuse("Only an owner removes a role that starts from Admin. Ask the owner.", "not_allowed");
       const holders = (await people(d)).filter(m => m.custom === c.role.id).map(m => m.person);
       if (holders.length) throw Object.assign(refuse(`${holders.length} ${holders.length === 1 ? "person holds" : "people hold"} this role. Give them another role first (roles.assign), then remove it.`, "role_in_use"), { people: holders });
@@ -117,7 +117,7 @@ export default {
         return { membership: (await d.gateway.grants.setRole(d.chain, { ...base, role: kernelId }, withProof(d))).membership };
       }
       const c = (await readRoles(d.gateway, d.chain)).get(asked);
-      if (!c) throw refuse(`There is no role "${asked}". roles.list shows the roles of this Space.`, "not_found");
+      if (!c) throw refuse(`There is no role "${asked}". Pick one from the role list in Settings, or ask an owner or admin.`, "not_found");
       if (!mayHold(mine, c.role.base)) throw refuse("Only an owner gives a role that starts from Admin. Ask the owner.", "not_allowed");
       const grants = expandRole(c.role, { space: d.space, person: base.person, types: await types(d.gateway, d.chain) });
       return { membership: (await d.gateway.grants.setRole(d.chain, { person: base.person, role: c.role.base, custom: { id: c.role.id, grants } }, withProof(d))).membership };

@@ -119,7 +119,7 @@ export function rowsByDay(rows, dateName, ym) {
 export function sealSpec(def, f, pool, vd = viewDefOf(def)) {
   const n = pool.filter((r) => !isEmpty(val(r, f.name))).length, word = lc(vd.plural);
   return { title: `Seal ${f.label} for all ${word}?`, action: "Seal",
-    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Assistants will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` };
+    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Agents will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` };
 }
 
 /** What the banner says while the person looks as their assistant does. @param {any[]} sealedNow the sealed fields that hold a value on this record */

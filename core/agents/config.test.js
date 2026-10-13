@@ -11,7 +11,7 @@ import { contextBrief, contextName } from "./config.js";
 
 async function boot(/** @type {any} */ t) {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], projectsDir: path.join(root, "projects"), vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   return { root, c: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ as = "local") => d.registry.call(tool, input, as) };
@@ -86,12 +86,11 @@ test("used: an agent with no chats and no flows answers with empty lists, not an
   assert.equal((await c("agents.used", { agent: "nobody" })).error.code, "not_found");
 });
 
-test("the brief carries CLAUDE.md, context file names, linked folders and Vault item names, never a content or a value", () => {
-  const b = contextBrief({ dir: "/h/agents/agt_1/context", files: ["brief.pdf"], links: ["/p/forms"], items: ["lawmatics-api"], claude: "Use plain words." });
-  assert.match(b, /Use plain words\./);
-  assert.match(b, /brief\.pdf/);
+test("the agent brief names linked folders and Vault item names only; the instructions and context are named by the orientation, never copied", () => {
+  const b = contextBrief({ links: ["/p/forms"], items: ["lawmatics-api"] });
   assert.match(b, /\/p\/forms/);
   assert.match(b, /lawmatics-api/);
-  assert.equal(contextBrief({ dir: "/d", files: [], links: [], items: [], claude: "" }), "");
+  assert.ok(!/Use plain words/.test(b));
+  assert.equal(contextBrief({ links: [], items: [] }), "");
   assert.equal(contextName("a/b\\c.txt"), "c.txt");
 });

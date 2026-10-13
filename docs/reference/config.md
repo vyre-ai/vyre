@@ -117,7 +117,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/runner/pipe-home.js`, `core/switchboard/index.js` |
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js`, `core/wink/netd.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/mcpconn/index.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_KERNEL_FILE_KEY` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
@@ -204,7 +204,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_AGENT` | The agent a thread runs as. | `core/cli/session.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
+| `VYRE_AGENT` | The agent a thread runs as. | `core/cli/session.js`, `core/mcpconn/index.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/cli/session.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
@@ -215,6 +215,8 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
+| `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
+| `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
@@ -225,7 +227,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SESSION_SANDBOX_OFF` | Not described yet. | `core/daemon/index.js`, `core/team/team-fixture.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
 | `VYRE_SKILLS_DIR` | Not described yet. | `core/sessions/drivers/codex.js`, `core/sessions/drivers/grok.js` |
-| `VYRE_SOCKET` | The path of vyred's socket, for Lumen. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
+| `VYRE_SOCKET` | The path of vyred's socket, for Lumen. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `core/daemon/client.js`, `core/mcpconn/index.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/daemon/index.js`, `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `harness/hooks/hook.js` |
 

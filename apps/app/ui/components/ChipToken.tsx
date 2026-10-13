@@ -9,12 +9,12 @@ import { Icon, type IconName } from "./Icon";
  */
 export function ChipToken({ label, icon, leading, tone = "plain", onPress, onRemove, removeLabel }: { label: string; icon?: IconName; leading?: React.ReactNode; tone?: "plain" | "accent" | "warn" | "err"; onPress?: () => void; onRemove?: () => void; removeLabel?: string }) {
   const { color, phone } = useUiTheme();
-  const bg = tone === "accent" ? color["accent-wash"] : tone === "warn" ? color["warn-wash"] : tone === "err" ? color["err-wash"] : color.hover;
-  const ink = tone === "accent" ? "accent" : tone === "warn" ? "warn" : tone === "err" ? "err" : "muted";
+  const bg = tone === "accent" ? color.selected : tone === "warn" ? color["warn-wash"] : tone === "err" ? color["err-wash"] : color.hover;
+  const ink = tone === "accent" ? "default" : tone === "warn" ? "warn" : tone === "err" ? "err" : "muted";
   const body = (
     <View style={{ minHeight: 28, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 8, paddingRight: onRemove ? 2 : 8, borderRadius: 14, backgroundColor: bg }}>
       {leading}
-      {icon ? <Icon name={icon} size={14} tone={ink} /> : null}
+      {icon ? <Icon name={icon} size={14} tone={ink === "default" ? "text" : ink} /> : null}
       <Text size="caption" medium tone={ink} numberOfLines={1} style={{ maxWidth: 220 }}>{label}</Text>
       {onRemove ? (
         <Pressable accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${label}`} hitSlop={phone ? 8 : 4} onPress={onRemove} style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>

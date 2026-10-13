@@ -16,7 +16,7 @@ import { parseLines } from "./lines.js";
 import { nearest } from "./places.js";
 import { walkSteps } from "./schema.js";
 
-export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms"];
+export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms", "group"];
 const BAD = new Set(["__proto__", "constructor", "prototype"]);
 
 export class PatchError extends Error {

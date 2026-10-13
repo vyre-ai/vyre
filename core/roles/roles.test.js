@@ -127,7 +127,7 @@ test("roles.*: create, list with holders, assign, remove refused while held, the
 
 test("an invite into a role that does not exist or was removed is refused in words", async () => {
   const { k, o } = await rig();
-  await assert.rejects(() => customForInvite(k.gateway, o, SPACE, "ghost"), { code: "not_found", message: /no role "ghost".*roles\.list/ });
+  await assert.rejects(() => customForInvite(k.gateway, o, SPACE, "ghost"), { code: "not_found", message: /no role "ghost".*role list/ });
 });
 
 test("roles.update reapplies to every holder under one call: three holders all get the new grants, none stay on the old", async t => {

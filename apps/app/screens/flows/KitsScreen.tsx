@@ -15,7 +15,7 @@ function SampleKitsScreen() {
   const [pick, setPick] = useState<KitCard | null>(null);
   const available = flowsRepo.kits().available.filter((k) => !installed.some((i) => i.id === k.id));
   return (
-    <Frame back="/u/flows" title="Kits" sub="Ready-made record types, Flows and views for a kind of work. Installing one is a grant you approve.">
+    <Frame back="/u/flows" title="Kits" sub="Ready-made objects, Flows and views for a kind of work. Installing one is a grant you approve.">
       <Sec title="Installed in Juniper Studio">
         <Card flush>
           {installed.map((k, i) => (

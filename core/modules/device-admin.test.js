@@ -35,7 +35,7 @@ test("every tool a device can reach that has the shape of device administration 
 test("a limited chain device is refused every device-admin tool, in words that name the next step", async () => {
   const gate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => id === "limited123456789" });
   for (const tool of DEVICE_ADMIN) {
-    const r = await gate(tool, "device:limited123456789");
+    const r = await gate(tool, "device:limited123456789", true);
     assert.equal(r?.error?.code, "denied", tool);
     assert.match(r?.error?.message ?? "", /from your first device|24 hours/, `${tool} names the next step`);
   }
@@ -44,19 +44,35 @@ test("a limited chain device is refused every device-admin tool, in words that n
 test("a full device, a device with no chain fact, and a non-device caller are not refused", async () => {
   const gate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => id === "limited123456789" });
   for (const tool of DEVICE_ADMIN) {
-    assert.equal(await gate(tool, "device:full1234567890ab"), null, tool);
-    assert.equal(await gate(tool, "cli"), null, tool);
-    assert.equal(await gate(tool, "module:wink"), null, tool);
+    assert.equal(await gate(tool, "device:full1234567890ab", true), null, tool);
+    assert.equal(await gate(tool, "cli", false), null, tool);
+    assert.equal(await gate(tool, "module:wink", false), null, tool);
   }
 });
 
 test("a limited device still uses the box: tools on DEVICE_OK and ordinary tools pass the gate", async () => {
   const gate = createLimitedGate({ isLimited: async () => true });
-  for (const tool of [...DEVICE_OK, "records.list", "stream.send", "approvals.answer", "vault.list"]) assert.equal(await gate(tool, "device:limited123456789"), null, tool);
+  for (const tool of [...DEVICE_OK, "records.list", "stream.send", "approvals.answer", "vault.list"]) assert.equal(await gate(tool, "device:limited123456789", true), null, tool);
 });
 
 test("a gate that cannot tell fails closed for the admin tools", async () => {
   const gate = createLimitedGate({ isLimited: async () => { throw new Error("db"); } });
-  assert.equal((await gate("relay.devices.remove", "device:abc"))?.error?.code, "denied");
-  assert.equal(await gate("records.list", "device:abc"), null, "and still lets ordinary tools through");
+  assert.equal((await gate("relay.devices.remove", "device:abc", true))?.error?.code, "denied");
+  assert.equal(await gate("records.list", "device:abc", true), null, "and still lets ordinary tools through");
+});
+
+test("a device label with no valid id is REFUSED for a device-admin tool, not skipped (fail closed), and still passes ordinary tools", async () => {
+  const gate = createLimitedGate({ isLimited: async () => false });
+  for (const odd of ["device:" + "a".repeat(70), "device:a b", "device:", "device:has/slash"]) {
+    for (const tool of DEVICE_ADMIN) {
+      const r = await gate(tool, odd, true);
+      assert.equal(r?.error?.code, "denied", `${odd.slice(0, 20)} ${tool}`);
+    }
+    assert.equal(await gate("records.list", odd, true), null, "an ordinary tool is not this gate's");
+  }
+});
+
+test("the registry tells the gate the caller is a device", () => {
+  const src = fs.readFileSync(path.join(CORE, "modules", "index.js"), "utf8");
+  assert.match(src, /this\.deps\.limitedGate\(tool, String\(caller\), true\)/);
 });

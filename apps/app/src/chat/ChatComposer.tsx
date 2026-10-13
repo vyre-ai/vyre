@@ -79,7 +79,7 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
 const POP_ID = "composer-pop";
 /** The mark on a nested row: its kind (a project, an object, a file, a tag) or, for a top category, what it holds. */
 function nestIcon(r: NestRow): IconName {
-  if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", ais: "assistants", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
+  if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
   const k = (r.pick as { kind?: string } | undefined)?.kind;
   return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
 }
@@ -155,7 +155,7 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
-        { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
+        { key: "at", group: "Insert", label: "Mention a person or agent", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
       if (p.runsOn) {
@@ -400,10 +400,10 @@ export function ChatComposer(p: ComposerProps) {
               <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
             ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-                <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
+                <Chip tone={a.state === "failed" ? "err" : "plain"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
             )))}
-            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={tokenIcon(t.lead, picked.current.get(t.name)?.kind)} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
+            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={tokenIcon(t.lead, picked.current.get(t.name)?.kind)} label={t.name} tone="plain" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
             {stateChips}
           </View>
         ) : null}

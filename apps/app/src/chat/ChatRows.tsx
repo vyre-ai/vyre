@@ -109,7 +109,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
           {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
-          {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
+          {dress?.replies ? <Text size="caption" tone="muted">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
         </View>
       </View>
       </ActionsOn.Provider>
@@ -318,7 +318,7 @@ function QuoteBlock({ store, it, ctx }: { store: ChatStore; it: { [k: string]: a
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Go to the message${who ? ` from ${who}` : ""}`} onPress={() => ctx.onJumpTo?.(q.message)}
       style={{ borderLeftWidth: 3, borderLeftColor: color.accent, backgroundColor: color["surface-2"], borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8, gap: 1, alignSelf: "flex-start", maxWidth: "100%" }}>
-      {who ? <Text size="caption" strong tone="accent" numberOfLines={1}>{who}</Text> : null}
+      {who ? <Text size="caption" strong tone="muted" numberOfLines={1}>{who}</Text> : null}
       <Text size="caption" tone="muted" numberOfLines={2}>{q.text || "A message above"}</Text>
     </Pressable>
   );
@@ -397,7 +397,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const mine = store.group.isMine(k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
-        <Message mine={mine} who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
+        <Message mine={mine} who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre agent)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} />
           {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
@@ -426,7 +426,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
           <ActionRow>
-            <MessageBar text={it.text} from={w.name} ctx={ctx} done={it.done} group={groupOf(store, k, ctx, w.name)} />
+            <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} done={it.done} group={groupOf(store, k, ctx, w.name)} />
           </ActionRow>
           <ReactionsRow store={store} k={k} ctx={ctx} />
         </Message>

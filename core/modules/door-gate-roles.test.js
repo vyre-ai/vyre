@@ -43,7 +43,7 @@ const gated = (/** @type {any} */ r, /** @type {string} */ tool) => met(r, refus
 
 test("a Member has no mail, calendar or computers until a role turns them on; her own tools still answer", { timeout: 200_000 }, async t => {
   const { as, owner } = await rig(t);
-  for (const tool of ["mail.accounts", "mail.send", "google.calendar.list", "google.calendar.create", "computers.list", "computer.targets", "documents.template.list", "publish.list", "files.search", "chrome.open"]) {
+  for (const tool of ["mail.accounts", "mail.send", "google.calendar.list", "google.calendar.create", "computers.list", "computer.targets", "documents.send", "publish.list", "files.search", "chrome.open"]) {
     assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: a Member is refused`);
   }
   for (const tool of ["records.list", "planner.add", "threads.list", "stream.catchup"]) assert.ok(!gated(await as("member", tool), tool), `${tool}: a Member keeps her own tools`);
@@ -74,10 +74,10 @@ test("a custom role turns on exactly the groups it names, for the people who hol
   // the role is edited: the holder loses files at her next call
   await owner("roles.update", { id: "mailer", role: { tools: ["documents"] } });
   assert.ok(met(await as("member", "files.search"), refusal("files.search")), "files is off after the role changed");
-  assert.ok(!gated(await as("member", "documents.template.list"), "documents.template.list"), "documents is still on");
+  assert.ok(!gated(await as("member", "documents.send"), "documents.send"), "documents is still on");
   // the person goes back to Member
   await owner("roles.assign", { person: MEMBER, role: "member" });
-  assert.ok(met(await as("member", "documents.template.list"), refusal("documents.template.list")), "a plain Member again");
+  assert.ok(met(await as("member", "documents.send"), refusal("documents.send")), "a plain Member again");
 });
 
 test("no group opens at the door by default, even when a role names it: the handlers still use the owner's accounts and the Space's drive", { timeout: 300_000 }, async t => {
@@ -87,7 +87,7 @@ test("no group opens at the door by default, even when a role names it: the hand
   await owner("roles.assign", { person: MEMBER, role: "everything" });
   for (const g of Object.keys(TOOL_GROUPS)) for (const tool of TOOL_GROUPS[g]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: the ${g} group is not open to a member yet`);
   const list = await names(tokens.member);
-  assert.ok(!list.has("mail.accounts") && !list.has("computers.list") && !list.has("chrome.open") && !list.has("documents.template.list") && !list.has("files.search"), "and her tool list agrees");
+  assert.ok(!list.has("mail.accounts") && !list.has("computers.list") && !list.has("chrome.open") && !list.has("documents.send") && !list.has("files.search"), "and her tool list agrees");
 });
 
 test("a member's tool list shows what her role allows: a Guest fewer, a custom role its groups", { timeout: 300_000 }, async t => {
@@ -113,6 +113,16 @@ test("the groups: every tool is registered, owner-only, in one group, and no gro
     assert.ok(GROUP_OF.get(tool), `${tool} has its group`);
     assert.ok(!tool.startsWith("vault.") && !tool.startsWith("settings.") && !tool.startsWith("spend."), `${tool} is not a vault, settings or spend tool`);
   }
+});
+
+test("mcp.mine.*: a Member calls her own MCP accounts (the gate lets them through and the vault's own person check judges her), a Guest is refused; the owner-only firm-key tools stay refused to her", { timeout: 200_000 }, async t => {
+  const { as } = await rig(t);
+  for (const tool of ["mcp.mine.list", "mcp.mine.add", "mcp.mine.remove"]) {
+    assert.ok(MEMBER_MAY.has(tool) && !OWNER_ONLY.has(tool), `${tool} is on a Member's list alone`);
+    assert.ok(!gated(await as("member", tool, { name: "x", type: "http", url: "https://x.example.com/mcp" }), tool), `${tool}: a Member is not turned away by the gate`);
+    assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
+  }
+  for (const tool of ["google.members.email", "google.add", "mcp.add"]) assert.ok(OWNER_ONLY.has(tool) && !MEMBER_MAY.has(tool), `${tool} stays the owner's`);
 });
 
 test("the roles tools: a Member reads roles.list, get, catalogue and tools (her own), a Guest only roles.tools; writes stay the owner's and an admin's", { timeout: 200_000 }, async t => {

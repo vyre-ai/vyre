@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { memberMcpConfig } from "../../lib/member-mcp.js";
 import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
@@ -22,6 +23,7 @@ import { assertDaemonHost, assertNotWindowsHome } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, ownerOverTailnet, currentCall } from "../modules/index.js";
+import { markViaMcp, isViaMcp, viaMcpId } from "../modules/via-mcp.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { devAllowedPorts } from "./dev-ports.js";
 import { build, htmlWithBuild } from "./build.js";
@@ -111,6 +113,9 @@ export function tailnetLabelHolds(label, peer, network) {
  */
 export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
   if (!k || !k.id) return null;
+  // The person's own connected client (core/mcpconn): the daemon vouched its key (via.viaMcp) on the plain `mcp` label, and the call is the owner's, on the chain a person's own terminal here carries (the linkBoxFacts shape), its session the connection the person made with presence. It is
+  // still labelled `mcp`, so the registry holds an outward act for it like a model's, and agent-reach.mcpPersonMay names what stays out of its reach.
+  if (!policy.caller && caller === "mcp" && isViaMcp(via) && !via.thread && !via.agent) return { kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false, session: `mcp:${viaMcpId(via)}` };
   // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
@@ -783,7 +788,10 @@ async function startLocked(opts, root, p, release) {
       // the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
       const ownLoader = (/** @type {any} */ i) => registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread || i.chat || null, chat: i.chat || null, person: i.person, device: i.device, epoch: i.epoch, reason: i.reason }, "module:vyred", { door: true }).then((/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; });
       const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && (process.env.VYRE_SUPERVISOR !== "docker" || spawnerThere()) ? ownLoader : undefined);
-      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
+      // the person's own MCP servers for a lent session: their personal vault's store (vault `personalStore`), read for the person the lease names; never the owner's
+      const memberMcpOf = async (/** @type {{ space: string, person: string }} */ q) => { const ps = /** @type {any} */ (registry.deps).personalStore; return typeof ps === "function" ? memberMcpConfig(ps(q.person, q.space)) : null; };
+      /** @type {any} */ (registry.deps).memberMcpOf = memberMcpOf;   // also read by the end-to-end test of a member's own accounts
+      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },
         // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
@@ -1406,6 +1414,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
   /** @type {string | null} */ let pluginAgent = null;
+  /** @type {string | null} */ let mcpConn = null;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
   } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
@@ -1421,6 +1430,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       // Not a thread's agent: its calls are a model's own (`mcp`), and what it is comes from the kernel token vyred stamps, never from the label.
       pluginAgent = said[1];
     }
+  } else if (req.headers["x-vyre-mcp-key"]) {
+    // The person's own connected client (core/mcpconn): `vyre mcp` sends the connection's id and key. A vouched connection is the person: the call runs on their own chain (the kernel token vyred stamps below)
+    // and the registry lets it use the person's own tools; the label stays `mcp`, so an outward act is held like any model's. Never on a socket bound to a Vyre session, and never with an agent's name.
+    const id = String(req.headers["x-vyre-mcp-id"] || ""), key = String(req.headers["x-vyre-mcp-key"] || "");
+    const v = id && key && caller === "mcp" ? await registry.call("mcpconn.vouch", { id, key }, "module:vyred").catch(() => null) : null;
+    if (!(v && v.data && v.data.ok === true)) return send(res, 403, { error: { code: "denied", message: "this connection is not one the person made, or it was revoked: connect again with vyre mcp connect" } });
+    mcpConn = id;
+    markViaMcp(via, id, v.data.hosted === true);
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.
@@ -1630,6 +1647,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
+    // A person's connected client carries no kernel session of its own: callerFacts gives it the person's chain, built from vyred's own key. Whatever session header it sent is dropped.
+    if (mcpConn) delete req.headers["x-vyre-kernel-session"];
     // The plugin agent's token is vyred's, set here and never the client's: its session is opened by the daemon for that agent and renewed before it runs out.
     if (pluginAgent) {
       delete req.headers["x-vyre-kernel-session"];
@@ -1679,6 +1698,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     let result = teamResult || await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+    // What a person's connected client changed is noted in Activity as done via their Claude Code: the tool's name and whether it worked, never its input.
+    if (mcpConn) { const d0 = registry.tools.get(name); if (d0 && d0.effect !== "read") registry.call("mcpconn.note", { conn: mcpConn, tool: name, ok: !(result && result.error) }, "module:vyred").catch(() => null); }
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

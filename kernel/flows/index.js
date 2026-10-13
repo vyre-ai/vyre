@@ -71,6 +71,8 @@ function personOf(chain) {
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
  *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, kinds?: Record<string, import("./proposals.js").ProposalKind>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
+
+ *   access?: { list: (flow: string) => Promise<any[]>, set: (flow: string, person: string, level: string | null) => Promise<any> },  who a Flow is shared with (the host makes one grant per person on that Flow)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -97,10 +99,35 @@ export function createFlows(o) {
 
   /** Every stored version of every Flow as { id, name, version, json }. */
   const allDefinitions = async () => (await store.allVersions()).map((/** @type {any} */ v) => ({ id: v.id, name: v.flow.label || v.flow.name || v.id, version: v.version, json: JSON.stringify(v.flow) }));
+  /**
+   * Changing a Flow takes Can edit: the person who made it, or anyone holding `flows.define` on it (an owner and an admin by their role, anyone else by a grant on that Flow). A Flow nobody
+   * made (one a Kit installed) has no creator, and then the grant decides.
+   * @param {any} chain @param {string} id
+   */
+  /** The creator, an owner or an admin shares a Flow; a person who was only given Can edit does not (an admin is told apart by the right to give access). @param {any} chain @param {string} id */
+  const mayShare = async (chain, id) => {
+    const row = await store.flowRow?.(id);
+    if (!row) return;
+    const who = chain.hops[chain.hops.length - 1].actor;
+    const first = row.versions[0] && row.versions[0].by;
+    if (first && who && first.id === who.id) return;
+    const d = await o.kernel.authorize({ chain, action: "grants.create", resource: `vyre://${row.space}/grant/*` }).catch(() => null);
+    if (!d || d.effect !== "allow") throw Object.assign(new Error("only its creator, the owner or an admin shares a Flow"), { code: "denied" });
+  };
+  const mayEdit = async (chain, id) => {
+    const row = await store.flowRow?.(id);
+    if (!row) return;
+    const who = chain.hops[chain.hops.length - 1].actor;
+    const first = row.versions[0] && row.versions[0].by;
+    if (first && who && first.id === who.id) return;
+    const d = await o.kernel.authorize({ chain, action: "flows.define", resource: `vyre://${row.space}/flow/${id}` }).catch(() => null);
+    if (!d || d.effect !== "allow") throw Object.assign(new Error("you can use this Flow but not change it: ask its owner for Can edit"), { code: "denied" });
+  };
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
   const tools = {
     /** Compile and store a new version, from the stored form or from text. Nothing runs until `flows.approve`. */
     "flows.define": async (chain, i) => {
+      if (i.id) await mayEdit(chain, i.id);
       const c = await cat();
       let flow = i.flow;
       if (i.text !== undefined) {
@@ -135,7 +162,7 @@ export function createFlows(o) {
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
     "flows.list": async () => {
       const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
-      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); return { ...r, ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); const group = await view(r.id).then((/** @type {any} */ v) => v.flow.group).catch(() => undefined); return { ...r, ...(group ? { group } : {}), ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
     },
     // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
     // The Vault's "Used by" (R031-70) and its scan for a secret value (R031-72): module-only reads of the stored definitions, every version of every Flow. The first answers names only; the second the
@@ -244,6 +271,7 @@ export function createFlows(o) {
     // Edit by patch (e2): small named edits on the newest version, stored as a new draft. A patch made against an older version is refused, never merged.
     "flows.patch": async (chain, i) => {
       const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayEdit(chain, id);
       const cur = await latest(id);
       if (!cur) throw Object.assign(new Error("no such Flow"), { code: "not_found" });
       if (i.base !== undefined && i.base !== cur.version && i.base !== cur.hash) throw Object.assign(new Error(`this patch was made against ${typeof i.base === "number" ? "version " + i.base : "an older version"}, but the Flow is at version ${cur.version} (hash ${cur.hash.slice(0, 12)}); read it again with flows.code and redo the edit`), { code: "conflict" });
@@ -253,6 +281,22 @@ export function createFlows(o) {
       const by = chain.hops[chain.hops.length - 1].actor;
       const d = await runner.define(id, flow, by);
       return d.ok ? { ...d, changes: flowChanges(cur.flow, flow, c) } : d;
+    },
+    // Share one Flow with a person: Can use (run it, see it) or Can edit (change it too). Only its creator, an owner or an admin shares it. The kernel's grant on that Flow is the one source of truth.
+    "flows.access.get": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayShare(chain, id);
+      return { access: o.access ? await o.access.list(id) : [] };
+    },
+    "flows.access.set": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      await mayShare(chain, id);
+      const kind = i.kind === undefined ? "person" : i.kind, level = i.level ?? null;
+      if (kind !== "person") throw Object.assign(new Error("a Flow can be shared with a person for now; a team or role comes later"), { code: "bad_input" });
+      if (typeof i.subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(i.subject)) throw Object.assign(new Error("name the person to share with"), { code: "bad_input" });
+      if (level !== null && !["use", "edit"].includes(level)) throw Object.assign(new Error("level is use, edit or null"), { code: "bad_input" });
+      if (!o.access) throw Object.assign(new Error("sharing a Flow needs the kernel"), { code: "unavailable" });
+      return o.access.set(id, i.subject, level);
     },
     "flows.cheatsheet": async () => ({ text: cheatsheet() }),
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),

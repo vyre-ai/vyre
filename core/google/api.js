@@ -19,7 +19,9 @@ const MAX_BYTES = 5_000_000;
 export const SCOPE = "https://www.googleapis.com/auth/";
 /** The short scope names this module uses, as google.test reports them. */
 export const SCOPES = ["calendar.readonly", "calendar.events", "gmail.readonly", "gmail.compose", "gmail.send"];
-export const DEFAULT_BASE = { calendar: "https://www.googleapis.com", gmail: "https://gmail.googleapis.com" };
+export const DEFAULT_BASE = { calendar: "https://www.googleapis.com", gmail: "https://gmail.googleapis.com", drive: "https://www.googleapis.com" };
+/** Scopes a request may name beyond SCOPES (read-only Drive); google.test does not require them of an account. */
+export const EXTRA_SCOPES = ["drive.readonly"];
 
 /** An API refusal or outage, with Google's status. */
 export class GoogleError extends Error {
@@ -34,7 +36,7 @@ export class GoogleError extends Error {
 
 /**
  * @typedef {{ name: string, email: string, auth: import("../../lib/connectors/auth.js").Auth, base?: string | null }} Account
- * @typedef {{ api: "calendar" | "gmail", scope: string, method?: string, path: string,
+ * @typedef {{ api: "calendar" | "gmail" | "drive", scope: string, raw?: boolean, method?: string, path: string,
  *   query?: Record<string, string | number | boolean | string[] | undefined>, body?: any, headers?: Record<string, string> }} Request
  */
 
@@ -72,6 +74,7 @@ export function client({ creds, fetch: f = httpFetch }) {
       let json = null;
       try { json = text ? JSON.parse(text) : {}; } catch {}
       if (!res.ok) throw refusal(req, res.status, json, creds.scrub(text));
+      if (req.raw) return { text: creds.scrub(text) };
       return json ?? {};
     }
   }
