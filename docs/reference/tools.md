@@ -10526,6 +10526,7 @@ The system prompt for a session starting now: the environment brief, then the le
   - `contacts` list of object
   - `context` string
   - `facts` list of string
+  - `no_project_docs` boolean
   - `now` number
   - `project` string
   - `provider` string
