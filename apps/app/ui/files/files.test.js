@@ -94,3 +94,35 @@ test("a file a model made or changed becomes a card, and a delete does not open"
   assert.equal(changedBy({ by: "person:per_x" }), "Changed by per_x");
   assert.equal(changedBy({}), "");
 });
+
+import { applyFormat, continueList } from "./edit-ops.js";
+
+test("formatting wraps and unwraps a selection and keeps the selection on the words", () => {
+  assert.deepEqual(applyFormat("hello world", { start: 6, end: 11 }, "bold"), { text: "hello **world**", sel: { start: 8, end: 13 } });
+  assert.deepEqual(applyFormat("hello **world**", { start: 8, end: 13 }, "bold"), { text: "hello world", sel: { start: 6, end: 11 } });
+  assert.deepEqual(applyFormat("", { start: 0, end: 0 }, "code"), { text: "`text`", sel: { start: 1, end: 5 } });
+  assert.equal(applyFormat("see this", { start: 4, end: 8 }, "link").text, "see [this](https://)");
+});
+
+test("block formats apply to every line touched, and a second press takes them off", () => {
+  const two = "one\ntwo";
+  assert.equal(applyFormat(two, { start: 0, end: 7 }, "bullet").text, "- one\n- two");
+  assert.equal(applyFormat("- one\n- two", { start: 0, end: 11 }, "bullet").text, "one\ntwo");
+  assert.equal(applyFormat(two, { start: 0, end: 7 }, "number").text, "1. one\n2. two");
+  assert.equal(applyFormat("buy milk", { start: 0, end: 0 }, "task").text, "- [ ] buy milk");
+  assert.equal(applyFormat("- [ ] buy milk", { start: 0, end: 0 }, "task").text, "buy milk");
+  assert.equal(applyFormat("Title", { start: 0, end: 0 }, "h2").text, "## Title");
+  assert.equal(applyFormat("## Title", { start: 0, end: 0 }, "h2").text, "Title");
+  assert.equal(applyFormat("## Title", { start: 0, end: 0 }, "h1").text, "# Title");
+  assert.equal(applyFormat("wise", { start: 0, end: 4 }, "quote").text, "> wise");
+  assert.equal(applyFormat("x = 1", { start: 0, end: 5 }, "fence").text, "```\nx = 1\n```\n");
+});
+
+test("Enter continues a list, ends it on an empty item, and leaves other lines alone", () => {
+  assert.deepEqual(continueList("- a", 3), { text: "- a\n- ", at: 6 });
+  assert.deepEqual(continueList("- [x] done", 10), { text: "- [x] done\n- [ ] ", at: 17 });
+  assert.deepEqual(continueList("1. a", 4), { text: "1. a\n2. ", at: 8 });
+  assert.deepEqual(continueList("x\n- ", 4), { text: "x\n", at: 2 });
+  assert.equal(continueList("plain", 5), null);
+  assert.deepEqual(continueList("  - a", 5), { text: "  - a\n  - ", at: 10 });
+});
