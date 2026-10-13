@@ -182,6 +182,9 @@ export class FlowRunner {
       /** @type {{ path: string, message: string, step: string }[]} */ const refused = [];
       for (const n of flowNeeds(flow, cat)) {
         if (!mine.has(n.step)) continue;
+        // A module's own tool and an outward act are held for a person's yes whenever they run, so reaching them is judged then; the check here is for what a step reads and writes.
+        const info = cat.actions[n.action] || {};
+        if (info.tool || OUTWARD.has(info.risk) || n.action === "service.call") continue;
         const d = await this.k.authorize({ chain, action: n.action, resource: n.resource, purpose: "define" }).catch(() => null);
         if (d && d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
       }

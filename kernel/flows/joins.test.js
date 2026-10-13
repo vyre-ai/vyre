@@ -391,7 +391,12 @@ test("sub-flow, through the real kernel's authorize (no pushed rule): an approve
     if (!holds) g.actions = g.actions.filter(a => a !== "flows.run");
     assert.equal(g.actions.includes("flows.run"), holds);
     await install(w, { format: 1, name: "inner_work", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "c", kind: "create", type: "payment", set: { amount: 9 } }] }, ALEX);
-    const { id } = await install(w, flowOf([{ id: "s", kind: "subflow", flow: "inner_work" }]), CARLA);
+    const outer = flowOf([{ id: "s", kind: "subflow", flow: "inner_work" }]);
+    // someone who cannot run the other Flow cannot add a step that runs it (refused when the step is added); one who can adds it, and a different approver who cannot is refused when it runs
+    if (!holds) await assert.rejects(() => install(w, outer, CARLA), /cannot reach/);
+    const added = await w.runner.define(null, outer, ALEX);
+    await w.runner.approve(added.id, added.version, CARLA, added.hash);
+    const { id } = added;
     w.kernel.inbound("payment.received", {});
     await settle(w);
     const [run] = await roots(w, id);
