@@ -285,7 +285,7 @@ export default {
           if (x.project) { const p = find(x.project); if (!p) { noProject.add(String(x.project)); continue; } picks.set(p.slug, [...(picks.get(p.slug) || []), f.id]); }
         }
         if (unknown.length) throw Object.assign(new Error(`not in the last scan: ${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ""}; scan again`), { code: "not_found" });
-        if (noProject.size) throw Object.assign(new Error(`no such project: ${[...noProject].slice(0, 5).join(", ")}; make it with projects.create first`), { code: "not_found" });
+        if (noProject.size) throw Object.assign(new Error(`no such project: ${[...noProject].slice(0, 5).join(", ")}; make the project first, in Projects or by asking Claude Code to create it`), { code: "not_found" });
         // Filed first, as the person (relay), and taken back if the upload cannot start: a project never keeps sessions that did not go.
         const filed = {};
         const undo = [];
