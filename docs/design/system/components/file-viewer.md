@@ -13,7 +13,7 @@ all, so a new file kind or a better editor is made once.
 
 | Surface | Implementing file | Status |
 |---|---|---|
-| App | `apps/app/ui/files/FileViewer.tsx` (@vyre/ui) | built for markdown, code, text, JSON, images, PDF, HTML; documents, sheets, media on the phone are next |
+| App | `apps/app/ui/files/FileViewer.tsx` (@vyre/ui) | built for markdown, code, text, JSON, images, PDF, DOCX, XLSX and CSV, HTML, audio and video (web) |
 | Chat | a file card in the diff block opens it in a sheet (`screens/drive/FileViewerSheet.tsx`) | built |
 
 ## What it picks
@@ -26,7 +26,9 @@ By the file's name, then by the type the server gave (`ui/files/kinds.js`):
 | Code, text | line numbers and colours (the chat's tokenizer), scrolling by row | yes, plain |
 | JSON | a tree that opens and closes | no |
 | Image | zoom in steps, fit | no |
-| PDF | react-pdf in one DOM-only component (`PdfDom.tsx`, "use dom"), zoom | no |
+| PDF | react-pdf in a DOM-only component (`PdfDom.tsx`, "use dom"), zoom | no |
+| DOCX | docx-preview (Apache-2.0) onto pages, `DocxDom.tsx` | no |
+| XLSX, CSV, TSV | a read-only table on TanStack Table (MIT) with sheet tabs, column letters and row numbers, first 2,000 rows; XLSX by read-excel-file (MIT), CSV by Papa Parse (MIT), `SheetDom.tsx`. Old .xls shows the card. | no |
 | HTML | a sandboxed frame with no scripts, no forms, no same-origin (web); a note on a phone | no |
 | Audio, video | the browser's own player (web) | no |
 | Anything else | a card with its size and Download | no |
@@ -49,7 +51,7 @@ whatever the file is called). `bare` leaves out the header when the caller has i
 
 ## Gaps
 
-- [ ] DOCX (docx-preview), spreadsheets (CSV, XLS, XLSX on TanStack table) and audio or video on a phone.
+- [ ] Audio and video on a phone, and old .xls spreadsheets (read-excel-file reads .xlsx only).
 - [ ] The chat opens it in a sheet, not yet in the "In this chat" side panel.
 - [ ] Text selection and links inside a PDF (the text and annotation layers are off).
 - [ ] Files over 8 MB (the Drive's one-call limit; the ranged read exists on the mount branch).
