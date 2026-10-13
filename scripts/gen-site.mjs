@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { page404, downloadsPage } from './site/pages.mjs';
 import { pillarPages, PILLAR_LLMS } from './site/pillars.mjs';
 import { computerPages, COMPUTER_LLMS, COMPUTER_FULL } from './site/computer.mjs';
+import { buildIndustries } from './site/industries.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -83,12 +84,14 @@ const NAV = [
   ['Computer', '/computer/'],
   ['Architecture', '/architecture/'],
   ['Downloads', '/downloads/'],
+  ['Industries', '/for/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
   const links = NAV.map(([t, h]) => {
     const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/')) ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('for') && h === '/for/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -114,7 +117,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -998,6 +1001,9 @@ const PAGES_CTX = { nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STAR, VERS
 page({ ...downloadsPage(PAGES_CTX), ld: [SOFT({ '@id': `${SITE}/downloads/#app` }), crumbs([['Vyre', `${SITE}/`], ['Downloads', `${SITE}/downloads/`]])] });
 writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
 
+// ---------- industry pages (scripts/site/industries.mjs) ----------
+const IND = buildIndustries({ page, esc, eyebrow, crumbs, SITE, VERSION });
+
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
 const SUMMARY = 'Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person\'s yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.';
@@ -1014,6 +1020,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
 ${PILLAR_LLMS(SITE).join('\n')}
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
+${IND.llms}
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
@@ -1055,6 +1062,8 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - The four pillars in depth: ${SITE}/vault/ (sealed credentials, use-only grants, leases), ${SITE}/records/ (custom types, links, link hops in tokens, sealed fields), ${SITE}/flows/ (triggers, approved versions, the runner, holds) and ${SITE}/agents/ (instructions, memory, access, waking on a task).
 
 ${COMPUTER_FULL(SITE, REPO)}
+${IND.full}
+
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.

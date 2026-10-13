@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["", "mac", "windows", "linux", "phone", "downloads", "direction", "architecture", "vault", "records", "flows", "agents", "start", "privacy", "computer", "computer/chrome", "computer/architecture"];
+const PAGES = ["", "mac", "windows", "linux", "phone", "downloads", "direction", "architecture", "vault", "records", "flows", "agents", "start", "privacy", "computer", "computer/chrome", "computer/architecture", "for", "for/law-firms", "for/accounting-firms", "for/consulting-firms", "for/marketing-agencies", "for/real-estate-brokerages"];
 const read = (p) => fs.readFileSync(path.join(SITE, p), "utf8");
 const pageFile = (slug) => (slug ? `${slug}/index.html` : "index.html");
 const BANNED = /[—§]/;
@@ -26,6 +26,7 @@ function exists(href) {
 }
 // Served by the build (scripts/build-site.sh) or a redirect, not committed: the install lines and the box files.
 const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|agenthome|setup\/tokens\.css)$/;
+const BUILT = /^\/(i|w|install\.sh|box(\/.*)?|download\/mac|setup\/tokens\.css|map\/?)$/;
 
 for (const slug of PAGES) {
   test(`site v2: /${slug} metadata, structured data, links and words`, () => {
