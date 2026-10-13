@@ -496,6 +496,11 @@ export default {
     });
 
     config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+      chainPerson, roleOf: async person => {
+        const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        if (m && m.role) return String(m.role);
+        return null;
+      },
       setWords: (a, text, by) => { writeVersion(a, { instructions: text.trim() || null }, { by, approved_by: by }); void mirror.schedule(); } });
 
     ctx.tool("agents.list", {

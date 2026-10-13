@@ -9,6 +9,9 @@ import path from "node:path";
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
    CREATE TABLE agents_vault_items (agent TEXT NOT NULL, item TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, item))`,
+  // Who else may use or edit an agent, besides its creator, the owner and the admins: a person or a role, at one of two levels. Who added each folder link is kept, because a link is judged against the person adding it.
+  `CREATE TABLE agents_access (agent TEXT NOT NULL, kind TEXT NOT NULL, subject TEXT NOT NULL, level TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, kind, subject));
+   ALTER TABLE agents_context_links ADD COLUMN by TEXT`,
 ];
 
 export const DOC_FILES = Object.freeze(["AGENTS.md", "CLAUDE.md"]);
@@ -38,7 +41,7 @@ export function contextBrief(c) {
  * @param {any} ctx
  * @param {{ db: any, root: string, must: (n: string) => any, mayChange: (m: any, a: any) => Promise<boolean>, notYours: (w: string) => Error, guard: (c: any, w: string) => void,
  *   modelMay: (m: any) => boolean, personOf: (m: any) => Promise<string>, scope: (a: any) => Promise<{ projects: any, cwds: string[] }>,
- *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean> }} h
+ *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null> }} h
  */
 export function register(ctx, h) {
   const { db } = h;
@@ -49,8 +52,23 @@ export function register(ctx, h) {
     h.guard(caller, what);
     if (!h.modelMay(meta)) throw Object.assign(new Error("only the person changes an agent's files, context and vault list"), { code: "denied" });
   };
-  const readOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's files"); if (!(await h.mayChange(meta, a)) && !(await h.seesFull(meta))) throw h.notYours("reads its files"); };
-  const writeOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "change another agent's files"); if (!(await h.mayChange(meta, a))) throw h.notYours("changes its files"); };
+  /**
+   * What the caller may do with this agent: "edit" (its creator, the owner, an admin, or anyone given Can edit, by name or by role), "use" (given Can use), or "none".
+   * @param {any} meta @param {any} a @returns {Promise<"edit" | "use" | "none">}
+   */
+  const levelOf = async (meta, a) => {
+    if (await h.mayChange(meta, a)) return "edit";
+    const me = await h.chainPerson(meta);
+    if (!me) return "none";
+    const role = await h.roleOf(me).catch(() => null);
+    const rows = /** @type {any[]} */ (db.prepare("SELECT kind, subject, level FROM agents_access WHERE agent = ?").all(a.name));
+    const mine = rows.filter(r => (r.kind === "person" && r.subject === me) || (role && r.kind === "role" && r.subject === role));
+    return mine.some(r => r.level === "edit") ? "edit" : mine.length ? "use" : "none";
+  };
+  const readOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("reads its files (Can edit)"); };
+  const writeOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "change another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("changes its files (Can edit)"); };
+  const useOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's use"); if ((await levelOf(meta, a)) === "none") throw h.notYours("sees where it is used (Can use)"); };
+  const shareOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "share another agent"); if (!(await h.mayChange(meta, a))) throw h.notYours("shares it"); };
   const claudeFile = (/** @type {any} */ a) => path.join(home(a), "CLAUDE.md");
   const readClaude = (/** @type {any} */ a) => { try { return fs.readFileSync(claudeFile(a), "utf8"); } catch { return ""; } };
   const listFiles = (/** @type {any} */ a) => {
@@ -132,7 +150,17 @@ export function register(ctx, h) {
       try { real = fs.realpathSync(p); if (!fs.statSync(real).isDirectory()) throw new Error("x"); } catch { throw bad("that is not a folder on this machine"); }
       const { cwds } = await h.scope(a);
       if (!cwds.some(c => { try { return inside(fs.realpathSync(c), real); } catch { return false; } })) throw Object.assign(new Error(`${a.name} cannot see that folder: it is not inside one of its projects. Add the folder to a project ${a.name} works in first`), { code: "denied" });
-      db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, at) VALUES (?,?,?)").run(a.name, real, Date.now());
+      // A link is judged against the person ADDING it: she can link only a folder of a project she can read herself.
+      const person = await h.personOf(meta);
+      if (person) {
+        const pl = await ctx.call("projects.list", {}).catch(() => null);
+        const owning = (pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects : []).filter((/** @type {any} */ p) => (a.projects === "*" || a.projects.includes(p.slug)) && [p.home, ...(p.workspaces || p.folders || [])].filter(Boolean).some((/** @type {string} */ c) => { try { return inside(fs.realpathSync(c), real); } catch { return false; } }));
+        for (const p of owning) {
+          const may = await ctx.call("work.project.may-read", { project: p.slug, person }).catch(() => null);
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Link a folder of a project you can open`), { code: "denied" });
+        }
+      }
+      db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, by, at) VALUES (?,?,?,?)").run(a.name, real, await h.personOf(meta), Date.now());
       return { ok: true, path: real };
     },
   });
@@ -165,12 +193,42 @@ export function register(ctx, h) {
     run: async ({ agent, item }, meta) => { const a = h.must(agent); await writeOk(meta, a); db.prepare("DELETE FROM agents_vault_items WHERE agent = ? AND item = ?").run(a.name, String(item)); return { ok: true }; },
   });
 
+  ctx.tool("agents.access.get", {
+    description: "Who may use or edit an agent besides its creator, the owner and the admins, and the people and roles that could be picked.",
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }, meta) => {
+      const a = h.must(agent);
+      await writeOk(meta, a);
+      const access = /** @type {any[]} */ (db.prepare("SELECT kind, subject, level, by, at FROM agents_access WHERE agent = ? ORDER BY at").all(a.name)).map(r => ({ kind: String(r.kind), subject: String(r.subject), level: String(r.level), by: r.by == null ? null : String(r.by) }));
+      const sp = ctx.kernel && ctx.kernel.space ? await ctx.call("spaces.members.list", { space: ctx.kernel.space }).catch(() => null) : null;
+      const people = sp && !sp.error && sp.data && Array.isArray(sp.data.members) ? sp.data.members.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.person), role: String(m.role || "") })) : [];
+      const rl = await ctx.call("roles.list", {}).catch(() => null);
+      const rrows = rl && !rl.error && rl.data ? (Array.isArray(rl.data) ? rl.data : rl.data.roles || []) : [];
+      const roles = rrows.map((/** @type {any} */ r) => ({ id: String(r.id || r.role || r.name), name: String(r.name || r.label || r.id) })).filter((/** @type {any} */ r) => r.id && r.id !== "owner");
+      return { access, people, roles };
+    },
+  });
+  ctx.tool("agents.access.set", {
+    description: "Share an agent with a person or a role: Can use (chat with it, assign it, use it in flows) or Can edit (change its instructions, context, models and links). level null takes the access away. Only its creator, the owner or an admin shares it.",
+    input: { type: "object", required: ["agent", "kind", "subject"], properties: { agent: { type: "string" }, kind: { type: "string", enum: ["person", "role"] }, subject: { type: "string" }, level: { type: ["string", "null"], enum: ["use", "edit", null] } } },
+    run: async ({ agent, kind, subject, level }, meta) => {
+      const a = h.must(agent);
+      await shareOk(meta, a);
+      if (!["person", "role"].includes(kind) || typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name a person or a role");
+      if (level === null || level === undefined) { db.prepare("DELETE FROM agents_access WHERE agent = ? AND kind = ? AND subject = ?").run(a.name, kind, subject); return { ok: true }; }
+      if (!["use", "edit"].includes(level)) throw bad("level is use or edit");
+      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
+      db.prepare("INSERT INTO agents_access (agent, kind, subject, level, by, at) VALUES (?,?,?,?,?,?) ON CONFLICT(agent, kind, subject) DO UPDATE SET level = excluded.level, by = excluded.by, at = excluded.at").run(a.name, kind, subject, level, await h.personOf(meta), Date.now());
+      return { ok: true };
+    },
+  });
+
   ctx.tool("agents.used", {
     description: "Where an agent is used: its chats, and the flows that name it as a doer.",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
     run: async ({ agent }, meta) => {
       const a = h.must(agent);
-      await readOk(meta, a);
+      await useOk(meta, a);
       const th = await ctx.call("threads.list", { agent: a.name }).catch(() => null);
       const rows = th && !th.error && Array.isArray(th.data) ? th.data : th && th.data && Array.isArray(th.data.threads) ? th.data.threads : [];
       const chats = rows.slice(0, 50).map((/** @type {any} */ t) => ({ id: String(t.id), title: String(t.title || t.name || t.summary || "Chat") }));

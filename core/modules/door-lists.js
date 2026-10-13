@@ -11,7 +11,9 @@
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
-  "agents.context.list", "agents.docs.get", "agents.used", "agents.vault.list",
+  // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
+  "agents.access.get", "agents.access.set", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
+  "agents.vault.assign", "agents.vault.list", "agents.vault.unassign",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
@@ -53,8 +55,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  // An agent's instructions, context, and Vault list are set by the owner or an admin (the readers above stay open: they show only an agent's owner its files).
-  "agents.context.add", "agents.context.link", "agents.context.remove", "agents.context.unlink", "agents.docs.set", "agents.vault.assign", "agents.vault.unassign",
   "agents.ask", "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
   "appmods.connection", "appmods.domain.add", "appmods.domain.list", "appmods.domain.remove", "appmods.hosts", "appmods.install", "appmods.logs", "appmods.open",

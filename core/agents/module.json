@@ -16,7 +16,8 @@
       "agents.docs.get",
       "agents.context.list",
       "agents.vault.list",
-      "agents.used"
+      "agents.used",
+      "agents.access.get"
     ],
     "tools": [
       {
@@ -177,6 +178,16 @@
         "name": "agents.used",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "agents.access.get",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "agents.access.set",
+        "reach": "anyone",
+        "effect": "write"
       }
     ]
   },
@@ -268,7 +279,8 @@
             }
           ]
         }
-      ]
+      ],
+      "membership": true
     }
   },
   "teaches": {
