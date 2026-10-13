@@ -131,7 +131,8 @@ function Rail(p: RailProps) {
   const reduced = useReducedMotion();
   const remembered = useRail();
   const folded = p.folded ?? remembered.collapsed, toggle = remembered.toggle;
-  const panel = p.panel;
+  // Folded, the rail is the main places: a drill's own list is a column of names, which icons alone cannot tell apart.
+  const panel = folded ? null : p.panel;
   // Cmd or Ctrl and a backslash folds the rail; Escape leaves a panel (not while a field has the keys).
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;

@@ -4,26 +4,16 @@
 // applyRole `custom`, which refuses anything outside the base role). Every call runs under the caller's own chain (lib/gateway-door.js); nothing here decides what a person may do, the kernel does.
 import { createDoor } from "../../lib/gateway-door.js";
 import { ROLE_IDS, ROLE_MAY_SET } from "../../kernel/contracts/index.js";
-import { CAN, WHERE_KINDS, ACCESS_LEVELS, CUSTOM_BASES, TOOLS, TOOL_IDS, BUILTIN_VIEW, BUILTIN_TOOLS, ALIASES } from "./catalogue.js";
-import { checkRole, expandRole } from "./definition.js";
+import { CAN, WHERE_KINDS, ACCESS_LEVELS, CUSTOM_BASES, TOOLS, TOOL_IDS, BUILTIN_VIEW, BUILTIN_TOOLS, ALIASES } from "../../lib/roles/catalogue.js";
+import { checkRole, expandRole } from "../../lib/roles/definition.js";
+import { readRoles, ROLE_TYPE } from "../../lib/roles/store.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
-const TYPE = "def-role";
+const TYPE = ROLE_TYPE;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
-/** Read the Space's custom roles. @returns {Promise<Map<string, { row: string, version: number, role: any }>>} */
-export async function readRoles(/** @type {any} */ gw, /** @type {any} */ chain) {
-  const out = new Map();
-  let r;
-  try { r = await gw.records.query(chain, TYPE, { page: { limit: 500 } }); } catch (/** @type {any} */ e) { if (e && (e.code === "unknown_type" || e.code === "not_found")) return out; throw e; }
-  for (const x of r.rows || []) {
-    let body; try { body = JSON.parse(String(x.data && x.data.body)); } catch { continue; }
-    if (body && body.v === 1 && body.custom === true && typeof body.role === "object") out.set(String(body.role.id), { row: x.id, version: x.version, role: body.role });
-  }
-  return out;
-}
 const bodyOf = (/** @type {any} */ role) => JSON.stringify({ v: 1, custom: true, role });
 const types = async (/** @type {any} */ gw, /** @type {any} */ chain) => ((await gw.definitions(chain)) || []).map((/** @type {any} */ t) => ({ name: t.name, fields: t.fields || [] }));
 

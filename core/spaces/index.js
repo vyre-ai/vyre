@@ -2078,7 +2078,7 @@ export default {
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
-          const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
+          const custom = !ROLE_IDS.includes(i.role) && i.role !== "guest" ? await (await import("../../lib/roles/invite.js")).customForInvite(kernelHandle(row.id).gateway, k.chain, row.id, String(i.role)) : null;
           const seats = Array.isArray(i.seats) ? i.seats : [];
           if (seats.length) {
             const me = String(k.chain.hops[0].actor.id), mine = ((await kernelHandle(row.id).gateway.grants.members.list(k.chain)) || []).find((/** @type {any} */ m) => m.person === me);
