@@ -1,6 +1,6 @@
 # Vyre
 
-> Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
+> Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.
 
 Current release: 0.3.0. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
 
@@ -13,7 +13,7 @@ Current release: 0.3.0. Site: https://vyre.run. Source: https://github.com/vyre-
 
 ## Devices
 - [Mac: Vyre](https://vyre.run/mac/): the Vyre app in its own window
-- [Windows: Vyre Lumen](https://vyre.run/windows/): tray app with an Alt+Space panel
+- [Windows: Vyre](https://vyre.run/windows/): tray app with an Alt+Space panel
 - [Linux server](https://vyre.run/linux/): where Vyre runs
 - [Phone](https://vyre.run/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 

@@ -1,6 +1,6 @@
 # Vyre, in full
 
-Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
+Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.
 
 Release 0.3.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
@@ -18,7 +18,7 @@ Release 0.3.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Lice
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
-- Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
+- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 

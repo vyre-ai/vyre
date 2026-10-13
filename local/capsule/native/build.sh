@@ -82,9 +82,9 @@ PLIST
       find "$here/Sources/Extensions" -name Info.plist.part -exec cat {} \; 2>/dev/null
       printf '</dict>\n</plist>\n'
     } > "$app/Contents/Info.plist"
-    # The app icon and the Dock icon: the approved master mark (docs/design/brand/export/vyre), as an icns made here with sips and iconutil.
+    # The app icon and the Dock icon: the app icon the site and the app use everywhere (apps/app/assets/icon.png, the halftone V on a card with a folded corner), as an icns made here with sips and iconutil.
     # Missing is not an error: the app then has the generic icon and everything else works.
-    master="$here/../../../docs/design/brand/export/vyre/vyre-master-1024.png"
+    master="$here/../../../apps/app/assets/icon.png"
     if [ -f "$master" ] && command -v iconutil >/dev/null 2>&1; then
       iset="$out/gen/Vyre.iconset"; rm -rf "$iset"; mkdir -p "$iset"
       for sz in 16 32 128 256 512; do
