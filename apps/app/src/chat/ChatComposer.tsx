@@ -134,6 +134,7 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
+        { key: "files", group: "Add", label: "Files", sub: "From Vyre Files or your computer", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
         { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
@@ -276,7 +277,7 @@ export function ChatComposer(p: ComposerProps) {
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={onKey}
-        style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : 24, maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: 4, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
+        style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : !expanded && p.phone ? T : 24, ...(!expanded && p.phone ? { height: T } : {}), maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: expanded ? 4 : 10, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
       />
   );
 
@@ -336,8 +337,8 @@ export function ChatComposer(p: ComposerProps) {
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
         {!expanded ? (
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
-            <Tool big={big} icon="plus" label="Attach" onPress={p.onAttachFile} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Tool big={big} icon="clip" label="Files" onPress={() => (p.vyreFiles && p.onAttachVyreFile ? openPop("files") : p.onAttachFile?.())} />
             {field}
             {sendBtn}
           </View>

@@ -31,7 +31,6 @@ import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 import { ChatComposer } from "../src/chat/ChatComposer";
-import { ChatComposerLegacy } from "../src/chat/legacy/ChatComposerLegacy";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -231,7 +230,6 @@ function ComposerCompare() {
   const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
   return (
     <View style={{ gap: 24 }}>
-      <View style={{ gap: 6 }}><Text size="caption" tone="label">Before</Text><ChatComposerLegacy {...common} phone={false} /></View>
       <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>
       <View style={{ gap: 6, maxWidth: 390 }}><Text size="caption" tone="label">After, phone width</Text><ChatComposer {...common} phone autoFocus={false} /></View>
     </View>
