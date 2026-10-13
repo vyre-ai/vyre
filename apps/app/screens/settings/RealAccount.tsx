@@ -7,6 +7,7 @@ import { HIDDEN, claimBlocked } from "../shell/rc";
 import { Linking, View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
+import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
 import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
@@ -40,6 +41,7 @@ export function RealAccount() {
               {ways.length ? ways.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={e.self ? <Chip tone="ok">This device</Chip> : removable(e) ? <Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} /> : undefined} /></View>) : <EmptyState title="No devices on your list" body="Pair a device and it appears here." />}
             </Card>
           </Group>
+          <GithubCard />
           <Group title="Recovery">
             <Card className="gap-s3">
               <Text strong>Recovery code</Text>

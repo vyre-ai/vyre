@@ -41,7 +41,7 @@ The code is held for you for 24 hours and works once. If it runs out, reserve th
 ## 2. Install the Vyre app
 
 - **Mac.** Download the dmg for your Mac from the [latest release](https://github.com/vyre-ai/vyre/releases/latest):
-  `Vyre-Lumen-aarch64.dmg` for Apple silicon, `Vyre-Lumen-x86_64.dmg` for an Intel Mac. Open it and drag
+  `Vyre-aarch64.dmg` for Apple silicon, `Vyre-x86_64.dmg` for an Intel Mac. Open it and drag
   Vyre Lumen to Applications. The app is not yet signed with an Apple Developer ID, so you sideload it:
   open it once, and if macOS says it cannot check the app, go to System Settings, Privacy and Security,
   and choose **Open Anyway**.

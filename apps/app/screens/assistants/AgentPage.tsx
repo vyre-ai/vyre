@@ -3,34 +3,39 @@ import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
+import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { Page, Sec } from "../places/Frame";
 import { agent } from "./agent";
 import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, type AgentFull, type Computer, type UsageFull, type Watcher } from "./agent-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
+type Tab = "instructions" | "context" | "models" | "used" | "activity";
+const TABS: [Tab, string][] = [["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["used", "Where it is used"], ["activity", "Activity"]];
+
 export default function AgentPage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const who = String(name || "");
   const [a, setA] = useState<AgentFull | null | undefined>(undefined);
   const [err, setErr] = useState("");
-  const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your assistants did not answer."))); }, [who]);
+  const [tab, setTab] = useState<Tab>("instructions");
+  const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={who} back="/u/settings/assistants" marks={[markRef(a?.kind === "assistant" ? "assistant" : "teammate", who)]}>
+    <Page title={who} back="/u/assistants" marks={[markRef(a?.kind === "assistant" ? "assistant" : "teammate", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
-      {a === null ? <Card><EmptyState title={`There is no assistant called ${who}`} body="It may have been removed." /></Card> : null}
+      {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}
       {a ? (
         <>
           <Header a={a} />
-          <Job a={a} onSaved={(instructions) => setA({ ...a, instructions })} />
-          <Talk name={a.name} />
-          <Wakes name={a.name} />
-          <Usage name={a.name} />
-          <Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} />
-          <ComputerCard a={a} onChange={load} />
+          <Tabs items={TABS} value={tab} onChange={setTab} />
+          {tab === "instructions" ? <Instructions name={a.name} /> : null}
+          {tab === "context" ? <Context name={a.name} /> : null}
+          {tab === "models" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
+          {tab === "used" ? <><Used name={a.name} /><Sharing name={a.name} /></> : null}
+          {tab === "activity" ? <><Talk name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /><ComputerCard a={a} onChange={load} /></> : null}
         </>
       ) : null}
     </Page>
@@ -46,32 +51,6 @@ function Header({ a }: { a: AgentFull }) {
         <Text size="caption" tone="label">{a.status === "working" ? "Working now." : a.status === "stopped" ? "Paused." : "Idle. Nothing is running."}</Text>
       </View>
     </View>
-  );
-}
-
-function Job({ a, onSaved }: { a: AgentFull; onSaved: (v: string) => void }) {
-  const [edit, setEdit] = useState(false);
-  const [text, setText] = useState(a.instructions || "");
-  const [busy, setBusy] = useState(false);
-  const save = () => { setBusy(true); agent.setJob(a.name, text).then(() => { onSaved(text.trim()); setEdit(false); showToast("Saved. It applies from the next turn."); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
-  const where = a.projects === "*" ? "Every project" : Array.isArray(a.projects) && a.projects.length ? a.projects.join(", ") : "No projects yet";
-  return (
-    <Sec title="Job">
-      <Card className="gap-s2">
-        {edit ? (
-          <>
-            <Field name={`${a.name}'s job`} value={text} onChangeText={setText} multiline lines={4} />
-            <View className="flex-row gap-s2"><Button size="sm" label="Save" disabled={busy} onPress={save} /><Button size="sm" kind="ghost" label="Cancel" onPress={() => { setText(a.instructions || ""); setEdit(false); }} /></View>
-          </>
-        ) : (
-          <>
-            <Text tone={a.instructions ? "default" : "muted"}>{a.instructions || "No instructions yet."}</Text>
-            <Text size="caption" tone="label">{`Works in: ${where}`}</Text>
-            <View className="flex-row"><Button size="sm" kind="ghost" label={a.instructions ? "Edit" : "Write its job"} onPress={() => setEdit(true)} /></View>
-          </>
-        )}
-      </Card>
-    </Sec>
   );
 }
 

@@ -26,15 +26,15 @@ test("switching a setting off removes it, and what the editor does not show is k
   assert.equal(out.owned_by, "kernel");
 });
 
-test("sealing keeps the kind and adds the seal; unsealing takes it off, but a kind sealed field stays sealed", () => {
+test("a sealed field is stored as kind sealed with its seal (the kernel only seals that kind); one that is already sealed stays sealed", () => {
   const def = { name: "acct", kind: "text", label: "Account" };
   const sealed = applyDraft(def, { ...draftOf(def), sealed: true });
-  assert.equal(sealed.kind, "text");
+  assert.equal(sealed.kind, "sealed");
   assert.deepEqual(sealed.seal, { level: "ai", class: "free" });
-  assert.equal("seal" in applyDraft(sealed, { ...draftOf(sealed), sealed: false }), false);
   const own = { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "human", class: "us-ssn" } };
   assert.equal(draftOf(own).sealed, true);
   assert.deepEqual(applyDraft(own, draftOf(own)), own);
+  assert.equal(applyDraft(own, { ...draftOf(own), sealed: false }).kind, "sealed", "a sealed field cannot be unsealed here");
 });
 
 test("a new field becomes a definition with a name from its label", () => {
