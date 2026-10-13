@@ -55,3 +55,19 @@ export async function resolveTags(text, io) {
   }
   return out;
 }
+
+/**
+ * The text with its tags resolved for the people who will read it: each tag is read through every one of their own chains, and a tag that any of them cannot read stays "[unavailable: ...]" for all,
+ * so nobody is handed a record through someone else's reach. With nobody to read it (a role nobody holds), every tag is unavailable.
+ * @param {string} text @param {{ read: (type: string, id: string) => Promise<any>, query: (type: string, limit: number) => Promise<any[]>, here?: string | null }[]} ios
+ */
+export async function resolveTagsFor(text, ios) {
+  let out = String(text ?? "");
+  for (const t of tagsIn(out)) {
+    const parts = [];
+    for (const io of ios) parts.push(await resolveTags(t.token, io));
+    const s = !parts.length || parts.some(x => x.startsWith("[unavailable")) ? `[unavailable: ${t.token}]` : parts[0];
+    out = out.split(t.token).join(s);
+  }
+  return out;
+}

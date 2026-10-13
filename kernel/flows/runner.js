@@ -18,7 +18,7 @@ import { parse, evaluate, truthy } from "./expr.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
 import { stampAdders } from "./adders.js";
-import { resolveTags } from "./tags.js";
+import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
@@ -1734,10 +1734,21 @@ export class FlowRunner {
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
       const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record });
-      // What each person on the task is told: tags in a box are resolved now, through the approver's own chain, so a record is read as it is at this moment and a sealed field stays sealed.
-      const chainNow = this.#chain(ctx);
-      const tag = (/** @type {any} */ t) => typeof t === "string" && t ? resolveTags(t, { here: record ?? run.record ?? null, read: async (type, id) => this.k.records.get(chainNow, type, id), query: async (type, n) => (await this.k.records.query(chainNow, type, { page: { limit: n } })).rows }) : Promise.resolve(undefined);
-      const told = { instructions: await tag(s.kind === "agent" ? val(s.instructions) : undefined), brief: await tag(s.brief), approver: await tag(s.notes && s.notes.approver), followers: await tag(s.notes && s.notes.followers) };
+      // What each person on the task is told: tags in a box are resolved now, through THAT reader's own chain (a role: each holder's), so a record is read as it is at this moment, a sealed field stays
+      // sealed, and nobody is handed a record through someone else's reach.
+      const ioOf = (/** @type {any} */ actor) => {
+        const ch = this.chains.forFlow({ flow: run.flow, space: run.space, approver: actor, tainted: run.tainted, run: run.id, source_spaces: run.source_spaces });
+        return { here: record ?? run.record ?? null, read: async (/** @type {string} */ type, /** @type {string} */ id) => this.k.records.get(ch, type, id), query: async (/** @type {string} */ type, /** @type {number} */ n) => (await this.k.records.query(ch, type, { page: { limit: n } })).rows };
+      };
+      const tagFor = async (/** @type {any} */ t, /** @type {any[]} */ readers) => { if (typeof t !== "string" || !t) return undefined; let ios = []; try { ios = readers.map(ioOf); } catch { ios = []; } return resolveTagsFor(t, readers.length ? ios : []); };
+      const checkerReaders = async () => {
+        if (!s.checker) return [];
+        const [kind, ...rest] = String(s.checker).split(":");
+        if (kind === "person") return [{ kind: "person", id: rest.join(":"), space: run.space }];
+        const held = this.ports && this.ports.roles ? await this.ports.roles(run.space, rest.join(":")) : [];
+        return Array.isArray(held) ? held : [];
+      };
+      const told = { instructions: await tagFor(s.kind === "agent" ? val(s.instructions) : undefined, [doer]), brief: await tagFor(s.brief, [doer]), approver: await tagFor(s.notes && s.notes.approver, await checkerReaders()) };
       const spec = s.kind === "ask"
         ? { title, doer, ...(helpers.length ? { helpers } : {}), output: { kind: "decision" }, source: "flow_step", ...(record ? { record } : {}), ...(s.form ? { form: s.form } : {}) }
         : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: told.instructions ?? String(val(s.instructions) ?? ""), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}), ...(s.kind === "assign" && told.brief ? { note: told.brief.slice(0, 400) } : {}), ...(s.kind === "assign" && (told.brief || told.approver) ? { form: { ...(told.brief ? { brief: told.brief } : {}), ...(told.approver ? { approver_notes: told.approver } : {}) } } : {}) };
@@ -1749,7 +1760,9 @@ export class FlowRunner {
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
           const f = await this.#actor(ctx, ref, { record });
-          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n").slice(0, 400), form: { brief: [told.followers, `Task: ${title}`].filter(Boolean).join("\n\n") }, flow: run.flow }, { idem: `${idem}:follow${i}` });
+          const mine = await tagFor(s.notes && s.notes.followers, [f.doer]);
+          const text = [mine, `Task: ${title}`].filter(Boolean).join("\n\n");
+          await this.k.ask.request(this.#chain(ctx), { title: `Following: ${title}`, doer: f.doer, output: { kind: "note" }, source: "flow_step", ...(record ? { record } : {}), note: text.slice(0, 400), form: { brief: text }, flow: run.flow }, { idem: `${idem}:follow${i}` });
         } catch (e) { this.#note(ctx, s, `follower ${ref} was not told: ${/** @type {Error} */ (e).message}`); }
       }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);

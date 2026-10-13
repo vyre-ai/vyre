@@ -47,3 +47,20 @@ test("at run, the boxes are resolved from the live record and each follower gets
   assert.equal(follow.doer.id, ALEX.id);
   assert.match(follow.form.brief, /Heads up on Jane/);
 });
+
+test("each box is resolved for its own reader: a record the assignee cannot read is not handed to them through the follower's reach", async () => {
+  const w = await world();
+  const chain = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: w.cat.space });
+  const m = await w.kernel.records.create(chain, "matter", { client: "Jane", stage: "Intake" });
+  const { id } = await install(w, base([{ id: "go", kind: "assign", to: "person:" + BOB.id, title: "Call", output: { kind: "note" }, brief: "Call [[field:this#client]]", notes: { followers: "FYI [[field:this#client]]" }, followers: ["person:" + ALEX.id], record: m.urn }]));
+  w.kernel.rules.push({ match: i => i.action === "records.read" && i.chain.hops.at(-1).actor.id === BOB.id && i.chain.hops[0].actor.kind === "automation", effect: "deny", reason: "no access" });
+  w.kernel.denied.add(BOB.id);
+  await w.runner.start(id, {}, w.kernel.as(ALEX));
+  await settle(w);
+  await w.kernel.pump();
+  const rows = w.kernel.tasks;
+  const main = rows.find(t => t.title === "Call"), follow = rows.find(t => t.title === "Following: Call");
+  assert.ok(main && follow, "both tasks exist");
+  assert.match(main.form.brief, /\[unavailable: /, "the assignee cannot read it, so the tag is not resolved for them");
+  assert.match(follow.form.brief, /FYI Jane/, "the follower can, so theirs is");
+});
