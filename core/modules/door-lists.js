@@ -109,7 +109,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "glass.files.upload", "glass.open", "glass.release", "glass.take", "glass.targets",
   "goals.accept",
   "google.accounts", "google.add", "google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today",
-  "google.calendar.update", "google.connect", "google.connect.cancel", "google.connect.finish", "google.find", "google.mail.draft", "google.mail.read",
+  "google.calendar.update", "google.connect", "google.connect.cancel", "google.connect.finish", "google.drive.read", "google.drive.search", "google.find", "google.mail.draft", "google.mail.read",
   "google.mail.search", "google.mail.send", "google.members.email", "google.open", "google.remove", "google.test",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
   "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",

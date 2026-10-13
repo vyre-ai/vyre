@@ -31,6 +31,7 @@ import { calendar, fieldsOf, dayRange } from "./calendar.js";
 import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
 import { connector } from "./connect.js";
+import { drive } from "./drive.js";
 import { scopeFor, requireOwner, emailProblem } from "./member-scope.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -68,6 +69,7 @@ export default {
     const { request } = client({ creds });
     const cal = calendar({ request, now });
     const gm = mail({ request });
+    const dr = drive({ request });
 
     /** Run a tool body and scrub what comes back, errors included; codes pass through. */
     // A team member's calls see only their own mailbox from the firm key; the owner and the home's own modules see every account (member-scope.js). The scope is resolved once per call.
@@ -395,6 +397,24 @@ export default {
       description: "Search Gmail, newest first, across every account unless one is named: [{id, thread_id, account, from, to, subject, date, snippet, url}].",
       input: obj({ q: { type: "string", description: "a Gmail query, such as from:dana subject:invoice newer_than:7d is:unread, or plain words" }, account, limit: int }, ["q"]),
       run: safe(({ q, account: a, limit }) => gm.search(forRead(visible(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
+    });
+
+    ctx.tool("google.drive.search", {
+      description: "Search Google Drive by words in the name or text, newest first: [{account, id, name, type, modified, url}]. A team member searches their own Drive only.",
+      input: obj({ q: str, account, limit: int }, ["q"]),
+      run: safe(({ q, account: a, limit }) => dr.search(forRead(visible(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
+    });
+
+    ctx.tool("google.drive.read", {
+      description: "Read one Drive file (id) as text: a Google doc, slide deck or sheet is exported, plain text is read; other files give their name and link. Capped near 20,000 characters.",
+      input: obj({ id: str, account }, ["id"]),
+      run: safe(async ({ id, account: a }) => {
+        let last;
+        for (const acct of forRead(visible(), named(a))) {
+          try { return await dr.read(acct, { id }); } catch (e) { last = e; if (/** @type {any} */ (e).status !== 404) throw e; }
+        }
+        throw last;
+      }),
     });
 
     ctx.tool("google.mail.read", {

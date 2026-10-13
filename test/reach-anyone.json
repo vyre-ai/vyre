@@ -749,6 +749,18 @@
    "module": "google",
    "reason": "read-only: names and states, never a value"
   },
+  "google.drive.read": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.drive.search": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.members.email": {
+   "module": "google",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before any list, set or clear"
+  },
   "google.mail.draft": {
    "module": "google",
    "reason": "a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
