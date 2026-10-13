@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { TextInput } from "react-native";
 import { Platform, Pressable, ScrollView, View } from "react-native";
-import { AvatarStack, Button, Card, Chip, Menu, IconButton, Text } from "@vyre/ui";
+import { AvatarStack, Button, Card, Chip, Field, Menu, IconButton, Text } from "@vyre/ui";
 import type { Body } from "./model";
 import * as E from "./edit";
 import { boardColumns, stageProgress, type Card as TaskCard, type Person } from "./board";
 import { usePhone } from "../places/Page";
+import { applyStageSet, setLabel, STAGE_SETS, type At, type KeyResult } from "./compose";
 
 type Who = { id: string; name: string };
 
@@ -45,12 +47,18 @@ function People({ c }: { c: TaskCard }) {
   );
 }
 
-function TaskCardView({ c, selected, onOpen }: { c: TaskCard; selected: boolean; onOpen: () => void }) {
+function TaskCardView({ c, selected, onOpen, hints }: { c: TaskCard; selected: boolean; onOpen: () => void; hints?: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${c.title}, open its settings`} onPress={onOpen}>
       <Card><View className={`gap-s2 p-s3 ${selected ? "rounded-card border border-edge-strong" : ""}`}>
         <Text strong>{c.title || "Untitled task"}</Text>
         <People c={c} />
+        {hints && (!c.due || c.assignee.label === "The owner") ? (
+          <View className="flex-row flex-wrap gap-s1">
+            {c.assignee.label === "The owner" ? <Text size="caption" tone="faint">Add who</Text> : null}
+            {!c.due ? <Text size="caption" tone="faint">Add when</Text> : null}
+          </View>
+        ) : null}
         {c.due || c.needsYes || c.optional || c.group ? (
           <View className="flex-row flex-wrap gap-s1">
             {c.group ? <Chip>{c.group}</Chip> : null}
@@ -64,11 +72,32 @@ function TaskCardView({ c, selected, onOpen }: { c: TaskCard; selected: boolean;
   );
 }
 
+/** The line at the end of a stage where tasks are typed: Enter adds one and opens the next, Tab on an empty line starts a stage, Shift+Tab goes back, Backspace on an empty line takes the last task back. */
+function AddLine({ at, focused, onKey }: { at: At; focused: boolean; onKey: (text: string, key: string) => KeyResult }) {
+  const [text, setText] = useState("");
+  const ref = useRef<TextInput>(null);
+  useEffect(() => { if (focused) ref.current?.focus(); }, [focused]);
+  return (
+    <Field name={`Add a task to stage ${at.si + 1}`} value={text} onChangeText={setText} placeholder="Add a task" inputRef={ref}
+      onKey={(k, e) => {
+        const key = k === "Tab" && e?.shiftKey ? "Shift+Tab" : k;
+        if (!["Enter", "Tab", "Shift+Tab", "Backspace"].includes(key)) return;
+        if (key === "Backspace" && text !== "") return;
+        if (key === "Tab" || key === "Shift+Tab") e?.preventDefault?.();
+        const r = onKey(text, key);
+        if (r.clear) setText("");
+        if (r.fill !== undefined) setText(r.fill);
+        // a single-line input blurs itself when Enter is pressed, after this handler: take the focus back (the line that is now next is this one, or the one the move named)
+        if (r.focus.si === at.si) for (const ms of [0, 60, 160]) setTimeout(() => ref.current?.focus(), ms);
+      }} />
+  );
+}
+
 /**
  * The pipeline: a column per stage with its rule on top and its tasks as cards, a "+" at the end of each column and one for a new stage. A card opens the task's settings (onOpen). On a phone the stages stack.
  * Everything changes the working copy through edit.ts; nothing here talks to the box.
  */
-export function Board({ body, onChange, selected, onOpen, people, agents, editable }: { body: Body; onChange: (b: Body) => void; selected: { si: number; ti: number } | null; onOpen: (si: number, ti: number) => void; people: Who[]; agents: Who[]; editable: boolean }) {
+export function Board({ body, onChange, selected, onOpen, people, agents, editable, compose }: { body: Body; onChange: (b: Body) => void; selected: { si: number; ti: number } | null; onOpen: (si: number, ti: number) => void; people: Who[]; agents: Who[]; editable: boolean; /** A draft being written: stage titles are typed in place, each stage ends in a line to type tasks, an empty first stage offers stage sets. */ compose?: { focus: At | null; onKey: (at: At, text: string, key: string) => KeyResult } }) {
   const phone = usePhone();
   const cols = boardColumns(body, people, agents);
   const none = E.stageModeOf(body) === "none";
@@ -81,7 +110,7 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
     <DragBox key={col.index} className="gap-s2" style={phone ? undefined : { width: COLUMN_WIDTH }} onDrop={editable ? (w) => dropColumn(w, col.index, col.tasks.length) : undefined}>
       <DragBox className="flex-row items-center gap-s2" what={editable && !none ? `stage:${col.index}` : undefined}>
         <View className="min-w-0 flex-1">
-          <View className="flex-row flex-wrap items-center gap-s2"><Text strong numberOfLines={1}>{col.name}</Text>{none ? null : <Chip>{stageProgress(col.index, cols.length)}</Chip>}</View>
+          {compose && !none ? <Field name={`Name of stage ${col.index + 1}`} value={col.name} onChangeText={(v: string) => onChange(E.renameStage(body, col.index, v))} /> : <View className="flex-row flex-wrap items-center gap-s2"><Text strong numberOfLines={1}>{col.name}</Text>{none ? null : <Chip>{stageProgress(col.index, cols.length)}</Chip>}</View>}
           {col.rule ? <Text size="caption" tone="label" numberOfLines={2}>{col.rule}</Text> : null}
         </View>
         {editable && !none ? (
@@ -94,10 +123,17 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
       </DragBox>
       {col.tasks.map((c) => (
         <DragBox key={c.index} what={editable ? `task:${col.index}:${c.index}` : undefined} onDrop={editable ? (w) => dropTask(w, col.index, c.index) : undefined}>
-          <TaskCardView c={c} selected={selected?.si === col.index && selected?.ti === c.index} onOpen={() => onOpen(col.index, c.index)} />
+          <TaskCardView c={c} selected={selected?.si === col.index && selected?.ti === c.index} onOpen={() => onOpen(col.index, c.index)} hints={Boolean(compose)} />
         </DragBox>
       ))}
-      {editable ? <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a task" onPress={() => { const next = E.addTask(body, col.index); onChange(next); onOpen(col.index, (next.stages[col.index].tasks || []).length - 1); }} /></View> : null}
+      {compose && editable ? <AddLine at={{ si: col.index, ti: col.tasks.length }} focused={compose.focus?.si === col.index && compose.focus?.ti === col.tasks.length} onKey={(t, k) => compose.onKey({ si: col.index, ti: col.tasks.length }, t, k)} /> : null}
+      {compose && editable && col.index === 0 && !col.tasks.length && body.stages.every((s) => /^Stage \d+$|^Done$/.test(s.name)) ? (
+        <View className="gap-s1">
+          <Text size="caption" tone="label">Start from the usual stages</Text>
+          <View className="flex-row flex-wrap gap-s1">{STAGE_SETS.map((set) => <Chip key={set.id} onPress={() => onChange(applyStageSet(body, set.id))}>{setLabel(set.stages)}</Chip>)}</View>
+        </View>
+      ) : null}
+      {editable && !compose ? <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a task" onPress={() => { const next = E.addTask(body, col.index); onChange(next); onOpen(col.index, (next.stages[col.index].tasks || []).length - 1); }} /></View> : null}
     </DragBox>
   );
   const add = editable && !none ? <View key="add" className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a stage" onPress={() => onChange(E.addStage(body))} /></View> : null;
