@@ -21,9 +21,9 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
     <P.Root checked={on} onCheckedChange={(v) => { haptic.selection(); (onChange ?? (() => {}))(v); }} disabled={disabled} accessibilityLabel={label} hitSlop={{ top: Platform.OS === "android" ? 11 : 9, bottom: Platform.OS === "android" ? 11 : 9, left: 4, right: 4 }}
-      style={{ height: 26, width: 44, flexShrink: 0, flexGrow: 0, justifyContent: "center", borderRadius: 999, borderWidth: 1, borderColor: on ? color.accent : color["edge-strong"], backgroundColor: on ? color.accent : color["surface-3"], opacity: disabled ? 0.45 : 1 }}>
+      style={{ height: 26, width: 44, flexShrink: 0, flexGrow: 0, justifyContent: "center", borderRadius: 999, borderWidth: 1, borderColor: on ? color.primary : color["edge-strong"], backgroundColor: on ? color.primary : color["surface-3"], opacity: disabled ? 0.45 : 1 }}>
       <P.Thumb asChild>
-        <Animated.View style={[{ marginLeft: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: on ? color["accent-ink"] : color["text-2"] }, thumb]} />
+        <Animated.View style={[{ marginLeft: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: on ? color["primary-ink"] : color["text-2"] }, thumb]} />
       </P.Thumb>
     </P.Root>
   );
