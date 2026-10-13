@@ -4,7 +4,6 @@
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
-import { Tree, type NodeRendererProps } from "react-arborist";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, Icon, IconButton } from "@vyre/ui";
 import { Frame } from "../places/Frame";
@@ -13,16 +12,17 @@ import { SharedLinks } from "./SharedLinks";
 import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
-import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, rootsOf, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort, type TreeNode } from "./files-model.ts";
+import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
+import { useFilesNav } from "./files-nav";
 import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
-import { bytesOf, sizeWord, textOf, type Status } from "./real-model";
+import { bytesOf, sizeWord, textOf } from "./real-model";
 import { driveRefusal } from "./real-model";
-import { linkedRefusal, type LinkedFolder, type LinkedVersion } from "./linked-model";
+import { linkedRefusal, type LinkedVersion } from "./linked-model";
 import { dayOf, spaceDriveRefusal, toBase64, MAX_UPLOAD, type Version } from "./space-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
-const ROW_H = 40, TREE_H = 520;
+const ROW_H = 40;
 const ICON: Record<string, string> = { folder: "folder", pdf: "file", doc: "file", sheet: "file", image: "file", video: "file", audio: "file", archive: "file", text: "file", file: "file" };
 const KIND_WORD: Record<string, string> = { folder: "Folder", pdf: "PDF", doc: "Document", sheet: "Spreadsheet", image: "Image", video: "Video", audio: "Audio", archive: "Archive", text: "Text", file: "File" };
 /** What the shared list header filters on: a file as a record with a name and a kind. */
@@ -36,10 +36,7 @@ export default function FilesManager() {
 }
 
 function Manager({ wide }: { wide: boolean }) {
-  const [place, setPlace] = useState("space");
-  const [folders, setFolders] = useState<LinkedFolder[]>([]);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [kids, setKids] = useState<Record<string, TreeNode[]>>({});
+  const { place, folders, status, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
   const [rows, setRows] = useState<FileRow[] | null>(null);
   const [err, setErr] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
@@ -50,11 +47,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [focus, setFocus] = useState(-1);
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
 
-  // the roots: linked folders and box shares
-  const loadRoots = useCallback(() => {
-    linked.list().then((fs) => { fs.forEach((f) => { linkedNames[f.id] = f.name; }); setFolders(fs); }).catch(() => setFolders([]));
-    statusReal().then(setStatus).catch(() => setStatus(null));
-  }, []);
+  // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
 
   const parsed = parsePlace(place);
@@ -68,11 +61,12 @@ function Manager({ wide }: { wide: boolean }) {
     if (!pp) { setRows([]); return; }
     if (pp.root === "linked" && !pp.link) { setRows(folders.map((f) => ({ key: `linked:${f.id}`, place: `linked:${f.id}`, root: "linked" as const, name: f.name, dir: true, kind: "folder" as const, size: 0, modified: f.at, link: f.id, path: "" }))); return; }
     if (pp.root === "box" && !pp.share) { setRows((status?.shares ?? []).map((s) => ({ key: `box:${s.name}`, place: `box:${s.name}`, root: "box" as const, name: s.name, dir: true, kind: "folder" as const, size: 0, modified: 0, share: s.name, path: "" }))); return; }
-    loader.rows(p).then((r) => { setRows(r); setKids((k) => ({ ...k, [p]: r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] })) })); }).catch((e) => { setErr(say(e)); setRows([]); });
+    loader.rows(p).then((r) => { setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] }))); }).catch((e) => { setErr(say(e)); setRows([]); });
   }, [folders, status]);
-  useEffect(() => { load(place); setSel({ set: new Set(), anchor: null }); setFocus(-1); }, [place, load]);
+  useEffect(() => { load(place); setSel({ set: new Set(), anchor: null }); setFocus(-1); }, [place, load, tick]);
+  useEffect(() => { setQ(""); setChips([]); }, [place]);
 
-  const go = (p: string) => { setQ(""); setChips([]); setPlace(p); };
+  const go = setPlace;
 
   const shown = useMemo(() => {
     const recs = (rows ?? []).map((row) => ({ row, data: { name: row.name, kind: KIND_WORD[row.kind] }, created_at: row.modified ? new Date(row.modified).toISOString() : undefined }));
@@ -82,27 +76,6 @@ function Manager({ wide }: { wide: boolean }) {
   useEffect(() => { setSel((s) => prune(s, keys)); }, [keys]);
   const picked = shown.filter((r) => sel.set.has(r.key));
   const one = picked.length === 1 && !picked[0].dir ? picked[0] : null;
-
-  // the tree
-  const treeData = useMemo(() => {
-    const roots = rootsOf({ linked: folders, shares: status?.shares ?? [] });
-    const withKids = (n: TreeNode): TreeNode => {
-      const loaded = kids[n.id];
-      const own = n.kids;
-      const list = loaded ?? own ?? (n.root === "space" || n.id.includes(":") ? [] : undefined);
-      return list ? { ...n, kids: list.map(withKids) } : n;
-    };
-    return roots.map((r) => (r.id === "space" ? { ...r, kids: (kids.space ?? []).map(withKids) } : withKids(r)));
-  }, [folders, status, kids]);
-  const openNode = (id: string) => { if (!kids[id] && !["shared", "computer", "linked", "box"].includes(id)) loader.dirs(id).then((d) => setKids((k) => ({ ...k, [id]: d }))).catch(() => {}); };
-  useEffect(() => { if (!kids.space) openNode("space"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const onMove = ({ dragIds, parentId }: { dragIds: string[]; parentId: string | null }) => {
-    const to = parentId ? parsePlace(parentId) : null;
-    if (!to || to.root !== "linked" || !to.link) { showToast("Only linked folders move files."); return; }
-    Promise.all(dragIds.map((id) => { const f = parsePlace(id); if (!f || f.root !== "linked" || f.link !== to.link) return Promise.reject(new Error("Files move within one linked folder.")); const name = f.path.split("/").pop()!; return linked.rename(to.link!, f.path, to.path ? `${to.path}/${name}` : name); }))
-      .then(() => { showToast("Moved at the source."); load(place); setKids({}); }).catch((e) => showToast(say(e)));
-  };
 
   const open = (r: FileRow) => { if (r.dir) go(r.place); else setSel(selectOnly(r.key)); };
   const onKey = (e: React.KeyboardEvent) => {
@@ -239,13 +212,6 @@ function Manager({ wide }: { wide: boolean }) {
   return (
     <Frame title="Files">
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
-        <div style={{ width: 220, flex: "none" }}>
-          <Tree<TreeNode> data={treeData} childrenAccessor="kids" idAccessor="id" width={220} height={TREE_H} rowHeight={34} indent={16} openByDefault={false} selection={place}
-            disableDrag={(n) => n.root !== "linked" || !n.id.includes(":")} disableDrop={(a) => !(a.parentNode?.data?.root === "linked" && a.parentNode.data.id.includes(":")) } disableEdit
-            onSelect={(ns) => { if (ns[0]) go(ns[0].id); }} onToggle={(id) => openNode(id)} onMove={onMove}>
-            {TreeRow}
-          </Tree>
-        </div>
         <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(true); } }} onDragLeave={() => setDropping(false)}
           onDrop={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(false); void upload(Array.from(e.dataTransfer.files)); } }}>
           <View className="gap-s3">
@@ -266,20 +232,8 @@ function Manager({ wide }: { wide: boolean }) {
         </div>
         {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
       </div>
-      <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(place); setKids({}); }} />
+      <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); invalidate(); }} />
     </Frame>
-  );
-}
-
-const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", box: "server", computer: "laptop" };
-function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
-  const top = !node.id.includes(":") && ROOT_ICON[node.id];
-  return (
-    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: 8, cursor: "pointer" }}>
-      <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
-      <Icon name={(top ? ROOT_ICON[node.id] : "folder") as never} size={16 as never} tone={node.isSelected ? "text" : "text-2"} />
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={node.isSelected || !!top}>{node.data.label}</Text></div>
-    </div>
   );
 }
 
