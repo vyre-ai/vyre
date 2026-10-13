@@ -23,6 +23,7 @@
 // item it makes for itself, google-<name>, granted to itself, and adds the account the way
 // google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
+import { refuseNonPerson } from "../../lib/person-body.js";
 import { Credentials, CredentialError } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
@@ -219,7 +220,8 @@ export default {
       description: "Check an account: mint a token for each scope Vyre uses and make a harmless call with each. Names any scope that is refused. For a service account it also returns client_id and admin_scopes, the two values to paste into the Google Workspace admin console (Security, API controls, Domain-wide delegation).",
       input: obj({ name: str }),
       callers: PEOPLE,
-      run: safe(async ({ name }) => {
+      run: safe(async ({ name }, meta) => {
+        refuseNonPerson(meta, "tests a Google account");
         const acct = forWrite(visible(), named(name));
         const out = await testAccount(acct);
         return acct.auth.type === "service-account" ? { ...out, ...(await delegation(acct)) } : out;

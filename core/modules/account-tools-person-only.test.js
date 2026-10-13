@@ -9,10 +9,13 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 
-const TOOLS = ["connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect", "google.add", "google.connect", "github.session.undo", "github.session.redo", "github.project.local-init"];
+const TOOLS = ["connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect", "google.add", "google.connect", "github.session.undo", "github.session.redo", "github.project.local-init", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay"];
+
+/** the tools first-party modules call: their body refuses, so an agent and an mcp caller get "denied" */
+const BODY = new Set(["mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay"]);
 
 /** inputs that satisfy each tool's schema, so the refusal is about who asked */
-const INPUT = /** @type {Record<string, any>} */ ({ "github.session.undo": { project: "app", session: "s1" }, "github.session.redo": { project: "app", session: "s1" }, "github.project.local-init": { project: "app" } });
+const INPUT = /** @type {Record<string, any>} */ ({ "github.session.undo": { project: "app", session: "s1" }, "github.session.redo": { project: "app", session: "s1" }, "github.project.local-init": { project: "app" }, "mcp.add": { name: "x", transport: "http", url: "https://example.com" }, "mcp.update": { name: "x" }, "mcp.remove": { name: "x" }, "mcp.test": { name: "x" }, "google.test": { name: "x" }, "vault.relay": { item: "i", request: { url: "https://example.com" } } });
 
 test("an agent, a model, a guest or an MCP caller is refused on the account and session-history tools: person surfaces only", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
@@ -24,6 +27,7 @@ test("an agent, a model, a guest or an MCP caller is refused on the account and 
     for (const name of TOOLS) {
       const r = await d.registry.call(name, INPUT[name] || {}, as);
       assert.ok(r.error, `${as} on ${name} ran: ${JSON.stringify(r).slice(0, 140)}`);
+      if (BODY.has(name) && (as === "mcp:agent:kit" || as === "cli:agent:kit" || as === "mcp")) assert.equal(r.error.code, "denied", `${as} on ${name}: ${JSON.stringify(r.error).slice(0, 140)}`);
       assert.notEqual(r.error.code, "bad_input", `${as} on ${name} was judged on its input, not on who asked: ${JSON.stringify(r.error).slice(0, 140)}`);
     }
   }

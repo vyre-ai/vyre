@@ -223,6 +223,21 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  // 13 Oct 2026, the lead's final rulings: reads within the person's reach, and the six tools first-party modules call whose body refuses a non-person caller
+  "vault.relay": "381a6fbf6@26 Sep 2026",
+  "mcp.add": "2725eaba8@27 Sep 2026",
+  "mcp.update": "2725eaba8@27 Sep 2026",
+  "mcp.remove": "2725eaba8@27 Sep 2026",
+  "mcp.test": "2725eaba8@27 Sep 2026",
+  "google.test": "e3cd9b295@27 Sep 2026",
+  "google.drive.read": "a92b5741e@13 Oct 2026",
+  "google.drive.search": "a92b5741e@13 Oct 2026",
+  "microsoft.calendar.list": "5a247f8d1@13 Oct 2026",
+  "microsoft.drive.read": "5a247f8d1@13 Oct 2026",
+  "microsoft.drive.search": "5a247f8d1@13 Oct 2026",
+  "microsoft.mail.read": "5a247f8d1@13 Oct 2026",
+  "microsoft.mail.search": "5a247f8d1@13 Oct 2026",
+  "mcpconn.guide": "0c039595e@13 Oct 2026",
   // 13 Oct 2026, vault ruling: the Vault tools an agent may call within its person's reach
   "vault.item": "77868b367@26 Sep 2026",
   "vault.search": "00484fa80@4 Oct 2026",
@@ -333,6 +348,20 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "vault.relay": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "mcp.add": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "mcp.update": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "mcp.remove": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "mcp.test": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "google.test": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "google.drive.read": "a read within the person's own reach, judged on the chain",
+  "google.drive.search": "a read within the person's own reach, judged on the chain",
+  "microsoft.calendar.list": "a read within the person's own reach, judged on the chain",
+  "microsoft.drive.read": "a read within the person's own reach, judged on the chain",
+  "microsoft.drive.search": "a read within the person's own reach, judged on the chain",
+  "microsoft.mail.read": "a read within the person's own reach, judged on the chain",
+  "microsoft.mail.search": "a read within the person's own reach, judged on the chain",
+  "mcpconn.guide": "a read within the person's own reach, judged on the chain",
   "vault.item": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
   "vault.search": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
   "vault.list": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
