@@ -54,6 +54,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     const names = Object.keys(ctx.map);
     for (const k of names) root.style.setProperty(k, String(ctx.map[k]));
+    // The splash of the next load (public/splash.html) follows the person's theme, not the system's.
+    try { localStorage.setItem("vyre.scheme", ctx.resolved.scheme); } catch { /* private mode: the splash follows the system */ }
     return () => { for (const k of names) root.style.removeProperty(k); };
   }, [ctx]);
   return (
