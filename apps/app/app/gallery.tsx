@@ -24,6 +24,8 @@ import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
+import { RunSteps } from "../screens/flows/RunSteps";
+import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
@@ -189,6 +191,15 @@ function Sample({ name }: { name: string }) {
         <View style={{ flexDirection: "row", gap: 8 }}><Thumb uri={P.a} name="lease-photo.png" size={120} /><Thumb uri={P.b} name="signature.png" size={120} /></View>
       </View>
     );
+  }
+  if (name === "run-steps") {
+    const t0 = Date.UTC(2026, 9, 13, 9, 0, 0);
+    const painted = [{ id: "trigger", kind: "trigger", label: "A new appointment is booked" }, { id: "a", label: "Look up the client" }, { id: "b", label: "Text the client" }, { id: "c", label: "Wait until a day before" }, { id: "d", label: "Ask the partner to approve" }, { id: "e", label: "File the notes" }];
+    const steps = { a: { status: "done", started_at: t0, finished_at: t0 + 1800, input: { email: "pat@example.com", ssn: "{{field:ssn}}" }, output: { found: true, client: "Pat Lopez" } },
+      b: { status: "started", tries: 1, started_at: t0 + 2000, error: { code: "timeout", message: "The text service did not answer." }, input: { to: "+1 555 0100", api_key: "sk-live-123" } },
+      c: { status: "waiting", wait: { kind: "time", until: t0 + 86_400_000 } }, d: { status: "waiting", wait: { kind: "task", task: "tsk_1" } },
+      e: { status: "failed", error: { code: "timeout", message: "The notes folder did not answer." }, started_at: t0, finished_at: t0 + 30_000 } };
+    return <Card flush><RunSteps painted={painted} steps={steps} max={{ b: 3 }} fmt={dayTimeOf} /></Card>;
   }
   if (name === "away-card") return <AwayView lines={["3 new things need you", "1 Flow run did not finish", "2 Flow runs finished", "1 document was signed", "1 new member joined"]} onSeen={() => {}} />;
   if (name === "notice-answered") {
