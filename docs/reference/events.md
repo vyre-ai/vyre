@@ -164,7 +164,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | Event | Fields |
 | --- | --- |
 | `comms.held` | `count`, `id`, `via` |
-| `comms.sent` | `failed`, `id`, `sent`, `via` |
+| `comms.sent` | `id`, `sent`, `via`; sometimes `failed`, `provider` |
 
 ## computers
 
