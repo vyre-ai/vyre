@@ -19,7 +19,7 @@ export const CAPABILITIES = /** @type {const} */ (["send_mail", "read_mail", "ca
 
 import { valuePattern } from "../../lib/credential-shapes.js";
 
-const key = (label, pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
+const key = (/** @type {string} */ label, /** @type {string} [pattern] */ pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
 
 /** @type {Provider[]} */
 const LIST = [
@@ -96,7 +96,7 @@ export const PROVIDERS = Object.freeze(Object.fromEntries(LIST.map(p => [p.name,
 export const provider = name => (Object.prototype.hasOwnProperty.call(PROVIDERS, name) ? PROVIDERS[name] : null);
 
 /** What a surface needs to draw a form: names, labels and the secret flag. Never a pattern's value. */
-export const formFields = p => (p ? p.fields.map(f => ({ name: f.name, label: f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) : []);
+export const formFields = (/** @type {Provider|null} */ p) => (p ? p.fields.map(f => ({ name: f.name, label: f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) : []);
 
 /**
  * Check fields a person gave against a provider. Returns the cleaned fields, or throws in words
