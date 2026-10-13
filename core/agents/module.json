@@ -295,7 +295,16 @@
           ]
         }
       ],
-      "membership": true
+      "membership": true,
+      "mints": [
+        {
+          "prefix": "agent",
+          "actions": [
+            "agents.use",
+            "agents.edit"
+          ]
+        }
+      ]
     }
   },
   "teaches": {

@@ -28,7 +28,6 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
-import { Access } from "../../lib/access.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
@@ -137,7 +136,7 @@ export default {
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
-    let config = /** @type {{ brief(a: any): string, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
+    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -157,7 +156,7 @@ export default {
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name} (agents.list shows them)`), { code: "not_found" }); return a; };
-    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(r => ({ ...shape(r), users: new Access(db, "agents_access").list(String(/** @type {any} */ (r).name)).map(g => `${g.kind === "role" ? "role " : ""}${g.subject} (${g.level})`) })), log: m => ctx.log(m) });
+    const mirror = createMirror({ kernel: () => ctx.kernel, rows: async () => Promise.all(db.prepare("SELECT * FROM agents_agents").all().map(async r => { const a = shape(r); return { ...a, users: config ? await config.sharedLine(a) : [] }; })), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
@@ -900,7 +899,8 @@ export default {
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
-        for (const t of ["agents_access", "agents_context_links", "agents_vault_items"]) db.prepare(`DELETE FROM ${t} WHERE ${t === "agents_access" ? "id" : "agent"} = ?`).run(a.name);
+        if (config) await config.clearShared(a).catch(() => {});
+        for (const t of ["agents_context_links", "agents_vault_items"]) db.prepare(`DELETE FROM ${t} WHERE agent = ?`).run(a.name);
         await mirror.schedule();
         return { agent: a.name, deleted: true };
       },
