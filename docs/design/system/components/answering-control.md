@@ -2,7 +2,7 @@
 title: Answering control
 summary: One control for which AI replies: stacked provider marks and the words, opening the Answering list for one, several or all, and each one's model.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 
