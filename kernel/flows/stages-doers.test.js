@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, settle, ALEX } from "./testing/world.js";
+import { world, settle, ALEX, BOB } from "./testing/world.js";
 import { stagedCatalog } from "./testing/fixtures.js";
 import { snapshotOf, problems } from "../../lib/project-template.js";
 
