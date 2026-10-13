@@ -2552,6 +2552,22 @@
   "publish.job.runs": {
    "module": "publish",
    "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+  },
+  "comms.email": {
+   "module": "comms",
+   "reason": "held: outward, so the registry holds it as a card for the person's yes and the message waits at the Gate for the final words; nothing is sent from here; the from address is pinned to the firm's domain (callers list, gate, check)"
+  },
+  "comms.credentials": {
+   "module": "comms",
+   "reason": "read-only: names, ids, providers and the step each uses, from the vault's connection list for the caller; never a value (callers list)"
+  },
+  "comms.service.get": {
+   "module": "comms",
+   "reason": "read-only: which sending service and from address; the key is never returned (callers list)"
+  },
+  "comms.service.test": {
+   "module": "comms",
+   "reason": "presence: the person confirms the exact address before one fixed test message goes through the firm's own service (callers list, presence)"
   }
  }
 }

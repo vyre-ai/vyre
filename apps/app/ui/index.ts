@@ -53,6 +53,16 @@ export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./m
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
 export { Shell } from "./shell/Shell";
+export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
+export { SidebarRow } from "./shell/SidebarRow";
+export { SidebarPanel } from "./shell/SidebarPanel";
+export type { PanelDef, PanelItem } from "./shell/SidebarPanel";
+export { RAIL } from "./shell/rail-tokens.js";
+export { useRail } from "./shell/useRail";
+export { panelFor, backTo, withSide, PANELS } from "./shell/sidebar-stack.js";
+export { Tip } from "./components/Tip";
+export { LogoPicker } from "./components/LogoPicker";
+export { spaceTile, initialsOf, TILE_PALETTE } from "./marks/space-tile.js";
 export type { NavItem, NavDef, ShellSpace, ShellProps } from "./shell/Shell";
 export { FilterPills } from "./components/FilterPills";
 export { ActorMark } from "./tasks/ActorMark";
@@ -71,6 +81,7 @@ export type { World } from "./tasks/model";
 export { nowCount } from "./tasks/model";
 // Field renderers (one display and one edit per kind) and the views generated from type definitions (records).
 export { Select } from "./components/Select";
+export { SortableList, dropIndex } from "./components/SortableList";
 export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS, filterOps, matches, sortKey, sortRows, kindLabel } from "./fields/registry";
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
 export { PinnedViews } from "./views";
@@ -82,6 +93,23 @@ export { Ring } from "./components/Ring";
 export { FlowCanvas } from "./canvas/FlowCanvas";
 export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
 export { Meter } from "./components/Meter";
+
+// The guided-flow kit (setup, create a space, join a space, invite people).
+export { VyreMark } from "./components/VyreMark";
+export type { MarkState, MarkSize } from "./components/VyreMark";
+export { Stack } from "./components/Stack";
+export type { StackGap } from "./components/Stack";
+export { FlowStep } from "./components/FlowStep";
+export { CodeField } from "./components/CodeField";
+export { CodeDisplay } from "./components/CodeDisplay";
+export { MatchWords } from "./components/MatchWords";
+export { PasswordField } from "./components/PasswordField";
+export { ProviderRow } from "./components/ProviderRow";
+export type { ProviderState } from "./components/ProviderRow";
+export { ChoiceList } from "./components/ChoiceList";
+export type { Choice } from "./components/ChoiceList";
+export { passwordStrength } from "./lib/strength.js";
+export { formatCode, codeComplete } from "./lib/code.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
 export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";

@@ -125,8 +125,10 @@ jobs:
           done
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
-          EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock
+          EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --clear --output-dir dist-mock
           node scripts/render-check.mjs --dist dist-mock --out "$RUNNER_TEMP/render"
+      - name: "Onboarding walk (every path of the first-run flow, with its failures and Back, on the sample-world export)"
+        run: node scripts/onboard-walk.mjs --dist dist-mock --out "$RUNNER_TEMP/onboard-walk"
       - name: Bundle size (gzipped JS, the ADR expects about 3 MB)
         run: |
           total=0

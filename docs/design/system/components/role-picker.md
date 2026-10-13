@@ -28,7 +28,8 @@ role is as easy to give as a built-in one. Owner is never in the list. Drawn fro
 2. **Projects (optional).** Section label "Projects" with the quiet meta "Optional", then filter
    chips that toggle (see the chip spec). A line under them says what none chosen means: "None
    chosen: they join with the role's own reach." With some chosen: "They are added to these
-   projects when they join."
+   projects when they join." Under the chips, one control row per chosen project asks the seat:
+   Lead, Contributor or Viewer, Contributor by default (a seat only narrows what the role allows).
 3. **Access ends.** Only while the guest role is chosen: the segmented control of end dates
    (1 week, 30 days, 3 months). Hidden for every other role.
 

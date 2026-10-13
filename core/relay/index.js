@@ -14,6 +14,7 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
+import { createChainAdmit } from "./chain-admit.js";
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
@@ -76,6 +77,9 @@ export const MIGRATIONS = [
   // The classic bearer code is gone (13 Oct 2026). NULL: not yet judged; 1: this device came in by a code anyone could hold, before this version, and no one confirmed it; 0: it did not. Judged once, at the first
   // start of a version that has it (see `judgeOldCodes`); every device enrolled after that is written 0. Only a 1 with no owner fact is refused, so the owner can still mark a phone of his own before it next connects.
   `ALTER TABLE relay_devices ADD COLUMN old_code INTEGER;`,
+  // Design B (rc.4): this device came in because the person's identity chain lists it, not because the owner was present: { identity, entry, seq, at }. Never owner_paired. Whether it is `limited` is read from the chain at each call
+  // (core/relay/chain-admit.js limitedOf), and a limited device is refused the device-admin tools at the registry (core/modules/device-admin.js).
+  `ALTER TABLE relay_devices ADD COLUMN via_chain TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -188,7 +192,7 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage, owner_paired FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage, owner_paired, via_chain FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -213,6 +217,28 @@ export default {
       // a bare model session ("mcp", "harness") and a Vyre-owned session are not the owner either (platform-3: relay.status let a bare mcp through)
       if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
+
+    /** The chain-hello check: the owner's identity, or a member of this home's Space at exactly their role. Built on first use. */
+    /** @type {ReturnType<typeof createChainAdmit> | null} */ let chainGate = null;
+    const chains = () => (chainGate ??= createChainAdmit({
+      boxId: async () => { await keys.ready(); return Buffer.from(k().box.pub).toString("base64url"); },
+      // the owner, or a member of this home's Space with exactly the role the kernel gives them (the same person, a new device: no code)
+      roleOf: async identity => {
+        try {
+          const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {}));
+          if (r && r.data && r.data.claimed === identity) return "owner";
+          // the home's owner as its kernel holds it now (a server named its owner at pairing)
+          if (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner === identity) return "owner";
+          const space = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
+          if (!space) return null;
+          const m = /** @type {any} */ (await ctx.call("spaces.membership", { person: identity, space }));
+          return m && m.data && typeof m.data.role === "string" ? m.data.role : null;
+        } catch { return null; }
+      },
+      // a member added by id has no stored name here: the hello's claimed Vyre name is learned first (spaces.person.learn checks with the directory that the name is theirs), so the chain can be found. Only identities that
+      // already have a role here get this far (chain-admit asks roleOf first).
+      fetchState: async (identity, name) => { if (name) await ctx.call("spaces.person.learn", { id: identity, name }).catch(() => null); const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
+    }));
 
     // ---- the link ----
 
@@ -304,6 +330,8 @@ export default {
         if (typeof /** @type {any} */ (homes).homeArrive === "function") /** @type {any} */ (homes).homeArrive();
         return { v: 1, box: { name: boxName() }, home: id };
       }
+      // Design B: a key the person's identity chain lists, for the owner's own identity, with a signed chain hello. Makes a row marked via_chain (never owner_paired).
+      if (hello && hello.chain && typeof hello.chain === "object" && !existing && !pendingPairs.has(id)) return admitChain(pub, hello, id);
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error(`this pairing code has expired or was already used. ${ADD_A_DEVICE}`);
@@ -329,13 +357,23 @@ export default {
         if (!crypto.timingSafeEqual(waiting.pub, pub)) throw new Error("not a paired device");
         return { v: 1, box: { name: boxName() }, pending: id, gate: waiting.gate };
       }
-      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen, owner_paired, old_code FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen, owner_paired, old_code, via_chain FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
         // A device the owner removed hears exactly that, on the same code (4401) as when its open channel was
         // closed, so an app can tell "removed" from "box unreachable" and stop retrying (pwa).
         const gone = /** @type {any} */ (db.prepare("SELECT pub FROM relay_devices WHERE id = ? AND removed_at IS NOT NULL").get(id));
         if (gone && crypto.timingSafeEqual(Buffer.from(gone.pub, "base64url"), pub)) throw new Error("device removed");
         throw new Error("not a paired device");
+      }
+      // A device that came in on the chain is checked against the chain again (at most every 5 minutes): taken off the list, it is refused at once.
+      if (row.via_chain) {
+        let v = null; try { v = JSON.parse(row.via_chain); } catch { v = null; }
+        const st = v ? await chains().status(String(v.identity), String(v.entry)) : { state: "gone" };
+        if (st.state === "gone") { forget(id, "removed from your identity list"); throw new Error("device removed"); }
+        // the chain cannot be read and the hour of grace is over: refused, not removed (the device is fine; it connects again when the chain can be read)
+        if (st.state !== "ok") throw new Error("this device could not be checked against your identity list just now; try again in a few minutes");
+        // a lapsed session renews by reconnecting: the grant is made again unless the device holds one
+        await ctx.call("presence.person.chain-grant", { device: id }).catch(() => null);
       }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
@@ -352,6 +390,36 @@ export default {
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
+
+    /**
+     * Design B: admit a key the identity chain lists. The check is core/relay/chain-admit.js; this writes the row (kind app, via_chain, no owner_paired, no presence key yet: the entry key is what presence accepts, offered in
+     * the hello as presenceKey and enrolled as for any device) and answers as a paired device. @param {Buffer} pub @param {any} hello @param {string} id
+     */
+    async function admitChain(pub, hello, id) {
+      const r = await chains().check({ ...hello.chain, channel: id }, id);
+      if (!r.ok) {
+        // the reason for this server's log only; the device hears the one set of words
+        ctx.log(`relay: chain hello refused (${r.why}${r.detail ? `: ${r.detail}` : ""})`);
+        throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
+      }
+      const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: "device", owner: (ctx.config.onboard || {}).pe });
+      // The presence key is part of what the entry key signed (the hello's `pk` is its sha256): a key that does not match is not enrolled, so nobody can attach a key of their own to a chain device's hello.
+      let presenceKey = null;
+      const pk = hello.presenceKey;
+      if (pk && typeof pk.public_key === "string" && r.pk !== "-" && crypto.createHash("sha256").update(pk.public_key).digest("hex") === r.pk) {
+        const e = await ctx.call("presence.enroll", { kind: "device", name: `${name} (chain ${r.entry})`, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        if (e && e.data && (e.data.keyId || e.data.id)) presenceKey = String(e.data.keyId || e.data.id);
+      }
+      // the presence key enrolled at admission is part of the fact: a key put on this row by any other route later is not the one the entry key signed for, and gets no session
+      const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now(), ...(presenceKey ? { presenceKey } : {}) });
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
+      ctx.events.emit("device.paired", { kind: "relay", id, name, via: "chain" });
+      // the device opens its person session with its presence key, as any paired device does: the presence module makes the grant (it reads this row and the chain again)
+      await ctx.call("presence.person.chain-grant", { device: id }).catch(e => ctx.log(`relay: no session grant for chain device ${id}: ${String(e && e.message || e).slice(0, 120)}`));
+      return { v: 1, box: { name: boxName() }, device: id };
+    }
 
     /**
      * Enrols a device that redeemed a ticket: its row, its presence key, the notice and the tailnet grant. Everything a pairing makes happens here and only here, so a gated or
@@ -718,7 +786,7 @@ export default {
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
     const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
-      online: pathOf(d) !== null, path: pathOf(d), ownerPaired: Boolean(d.owner_paired), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      online: pathOf(d) !== null, path: pathOf(d), ownerPaired: Boolean(d.owner_paired), ...(d.via_chain ? { viaChain: true } : {}), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
@@ -747,6 +815,8 @@ export default {
         if (s.enabled || await keys.exists()) await keys.ready();
         return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys.loaded ? route() : null,
           devices: active().length, open: link ? link.open : 0, pairing: null,
+          // this server admits a device the identity chain lists (core/relay/chain-admit.js); an app offers chain sign-in only to a server that says so
+          chainHello: 1,
           // the public door (relay.tunnel_url): off, connecting or live, for the Settings row that says whether people outside can reach signing pages and shared links
           tunnel: { url: tunnelUrl() || null, connected: Boolean(tlink && tlink.connected) } };
       },
@@ -805,6 +875,8 @@ export default {
     ctx.tool("relay.pair.start", {
       description: "Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj(),
+      // The same presence gate it always had, so the stored decisions (kernel/golden) do not move: a person at the surface is asked first, then the handler refuses in words.
+      presence: { summary: async () => "Pair a new device with this box" },
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
       run: async () => { throw classicGone("The pairing code from relay.pair.start"); },
     });
@@ -887,10 +959,10 @@ export default {
       run: async input => {
         const loc = String(input.loc);
         if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
-        await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink();
-        if (link) await link.ready();
-        if (input.on === false) link?.signinUnwatch(loc); else link?.signinWatch(loc);
-        return { watching: input.on !== false, supported: Boolean(link && link.signins()) };
+        // A watch only listens: it never turns the relay on or starts its link. With the relay off there is nothing to watch on; the wink module asks again when relay.connected fires.
+        if (!settings().enabled || !link) return { watching: false, supported: false };
+        if (input.on === false) link.signinUnwatch(loc); else link.signinWatch(loc);
+        return { watching: input.on !== false, supported: link.signins() };
       },
     });
     ctx.tool("relay.code.alloc", {
@@ -1096,6 +1168,8 @@ export default {
       description: "Gone: redeeming a classic bearer pairing code to become a device of another box. Refuses and says how to join now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj({ url: { type: "string" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
+      // The same presence gate it always had (not on a Mac without vyre-core, where it always refused), so the stored decisions do not move.
+      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => "Join another box with a pairing code" },
       run: async () => { throw classicGone("Joining another box with a pairing code"); },
     });
 
@@ -1303,8 +1377,18 @@ export default {
       description: "A paired relay device as the link module's companion check needs it: kind, trusted, when it paired, its presence key id and whether it was removed. Null for an id never paired. Modules only.",
       input: obj({ id: str }, ["id"]),
       run: async input => {
-        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired FROM relay_devices WHERE id = ?").get(String(input.id)));
-        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null } : null;
+        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired, via_chain FROM relay_devices WHERE id = ?").get(String(input.id)));
+        let via = null; try { via = row && row.via_chain && row.removed_at == null ? JSON.parse(row.via_chain) : null; } catch { via = null; }
+        // a chain device is judged against the CURRENT chain at each call (read again at most every 5 minutes): off the list it is removed here; with the chain unreadable past the grace it is refused without being removed;
+        // `limited` is recomputed from the entry now, never read from what was true when it was admitted
+        let now_ = null;
+        if (via) {
+          const st = await chains().status(String(via.identity), String(via.entry));
+          if (st.state === "gone") { forget(String(input.id), "removed from your identity list"); return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false }; }
+          if (st.state !== "ok") return { kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false };
+          now_ = { identity: String(via.identity), limited: st.limited, ...(via.presenceKey ? { presenceKey: String(via.presenceKey) } : {}) };
+        }
+        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null, ...(now_ ? { viaChain: now_ } : {}) } : null;
       },
     });
 

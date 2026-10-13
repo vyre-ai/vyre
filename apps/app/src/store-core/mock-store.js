@@ -20,6 +20,7 @@ import { actorValue, addr, file, money, ref } from "./mock-values.js";
 import { MATTER_STAGES, types as sampleTypes } from "./types.js";
 import { crmTypes, crmTypeSpace, seedCrm } from "./sample-crm.js";
 import { viewDefOf } from "./view-defs.js";
+import { isoDay } from "../../ui/fields/logic.js";
 import { REVEAL_MS as REVEAL, aid, signerWords, spaceOfUrn, stageFieldOf, stageNames } from "./kernel-view.js";
 
 /** @typedef {import("./contracts.js").Store} Store */
@@ -566,7 +567,7 @@ export function createMockStore(opts = {}) {
   seed();
   if (opts.crm && world !== "empty") {
     const day = new Date(clock()); day.setHours(0, 0, 0, 0);
-    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => { const t = new Date(day.getFullYear(), day.getMonth(), day.getDate() + d, h), p2 = (/** @type {number} */ n) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}T${p2(t.getHours())}:00`; });
+    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => `${isoDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + d))}T${String(h).padStart(2, "0")}:00`);
   }
   seeding = false;
   void MATTER_STAGES; void parseUrn;

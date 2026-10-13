@@ -45,3 +45,14 @@ export async function addDeviceCore(d, o) {
   await d.keepPairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device }).catch(() => {});
   return { name, id: list.id };
 }
+
+/**
+ * How a device is paired: "name" (sign in by name, no code: a device already signed in shows three words and the person approves there), "browser" (a web page joins from a long code), or "code" (the
+ * QR, the long code or the short typed code through the relay). A name wins over a code, so a by-name sign-in can never fall back to a code.
+ * @param {{ byName?: string, payload?: string }} o @param {string} platform react-native's Platform.OS
+ * @returns {"name" | "browser" | "code"}
+ */
+export function pairRoute(o, platform) {
+  if (o.byName !== undefined) return "name";
+  return platform === "web" && o.payload !== undefined ? "browser" : "code";
+}

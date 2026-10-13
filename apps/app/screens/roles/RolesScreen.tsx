@@ -4,7 +4,7 @@ import { Banner, Button, Card, Chip, ControlRow, Divider, EmptyState, ErrorState
 import { Footnote, Page, Sec } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
-import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, WHERE, builtInName, canDuplicate, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
+import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, TOOL_NOTES, WHERE, builtInName, canDuplicate, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
 
 /** Settings, Roles: the space's roles with how many people hold each; open one to edit its four sections. Owner and admin only. */
@@ -137,7 +137,8 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
       </Sec>
 
       <Sec title="4. Which tools">
-        <Card flush>{(world.catalogue?.tools ?? TOOLS).map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.tools[k]} locked={locked} onToggle={(v) => edit((x) => setTool(x, k, v))} /></View>)}</Card>
+        <Text size="caption" tone="label" className="pb-s2">No tool opens at the door yet, so none of these is on for anyone. Your choices are kept for when they open.</Text>
+        <Card flush>{(world.catalogue?.tools ?? TOOLS).map(([k, title], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={TOOL_NOTES[k] ?? "Comes in a later release."} on={false} locked onToggle={() => {}} /></View>)}</Card>
       </Sec>
 
       {!role.builtin ? (

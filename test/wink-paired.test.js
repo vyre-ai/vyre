@@ -1257,7 +1257,7 @@ shardTest("sign in by name, real daemon and relay: a new device types the name, 
   joining.catch(() => {});
   const q = await until(async () => { const x = (await w.call("wink.phone.pairing", {})).data; return x && x.asking ? x : null; }, 10_000);
   assert.equal(q.signin, true);
-  assert.match(q.line, /^Sign in on Sam's phone\? These words should match what it shows:/);
+  assert.match(q.line, /^Someone typed your name to sign in on "Sam.s phone"/);
   assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.length, 0, "nothing is paired before the yes");
   await until(async () => shown);
   const yes = await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 });

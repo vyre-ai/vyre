@@ -104,6 +104,8 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
     var content: () -> AnyView = { AnyView(EmptyView()) }
     /// Right-click: the plain menu, for when the popover is not what is wanted.
     var menu: () -> NSMenu = { NSMenu() }
+    /// The thin shell: every click is the plain menu, no popover.
+    var alwaysMenu = false
 
     init(health: Health) {
         self.health = health
@@ -132,11 +134,11 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
 
     func paint() {
         dot.layer?.backgroundColor = health.dotColor.cgColor
-        item.button?.toolTip = "Vyre Lumen · \(health.summary)"
+        item.button?.toolTip = alwaysMenu ? "Vyre · \(health.summary)" : "Vyre Lumen · \(health.summary)"
     }
 
     @objc private func clicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
+        if alwaysMenu || NSApp.currentEvent?.type == .rightMouseUp {
             item.menu = menu()
             item.button?.performClick(nil)
             item.menu = nil
@@ -172,7 +174,7 @@ struct MenuBarPopover: View {
     let turnOnControl: () -> Void
     /// vyred is down: start it from here (the Capsule opens to show it going).
     var start: (() -> Void)? = nil
-    /// "Set up Vyre on this Mac" the first time, "Start Vyre" after (CapsuleModel.startWords).
+    /// "Start Vyre" (CapsuleModel.startWords).
     var startWords: () -> String = { "Start Vyre" }
     let quit: () -> Void
 

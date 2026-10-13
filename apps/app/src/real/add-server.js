@@ -13,7 +13,7 @@ import { installLine } from "../../screens/install/first-run.js";
 
 export const SETUP_TTL_MS = 3_600_000;
 
-/** The two choices, the same for every space: Records recommended and first, preselected. `store` is VYRE_STORE on the install line. */
+/** The one choice: Records is always on (the installer refuses the small built-in store for a person). `store` is VYRE_STORE on the install line. */
 /** Which kind of machine the server is: the line differs (a Linux server or cloud machine, or a Mac that stays on). */
 export const SERVER_KINDS = Object.freeze([
   { id: "linux", label: "A Linux server, or a cloud server", where: "On the server, paste this line. Use your own account, not root." },
@@ -22,7 +22,6 @@ export const SERVER_KINDS = Object.freeze([
 
 export const CHOICES = Object.freeze([
   Object.freeze({ id: "records", store: "auto", label: "With Records (recommended)", note: "Keeps your contacts, projects and tasks. Needs 8 GB of memory. 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
-  Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "For a small server. 2 GB is enough. You can add Records later.", minMb: 1800, recommendedMb: 1800 }),
 ]);
 export const DEFAULT_CHOICE = "records";
 
@@ -47,7 +46,6 @@ export function memoryNote(id, memoryMb) {
   if (!Number.isFinite(memoryMb) || memoryMb <= 0) return null;
   const gb = Math.round(memoryMb / 102.4) / 10;
   if (c.id === "records" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than Records needs. Vyre will start without Records. You can change this in Settings.`;
-  if (c.id === "plain" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than the 2 GB a small server needs.`;
   return null;
 }
 
@@ -100,7 +98,7 @@ export function createAddServer(o) {
   const set = (/** @type {Partial<AddServerState>} */ patch) => { state = { ...state, ...patch }; o.onChange?.(state); };
   const stop = (/** @type {keyof typeof MESSAGES} */ code) => { run++; pending = null; set({ stage: "stopped", error: { code, message: MESSAGES[code] } }); };
 
-  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" or "plain" @param {string} [os] "linux" (the default) or "mac": which installer the line runs */
+  /** Make the code and show the install line; then listen for the server. @param {string} [choice] "records" @param {string} [os] "linux" (the default) or "mac": which installer the line runs */
   async function begin(choice = DEFAULT_CHOICE, os = "linux") {
     const mine = ++run;
     pending = null;

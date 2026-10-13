@@ -9,8 +9,8 @@ import { tempHome } from "../../test/helpers.js";
 import { bootKernel } from "../../kernel/boot.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { start } from "../daemon/index.js";
-import { checkRole, expandRole } from "./definition.js";
-import { customForInvite } from "./invite.js";
+import { checkRole, expandRole } from "../../lib/roles/definition.js";
+import { customForInvite } from "../../lib/roles/invite.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", ADA = "per_ada";
 const sealer = { presenceCheck: async ({ proof, op, fields }) => (proof && proof.op === op && canonical(proof.fields) === canonical(fields) ? null : "wrong_payload") };

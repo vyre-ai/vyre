@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Row, Text, showToast } from "@vyre/ui";
-import { CHOICES, DEFAULT_CHOICE, GAINS, SERVER_KINDS } from "../../src/real/add-server.js";
+import { DEFAULT_CHOICE, GAINS, SERVER_KINDS } from "../../src/real/add-server.js";
 import { startAddServer, type AddServerState } from "../../src/real/add-server-bind";
 
 /**
@@ -10,7 +10,6 @@ import { startAddServer, type AddServerState } from "../../src/real/add-server-b
  * shows four words to check against the server's terminal, and pairs. The confirm is here, never at the server. `onDone` hears the server is paired, and the My Cloud card carries on from there.
  */
 export function AddServerCard({ onDone }: { onDone: () => void }) {
-  const [choice, setChoice] = useState(DEFAULT_CHOICE);
   const [kind, setKind] = useState(SERVER_KINDS[0].id);
   const [state, setState] = useState<AddServerState | null>(null);
   const run = useRef<Awaited<ReturnType<typeof startAddServer>> | null>(null);
@@ -18,7 +17,7 @@ export function AddServerCard({ onDone }: { onDone: () => void }) {
   const begin = async () => {
     const r = await startAddServer((s) => { setState(s); if (s.stage === "done") onDone(); });
     run.current = r;
-    await r.begin(choice, kind);
+    await r.begin(DEFAULT_CHOICE, kind);
   };
   const stage = state?.stage ?? "idle";
 
@@ -28,9 +27,7 @@ export function AddServerCard({ onDone }: { onDone: () => void }) {
         <Text strong>Upgrade to My Cloud</Text>
         <Text tone="muted">A server is a computer that stays on. With one:</Text>
         <View className="gap-s1">{GAINS.map((g) => <Text key={g}>{g}</Text>)}</View>
-        <View>
-          {CHOICES.map((c) => <Row key={c.id} title={c.label} sub={choice === c.id ? `${c.note} Selected.` : c.note} onPress={() => setChoice(c.id)} />)}
-        </View>
+        <Text tone="muted">It keeps your contacts, projects and tasks in Records. It needs at least 4 GB of memory, and 8 GB is recommended.</Text>
         <View>
           {SERVER_KINDS.map((k) => <Row key={k.id} title={k.label} sub={kind === k.id ? "Selected." : undefined} onPress={() => setKind(k.id)} />)}
         </View>
