@@ -62,7 +62,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
             {E.stageModeOf(body) === "none" ? null : <Field label="Name" value={s.name} onChangeText={(v: string) => onChange(E.renameStage(body, si, v))} />}
             {E.stageModeOf(body) === "none" ? null : <View className="gap-s2">
               <Select label="Done when" value={E.doneWhenOf(s)} options={E.DONE_WHEN} onChange={(v: string) => onChange(E.setDoneWhen(body, si, v))} />
-              {E.doneWhenOf(s) === "sign_off" ? <Select label="Who signs it off" value={s.sign_off || ""} options={[["", "Choose someone"], ...E.assigneeChoices(body, people, []).filter(([v]) => v.startsWith("role:") || v.startsWith("person:"))]} onChange={(v: string) => onChange(E.setSignOff(body, si, v))} /> : null}
+              {E.doneWhenOf(s) === "sign_off" ? <Select label="Who signs it off" value={s.sign_off || ""} options={[["", "Choose someone"], ...E.assigneeChoices(body, people, []).filter(([v]) => v.startsWith("role:") || v === "lead" || v.startsWith("person:"))]} onChange={(v: string) => onChange(E.setSignOff(body, si, v))} /> : null}
               <Text size="caption" tone="muted">{E.nextLine(body, si)}</Text>
             </View>}
             <Select label="Who may move a project on early" value={s.owner || ""} options={owners} onChange={(v: string) => onChange(E.setStageOwner(body, si, v))} />

@@ -320,7 +320,11 @@ export function createStages(o) {
 
   /** Who may move a record on early: the stage's owner (a person, or anyone holding the role), or an admin. @param {any} ent @param {any} who */
   async function mayAdvance(ent, who) {
-    if (ent.owner) {
+    if (ent.owner === "lead") {
+      // the stage is signed off by whoever holds the Lead seat on this project (else its owner), read now
+      const a = await actorFor("lead", (await o.catalog()).space, { record: ent.urn, type: ent.type, stage: ent.stage });
+      if (a && a.kind === "person" && a.id === who.id) return true;
+    } else if (ent.owner) {
       const [kind, name] = String(ent.owner).split(":");
       if (kind === "person" && name === who.id) return true;
       if (kind === "role" && o.ports && o.ports.roles) { const holders = (await o.ports.roles((await o.catalog()).space, name)) || []; if (holders.some((/** @type {any} */ a) => a.id === who.id)) return true; }

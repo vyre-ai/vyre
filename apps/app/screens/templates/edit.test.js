@@ -196,3 +196,10 @@ test("a stage is done when every task, the needed ones, or a sign-off says; sign
   assert.equal(nextLine(b, 2), "The last stage: the project ends here.");
   assert.equal(nextLine(setStageMode(base(), "any"), 0), "Then a person moves the project on.");
 });
+
+test("the project lead can sign a stage off, and the line says so", async () => {
+  const { setDoneWhen, setSignOff, nextLine } = await import("./edit.ts");
+  const b = setSignOff(setDoneWhen(addStage(base()), 0, "sign_off"), 0, "lead");
+  assert.deepEqual(missing(b), []);
+  assert.equal(nextLine(b, 0), "Then it waits for the project lead to sign it off, and moves to Done.");
+});
