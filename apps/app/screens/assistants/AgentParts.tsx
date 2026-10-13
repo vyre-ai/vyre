@@ -241,7 +241,8 @@ export function Sharing({ name }: { name: string }) {
               const r = accessRow(a, people, roles);
               return (
                 <View key={`${a.kind}:${a.subject}`}>{i ? <Divider /> : null}
-                  <Row title={r.title} sub={r.sub} end={<View className="flex-row items-center gap-s1"><Segmented label={`${r.title}'s access`} value={a.level} options={LEVELS as [string, string][]} onChange={(v) => void set(a.kind, a.subject, v as "use" | "edit")} /><IconButton icon="x" label={`Take ${r.title}'s access away`} onPress={() => void set(a.kind, a.subject, null)} /></View>} />
+                  <Row title={r.title} sub={r.sub} end={<IconButton icon="x" label={`Take ${r.title}'s access away`} onPress={() => void set(a.kind, a.subject, null)} />} />
+                  <View className="px-s3 pb-s2"><Segmented label={`${r.title}'s access`} value={a.level} options={LEVELS as [string, string][]} onChange={(v) => void set(a.kind, a.subject, v as "use" | "edit")} /></View>
                 </View>
               );
             })}
