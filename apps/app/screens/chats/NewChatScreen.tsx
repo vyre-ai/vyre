@@ -94,7 +94,7 @@ export default function NewChatScreen() {
         : agents === null ? <LoadingState rows={3} />
         : (
           <View className="gap-s3">
-            {project ? <View className="flex-row"><Chip onPress={() => setProject("")} accessibilityLabel={`Remove ${projectName || "the project"} from this chat`}>{`In ${projectName || "this project"}  ×`}</Chip></View> : null}
+            {project ? <View className="flex-row"><Chip onPress={() => setProject("")}>{`In ${projectName || "this project"}  ×`}</Chip></View> : null}
             <Field name="Search" value={q} onChangeText={setQ} placeholder="Search people and agents" />
             {lists.length ? lists.map((g) => (
               <View key={g.title} className="gap-s1">
