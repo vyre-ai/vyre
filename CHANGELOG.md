@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- perf(daemon): vyred starts with node --expose-gc in the box loop, the systemd unit and the Mac server wrapper, so the memory passes call the collector without turning the flag on at run time (which Node leaves undefined); process-match patterns in the box checks no longer assume the text before the script path.
 - fix(perf-check): the idle window opens after V8's memory reducer has run once (read from --trace-gc, capped at 60 s), so it measures steady idle and not the tail of startup GC; no budget changes.
 - fix(ci): main goes green again: the feature docs name the built-in network instead of another VPN product, and the reads-are-reads test ignores memory_runs, the Memory curator's log of its own background passes.
 - perf(memory): vyred collects garbage between the curator's batches and after a heavy pass, the curator keeps a turn's time in a nested map instead of a joined string key, and a session capture indexes only the lines it just kept; the startup RSS peak and the memory reducer's CPU burst at the start of idle drop. Every line is still scrubbed exactly as before.

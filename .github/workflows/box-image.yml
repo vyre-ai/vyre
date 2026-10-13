@@ -190,7 +190,7 @@ jobs:
       - name: A killed vyred comes back, the container stays up
         if: hashFiles('core/daemon/loop.sh') != ''
         run: |
-          vpid() { docker exec "$C" pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1; }
+          vpid() { docker exec "$C" pgrep -f '/opt/vyre/core/daemon/main.js' | head -1; }
           before=$(vpid); echo "vyred pid $before"
           [ -n "$before" ]
           docker exec "$C" kill -KILL "$before"
