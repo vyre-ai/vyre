@@ -2,6 +2,7 @@
 // Roles over the box (the roles.* tools, answered by roles-core) or, in the sample world, over a small store in memory. One shape for both:
 // read() gives the roles, the record types the data section lists and the projects "chosen projects" picks from; the writes answer the stored role.
 import { SAMPLE_TYPES, builtInRoles, duplicateRole, newRole, removeRefusal, nameProblem, withTypes } from "./model.js";
+import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { MOCK_PROJECTS, sampleRoles } from "./mock.js";
 
 /** @typedef {import("./model.js").Role} Role */
@@ -118,7 +119,7 @@ export function roleOf(r, types = []) {
   const keys = lv ? Object.keys(lv) : types.map((t) => t.id);
   const hidden = r.hidden_fields && typeof r.hidden_fields === "object" ? r.hidden_fields : {};
   return {
-    id, name: String(r.label || r.name || id), builtin: r.builtin === true || ["owner", "admin", "member", "guest"].includes(id), from: r.base ? String(r.base) : "",
+    id, name: String(r.label || r.name || id), builtin: r.builtin === true || ROLE_IDS.includes(id) || id === "guest", from: r.base ? String(r.base) : "",
     holders: Number(r.people ?? r.holders) || 0, can, where: { kind, projects: Array.isArray(r.where?.projects) ? r.where.projects.map(String) : [] },
     data: keys.map((t) => ({ id: t, name: names[t] ?? t, access: lv ? (["none", "read", "edit"].includes(lv[t]) ? lv[t] : "none") : can.edit ? "edit" : can.view ? "read" : "none", hidden: Array.isArray(hidden[t]) ? hidden[t].map(String) : [] })),
     tools: ids(r.tools),

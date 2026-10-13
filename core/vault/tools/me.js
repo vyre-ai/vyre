@@ -4,10 +4,11 @@
 // The member gate lets these names through (MEMBER_ALLOWED) because each one resolves its person here and refuses anything but exactly one person who is not the owner.
 
 import { refuseNonPerson } from "../../../lib/person-body.js";
+import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
-const PERSON_SURFACES = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];
+const PERSON_SURFACES = [...THE_SURFACES, "device", "web"];
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const fields = { type: "object", additionalProperties: { type: "string" } };
