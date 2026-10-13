@@ -10,7 +10,6 @@
 //   (open, edit and write back: linked-read.js: ls, read, write, rename, delete, versions)
 //   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
 //   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
-import crypto from "node:crypto";
 import { newPrefixedId } from "../../lib/id.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
