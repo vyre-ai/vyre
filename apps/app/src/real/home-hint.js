@@ -6,13 +6,13 @@
 export const HINT_MAX = 512;
 const MIN_BOX = 32;
 
-/** @typedef {{ v: 1, relay: string, route: string, box: string, name?: string }} HomeHint */
+/** @typedef {{ v: 1, relay: string, route: string, box: string, name?: string, chainHello?: 1 }} HomeHint */
 
-/** @param {{ relay?: string, route?: string, box?: string, name?: string }} p @returns {HomeHint | null} */
+/** `chainHello: 1` says the server admits a device the identity chain lists (relay.status reports it); the app offers chain sign-in only to a server whose hint says so. @param {{ relay?: string, route?: string, box?: string, name?: string, chainHello?: number }} p @returns {HomeHint | null} */
 export function homeHintOf(p) {
   if (!p || typeof p.relay !== "string" || typeof p.route !== "string" || typeof p.box !== "string" || p.box.length < MIN_BOX || !p.route) return null;
   const name = typeof p.name === "string" ? p.name.trim().slice(0, 64) : "";
-  return { v: 1, relay: p.relay, route: p.route, box: p.box, ...(name ? { name } : {}) };
+  return { v: 1, relay: p.relay, route: p.route, box: p.box, ...(name ? { name } : {}), ...(p.chainHello === 1 ? { chainHello: /** @type {1} */ (1) } : {}) };
 }
 
 /** @param {HomeHint} h @returns {string} */
@@ -29,3 +29,6 @@ export function parseHomeHint(text) {
   if (!j || j.v !== 1 || typeof j.relay !== "string" || !/^wss:\/\//.test(j.relay)) return null;
   return homeHintOf(j);
 }
+
+/** Does the server this hint names admit chain devices? An old server's hint has no flag, so the app offers it no chain sign-in. @param {HomeHint | null} h */
+export const offersChainSignIn = (h) => Boolean(h && h.chainHello === 1);

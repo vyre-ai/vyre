@@ -115,6 +115,15 @@ does not have it by design.
 | [Authenticator code](components/otp.md) | partial | not built | not built |
 | [Agenda](components/agenda.md) | partial | not built | partial |
 | [Stepper and checks](components/stepper-checks.md) | partial | not built | not used |
+| [Flow step](components/flow-step.md) | not used | built | not used |
+| [Stack](components/stack.md) | not used | built | not used |
+| [Code field](components/code-field.md) | not used | built | not used |
+| [Code display](components/code-display.md) | not used | built | not used |
+| [Match words](components/match-words.md) | not used | built | not used |
+| [Password field](components/password-field.md) | not used | built | not used |
+| [Choice list](components/choice-list.md) | not used | built | not used |
+| [Provider row](components/provider-row.md) | not used | built | not used |
+| [Vyre mark](components/vyre-mark.md) | not used | built | not used |
 | [States](components/states.md) | partial | partial | partial |
 
 ### Shared pieces

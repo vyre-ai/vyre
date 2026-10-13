@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ADMIN_ONLY, BUILT_INS, canDuplicate, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
+import { ADMIN_ONLY, TOOL_NOTES, BUILT_INS, canDuplicate, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
 import { bodyOf, catalogueOf, mockSource, projectsOf, roleOf, rolesOf, rolesSource, typesOf } from "./source.js";
 
 test("the built-ins are Admin, Member and Guest, Guest is temp on the wire, manager is not among them", () => {
@@ -41,14 +41,14 @@ test("an owner invites with any role but Owner; an admin cannot give Admin or a 
 test("the sentence under a role says where, what data and which tools", () => {
   const base = builtInRoles();
   const para = setTool(setTool(newRole("member", "Paralegal", base), "documents", true), "files", true);
-  assert.equal(sees(para), "The projects they are on. Edits Clients, Projects, Invoices and Documents. Documents and files on.");
+  assert.equal(sees(para), "The projects they are on. Edits Clients, Projects, Invoices and Documents.");
   const none = newRole("member", "Quiet", base);
-  assert.equal(sees(setAccess(setAccess(setAccess(setAccess(none, "client", "none"), "project", "none"), "invoice", "none"), "document", "none")), "The projects they are on. No records. No mail, calendar or computers.");
+  assert.equal(sees(setAccess(setAccess(setAccess(setAccess(none, "client", "none"), "project", "none"), "invoice", "none"), "document", "none")), "The projects they are on. No records.");
   const chosen = setProject(setWhere(para, "chosen"), "smith", true);
   assert.ok(sees(chosen, { smith: "Smith estate" }).startsWith("Only Smith estate."));
-  assert.equal(sees(setAccess(setAccess(para, "invoice", "read"), "document", "read")), "The projects they are on. Edits Clients and Projects, reads Invoices and Documents. Documents and files on.");
-  assert.equal(sees(setAccess(setAccess(setAccess(setAccess(para, "client", "read"), "project", "read"), "invoice", "read"), "document", "read")), "The projects they are on. Reads Clients, Projects, Invoices and Documents. Documents and files on.");
-  assert.ok(sees(starting("admin") && { ...newRole("admin", "Partner", builtInRoles()) }).endsWith("All tools on."));
+  assert.equal(sees(setAccess(setAccess(para, "invoice", "read"), "document", "read")), "The projects they are on. Edits Clients and Projects, reads Invoices and Documents.");
+  assert.equal(sees(setAccess(setAccess(setAccess(setAccess(para, "client", "read"), "project", "read"), "invoice", "read"), "document", "read")), "The projects they are on. Reads Clients, Projects, Invoices and Documents.");
+  assert.ok(sees(starting("admin") && { ...newRole("admin", "Partner", builtInRoles()) }).startsWith("Every project in the space."));
   assert.equal(sees(builtInRoles()[2]), BUILT_INS[1].line);
   assert.equal(list(["a", "b", "c"]), "a, b and c");
   assert.equal(holdersLine(1), "1 person");
@@ -211,4 +211,9 @@ test("the real source reads each role with roles.get and sends roles.create with
   await assert.rejects(src.remove("x"), { code: "role_in_use" });
   await src.save({ ...w.roles[1], name: "Para" });
   assert.deepEqual(seen.find((s) => s.tool === "roles.update")?.input.id, "paralegal");
+});
+
+test("no tool is said to be on: every tool has a note saying why it is not live yet", () => {
+  for (const [k] of TOOLS) assert.ok(TOOL_NOTES[k], k);
+  assert.ok(!/mail/i.test(sees({ ...newRole("member", "P", builtInRoles()), tools: { mail: true } })));
 });

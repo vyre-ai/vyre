@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
-import { templateNoun, templateStage } from "./template-stage.js";
+import { newMenuItems, templateNoun, templateStage } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Avatar } from "../components/Avatar";
 import { Card, Divider } from "../components/Card";
@@ -33,8 +33,7 @@ const workTypes = (items: Item[]) => [...new Map(items.map((i) => [i.def.name, i
  * by what it calls its projects ("New matter") and last the blank one ("New blank project"); when given they stand in for the plain Project type, and `onChoose` gets the choice's key (a template id, or null for blank).
  */
 export function NewMenu({ items, onNew, floating, choices, onChoose }: { items: Item[]; onNew: (type: string) => void; floating?: boolean; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
-  const work = workTypes(items).filter((t) => !(choices && t.name === "project"));
-  const menu = [...(choices || []).map((c) => ({ label: c.label, onPress: () => onChoose?.(c.key) })), ...work.map((t) => ({ label: `New ${t.label.toLowerCase()}`, onPress: () => onNew(t.name) }))];
+  const menu = newMenuItems(workTypes(items), choices).map((m) => ({ label: m.label, onPress: () => (m.type ? onNew(m.type) : onChoose?.(m.key ?? null)) }));
   if (!menu.length) return null;
   return <Menu trigger={floating ? <Fab label="New" /> : <IconButton icon="plus" label="New" kind="secondary" />} items={menu} />;
 }

@@ -194,7 +194,7 @@ export function createRelay(o = {}) {
   const signinLocLimit = rateLimiter(o.signin?.locPerMin ?? 3, 60_000);
   const signinIpLimit = rateLimiter(o.signin?.ipPerMin ?? 10, 60_000);
   const onSigninAsk = (req, res) => {
-    const ip = String(req.socket.remoteAddress || "");
+    const ip = addressOf(req);
     let body = "", over = false;
     req.on("data", c => { body += c; if (body.length > 512) { over = true; req.destroy(); } });
     req.on("end", () => {

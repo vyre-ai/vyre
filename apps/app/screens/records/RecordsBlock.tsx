@@ -6,7 +6,7 @@ import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
-import { useGlobalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { BlockScreen, BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
@@ -35,9 +35,6 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
-  // The sidebar's "New view" row opens this page with ?newView=1: open the sheet once, then clear the mark so a reload does not reopen it.
-  const asked = useGlobalSearchParams<{ newView?: string }>().newView;
-  useEffect(() => { if (asked === "1") { setMaking(true); router.setParams({ newView: undefined } as never); } }, [asked]);
   const space = useSpaces((s) => s.space);
   const canShare = useSidebar((s) => s.canSetDefault);
   const entries = useEffectiveList();
