@@ -74,7 +74,7 @@ function shippedNodeMajor() {
   try { return Number(/^FROM node:(\d+)/m.exec(fs.readFileSync(path.join(REPO, "box", "Dockerfile"), "utf8"))?.[1]) || null; } catch { return null; }
 }
 
-function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
+function log(msg) { process.stderr.write(`perf-check: ${(Date.now() / 1000).toFixed(2)} ${msg}\n`); }
 
 async function main() {
   // --first-run: what the first index of a whole history costs (scripts/lib/first-run.mjs).
