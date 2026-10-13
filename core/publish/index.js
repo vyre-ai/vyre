@@ -558,7 +558,7 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return { domains: await b.pub.domainsOf(b.chain, i.deployment) }; },
     });
     ctx.tool("publish.holds", {
-      description: "Publishing acts waiting for a person's yes: each plan (what goes public, where, which secrets, which version it replaces) and its task. A model cannot decide them.",
+      description: "Publishing acts awaiting a person's yes: each plan (what goes public, where, which secrets, what it replaces) and its task. A model cannot decide them.",
       input: obj({}),
       run: async (i, meta) => {
         const b = await begin(i, meta);
