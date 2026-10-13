@@ -38,8 +38,8 @@ test("at run, the boxes are resolved from the live record and each follower gets
   const { id } = await install(w, base([{ id: "go", kind: "assign", to: "person:" + BOB.id, title: "Call", output: { kind: "note" }, brief: "Call [[field:this#client]] today.", notes: { followers: "Heads up on [[field:this#client]]" }, followers: ["person:" + ALEX.id], record: m.urn }]));
   await w.runner.start(id, {}, w.kernel.as(ALEX));
   await settle(w);
-  const tasks = await w.kernel.ask.list(chain, {});
-  const rows = Array.isArray(tasks) ? tasks : tasks.rows;
+  await w.kernel.pump();
+  const rows = w.kernel.tasks;
   const main = rows.find(t => t.title === "Call"), follow = rows.find(t => t.title === "Following: Call");
   assert.ok(main, "the assignee has the task");
   assert.match(main.form.brief, /^Call Jane today\.$/);
