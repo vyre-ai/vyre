@@ -80,7 +80,7 @@ test("surfaces: only people reach reveal, copy, fill and sessions; Claude and mo
     assert.equal((await mcp(tool, { name: "site-login", surface: "deck", session: "x", app: { bundle: "com.apple.Safari", pid: 1 } })).error.code, "denied", tool);
     assert.equal((await cli("snoop.try", { tool, name: "site-login" })).data.code, "denied", `a module reached ${tool}`);
   }
-  assert.ok(offered.includes("vault.session.close"), "closing a session takes access away, so anyone may");
+  assert.ok(!offered.includes("vault.session.close"), "closing a session is the person's own act");
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO, "core", "vault", "module.json"), "utf8"));
   for (const tool of [...PERSON_ONLY, "vault.session.close"]) assert.ok(manifest.does.tools.map(t => (typeof t === "string" ? t : t.name)).includes(tool), tool);
   // An object in the order the Capsule lists them; "#..." names a second action on one tool.
@@ -101,7 +101,8 @@ test("surfaces: a session opens, reports, and closes; its token is in no event",
   const st = (await local("vault.session.status", { session: o.session })).data;
   assert.equal(st.unlocked, true);
   assert.equal(st.surface, "deck");
-  assert.deepEqual((await as("mcp")("vault.session.close", { session: o.session })).data, { closed: true });
+  assert.equal((await as("mcp")("vault.session.close", { session: o.session })).error.code, "denied");
+  assert.deepEqual((await local("vault.session.close", { session: o.session })).data, { closed: true });
   assert.equal((await local("vault.session.status", { session: o.session })).data.unlocked, false);
   assert.match((await local("vault.session.open", { surface: "browser" })).error.message, /surface|enum|one of/);
   const ev = d.events.since(0, { limit: 1000 });

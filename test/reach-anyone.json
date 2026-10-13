@@ -2480,6 +2480,26 @@
   "vault.access.set": {
    "module": "vault",
    "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
+  },
+  "mcp.add": {
+   "module": "mcp",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+  },
+  "mcp.update": {
+   "module": "mcp",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+  },
+  "mcp.remove": {
+   "module": "mcp",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+  },
+  "mcp.test": {
+   "module": "mcp",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
+  },
+  "google.test": {
+   "module": "google",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass"
   }
  }
 }
