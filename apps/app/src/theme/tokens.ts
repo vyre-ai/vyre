@@ -559,9 +559,9 @@ export const tokens = {
       "rail": 64,
       "list": 320,
       "side": 340,
-      "pageMax": 980,
+      "pageMax": 1120,
       "readMax": 720,
-      "gutter": 32,
+      "gutter": 40,
       "gutterPhone": 16
     },
     "motion": {

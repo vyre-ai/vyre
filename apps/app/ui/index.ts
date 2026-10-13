@@ -53,6 +53,16 @@ export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./m
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
 export { Shell } from "./shell/Shell";
+export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
+export { SidebarRow } from "./shell/SidebarRow";
+export { SidebarPanel } from "./shell/SidebarPanel";
+export type { PanelDef, PanelItem } from "./shell/SidebarPanel";
+export { RAIL } from "./shell/rail-tokens.js";
+export { useRail } from "./shell/useRail";
+export { panelFor, backTo, withSide, PANELS } from "./shell/sidebar-stack.js";
+export { Tip } from "./components/Tip";
+export { LogoPicker } from "./components/LogoPicker";
+export { spaceTile, initialsOf, TILE_PALETTE } from "./marks/space-tile.js";
 export type { NavItem, NavDef, ShellSpace, ShellProps } from "./shell/Shell";
 export { FilterPills } from "./components/FilterPills";
 export { ActorMark } from "./tasks/ActorMark";

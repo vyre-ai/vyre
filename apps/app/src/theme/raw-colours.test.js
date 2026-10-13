@@ -18,6 +18,7 @@ export const EXCEPTIONS = Object.freeze({
   "src/store-core/tokens-v3.js": "the token source: the one place the look's colours are defined, which every role is read from",
   "src/terminal/xterm/xterm.js": "xterm, third-party code copied in as it is",
   "src/terminal/xterm/xterm.css": "xterm, third-party code copied in as it is",
+  "ui/marks/space-tile.js": "the curated tints of a space's default monogram tile: eight calm hues chosen once, in a paper and a dark form each, not roles",
   "ui/marks/source.js": "the avatar illustration (skin, hair, clothes and background palettes): art, drawn the same under either scheme",
 });
 
