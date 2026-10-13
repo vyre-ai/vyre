@@ -51,7 +51,7 @@ on:
         type: boolean
         default: false
       escrow:
-        description: "Deploy escrow/worker (escrow.vyre.run) and set its ESCROW_RELAY_SECRET, ESCROW_KEK_<kid> and ESCROW_KEK_CURRENT, and the relay's ESCROW_RELAY_SECRET, from the deploy environment secrets ESCROW_RELAY_SECRET, ESCROW_KEK, ESCROW_KEK_ID"
+        description: "Deploy escrow/worker (escrow.vyre.run) and set its ESCROW_RELAY_SECRET, ESCROW_KEK_<kid> and ESCROW_KEK_CURRENT, and the relay's ESCROW_RELAY_SECRET, from the deploy environment secrets ESCROW_RELAY_SECRET, ESCROW_KEK, ESCROW_KEK_ID. Never remove an old ESCROW_KEK_<kid> from the escrow Worker: there is no rewrap yet, and every bundle sealed under it would be lost"
         type: boolean
         default: false
 permissions:

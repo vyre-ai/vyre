@@ -7,9 +7,11 @@
 //   POST /v1/escrow/put      device, with the put token: {token, bundle:{sk, home}} -> seals and stores it (also how a vault reset refreshes the Secret Key)
 //   POST /v1/escrow/release  relay only (MAC): {ghid, device:{eid,pub,agree}, ts} -> adds the device to the chain as via "github" with the relay key and answers the bundle sealed to the device's agreement key
 //   POST /v1/escrow/delete   relay only (MAC): {ghid, identity, ts} -> purges the bundle and the key
+//   POST /v1/escrow/token    relay only (MAC): {ghid, identity, ts} -> a fresh one-use put token (the Secret Key changed)
+// Every relay call carries a one-use nonce `n` inside the MAC'd body, so a captured call cannot be replayed within the time window.
 //
 // At rest: AES-256-GCM under a key-encryption key that is a Worker secret (ESCROW_KEK_<kid>, ESCROW_KEK_CURRENT names the kid), the AAD binds the numeric GitHub id, the identity id and the kid.
-// Nothing here logs a body, and errors carry no secret. To rotate: add ESCROW_KEK_<new>, set ESCROW_KEK_CURRENT, then POST /v1/escrow/rewrap with the relay MAC to re-seal every record.
+// Nothing here logs a body, and errors carry no secret. To rotate: add ESCROW_KEK_<new> and set ESCROW_KEK_CURRENT; new records use it. A rewrap op is NOT built yet, so the old ESCROW_KEK_<kid> must stay set until it is: removing it orphans every bundle sealed under it.
 
 import * as C from "../../kernel/identity/chain.js";
 import { mac } from "./mac.js";
@@ -67,7 +69,7 @@ export default {
     if (!["create", "put", "release", "delete", "token"].includes(op)) return json(404, { error: "no such call" });
     if (op !== "put") {
       const { m, ...rest } = b;
-      if (!Number.isFinite(rest.ts) || Math.abs(rest.ts - now(env)) > LIMITS.skewMs || typeof m !== "string" || !same(m, await mac(env.ESCROW_RELAY_SECRET, op, rest))) return json(401, { error: "not the relay" });
+      if (!Number.isFinite(rest.ts) || Math.abs(rest.ts - now(env)) > LIMITS.skewMs || typeof m !== "string" || typeof rest.n !== "string" || rest.n.length < 16 || rest.n.length > 64 || !same(m, await mac(env.ESCROW_RELAY_SECRET, op, rest))) return json(401, { error: "not the relay" });
       b = rest;
     }
     const res = await env.ESCROW.get(env.ESCROW.idFromName("escrow")).fetch("https://escrow/op", { method: "POST", body: JSON.stringify({ op, b, now: now(env), ip: request.headers.get("cf-connecting-ip") || "unknown" }) });
@@ -84,6 +86,12 @@ export class Escrow {
   async fetch(request) {
     const { op, b, now: t } = /** @type {any} */ (await request.json());
     try {
+      await this.prune(t);
+      // A relay call is spent by its nonce; a replay inside the time window finds it gone.
+      if (op !== "put") {
+        if (await this.ctx.storage.get(`r/${b.n}`)) return json(401, { error: "not the relay" });
+        await this.ctx.storage.put(`r/${b.n}`, t + 2 * LIMITS.skewMs + 1000);
+      }
       if (op === "create") return await this.create(b, t);
       if (op === "put") return await this.put(b, t);
       if (op === "release") return await this.release(b, t);
@@ -93,6 +101,14 @@ export class Escrow {
       // An error says what failed, never a key, a body or the secret.
       return json(500, { error: "the escrow could not do that" });
     }
+  }
+
+  /** Drop what has run out: spent relay nonces, put tokens' nonces and the hour counters older than two hours. */
+  async prune(/** @type {number} */ t) {
+    const dead = [];
+    for (const prefix of ["r/", "n/"]) for (const [k, v] of await this.ctx.storage.list({ prefix })) if (typeof v === "number" && v < t) dead.push(k);
+    for (const prefix of ["rg/", "ri/"]) for (const k of (await this.ctx.storage.list({ prefix })).keys()) if (Number(k.split("/")[2]) < t - 2 * 3_600_000) dead.push(k);
+    for (let i = 0; i < dead.length; i += 100) await this.ctx.storage.delete(dead.slice(i, i + 100));
   }
 
   async create(/** @type {any} */ b, /** @type {number} */ t) {
@@ -141,9 +157,15 @@ export class Escrow {
     const hour = t - (t % 3_600_000);
     const bump = async (/** @type {string} */ k, /** @type {number} */ limit) => { const n = ((await this.ctx.storage.get(k)) || 0) + 1; await this.ctx.storage.put(k, n); return n <= limit; };
     if (!(await bump(`rg/${rec.ghid}/${hour}`, LIMITS.releasePerGhidHour)) || !(await bump(`ri/${rec.identity}/${hour}`, LIMITS.releasePerIdentityHour))) return json(429, { error: "wait before trying GitHub again" });
+    // Written back from a FRESH read, changing only the counters: a put (a vault reset) or a delete that landed while this call waited on the directory is never overwritten.
+    const touch = async (/** @type {(r: any) => any} */ change) => {
+      const cur = /** @type {any} */ (await this.ctx.storage.get(`g/${rec.ghid}`));
+      if (!cur || cur.identity !== rec.identity) return null;
+      await this.ctx.storage.put(`g/${rec.ghid}`, { ...cur, ...change(cur) });
+      return cur;
+    };
     const fail = async (/** @type {number} */ status, /** @type {string} */ say) => {
-      const fails = rec.fails + 1;
-      await this.ctx.storage.put(`g/${rec.ghid}`, { ...rec, fails: fails >= LIMITS.failuresBeforeLock ? 0 : fails, lockUntil: fails >= LIMITS.failuresBeforeLock ? t + LIMITS.lockMs : rec.lockUntil });
+      await touch(cur => { const fails = cur.fails + 1; return { fails: fails >= LIMITS.failuresBeforeLock ? 0 : fails, lockUntil: fails >= LIMITS.failuresBeforeLock ? t + LIMITS.lockMs : cur.lockUntil }; });
       return json(status, { error: say });
     };
     if (!rec.bundle) return fail(409, "no escrowed key yet");
@@ -167,10 +189,12 @@ export class Escrow {
     catch (e) { return fail(409, /** @type {any} */ (e).code === "relay_rate" ? "too many devices were added today" : "the identity's list does not allow that"); }
     const ap = await f(`${origin}/v1/ids/append`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: rec.name, ops: [op] }) });
     if (!ap.ok) return fail(409, "the directory did not take the new device");
-    const plain = await open(this.env, rec.ghid, rec.identity, rec.bundle);
+    // The bundle is read again now, after the directory: a reset that refreshed the Secret Key meanwhile is the one released, and a link that was deleted releases nothing.
+    const cur = await touch(() => ({ fails: 0, lastRelease: t }));
+    if (!cur || !cur.bundle) return same_answer();
+    const plain = await open(this.env, cur.ghid, cur.identity, cur.bundle);
     const sealed = await sealTo(d.agree, plain);
     plain.fill(0);
-    await this.ctx.storage.put(`g/${rec.ghid}`, { ...rec, fails: 0, lastRelease: t });
     return json(200, { sealed, lastRelease: t, deviceEid: entry.eid });
   }
 

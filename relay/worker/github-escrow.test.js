@@ -39,8 +39,10 @@ async function world(t) {
   const phone = await key();
   const g = await C.makeGenesis({ kind: "person", entry: phone.entry("device"), nonce: "n-" + phone.eid.slice(0, 8), ts: T0 - 3 * DAY, sign: phone.sign });
   const chain = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  const hooks = { during: null };
   const names = async (url, init = {}) => {
     const u = new URL(url);
+    if (u.pathname === "/v1/ids/resolve") { if (hooks.during) { const h = hooks.during; hooks.during = null; await h(); } }
     if (u.pathname === "/v1/ids/resolve") return new Response(JSON.stringify({ data: { name: "alex", kind: "person", id: chain.state.id, ops: chain.ops } }));
     if (u.pathname === "/v1/ids/append") {
       try { for (const op of JSON.parse(init.body).ops) { chain.state = await C.applyOp(chain.state, op, { now: clock.t, live: true }); chain.ops = [...chain.ops, op]; } return new Response("{}"); }
@@ -82,7 +84,7 @@ async function world(t) {
     chain.state = await C.applyOp(chain.state, op, { now: clock.t, live: true }); chain.ops = [...chain.ops, op];
     return escrowFetch("https://escrow.test/v1/escrow/put", { method: "POST", body: JSON.stringify({ token: body.escrow.token, bundle: { sk: "VSK1-SECRET-KEY-VALUE", home: JSON.stringify({ v: 1, relay: "wss://relay.vyre.run", route: "r".repeat(26), box: "b".repeat(43) }) } }) });
   };
-  return { clock, phone, chain, ert, rrt, req, post, signIn, linkWith, finishLink, escrowFetch };
+  return { hooks, clock, phone, chain, ert, rrt, req, post, signIn, linkWith, finishLink, escrowFetch };
 }
 
 test("link, then a new device signs in with GitHub: it is added as a limited device and gets the Secret Key and home hint sealed to its own agreement key", async t => {
@@ -127,7 +129,7 @@ test("the escrow answers only the relay (MAC and time), refuses a stale call, an
   const { body } = await w.linkWith();
   const call = (op, b) => w.escrowFetch(`https://escrow.test/v1/escrow/${op}`, { method: "POST", body: JSON.stringify(b) });
   assert.equal((await call("release", { ghid: 4242, device: {}, ts: w.clock.t, m: "forged" })).status, 401);
-  const rest = { ghid: 4242, identity: w.chain.state.id, ts: w.clock.t - 10 * 60_000 };
+  const rest = { ghid: 4242, identity: w.chain.state.id, ts: w.clock.t - 10 * 60_000, n: "s".repeat(20) };
   assert.equal((await call("delete", { ...rest, m: await E.mac(SECRET, "delete", rest) })).status, 401, "stale");
   assert.equal((await w.finishLink(body)).status, 200);
   const again = await w.escrowFetch("https://escrow.test/v1/escrow/put", { method: "POST", body: JSON.stringify({ token: body.escrow.token, bundle: { sk: "VSK1-OTHER-OTHER" } }) });
@@ -173,4 +175,42 @@ test("the fourth device in a day is refused by the chain, and repeated failures 
   // the owner's own phone still signs a change, locked or not
   const op = await C.makeOp(w.chain.state, { type: "add", entry: (await key()).entry("device") }, { by: w.phone.eid, ts: w.clock.t, sign: w.phone.sign });
   await C.applyOp(w.chain.state, op, { now: w.clock.t, live: true });
+});
+
+test("a reset's new Secret Key put while a release waits on the directory is the one released, and an unlink during a release is not undone", async t => {
+  const w = await world(t);
+  const { body } = await w.linkWith(); await w.finishLink(body);
+  const store = () => w.ert.object("escrow", "ESCROW").ctx.storage.map;
+  // What a refresh put leaves in storage (the fake serialises one object's calls, so the interleaving is made by writing the record the put would have written).
+  const before = structuredClone(store().get("g/4242"));
+  const rest = { ghid: 4242, identity: w.chain.state.id, ts: w.clock.t, n: "t".repeat(20) };
+  const tk = await (await w.escrowFetch("https://escrow.test/v1/escrow/token", { method: "POST", body: JSON.stringify({ ...rest, m: await E.mac(SECRET, "token", rest) }) })).json();
+  assert.equal((await w.escrowFetch("https://escrow.test/v1/escrow/put", { method: "POST", body: JSON.stringify({ token: tk.token, bundle: { sk: "VSK3-FRESH-AFTER-RESET", home: null } }) })).status, 200);
+  const after = structuredClone(store().get("g/4242"));
+  store().set("g/4242", before);
+  const dev = await key(), ag = agreeKey(), r = await w.signIn();
+  w.hooks.during = async () => { store().set("g/4242", { ...structuredClone(store().get("g/4242")), bundle: after.bundle }); };
+  const out = await (await w.post("/v1/github/enter", { ticket: r.ticket, cv: r.cv, device: { eid: dev.eid, pub: dev.pub, agree: ag.agree } })).json();
+  assert.equal(openSealed(ag.privateKey, out.sealed).sk, "VSK3-FRESH-AFTER-RESET", "not the stale key read before the wait");
+  // an unlink that lands during a release: nothing is resurrected
+  const dev2 = await key(), ag2 = agreeKey(), r2 = await w.signIn();
+  w.hooks.during = async () => { store().delete("g/4242"); store().delete("i/" + w.chain.state.id); };
+  const gone = await w.post("/v1/github/enter", { ticket: r2.ticket, cv: r2.cv, device: { eid: dev2.eid, pub: dev2.pub, agree: ag2.agree } });
+  assert.ok([404, 409].includes(gone.status), String(gone.status));
+  assert.deepEqual([...store().keys()].filter(k => k.startsWith("g/") || k.startsWith("i/")), []);
+});
+
+test("a captured relay call cannot be replayed, and old counters and nonces are pruned", async t => {
+  const w = await world(t);
+  const { body } = await w.linkWith();
+  void body;
+  const rest = { ghid: 4242, identity: w.chain.state.id, ts: w.clock.t, n: "z".repeat(20) };
+  const send = async () => (await w.escrowFetch("https://escrow.test/v1/escrow/token", { method: "POST", body: JSON.stringify({ ...rest, m: await E.mac(SECRET, "token", rest) }) })).status;
+  assert.equal(await send(), 200);
+  assert.equal(await send(), 401, "the same call again");
+  w.clock.t += 3 * 3_600_000;
+  const rest2 = { ghid: 4242, identity: w.chain.state.id, ts: w.clock.t, n: "y".repeat(20) };
+  await w.escrowFetch("https://escrow.test/v1/escrow/token", { method: "POST", body: JSON.stringify({ ...rest2, m: await E.mac(SECRET, "token", rest2) }) });
+  const keys = [...w.ert.object("escrow", "ESCROW").ctx.storage.map.keys()];
+  assert.ok(!keys.includes("r/" + "z".repeat(20)), "the spent nonce is gone after its window");
 });

@@ -63,7 +63,7 @@ async function allowed(env, key, limit) { return (await ask(env, { op: "hit", ke
 /** A call to the escrow Worker: the relay's MAC over the body and the time, nothing else. The relay never holds what comes back except a public key and a one-use token. @param {any} env @param {string} op @param {object} body */
 async function escrow(env, op, body) {
   if (!env.ESCROW_RELAY_SECRET) return { status: 503, body: null };
-  const rest = { ...body, ts: now(env) };
+  const rest = { ...body, ts: now(env), n: rand(16) };
   const f = typeof env.ESCROW_FETCH === "function" ? env.ESCROW_FETCH : globalThis.fetch.bind(globalThis);
   try {
     const r = await f(`${String(env.ESCROW_ORIGIN || "https://escrow.vyre.run").replace(/\/+$/, "")}/v1/escrow/${op}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...rest, m: await mac(env.ESCROW_RELAY_SECRET, op, rest) }) });
