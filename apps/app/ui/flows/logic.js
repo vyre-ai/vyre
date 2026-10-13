@@ -6,7 +6,7 @@
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, kind?: string }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
@@ -19,10 +19,13 @@ import { findStep, flat } from "./tree.js";
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
   { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
+  { id: "removed", icon: "trash", label: "A record is removed", hint: "For example a client is deleted" },
   { id: "stage", icon: "board", label: "A record enters a stage", hint: "For example a matter enters Drafting" },
   { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
   { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
-  { id: "schedule", icon: "clock", label: "On a schedule", hint: "Every day, every Monday, every hour" },
+  { id: "schedule", icon: "clock", label: "On a schedule", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
+  { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
+  { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
   { id: "manual", icon: "play", label: "Someone runs it", hint: "A person or an agent presses Run" },
 ]);
 
@@ -37,6 +40,8 @@ export const STEP_GROUPS = /** @type {const} */ ([
   ] },
   { name: "Records", items: [
     { kind: "find", icon: "search", label: "Find records", hint: "Look records up in an object", words: "search lookup query fetch get" },
+    { kind: "pick", icon: "search", label: "Look up one record", hint: "The first record that matches, or none", words: "find one first single lookup get match" },
+    { kind: "filter", icon: "filter", label: "Keep only some of a list", hint: "Narrow records you found to those that match", words: "filter narrow keep where subset" },
     { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects", words: "add new insert" },
     { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record", words: "change set edit write" },
     { kind: "upsert", icon: "refresh", label: "Find or create a record", hint: "Use the record that matches, or make a new one", words: "upsert match merge find lookup create if missing exists duplicate" },
@@ -89,10 +94,13 @@ export function triggerPhrase(t, o) {
   switch (t.kind) {
     case "created": return type ? `a record is created in the ${type} object` : "a record is created";
     case "changed": return `${type ? `a record in the ${type} object` : "a record"} is created or updated${t.field ? `, and its ${fieldLabel(o, t)} changes` : ""}`;
+    case "removed": return type ? `a record is removed from the ${type} object` : "a record is removed";
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
+    case "event": return (EVENT_CHOICES.find(([v]) => v === t.event)?.[1] || "something happens in Vyre").replace(/^A /, "a ").replace(/^An /, "an ");
+    case "watcher": return t.watcher ? `the watcher ${t.watcher} finds something new` : "a watcher finds something new";
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
-    case "schedule": return t.every ? `it is ${t.every.toLowerCase()}` : "it is time";
+    case "schedule": return t.every ? `it is ${t.every.toLowerCase()}${TIMED.has(t.every) ? ` at ${t.at || "09:00"}` : ""}` : "it is time";
     case "advanced": return "it starts in a way the builder cannot show yet";
     default: return "someone runs it";
   }
@@ -123,6 +131,8 @@ export function stepSummary(s, o, d) {
     case "email": return `Email ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the address from the form" : s.to.trim()) : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
+    case "pick": return `Look up one ${named(o.types, s.type) || "record"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
+    case "filter": return `Keep only the ones where ${(s.where || "").trim() || "a condition holds"}`;
     case "find": return `Find ${named(o.types, s.type) || "records"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
     case "upsert": return `${s.updateFields ? "Find or create" : "Find, then change or create"} a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
@@ -175,7 +185,8 @@ export function stepProblem(s, o) {
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : String(s.to).startsWith("agent:") ? "A question goes to a person or a team or role. Choose one, or use Assign a task for an agent." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
-    case "find": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
+    case "filter": return !s.from ? "Choose the list to narrow. Add a Find records step first." : !(s.where || "").trim() ? "Say which ones to keep." : null;
+    case "find": case "pick": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
     case "wait":
@@ -201,13 +212,31 @@ export function draftProblems(d, o) {
   if (isRecordTrigger(t) && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "stage" && !(t.stage || "").trim()) out.push("Name the stage that starts it.");
   if (t.kind === "schedule" && !t.every) out.push("Choose how often it runs.");
+  if (t.kind === "schedule" && TIMED.has(t.every || "") && t.at !== undefined && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(t.at)) out.push("Write the time of day like 09:00.");
+  if (t.kind === "removed" && !t.type) out.push("Choose the object that starts it.");
+  if (t.kind === "event" && !t.event) out.push("Choose what happens.");
+  if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
   if (!d.steps.length) out.push("Add a first step.");
   flat(d.steps).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
   return out;
 }
 
-const EVERY = /** @type {Record<string, { cron: string }>} */ ({ "Every hour": { cron: "0 * * * *" }, "Every day": { cron: "0 9 * * *" }, "Every Monday": { cron: "0 9 * * 1" } });
+/** How often a schedule runs: the cron line (`{m}` and `{h}` are the minute and hour of the time it runs at) or an interval. */
+const EVERY = /** @type {Record<string, { cron?: string, every_ms?: number }>} */ ({
+  "Every 15 minutes": { every_ms: 900_000 },
+  "Every hour": { cron: "0 * * * *" },
+  "Every day": { cron: "{m} {h} * * *" },
+  "Every weekday": { cron: "{m} {h} * * 1-5" },
+  "Every Monday": { cron: "{m} {h} * * 1" },
+  "Every month": { cron: "{m} {h} 1 * *" },
+});
 export const EVERY_CHOICES = Object.keys(EVERY);
+/** The schedules that run at a time of day, which the person sets. */
+export const TIMED = new Set(["Every day", "Every weekday", "Every Monday", "Every month"]);
+/** The cron line of a timed schedule at a time "HH:MM". @param {string} every @param {string} [at] */
+const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at || "09:00")) || ["", "9", "00"]; return /** @type {string} */ (EVERY[every].cron).replace("{m}", String(Number(m[2]))).replace("{h}", String(Number(m[1]))); };
+/** Things Vyre's own modules announce that a Flow can start from. */
+export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
 const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t}`);
@@ -308,10 +337,13 @@ export function triggerDefinition(t) {
   switch (t.kind) {
     case "created": return { on: "event", event: `${t.type}.created` };
     case "changed": return { on: "event", event: [`${t.type}.created`, `${t.type}.updated`], ...(t.field ? { field: t.field } : {}), when_record_changes: t.again === "keep" ? "keep" : "replace" };
+    case "removed": return { on: "event", event: `${t.type}.removed` };
+    case "event": return { on: "event", event: String(t.event) };
+    case "watcher": return { on: "watcher", watcher: String(t.watcher).trim() };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
     case "signup": return { on: "web", path: "signup" };
     case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
-    case "schedule": return { on: "time", cron: (EVERY[t.every || ""] || EVERY["Every day"]).cron };
+    case "schedule": { const e = EVERY[t.every || ""] ? t.every || "" : "Every day"; return EVERY[e].every_ms ? { on: "time", every_ms: EVERY[e].every_ms } : { on: "time", cron: TIMED.has(e) ? cronAt(e, t.at) : EVERY[e].cron }; }
     default: return { on: "manual" };
   }
 }
@@ -329,6 +361,8 @@ export function stepDefinition(s, d) {
   switch (s.kind) {
     case "advanced": return s.raw;
     case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20 };
+    case "pick": return { id: s.id, kind: "pick", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}) };
+    case "filter": return { id: s.id, kind: "filter", from: s.from, where: (s.where || "").trim() };
     case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields), ...(s.updateFields ? { update: pairs(s.updateFields) } : {}) };
     case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
     case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
@@ -418,6 +452,8 @@ export function newStep(kind, d, o) {
     case "email": return { id, kind, to: "", subject: "", body: "" };
     case "ask": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "find": return { id, kind, type: "", where: "", limit: 20 };
+    case "pick": return { id, kind, type: "", where: "" };
+    case "filter": return { id, kind, from: [...all].reverse().find((x) => x.kind === "find" || x.kind === "filter") ? `steps.${[...all].reverse().find((x) => x.kind === "find" || x.kind === "filter")?.id}.rows` : "", where: "" };
     case "upsert": return { id, kind, type: "", matchFields: [{ field: "", value: "" }], fields: [{ field: "", value: "" }], updateFields: [] };
     case "remove": return { id, kind, type: lastMade?.type || "", record: link };
     case "stage": return { id, kind, type: lastMade?.type || d.trigger.type || "", record: link, to: "" };
@@ -480,14 +516,22 @@ function triggerFrom(t) {
     const [a, b] = t.event, m = /^([a-z][a-z0-9_]*)\.created$/.exec(a || "");
     return m && b === `${m[1]}.updated` ? { kind: "changed", type: m[1], ...(t.field ? { field: t.field } : {}), again: t.when_record_changes === "keep" ? "keep" : "replace" } : raw;
   }
+  if (t.on === "event" && keys(t, ["on", "event"]) && EVENT_CHOICES.some(([v]) => v === t.event)) return { kind: "event", event: t.event };
   if (t.on === "event" && keys(t, ["on", "event"])) {
-    const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || "");
-    return m ? { kind: "created", type: m[1] } : raw;
+    const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || ""), r = /^([a-z][a-z0-9_]*)\.removed$/.exec(t.event || "");
+    return m ? { kind: "created", type: m[1] } : r ? { kind: "removed", type: r[1] } : raw;
   }
+  if (t.on === "watcher" && keys(t, ["on", "watcher"]) && typeof t.watcher === "string") return { kind: "watcher", watcher: t.watcher };
   if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
-  if (t.on === "time" && keys(t, ["on", "cron"])) {
-    const hit = Object.entries(EVERY).find(([, v]) => v.cron === t.cron);
-    return hit ? { kind: "schedule", every: hit[0] } : raw;
+  if (t.on === "time" && keys(t, ["on", "every_ms"])) { const hit = Object.entries(EVERY).find(([, v]) => v.every_ms === t.every_ms); return hit ? { kind: "schedule", every: hit[0] } : raw; }
+  if (t.on === "time" && keys(t, ["on", "cron"]) && typeof t.cron === "string") {
+    for (const [name, v] of Object.entries(EVERY)) {
+      if (!v.cron) continue;
+      if (!TIMED.has(name)) { if (v.cron === t.cron) return { kind: "schedule", every: name }; continue; }
+      const m = new RegExp(`^${v.cron.replace("{m}", "(\\d{1,2})").replace("{h}", "(\\d{1,2})").replace(/\*/g, "\\*")}$`).exec(t.cron);
+      if (m && Number(m[1]) < 60 && Number(m[2]) < 24) return { kind: "schedule", every: name, at: `${String(Number(m[2])).padStart(2, "0")}:${String(Number(m[1])).padStart(2, "0")}` };
+    }
+    return raw;
   }
   return raw;
 }
@@ -510,6 +554,8 @@ function stepFrom(s) {
   const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
+    case "pick": return keys(s, ["id", "kind", "type", "where", "label"]) ? { id: s.id, kind: "pick", type: s.type, where: s.where || "" } : adv;
+    case "filter": return keys(s, ["id", "kind", "from", "where", "label"]) && typeof s.from === "string" && typeof s.where === "string" ? { id: s.id, kind: "filter", from: s.from, where: s.where } : adv;
     case "find": return keys(s, ["id", "kind", "type", "where", "limit", "label"]) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20 } : adv;
     case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "update", "label"]) && rowsOf(s.match) && rowsOf(s.set) && (s.update === undefined || rowsOf(s.update)) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set), ...(s.update === undefined ? {} : { updateFields: s.update && Object.keys(s.update).length ? rowsOf(s.update) : [] }) } : adv;
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
@@ -627,6 +673,11 @@ export function valueSources(d, stepId, o) {
     if (s.kind === "upsert") out.push([`{steps.${s.id}.created}`, `Whether ${s.id} made a new record (true) or found one (false)`]);
     if (s.kind === "create" || s.kind === "upsert") for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record ${s.kind === "upsert" ? "found or made" : "made"} by ${s.id}`]);
     if (s.kind === "find") out.push([`{steps.${s.id}.rows}`, `The records found by ${s.id}`]);
+    if (s.kind === "filter") out.push([`{steps.${s.id}.rows}`, `The records kept by ${s.id}`]);
+    if (s.kind === "pick") {
+      out.push([`{steps.${s.id}.record.id}`, `The record looked up by ${s.id}`], [`{steps.${s.id}.found}`, `Whether ${s.id} found one (true or false)`]);
+      for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record looked up by ${s.id}`]);
+    }
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
   out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);

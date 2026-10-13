@@ -23,7 +23,7 @@ const pick = (list: { name: string; label: string }[]): [string, string][] => li
 export function recordSources(d: Draft, stepId: string, o: Options): [string, string][] {
   const before: DraftStep[] = [];
   for (const x of flat(d.steps)) { if (x.id === stepId) break; before.push(x); }
-  const made = before.filter((s) => s.kind === "create" || s.kind === "upsert").map((s): [string, string] => [s.id, `The ${o.types.find((t) => t.name === s.type)?.label ?? "new"} record made in ${s.id}`]);
+  const made = before.filter((s) => s.kind === "create" || s.kind === "upsert" || s.kind === "pick").map((s): [string, string] => [s.id, `The ${o.types.find((t) => t.name === s.type)?.label ?? "new"} record made in ${s.id}`]);
   return [...(isRecordTrigger(d.trigger) ? [["trigger", "The record that started the Flow"] as [string, string]] : []), ...made];
 }
 
@@ -52,7 +52,7 @@ function Condition({ s, setStep, draft, options }: { s: DraftStep; setStep: (pat
   const c = s.cond ?? { mode: "build", source: "trigger", op: ">" };
   const set = (patch: Record<string, unknown>) => setStep({ cond: { ...c, ...patch } });
   const earlier: [string, string][] = [["trigger", "What started the Flow"]];
-  for (const x of flat(draft.steps)) { if (x.id === s.id) break; if (x.kind === "find" || x.kind === "create" || x.kind === "upsert" || x.kind === "formula") earlier.push([x.id, `Result of ${x.id}`]); }
+  for (const x of flat(draft.steps)) { if (x.id === s.id) break; if (x.kind === "find" || x.kind === "pick" || x.kind === "filter" || x.kind === "create" || x.kind === "upsert" || x.kind === "formula") earlier.push([x.id, `Result of ${x.id}`]); }
   if (c.mode === "formula") {
     return (
       <>
@@ -163,12 +163,26 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       {s.kind === "decide" ? <Condition s={s} setStep={set} draft={draft} options={options} /> : null}
       {s.kind === "repeat" ? (
         <>
-          <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
+          <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find" || x.kind === "filter").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
           <Field label="Call each one" value={s.as ?? "item"} onChangeText={(as) => set({ as })} help="Inside, read it as this name, for example item.id." />
           <Text size="caption" tone="label">Up to 50 items. The steps inside run once for each.</Text>
         </>
       ) : null}
       {s.kind === "parallel" ? <Text tone="muted">Each side runs at the same time. The Flow carries on when every side is done. Add steps to each side below.</Text> : null}
+      {s.kind === "pick" ? (
+        <>
+          <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
+          <FormulaBox label="Which one (optional, a formula)" value={s.where ?? ""} onChange={(where) => set({ where })} placeholder="For example record.email == trigger.email" />
+          <Text size="caption" tone="label">{`Later steps read it as {steps.${s.id}.record.id}, and whether one was found as {steps.${s.id}.found}. It is the first record that matches.`}</Text>
+        </>
+      ) : null}
+      {s.kind === "filter" ? (
+        <>
+          <Select label="Narrow this list" value={s.from ?? ""} options={[...flat(draft.steps).filter((x) => (x.kind === "find" || x.kind === "filter") && x.id !== s.id).map((x): [string, string] => [`steps.${x.id}.rows`, `The records from ${x.id}`]), ...(s.from && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.from) ? [[s.from, s.from] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(from) => set({ from })} />
+          <FormulaBox label="Keep the ones where (a formula)" value={s.where ?? ""} onChange={(where) => set({ where })} placeholder="For example record.status == &quot;Open&quot;" />
+          <Text size="caption" tone="label">{`Later steps read what is kept as {steps.${s.id}.rows}.`}</Text>
+        </>
+      ) : null}
       {s.kind === "find" ? (
         <>
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
