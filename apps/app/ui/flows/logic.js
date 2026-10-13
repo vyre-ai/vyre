@@ -21,7 +21,7 @@ export const TRIGGERS = /** @type {const} */ ([
 
 /** The step choices. A `soon` one is shown and cannot be picked yet (none today). */
 export const STEP_CHOICES = /** @type {const} */ ([
-  { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your record types" },
+  { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects" },
   { kind: "project", icon: "projects", label: "Start a project", hint: "From a template, linked to a record" },
   { kind: "agent", icon: "agents", label: "Hand to an agent", hint: "With your instructions and the details" },
   { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent" },
@@ -43,7 +43,7 @@ export const emptyOptions = (o = /** @type {any} */ ({})) => ({ types: o.types |
 export function triggerPhrase(t, o) {
   const type = named(o.types, t.type);
   switch (t.kind) {
-    case "created": return type ? `a record is created in ${type}` : "a record is created";
+    case "created": return type ? `a record is created in the ${type} object` : "a record is created";
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
@@ -105,7 +105,7 @@ export function flowSentence(d, o) {
 export function stepProblem(s, o) {
   void o;
   switch (s.kind) {
-    case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which kind of record to create.";
+    case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which object to create a record in.";
     case "project": return s.template ? null : "Choose a project template.";
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
@@ -121,7 +121,7 @@ export function draftProblems(d, o) {
   const out = [];
   if (!d.name.trim()) out.push("Give the Flow a name.");
   const t = d.trigger;
-  if ((t.kind === "created" || t.kind === "stage") && !t.type) out.push("Choose the kind of record that starts it.");
+  if ((t.kind === "created" || t.kind === "stage") && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "stage" && !(t.stage || "").trim()) out.push("Name the stage that starts it.");
   if (t.kind === "schedule" && !t.every) out.push("Choose how often it runs.");
   if (!d.steps.length) out.push("Add a first step.");

@@ -7,6 +7,7 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, Field, FlowBuilder, Lo
 import type { FlowDraft, FlowOptions } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { useFlowsState } from "./store";
+import { ShareFlow } from "./FlowShare";
 import { useFlowOptions, defineReal } from "./builder-source";
 
 const BLANK: FlowDraft = { name: "", trigger: { kind: "created" }, steps: [] };
@@ -78,6 +79,7 @@ export function MadeFlowScreen({ id }: { id: string }) {
   const runs = RUNS[id] ?? [];
   return (
     <Frame back="/u/flows" title={m.draft.name} sub={m.draft.group ? `In the group ${m.draft.group}` : "Not in a group"}>
+      <ShareFlow id={id} options={options} />
       <Card flush><Row dense title="Runs on its own" sub={off[id] ? "Off. Nothing starts it." : "On"} end={<Switch label={`${m.draft.name} is ${off[id] ? "off" : "on"}`} on={!off[id]} onChange={(on) => setOn(id, on)} />} /></Card>
       {options ? <Editor id={id} start={m.draft} options={options} /> : <LoadingState rows={3} />}
       <Sec title="Run history">
@@ -106,6 +108,7 @@ export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unkn
   };
   return (
     <>
+      <ShareFlow id={id} options={options} />
       <FlowBuilder draft={draft} onChange={setDraft} options={options} />
       {problems.length ? <Banner tone="warn" icon="warning"><View className="gap-s1">{problems.map((p) => <Text key={p}>{p}</Text>)}</View></Banner> : null}
       {err ? <Banner tone="err">{err}</Banner> : null}

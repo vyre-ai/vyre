@@ -16,6 +16,8 @@ type S = {
   /** Flows made in the builder (sample build only; a real one is on the box). The two starters come first. */
   made: MadeFlow[]; saveMade: (id: string | null, d: FlowDraft) => string;
   /** The groups of the Flows list, and which group each Flow is in (presentation only). */
+  /** Sample build only: who each Flow is shared with, by Flow id then person or role, as "use" or "edit". */
+  shares: Record<string, Record<string, string>>; setShare: (id: string, who: string, level: string) => void;
   groups: Group[]; groupOf: Record<string, string>; setGroups: (g: Group[], of: Record<string, string>) => void;
 };
 const base = flowsRepo.kits();
@@ -28,6 +30,7 @@ export const useFlowsState = create<S>((set) => ({
     set((s) => ({ made: s.made.some((m) => m.id === key) ? s.made.map((m) => (m.id === key ? { id: key, draft } : m)) : [...s.made, { id: key, draft }], groupOf: draft.group ? { ...s.groupOf, [key]: draft.group } : s.groupOf }));
     return key;
   },
+  shares: {}, setShare: (id, who, level) => set((s) => ({ shares: { ...s.shares, [id]: { ...(s.shares[id] ?? {}), [who]: level } } })),
   groups: [{ name: "Clients" }, { name: "Money" }, { name: "Operations" }],
   groupOf: { refund: "Money", atp: "Clients", payment: "Money", intake: "Operations", engagement: "Operations", engineer: "Money" },
   setGroups: (groups, groupOf) => set({ groups, groupOf }),

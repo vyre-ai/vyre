@@ -46,12 +46,13 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
         </View>
       </Card>
 
+      <Text size="caption" tone="label">Each step can only touch what the person who added it can reach.</Text>
       <View>
         <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => toggle("trigger")}
           last={!draft.steps.length && readOnly}>
           {t.kind === "advanced" ? <Text tone="muted">This Flow starts in a way the builder cannot show yet. It is kept as it is.</Text> : null}
           {t.kind === "advanced" ? null : <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />}
-          {t.kind === "created" || t.kind === "stage" ? <Select label="Kind of record" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setTrig({ type })} /> : null}
+          {t.kind === "created" || t.kind === "stage" ? <Select label="Object" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setTrig({ type })} /> : null}
           {t.kind === "stage" ? <Field label="Stage" value={t.stage ?? ""} onChangeText={(stage) => setTrig({ stage })} placeholder="For example Drafting" /> : null}
           {t.kind === "form" ? <Field label="Form name" value={t.path ?? ""} onChangeText={(path) => setTrig({ path })} placeholder="For example contact" help="Your site's form posts to this name." /> : null}
           {t.kind === "schedule" ? <Select label="How often" value={t.every ?? ""} options={EVERY_CHOICES.map((x) => [x, x] as [string, string])} placeholder="Choose" onChange={(every) => setTrig({ every })} /> : null}
@@ -70,7 +71,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
               {s.kind === "advanced" ? <Text tone="muted">This step does something the builder cannot show yet. It is kept exactly as it is. Move it or remove it here, or change it as code on the Flow's page.</Text> : null}
               {s.kind === "create" ? (
                 <>
-                  <Select label="Kind of record" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setStep(s.id, { type })} />
+                  <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   <View className="gap-s2">
                     <Text size="caption" strong tone="label">Fields</Text>
                     {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
@@ -128,7 +129,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
               {s.kind === "update" ? (
                 <>
                   <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
-                  <Select label="Kind of record" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setStep(s.id, { type })} />
+                  <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />
                   <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
                 </>
