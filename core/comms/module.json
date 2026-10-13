@@ -17,6 +17,23 @@
         "reach": "anyone"
       },
       {
+        "name": "comms.email",
+        "outward": true,
+        "covers": ["mail.send", "google.mail.send", "mcp.call"],
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "comms.service.get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "comms.service.test",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
         "name": "comms.release",
         "reach": "modules"
       }
@@ -39,6 +56,12 @@
         "kind": "api-key",
         "provider": "twilio",
         "purpose": "Send text messages through your Twilio account"
+      },
+      {
+        "id": "sending",
+        "kind": "env-set",
+        "provider": "sending-service",
+        "purpose": "Send your Flows' email through your own sending service (Resend, Mailgun, Postmark, SendGrid or SMTP)"
       }
     ]
   },
@@ -67,6 +90,21 @@
           "to": "string",
           "subject": "string",
           "body": "string"
+        },
+        "outputs": {
+          "held": "string"
+        }
+      },
+      {
+        "name": "comms.email",
+        "label": "Send email through the firm's sending service",
+        "outward": true,
+        "recipients": ["to"],
+        "inputs": {
+          "to": "string",
+          "subject": "string",
+          "text": "string",
+          "html": "string"
         },
         "outputs": {
           "held": "string"

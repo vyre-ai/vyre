@@ -70,6 +70,18 @@ const LIST = [
       { name: "from", label: "From address", secret: false, optional: true, pattern: "^[^\\s@]{1,64}@[^\\s@]{1,255}$" },
       { name: "security", label: "Security (tls or starttls)", secret: false, pattern: "^(tls|starttls)$" }],
     capabilities: ["send_mail", "read_mail"], help: null },
+  { name: "sending-service", label: "Sending service (Resend, Mailgun, Postmark, SendGrid or SMTP)", kinds: ["env-set"], how: "field",
+    fields: [
+      { name: "service", label: "Service (resend, mailgun, postmark, sendgrid or smtp)", secret: false, pattern: "^(resend|mailgun|postmark|sendgrid|smtp)$" },
+      { name: "api_key", label: "API key (the SMTP password for smtp)", secret: true },
+      { name: "from", label: "From address, such as Harlow Law <hello@harlow.example>", secret: false, pattern: "^[^\\r\\n]{3,200}$" },
+      { name: "domain", label: "Sending domain (Mailgun needs it)", secret: false, optional: true, pattern: "^[A-Za-z0-9.-]{1,253}$" },
+      { name: "region", label: "Mailgun region (us or eu)", secret: false, optional: true, pattern: "^(us|eu)$" },
+      { name: "smtp_host", label: "SMTP server (smtp only)", secret: false, optional: true, pattern: "^[A-Za-z0-9.-]{1,253}$" },
+      { name: "smtp_port", label: "SMTP port (smtp only)", secret: false, optional: true, pattern: "^\\d{1,5}$" },
+      { name: "username", label: "SMTP username (smtp only)", secret: false, optional: true },
+      { name: "security", label: "SMTP security (tls or starttls)", secret: false, optional: true, pattern: "^(tls|starttls)$" }],
+    capabilities: ["other"], help: null },
   { name: "mcp-bearer", label: "MCP server token", kinds: ["api-key"], how: "field", fields: [key("Bearer token")],
     capabilities: ["other"], help: null },
 ];

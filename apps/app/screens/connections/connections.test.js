@@ -322,3 +322,26 @@ test("connect-anything only (G26): Connections has no tab for Google or GitHub, 
   const step = onboard.slice(onboard.indexOf("accounts(col, s) {"), onboard.indexOf("devices(col, s) {"));
   assert.ok(step.includes("Any app") && !/github/i.test(step), "the accounts step points to Any app and offers no GitHub pick");
 });
+
+test("sending service: shown without a key, saved through the vault once, tested to one address, removed by its item", { skip: !strip }, async () => {
+  const { connectionsSource } = await import("./source.ts");
+  const { words } = await import("./model.ts");
+  const KEY = "re_live_THE_SECRET_KEY_9999";
+  const b = box({ data: {
+    "comms.service.get": { configured: true, provider: "resend", label: "Resend", from: "Harlow Law <hello@harlow.example>", domain: "harlow.example", api_key: KEY },
+    "comms.service.test": { ok: true, provider: "resend", label: "Resend", to: "admin@harlow.example" },
+  }, error: {} });
+  const s = connectionsSource(b.call);
+  const now = await s.sending();
+  assert.deepEqual(now, { configured: true, provider: "resend", label: "Resend", from: "Harlow Law <hello@harlow.example>", domain: "harlow.example", next: "" });
+  assert.ok(!JSON.stringify(now).includes(KEY), "a key that a box wrongly sent is not carried to the screen");
+  await s.saveSending({ service: "resend", api_key: KEY, from: "hello@harlow.example" });
+  await s.testSending("admin@harlow.example");
+  await s.removeSending();
+  assert.deepEqual(b.seen.map((x) => x.tool), ["comms.service.get", "vault.connect", "comms.service.test", "vault.delete"]);
+  assert.deepEqual(b.seen[1].input, { module: "comms", need: "sending", fields: { service: "resend", api_key: KEY, from: "hello@harlow.example" } });
+  assert.deepEqual(b.seen[3].input, { name: "comms-sending" });
+  const refused = connectionsSource(box({ error: { "vault.connect": { code: "denied", message: `refused ${KEY}` } } }).call);
+  const e = await refused.saveSending({ service: "resend", api_key: KEY, from: "a@b.example" }).then(() => null, (x) => x);
+  assert.ok(!words(e, [KEY]).includes(KEY));
+});

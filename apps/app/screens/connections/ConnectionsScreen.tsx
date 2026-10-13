@@ -8,6 +8,7 @@ import RealAnyApp from "./RealAnyApp";
 import RealCatalog from "./RealCatalog";
 import RealConnected from "./RealConnected";
 import RealMcp from "./RealMcp";
+import RealSending from "./RealSending";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
 type Tab = "all" | "add" | "any" | "mcp" | "access";
@@ -19,7 +20,7 @@ export default function ConnectionsScreen() {
       <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={[["all", "Connected"], ["add", "Add"], ["any", "Any app"], ["mcp", "MCP"], ["access", "Access"]]} />
       <View>
-        {tab === "all" ? <RealConnected open={setTab} /> : null}
+        {tab === "all" ? <><RealConnected open={setTab} /><RealSending /></> : null}
         {tab === "add" ? <RealCatalog /> : null}
         {tab === "any" ? <RealAnyApp /> : null}
         {tab === "mcp" ? <RealMcp /> : null}
