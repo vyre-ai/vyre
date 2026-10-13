@@ -320,9 +320,9 @@ function templateText(e) {
   }
   return out;
 }
-/** The other way: what a stored value says when it is shown for editing. @param {any} v */
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
 const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+/** The other way: what a stored value says when it is shown for editing. @param {any} v */
 const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
@@ -416,7 +416,7 @@ export function peopleOf(s) {
   return { ...(s.checker ? { checker: doer(s.checker) } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
 }
 
-/** The stored Flow for a draft. @param {Draft} d */
+/** The stored Flow for a draft. @param {Draft} d @param {Options} [o] */
 export function toDefinition(d, o) {
   DATE_TOKENS = dateTokens(d, o);
   try { return writeDefinition(d); } finally { DATE_TOKENS = new Map(); }
@@ -432,6 +432,7 @@ function dateTokens(d, o) {
   return out;
 }
 
+/** @param {Draft} d */
 function writeDefinition(d) {
   return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.rest || {}) };
 }

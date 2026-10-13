@@ -827,7 +827,7 @@ export default {
       internal: true, callers: ["module"],
       input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
       run: async (i, { caller }) => {
-        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" });
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
         const a = must(i.agent);
         const task = String(i.task);
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
@@ -857,7 +857,7 @@ export default {
       internal: true, callers: ["module"],
       input: { type: "object", required: ["thread"], properties: { thread: { type: "string" } } },
       run: async (i, { caller }) => {
-        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks which task a job is for"), { code: "denied" });
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks which task a job is for"), { code: "denied" }); // internal-word: the caller label, not shown text
         const row = /** @type {any} */ (db.prepare("SELECT task, agent, failed, tries FROM agents_wakes WHERE thread = ?").get(String(i.thread)));
         return row ? { task: row.task, agent: row.agent, failed: row.failed === 1, tries: row.tries } : null;
       },
@@ -867,7 +867,7 @@ export default {
       internal: true, callers: ["module"],
       input: { type: "object", required: ["task", "agent"], properties: { task: { type: "string" }, agent: { type: "string" } } },
       run: async (i, { caller }) => {
-        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host marks a wake failed"), { code: "denied" });
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host marks a wake failed"), { code: "denied" }); // internal-word: the caller label, not shown text
         db.prepare("UPDATE agents_wakes SET failed = 1, tries = tries + 1 WHERE task = ? AND agent = ? AND failed = 0").run(String(i.task), String(i.agent));
         const row = /** @type {any} */ (db.prepare("SELECT tries FROM agents_wakes WHERE task = ? AND agent = ?").get(String(i.task), String(i.agent)));
         return { retry: Boolean(row) && row.tries < 2 };

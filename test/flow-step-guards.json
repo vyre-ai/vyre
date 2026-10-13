@@ -4,6 +4,9 @@
   "work.start-project": {
    "reason": "runs under the Flow person's own chain (ctx.kernel.chainFor): the project is made, updated and its team added with that person's grants, a draft or retired template version cannot be started, and the first stage's tasks are made by the stage module as that person's service"
   },
+  "comms.email": {
+   "reason": "holds every email at the Gate for the person's own yes: it asks gate.request for a send via the sending service on the call's chain, so a Flow cannot send an email the person has not approved"
+  },
   "comms.send": {
    "reason": "holds every send at the Gate for the person's own yes: an email goes through mail.send and a text through gate.request, both asked of the person on the call's chain, so a Flow cannot send anything the person has not approved"
   },

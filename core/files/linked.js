@@ -10,7 +10,7 @@
 //   (open, edit and write back: linked-read.js: ls, read, write, rename, delete, versions)
 //   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
 //   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
-import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
 import { linkedDir } from "../../lib/files/layout.js";
@@ -66,7 +66,7 @@ export function registerLinked(ctx, o) {
       if (!src || typeof src !== "object" || Array.isArray(src) || !Object.keys(src).length) throw refuse("source names the folder at the provider", "bad_input");
       const json = JSON.stringify(src);
       if (json.length > 2000) throw refuse("source is too large", "bad_input");
-      const row = { id: `lnk_${crypto.randomBytes(9).toString("base64url")}`, space: d.space, name, provider: String(i.provider), source: json, linked_by: who, at: now() };
+      const row = { id: newPrefixedId("lnk"), space: d.space, name, provider: String(i.provider), source: json, linked_by: who, at: now() };
       try { db().prepare("INSERT INTO files_linked (id, space, name, provider, source, linked_by, at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(row.id, row.space, row.name, row.provider, row.source, row.linked_by, row.at); }
       catch (e) { if (/UNIQUE/i.test(String(/** @type {any} */ (e).message))) throw refuse(`Linked/${name} is already a linked folder: pick another name`, "conflict"); throw e; }
       return view(row);

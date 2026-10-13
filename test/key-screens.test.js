@@ -19,6 +19,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^_layout\.tsx$/, "the shell, not a screen"],
   [/^\+not-found\.tsx$/, "the page for an address that matches nothing: a message and a way back, no data"],
   [/^(agents\/index|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page: live status and a conversation entry of their own, owned by the agents team"],
+  [/^tags\/index\.tsx$/, "the tag directory: a list of tags with counts and a tag editor of its own, owned by the records team"],
   [/^(documents|files|vault-more)\.tsx$/, "Files, Documents and the vault's second page: a tree, a viewer and an upload of their own, owned by the files and vault teams"],
   [/^(flows\/new|playbooks|playbooks\/\[id\]|record\/new)\.tsx$/, "creation and board pages (a new Flow, a Playbook and its board, a new record): forms and a board of their own, owned by the flows, projects and records teams"],
   [/^install\//, "first-run flow with device pairing: a wizard of its own, not a data screen"],
