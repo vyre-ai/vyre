@@ -80,7 +80,7 @@ export function sampleChats(now) {
   return [
     { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, unread: 0, open: true },
     { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: [...AIS], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
-    { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, unread: 0, open: true },
+    { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Agent", asks: 0, unread: 0, open: true },
     { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, unread: 0, open: true },
   ];
 }
@@ -131,7 +131,7 @@ export function chatRowsOf(list, now, places) {
     if (t.unread > 0) accessories.push({ label: t.unread > 99 ? "99+" : String(t.unread), tone: "plain" });
     if (t.last) accessories.push({ label: ageOf(t.last, now), as: "text" });
     return {
-      id: t.id, title: t.pinned === "assistant" ? "Your assistant" : t.title, subtitle: t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id)),
+      id: t.id, title: t.pinned === "assistant" ? "Your agent" : t.title, subtitle: t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id)),
       faces: [...t.people.map((name) => ({ kind: "person", name })), ...t.agents.map((name) => ({ kind: "assistant", name }))].slice(0, 5), providers: t.providers.slice(0, 3), accessories, ...(t.open ? {} : { dim: true }),
     };
   });

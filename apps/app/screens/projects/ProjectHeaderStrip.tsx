@@ -2,7 +2,7 @@
 // Stages and people are read from what the page already has (the record's pinned template snapshot) and projects.list (a project's people); nothing new on the server.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Chip, Text, markRef } from "@vyre/ui";
+import { Avatar, Button, StatusPill, Text, markRef } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 
 /** The names of the people on a project (projects.list's `people` for its short name). */
@@ -26,7 +26,7 @@ export function ProjectHeaderStrip({ stage, owners, slug, onManage }: { stage: {
   const people = [...new Set([...owners, ...listed])];
   return (
     <View className="flex-row flex-wrap items-center gap-s3">
-      {stage ? <Chip>{`Stage ${stage.at} of ${stage.of}: ${stage.name}`}</Chip> : null}
+      {stage ? <StatusPill at={stage.at} of={stage.of} name={stage.name} /> : null}
       <View className="flex-1" />
       {people.length ? (
         <View className="flex-row items-center gap-s2" accessibilityLabel={`Access: ${people.join(", ")}`}>

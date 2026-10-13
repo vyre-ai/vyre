@@ -48,7 +48,7 @@ export default function RulesScreen() {
   const g = data ? groups(data.rules) : [];
   const off = data ? disabled(data.rules) : [];
   return (
-    <Frame title="Rules" sub="What assistants and members may never do, only draft, or always ask about." top>
+    <Frame title="Rules" sub="What agents and members may never do, only draft, or always ask about." top>
       <Footnote icon="shield">A rule only tightens. No rule grants anything, and a grant never waives a rule.</Footnote>
       {err ? <Card flush><ErrorState title="Rules did not load" reason={err} retry={load} /></Card> : null}
       {!err && data === null ? <LoadingState rows={3} /> : null}

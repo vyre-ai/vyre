@@ -111,7 +111,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
       before: id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
-      after: id === "records" ? <><SidebarRow label="All record types" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
+      after: id === "records" ? <><SidebarRow label="All objects" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
     },
   };
 }

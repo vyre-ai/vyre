@@ -29,7 +29,7 @@ export function CustomizeScreen() {
     links: d.fields.filter((f: any) => f.kind === "link" && f.to).map((f: any) => ({ to: f.to, label: plural(f.to), many: !!f.many })),
   }));
   return (
-    <Page title="Objects" sub="Record types, fields and groups">
+    <Page title="Objects" sub="Objects, fields and groups">
       {error ? <Banner tone="warn">{error}</Banner> : null}
       {working.length ? <Banner><Text strong>{`Setting up ${working.join(", ")} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
       {loading && !defs.length ? <LoadingState rows={3} /> : <ModelMap types={types} onOpen={(n) => router.push(`/u/settings/customize/${n}` as never)} />}

@@ -28,6 +28,8 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
+import { agentDir } from "../../lib/files/layout.js";
+import { orientation } from "../../lib/orientation.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
@@ -74,17 +76,24 @@ const ENGINEER_0_3_0 = [
   "A Kit goes through flows.kit.propose. A change to record types goes through flows.propose with what: types and a diff.",
   "Each proposal becomes one task in Now. An owner or an admin approves it; you cannot. Say what you proposed and what it will do, in plain words, and wait.",
 ].join("\n");
+const ENGINEER_0_3_4 = [
+    "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
+    "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
+    "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
+    "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
+    "Say what you proposed and what it will do, in plain words, and wait for the card.",
+  ].join("\n");
 export const ENGINEER = Object.freeze({
   name: "engineer",
   instructions: [
-    "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
+    "You are the Engineer. You set up the Space for the person you are talking to, by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. You can only build what that person can themselves: you work on their access, with their own AI. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
     "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
     "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
     "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
     "Say what you proposed and what it will do, in plain words, and wait for the card.",
   ].join("\n"),
   /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
-  previous: Object.freeze([ENGINEER_0_3_0]),
+  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4]),
   /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
   tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
@@ -107,7 +116,7 @@ export const envFor = (value, as) => (as === "api-key" ? { ANTHROPIC_API_KEY: va
  * What an agent's thread is told about itself, after Claude Code's own system prompt.
  * @param {any} a an agent record
  */
-export function preamble(a) {
+export function preamble(a, { withWords = true } = {}) {
   const scope = a.projects === "*" ? "every project on this machine" : a.projects.length ? `only these projects: ${a.projects.join(", ")}` : "no project";
   const lines = a.kind === "assistant"
     ? [`You are ${a.name}, the user's assistant in Vyre. You can see ${scope}.`,
@@ -117,7 +126,8 @@ export function preamble(a) {
        "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
        "When a watch fires, the user sees it in Lumen and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
-  if (a.instructions) lines.push("", String(a.instructions));
+  // the instructions are the agent's AGENTS.md, read from its folder (named by the orientation); copied here only when there is no folder to read them from
+  if (a.instructions && withWords) lines.push("", String(a.instructions));
   return lines.join("\n");
 }
 
@@ -135,8 +145,10 @@ export default {
     const db = ctx.store.db;
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
+    /** Where agents' folders live: beside the projects (never inside VYRE_HOME: the session sandbox refuses a working folder there), so an agent session runs IN its own folder and reads its instructions natively. */
+    const agentsBase = ctx.config && typeof ctx.config.projectsDir === "string" && ctx.config.projectsDir ? path.dirname(ctx.config.projectsDir) : root;
     /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
-    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, sharesFor(meta: any, a: any, staff: boolean): Promise<{ made_by: string | null, shares: { person: string, level: string }[] }>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
+    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, materialize(a: any): { dir: string, instructions: boolean, context: boolean }, sharesFor(meta: any, a: any, staff: boolean): Promise<{ made_by: string | null, shares: { person: string, level: string }[] }>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -291,8 +303,10 @@ export default {
     /** Where an agent works: its one project's home, else a folder of its own beside the projects (`~/Vyre/agents/<name>`). Never inside VYRE_HOME: the session sandbox refuses a working folder there. */
     const workdir = async a => {
       if (Array.isArray(a.projects) && a.projects.length === 1) return { project: a.projects[0] };
-      const projectsDir = ctx.config && typeof ctx.config.projectsDir === "string" && ctx.config.projectsDir ? ctx.config.projectsDir : null;
-      const dir = projectsDir ? path.join(path.dirname(projectsDir), "agents", a.name) : path.join(root, "agents", a.name);
+      const dir = path.join(agentsBase, agentDir(String(a.uid)));
+      // an earlier build kept the working folder by NAME beside the projects: it moves to the agent's id once, so nothing it held is lost
+      const old = path.join(agentsBase, "agents", a.name);
+      try { if (fs.existsSync(old) && !fs.existsSync(dir)) { fs.mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 }); fs.renameSync(old, dir); } } catch { /* a folder that cannot move is made fresh */ }
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return { cwd: dir };
     };
@@ -317,7 +331,17 @@ export default {
         const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
         if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
       }
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + (config ? config.brief(a) : "") + caps, scope: await scope(a),
+      // Where the session runs, and the Vyre orientation for it: the agent's own folder (its instructions and context, written fresh from the stored truth) and, when it works in a project, that project's.
+      const wd = job && project ? { project } : await workdir(a);
+      const mine = config ? config.materialize(a) : null;
+      let place = null;
+      if (wd.project) {
+        const pl = await ctx.call("projects.list", {}).catch(() => null);
+        const p = pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects.find((/** @type {any} */ x) => x.slug === wd.project) : null;
+        if (p && p.home) place = { name: String(p.name || p.slug), dir: String(p.home), instructions: fs.existsSync(path.join(String(p.home), "AGENTS.md")), context: fs.existsSync(path.join(String(p.home), "context")) };
+      }
+      const oriented = orientation({ ...(mine ? { agent: { name: a.name, dir: mine.dir, instructions: mine.instructions, context: mine.context } } : {}), ...(place ? { project: place } : {}) });
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a, { withWords: !mine }) + (oriented ? "\n\n" + oriented : "") + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
@@ -326,8 +350,8 @@ export default {
         // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
         ...(own ? { account: String(own.id), person: forPerson } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
-      if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
-      const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
+      if (job) return use("threads.launch", { ...input, ...wd, name: a.name });
+      const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...wd, name: a.name });
       if (own) db.prepare("INSERT INTO agents_person_threads (agent, person, thread, at) VALUES (?,?,?,?) ON CONFLICT(agent, person) DO UPDATE SET thread = excluded.thread, at = excluded.at").run(a.name, String(forPerson), t.id, Date.now());
       else db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
@@ -532,7 +556,7 @@ export default {
       },
     });
 
-    config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+    config = registerConfig(ctx, { db, root: agentsBase, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
       changed: () => { void mirror.schedule(); },
       staffOf: async person => {
         if (!K) return true;

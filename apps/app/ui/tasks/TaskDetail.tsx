@@ -43,7 +43,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
       <TaskFacts world={world} facts={taskFacts(world, task, { titles })} how={showHow ? (
         <View className="items-start gap-s2">
           <Segmented label="How" value={task.how || "person"} onChange={onHow} options={Object.entries(HOW_LABEL) as [string, string][]} />
-          {tpl ? <Chip tone="accent">{recordTitle(world, tpl)}</Chip> : null}
+          {tpl ? <Chip>{recordTitle(world, tpl)}</Chip> : null}
         </View>
       ) : undefined} />
       {draft ? <Section title="The draft"><DraftBlock draft={draft} /></Section> : null}

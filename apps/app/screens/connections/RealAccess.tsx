@@ -25,7 +25,7 @@ export default function RealAccess() {
   if (!list.length) return <Card><EmptyState title="Nothing connected yet" body="Add a service, an MCP server or an account, and it is listed here with where it may be used." /></Card>;
   return (
     <View className="gap-s3 pt-s2">
-      <Text tone="muted" size="secondary">Where each connection may be used. Assistants never see a credential; every use is logged.</Text>
+      <Text tone="muted" size="secondary">Where each connection may be used. Agents never see a credential; every use is logged.</Text>
       <Card flush>
         {list.map((c, i) => (
           <View key={c.id}>{i ? <Divider /> : null}

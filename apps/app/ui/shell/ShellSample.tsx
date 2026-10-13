@@ -44,7 +44,7 @@ const RECORDS: PanelDef = {
   before: <>
     <SidebarRow label="Contacts" icon="contacts" on /><SidebarRow label="Leads" icon="list" /><SidebarRow label="Sales pipeline" icon="board" /><SidebarRow label="Appointments" icon="cal" />
   </>,
-  after: <><SidebarRow label="All record types" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
+  after: <><SidebarRow label="All objects" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
 };
 
 /** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. */
@@ -57,7 +57,7 @@ export function ShellSample({ state = "main", logo = true }: { state?: "main" | 
       <Shell {...NAV} panel={panel} folded={state === "folded" || state === "projects-folded"} onSearch={() => {}} current={current} onNavigate={() => {}} spaces={spaces} space="spc_juniperstudi" onSpace={() => {}} user={{ name: "Alex Morgan", sub: "alex.vyre.run" }}>
         <View style={{ padding: RAIL.contentPad, gap: 20 }}>
           <Text size="page" strong>Projects</Text>
-          <Text tone="muted">Matters your team and its assistants are working on.</Text>
+          <Text tone="muted">Matters your team and its agents are working on.</Text>
           <Card><Text strong>Probate intake</Text><Text tone="muted" size="secondary">4 open, 1 waiting on you</Text></Card>
           <Card><Text strong>Estate plan refresh</Text><Text tone="muted" size="secondary">2 open</Text></Card>
         </View>

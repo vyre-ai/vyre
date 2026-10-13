@@ -30,5 +30,5 @@ export function newDraft(before, rows) {
 export function draftWords(s) {
   if (s.kind === "making") return "Making the Flow draft. Nothing runs until you say yes.";
   if (s.kind === "ready") return `Draft ready: ${s.title}. Open it to read the steps and say yes.`;
-  return "No Flow was made. The assistant may have asked you something first.";
+  return "No Flow was made. The agent may have asked you something first.";
 }
