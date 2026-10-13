@@ -10528,6 +10528,7 @@ The system prompt for a session starting now: the environment brief, then the le
   - `facts` list of string
   - `no_project_docs` boolean
   - `now` number
+  - `person` string
   - `project` string
   - `provider` string
   - `purpose` string
