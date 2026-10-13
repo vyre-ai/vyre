@@ -226,6 +226,7 @@ export default {
         // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
         ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
         // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
+        onsignin: m => { try { ctx.events.emit("relay.signin-asked", m); } catch {} },
         oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
           try { ctx.events.emit(s === "connected" ? "relay.connected" : "relay.disconnected", s === "connected" ? {} : { why: why || "" }); } catch {}
@@ -877,6 +878,19 @@ export default {
         }
         const minted = await mintTicket(seed, { via: "module", ...(offer ? { offer } : {}), ...(input.gate ? { gate: String(input.gate) } : {}) });
         return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
+      },
+    });
+    ctx.tool("relay.signin.watch", {
+      internal: true,
+      description: "Serve a name's sign-in requests: the locator derived from the name (relay/client/signin.js signinLoc). The relay hands each request for it to this box as the relay.signin-asked event { loc, s }, and tells a device that asks nothing about whether any box does. Modules only.",
+      input: obj({ loc: str, on: { type: "boolean" } }, ["loc"]),
+      run: async input => {
+        const loc = String(input.loc);
+        if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
+        await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink();
+        if (link) await link.ready();
+        if (input.on === false) link?.signinUnwatch(loc); else link?.signinWatch(loc);
+        return { watching: input.on !== false, supported: Boolean(link && link.signins()) };
       },
     });
     ctx.tool("relay.code.alloc", {
