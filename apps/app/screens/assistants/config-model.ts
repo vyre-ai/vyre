@@ -88,3 +88,15 @@ export function accessRow(a: { kind: string; subject: string; level: string }, p
   const p = people.find((x) => x.id === a.subject);
   return { title: p?.name || a.subject, sub: p?.role ? `Person, ${p.role}` : "Person" };
 }
+
+/** An agent's open work as rows: what it is to do, and what it is to approve. */
+export function workRows(d: { todo?: any[]; approve?: any[] }): { id: string; title: string; sub: string; kind: "todo" | "approve" }[] {
+  const row = (t: any, kind: "todo" | "approve") => ({ id: String(t.id), title: String(t.title || "A task"), kind, sub: kind === "approve" ? "Waiting for it to approve" : t.state === "stuck" ? "Stuck" : t.state === "working" ? "Working on it" : t.state === "waiting" ? "Waiting on something" : "To do" });
+  return [...(d.todo || []).map((t) => row(t, "todo")), ...(d.approve || []).map((t) => row(t, "approve"))];
+}
+export const NO_WORK = (name: string) => `Nothing is waiting on ${name} right now.`;
+/** The line under an agent's instructions: who made it and who last changed its words. */
+export function authorLine(made: { name: string; staff: boolean } | null, edited: { name: string } | null): string {
+  if (!made) return "";
+  return `Made by ${made.name}${made.staff ? "" : " (not an admin)"}${edited && edited.name !== made.name ? `. Instructions last changed by ${edited.name}` : ""}.`;
+}

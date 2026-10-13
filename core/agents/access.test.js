@@ -112,3 +112,15 @@ test("in a chat an agent runs on the chatter's own AI sign-in, never on the agen
   const ran = launches();
   assert.equal(ran.length, 1, "one launch");
 });
+
+test("the instructions say who made the agent and who last changed them, and whether the author is staff", { timeout: 120_000 }, async t => {
+  const { ben, ada, owner } = await world(t);
+  await ben("agents.create", { name: "mine", kind: "agent", projects: [] });
+  await ben("agents.docs.set", { agent: "mine", file: "AGENTS.md", text: "Be kind." });
+  const g = (await ben("agents.docs.get", { agent: "mine" })).data;
+  assert.deepEqual(g.made_by, { id: BEN, staff: false }, "a member's agent is marked as not staff-made");
+  assert.equal(g.edited_by, BEN);
+  await ada("agents.create", { name: "adas", kind: "agent", projects: [] });
+  assert.deepEqual((await ada("agents.docs.get", { agent: "adas" })).data.made_by, { id: ADA, staff: true });
+  void owner;
+});

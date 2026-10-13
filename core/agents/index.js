@@ -535,6 +535,13 @@ export default {
 
     config = registerConfig(ctx, { db, root, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
       changed: () => { void mirror.schedule(); },
+      staffOf: async person => {
+        if (!K) return true;
+        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        if (K.owner && canon(person) === canon(String(K.owner))) return true;
+        const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        return Boolean(m && (m.role === "owner" || m.role === "admin"));
+      },
       chainPerson, roleOf: async person => {
         const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
         if (m && m.role) return String(m.role);

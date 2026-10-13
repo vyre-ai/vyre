@@ -89,7 +89,7 @@ test("source: each part calls the one tool for it, and the plan saves as entries
   const { configSource } = await import("./config-source.ts");
   const b = box({ "sessions.routes.get": { data: { entries: [{ provider: "claude", account: "acc_1" }] } }, "sessions.accounts.list": { data: accounts } });
   const s = configSource(b.call);
-  await s.docs("rex");
+  const dd = await s.docs("rex"); assert.deepEqual(dd.files, { "AGENTS.md": "", "CLAUDE.md": "" });
   await s.saveDoc("rex", "CLAUDE.md", "hi");
   await s.context("rex");
   await s.addContext("rex", "brief.pdf", "QUJD");
@@ -143,4 +143,14 @@ test("sharing: a row names a person or a role in plain words; the source reads a
   await s.setAccess("rex", "role", "paralegal", "edit");
   await s.setAccess("rex", "role", "paralegal", null);
   assert.deepEqual(b.seen.slice(1).map((x) => x.input.level), ["edit", null]);
+});
+
+test("authorship and work: who made it is said, and a non-admin author is marked; open tasks become rows", { skip: !strip }, async () => {
+  const m = await import("./config-model.ts");
+  assert.equal(m.authorLine({ name: "Ben", staff: false }, { name: "Ben" }), "Made by Ben (not an admin).");
+  assert.equal(m.authorLine({ name: "Sam", staff: true }, { name: "Ben" }), "Made by Sam. Instructions last changed by Ben.");
+  assert.equal(m.authorLine(null, null), "");
+  const rows = m.workRows({ todo: [{ id: "t1", title: "Draft", state: "working" }], approve: [{ id: "t2", title: "Check", state: "needs_check" }] });
+  assert.deepEqual(rows.map((r) => [r.kind, r.sub]), [["todo", "Working on it"], ["approve", "Waiting for it to approve"]]);
+  assert.match(m.NO_WORK("rex"), /rex/);
 });

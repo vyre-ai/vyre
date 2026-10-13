@@ -6,7 +6,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Fi
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { config } from "./config";
-import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, accessRow, addable, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
+import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, authorLine, accessRow, addable, workRows, NO_WORK, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 type Load<T> = { data: T | null; err: string; reload: () => void };
@@ -25,7 +25,10 @@ export function Instructions({ name }: { name: string }) {
   const [text, setText] = useState<Record<Doc, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
   const [saved, setSaved] = useState<Record<Doc, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (q.data) { setText(q.data); setSaved(q.data); } }, [q.data]);
+  const names = useLoad(() => config.access(name).then((a) => a.people).catch(() => []), [name]);
+  useEffect(() => { if (q.data) { setText(q.data.files); setSaved(q.data.files); } }, [q.data]);
+  const who = (id: string) => (names.data || []).find((p) => p.id === id)?.name || "someone";
+  const author = q.data ? authorLine(q.data.madeBy ? { name: who(q.data.madeBy.id), staff: q.data.madeBy.staff } : null, q.data.editedBy ? { name: who(q.data.editedBy) } : null) : "";
   const dirty = text[file] !== saved[file];
   const save = () => { setBusy(true); const i = docInput(name, file, text[file]); config.saveDoc(name, file, i.text).then(() => { setSaved((s) => ({ ...s, [file]: i.text })); setText((t) => ({ ...t, [file]: i.text })); showToast("Saved. It applies from the next turn."); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   if (q.err) return <Card flush><ErrorState title="Instructions did not load" reason={q.err} retry={q.reload} /></Card>;
@@ -35,6 +38,7 @@ export function Instructions({ name }: { name: string }) {
       <Segmented label="Instruction file" value={file} onChange={setFile} options={DOCS.map(([id, label]) => [id, label] as [Doc, string])} />
       <Card className="gap-s2">
         <Text size="caption" tone="label">{DOCS.find((d) => d[0] === file)![2]}</Text>
+        {author ? <Text size="caption" tone={q.data?.madeBy && !q.data.madeBy.staff ? "warn" : "label"}>{author}</Text> : null}
         <Field name={`${name}'s ${file}`} value={text[file]} onChangeText={(v) => setText((t) => ({ ...t, [file]: v }))} multiline lines={12} placeholder={file === "AGENTS.md" ? "What does this agent do, and how should it do it?" : "Anything Claude should know before it starts."} />
         <View className="flex-row items-center gap-s2">
           <Button size="sm" label="Save" disabled={busy || !dirty} onPress={save} />
@@ -171,6 +175,8 @@ export function Used({ name }: { name: string }) {
   const router = useRouter();
   const u = useLoad(() => config.used(name), [name]);
   const v = useLoad(async () => { const [mine, all, lent] = await Promise.all([config.vault(name), config.vaultItems().catch(() => []), config.lent(name).catch(() => [])]); return { assigned: mine.assigned, all, lent }; }, [name]);
+  const w = useLoad(() => config.work(name), [name]);
+  const work = w.data ? workRows(w.data) : [];
   const [picking, setPicking] = useState<"login" | "note" | null>(null);
   const rows = u.data ? usedRows(u.data, name) : [];
   const open = (r: { kind: string; id: string }) => router.push((r.kind === "chat" ? `/u/chats/${encodeURIComponent(r.id)}` : `/u/flows/${encodeURIComponent(r.id)}`) as never);
@@ -189,6 +195,11 @@ export function Used({ name }: { name: string }) {
             {rows.map((r, i) => <View key={`${r.kind}:${r.id}`}>{i ? <Divider /> : null}<Row title={r.title} sub={r.sub} lead={<Avatar of={markRef("assistant", name)} size={32} />} onPress={() => open(r)} /></View>)}
           </Card>
         ) : null}
+      </Sec>
+      <Sec title="Its work now">
+        {w.err ? <Card><Text tone="muted">{`${name}'s tasks could not be read. ${w.err}`}</Text></Card> : null}
+        {w.data && !work.length ? <Card><Text tone="muted">{NO_WORK(name)}</Text></Card> : null}
+        {work.length ? <Card flush>{work.map((r, i) => <View key={`${r.kind}:${r.id}`}>{i ? <Divider /> : null}<Row title={r.title} sub={r.sub} onPress={() => router.push(`/u/task/${encodeURIComponent(r.id)}` as never)} /></View>)}</Card> : null}
       </Sec>
       <Sec title="Logins it can sign in with">
         {v.err ? <Card flush><ErrorState title="The Vault list did not load" reason={v.err} retry={v.reload} /></Card> : null}

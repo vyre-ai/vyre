@@ -13,9 +13,9 @@ export function configSource(call: Call) {
   }
   return {
     /** Both instruction files: { "AGENTS.md": text, "CLAUDE.md": text }. */
-    docs: async (agent: string): Promise<Record<Doc, string>> => {
+    docs: async (agent: string): Promise<{ files: Record<Doc, string>; madeBy: { id: string; staff: boolean } | null; editedBy: string | null }> => {
       const d = await ask<any>("agents.docs.get", { agent });
-      return { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? ""), "CLAUDE.md": String(d?.files?.["CLAUDE.md"] ?? "") };
+      return { files: { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? ""), "CLAUDE.md": String(d?.files?.["CLAUDE.md"] ?? "") }, madeBy: d?.made_by ? { id: String(d.made_by.id), staff: d.made_by.staff === true } : null, editedBy: d?.edited_by ? String(d.edited_by) : null };
     },
     saveDoc: (agent: string, file: Doc, text: string) => ask("agents.docs.set", { agent, file, text }),
     context: async (agent: string): Promise<{ files: ContextFile[]; links: string[] }> => {
@@ -64,6 +64,11 @@ export function configSource(call: Call) {
       return { access: Array.isArray(d?.access) ? d.access : [], people: Array.isArray(d?.people) ? d.people : [], roles: Array.isArray(d?.roles) ? d.roles : [] };
     },
     setAccess: (agent: string, kind: "person" | "role", subject: string, level: "use" | "edit" | null) => ask("agents.access.set", { agent, kind, subject, level }),
+    /** What this agent is to do and to approve right now (tasks.list by doer, by checker), open ones only. */
+    work: async (agent: string): Promise<{ todo: any[]; approve: any[] }> => {
+      const [d, c] = await Promise.all([ask<any>("tasks.list", { doer: agent, state: ["ready", "working", "waiting", "stuck"] }), ask<any>("tasks.list", { checker: agent, state: ["needs_check"] })]);
+      return { todo: Array.isArray(d?.tasks) ? d.tasks : [], approve: Array.isArray(c?.tasks) ? c.tasks : [] };
+    },
     used: (agent: string) => ask<any>("agents.used", { agent }),
   };
 }

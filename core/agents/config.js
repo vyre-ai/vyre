@@ -43,7 +43,7 @@ export function contextBrief(c) {
  * @param {any} ctx
  * @param {{ db: any, root: string, must: (n: string) => any, mayChange: (m: any, a: any) => Promise<boolean>, notYours: (w: string) => Error, guard: (c: any, w: string) => void,
  *   modelMay: (m: any) => boolean, personOf: (m: any) => Promise<string>, scope: (a: any) => Promise<{ projects: any, cwds: string[] }>,
- *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null>, changed?: () => void }} h
+ *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null>, changed?: () => void, staffOf?: (person: string) => Promise<boolean> }} h
  */
 export function register(ctx, h) {
   const { db } = h;
@@ -87,7 +87,12 @@ export function register(ctx, h) {
   ctx.tool("agents.docs.get", {
     description: "An agent's two instruction files: AGENTS.md (its instructions) and CLAUDE.md (extra notes for Claude).",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-    run: async ({ agent }, meta) => { const a = h.must(agent); await readOk(meta, a); return { files: { "AGENTS.md": a.instructions || "", "CLAUDE.md": readClaude(a) } }; },
+    run: async ({ agent }, meta) => { const a = h.must(agent); await readOk(meta, a);
+      // who made it and who last changed its words: a less-privileged author's words run with a more privileged asker's authority, so the page says so
+      const last = /** @type {any} */ (db.prepare("SELECT by FROM agents_versions WHERE agent = ? ORDER BY n DESC LIMIT 1").get(a.name));
+      const made = a.owner ? { id: String(a.owner), staff: h.staffOf ? await h.staffOf(String(a.owner)).catch(() => false) : false } : null;
+      return { files: { "AGENTS.md": a.instructions || "", "CLAUDE.md": readClaude(a) }, made_by: made, edited_by: last && last.by ? String(last.by) : null };
+    },
   });
   ctx.tool("agents.docs.set", {
     description: "Write one of an agent's instruction files. AGENTS.md is its instructions (a new version); CLAUDE.md is kept beside it. Applies from the next turn.",
