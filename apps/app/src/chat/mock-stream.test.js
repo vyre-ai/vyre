@@ -162,6 +162,8 @@ test("the sample world's three-model chat has one question, three answers each f
   assert.equal(steps.filter((s) => s.type === "fanout-keep").length, 1);
   const authors = new Set(peopleScript()[0].steps.map((s) => (s.top?.author ?? "")).filter(Boolean));
   assert.ok([...authors].every((a) => a.startsWith("person:")), "only people speak");
+  const mode = peopleScript()[0].steps.find((s) => s.type === "reply-mode");
+  assert.equal(mode?.data.mode, "mention", "the people-only chat answers an AI only when mentioned");
 });
 
 test("a mock reply carries reply_to and the quote of the message it answers, in the same timeline", async () => {
