@@ -168,3 +168,31 @@ test("removing a stage's last group of tasks never leaves a task naming a group 
   assert.equal(b.stages[0].tasks[0].group, undefined);
   assert.deepEqual(missing(b), []);
 });
+
+test("how projects move: stages in order, in any order, or none; the default is in order and writes nothing", async () => {
+  const { setStageMode, stageModeOf, STAGE_MODES } = await import("./edit.ts");
+  assert.deepEqual(STAGE_MODES.map(([v]) => v), ["ordered", "any", "none"]);
+  assert.equal(stageModeOf(base()), "ordered");
+  assert.equal(setStageMode(base(), "ordered").stage_mode, undefined);
+  assert.equal(setStageMode(base(), "any").stage_mode, "any");
+  assert.equal(stageModeOf(setStageMode(base(), "none")), "none");
+});
+
+test("a stage is done when every task, the needed ones, or a sign-off says; sign-off asks who, and the line below says what happens next", async () => {
+  const { setDoneWhen, setSignOff, doneWhenOf, nextLine, DONE_WHEN, setStageMode } = await import("./edit.ts");
+  assert.deepEqual(DONE_WHEN.map(([v]) => v), ["all", "needed", "sign_off"]);
+  let b = addStage(base()); // Start, Done, Stage 3
+  assert.equal(doneWhenOf(b.stages[0]), "needed");
+  assert.equal(setDoneWhen(b, 0, "needed").stages[0].done_when, undefined, "the default writes nothing");
+  b = setDoneWhen(b, 0, "all");
+  assert.equal(b.stages[0].done_when, "all");
+  b = setDoneWhen(b, 0, "sign_off");
+  assert.deepEqual(missing(b), ["Choose who signs off Start."]);
+  b = setSignOff(b, 0, "role:attorney");
+  assert.deepEqual(missing(b), []);
+  assert.equal(nextLine(b, 0), "Then it waits for the attorney to sign it off, and moves to Done.");
+  assert.equal(nextLine(setDoneWhen(b, 0, "all"), 0), "Then the project moves to Done.", "leaving sign-off forgets the signer");
+  assert.equal(setDoneWhen(b, 0, "all").stages[0].sign_off, undefined);
+  assert.equal(nextLine(b, 2), "The last stage: the project ends here.");
+  assert.equal(nextLine(setStageMode(base(), "any"), 0), "Then a person moves the project on.");
+});
