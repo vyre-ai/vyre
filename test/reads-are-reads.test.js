@@ -45,8 +45,8 @@ test("a tool declared effect read changes no state when called with no input", {
       const ev1 = reg.deps.events.latestId(), ch1 = changes();
       const now = [];
       if (ev1 !== ev0) now.push(`${ev1 - ev0} event(s)`);
-      // With the kernel on, the kernel's own audit log (kernel_events) records the call itself; that is not the tool's state.
-      if (ch1 !== ch0) { const t1 = tables(); const moved = Object.keys(t1).filter(k => t1[k] !== t0[k] && k !== "kernel_events"); if (moved.length || ch1 - ch0 > 0 && !Object.keys(t1).some(k => t1[k] !== t0[k])) now.push(`${ch1 - ch0} row change(s) in ${moved.join(", ") || "existing rows"}`); }
+      // With the kernel on, the kernel's own audit log (kernel_events) records the call itself; that is not the tool's state. memory_runs is the Memory curator's log of its own background passes (core/memory/index.js), which a slow runner can land several of inside one call.
+      if (ch1 !== ch0) { const t1 = tables(); const moved = Object.keys(t1).filter(k => t1[k] !== t0[k] && k !== "kernel_events" && k !== "memory_runs"); if (moved.length || ch1 - ch0 > 0 && !Object.keys(t1).some(k => t1[k] !== t0[k])) now.push(`${ch1 - ch0} row change(s) in ${moved.join(", ") || "existing rows"}`); }
       if (writeCalls.length) now.push(`calls write tools ${[...new Set(writeCalls)].join(", ")}`);
       if (!now.length) { why = []; break; }
       why = now;
