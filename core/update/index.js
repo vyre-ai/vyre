@@ -11,8 +11,10 @@
 // the request cannot be made and the card shows the command; a Mac server updates through vyre-core's
 // signed updater.
 //
+// Updates are the owner's to approve: the check only reads, and an install starts only after the owner's yes (update.apply { yes: true }, which the app sends after asking), or when the owner has
+// turned on "Update automatically" themselves.
 // config.json, `update`: auto "notify" (default; look and say so) or "off" (never look); install true
-// (Settings: "Update automatically") asks for a new release itself at a quiet hour, once per version.
+// (Settings: "Update automatically", off until the owner turns it on) asks for a new release itself at a quiet hour, once per version.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -183,11 +185,13 @@ export default {
     });
     ctx.tool("update.apply", {
       effect: "write",
-      description: "Ask for the update now: drops the one-line request the box's own update unit acts on, which installs the newest release only if its signature matches Vyre's release key, and puts the old version back if the new one does not start. Answers at once; update.status shows the progress and the result. Where this server has no such unit (a Mac, or no systemd) it says so and the command `vyre update` is the way. The person's own action.",
-      input: { type: "object", properties: {} },
+      description: "Ask for the update now, after the owner's yes (`yes: true`; without it nothing is dropped and the answer says so): drops the one-line request the box's own update unit acts on, which installs the newest release only if its signature matches Vyre's release key, and puts the old version back if the new one does not start. Answers at once; update.status shows the progress and the result. Where this server has no such unit (a Mac, or no systemd) it says so and the command `vyre update` is the way. The person's own action.",
+      input: { type: "object", properties: { yes: { type: "boolean" } } },
       callers: PEOPLE,
-      run: async () => {
+      run: async (/** @type {any} */ i) => {
         if (!canApply()) throw Object.assign(new Error("this server does not take update requests from here: run vyre update"), { code: "unavailable" });
+        // Nothing installs without the owner's yes: the app asks first and passes it, and `vyre update` by hand is the person's own run.
+        if (!(i && i.yes === true)) throw Object.assign(new Error(`${seen.latest ? `Version ${seen.latest} is` : "An update is"} not installed until you say yes. Ask again with { "yes": true }, or run vyre update on the server.`), { code: "needs_yes" });
         if (busy()) return { requested: false, reason: "an update is already running", ...status() };
         request(seen.latest);
         return { requested: true, ...status() };

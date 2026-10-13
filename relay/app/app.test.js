@@ -13,8 +13,7 @@ import vm from "node:vm";
 import { buildManifest, verifyManifest, signManifest, canonical, newer, folderOf, sha256Hex, MANIFEST, SIGNATURE } from "./manifest.js";
 import { keygen, build, loader, verify, loadKey, entriesOf } from "./release.js";
 import worker, { CSP } from "./worker.js";
-import { parseOffer } from "./pair/pair.js";
-import { pairUrl } from "../../core/relay/pairing.js";
+import { GONE } from "./pair/pair.js";
 
 const scratch = t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-app-"));
@@ -140,12 +139,11 @@ test("worker: strict headers everywhere, immutable folders, the loader for any a
 
 // ---- the pair page ----
 
-test("pair page: reads a real offer, refuses junk", () => {
-  const url = pairUrl({ relay: "wss://relay.vyre.run", route: "abcdefghijklmnopqrstuvwxyz", box: Buffer.alloc(32, 7), secret: "s3cr3t", name: "alex" });
-  const offer = parseOffer(url.slice(url.indexOf("#") + 1));
-  assert.deepEqual(offer, { relay: "wss://relay.vyre.run", route: "abcdefghijklmnopqrstuvwxyz", name: "alex" });
-  assert.equal(parseOffer("not-base64-json"), null);
-  assert.equal(parseOffer(Buffer.from(JSON.stringify({ v: 1, r: "https://evil.example", i: "abcdefghijklmnopqrstuvwxyz", s: "x", k: "A".repeat(43) })).toString("base64url")), null);
+test("pair page: the old pairing code is gone, and the page names the next step", () => {
+  const html = fs.readFileSync(new URL("./pair/index.html", import.meta.url), "utf8");
+  assert.match(GONE, /Devices, Add a device/);
+  assert.ok(html.includes(GONE), "the static page says the same sentence");
+  assert.doesNotMatch(html, /vyre:\/\/pair|app\.vyre\.run\/pair/);
 });
 
 // ---- the service worker, in a vm ----

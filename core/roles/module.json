@@ -1,0 +1,24 @@
+{
+  "name": "roles",
+  "version": "0.1.0",
+  "description": "A Space's roles as a person sees them: Owner, Admin, Member, Guest and custom roles built from Member or Admin. One tool per call, each under the caller's own chain; the kernel refuses anything wider than a role's base.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] } },
+  "does": {
+    "tools": [
+      { "name": "roles.catalogue", "reach": "person", "effect": "read" },
+      { "name": "roles.list", "reach": "person", "effect": "read" },
+      { "name": "roles.get", "reach": "person", "effect": "read" },
+      { "name": "roles.tools", "reach": "person", "effect": "read" },
+      { "name": "roles.create", "reach": "person", "effect": "write" },
+      { "name": "roles.update", "reach": "person", "effect": "write" },
+      { "name": "roles.remove", "reach": "person", "effect": "write" },
+      { "name": "roles.assign", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

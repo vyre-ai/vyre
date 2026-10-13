@@ -8,8 +8,8 @@ import { Shell, type NavDef, type ShellSpace } from "./Shell";
 import { RAIL } from "./rail-tokens.js";
 import type { PanelDef } from "./SidebarPanel";
 
-/** A small logo a person might upload, as a data image: a navy square with a cream arch. */
-const SAMPLE_LOGO = "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="midnightblue"/><path d="M16 50V30a16 16 0 0 1 32 0v20" fill="none" stroke="ivory" stroke-width="6" stroke-linecap="round"/></svg>');
+/** A small logo a person might upload, as a PNG data image (a navy square). */
+const SAMPLE_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOQ13IhCTGMahjVMHw1AADSqY0BZKST9AAAAABJRU5ErkJggg==";
 
 const SPACES: ShellSpace[] = [
   { id: "spc_juniperstudi", name: "Juniper Studio", sub: "6 people", logo: SAMPLE_LOGO },

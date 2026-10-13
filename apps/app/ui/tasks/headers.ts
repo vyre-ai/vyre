@@ -1,5 +1,6 @@
 import { kindOf, type AvatarRef } from "../components/Avatar";
 import { aid } from "../../src/store-core/kernel-view.js";
+import { templateNoun } from "./template-stage.js";
 import { recordTitle, spaceName, who, type World } from "./model";
 
 /** An actor as a mark reference. */
@@ -23,7 +24,7 @@ export function projectHeader(world: World, def: any, row: any): { title: string
   const title = recordTitle(world, row);
   return {
     title,
-    context: [def?.label, spaceName(world, row.labels?.source_spaces?.[0])].filter(Boolean).join(" · "),
+    context: [(def?.name === "project" ? templateNoun(row.data) : null) || def?.label, spaceName(world, row.labels?.source_spaces?.[0])].filter(Boolean).join(" · "),
     faces: [{ kind: "project", id: row.id, name: title, seed: row.data?.avatar_seed }],
   };
 }

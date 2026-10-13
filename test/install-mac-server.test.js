@@ -59,9 +59,12 @@ exit 0`,
      // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
   // The vyre command a person (and the installer's check words) would call: answers relay.setup.status with four words, anything else with an error.
   fs.mkdirSync(path.join(src, "bin"), { recursive: true });
-  fs.writeFileSync(path.join(src, "bin", "vyre"), `if (process.argv[3] === "relay.setup.status") console.log(JSON.stringify({ words: "come pilot company release" })); else { console.error("no"); process.exit(1); }\n`);
+  fs.writeFileSync(path.join(src, "bin", "vyre"), `if (process.argv[3] === "relay.setup.status") console.log(JSON.stringify({ words: "come pilot company release" }));
+else if (process.argv[2] === "status") console.log("  vyred answering · v0 · 3 modules running");
+else if (process.argv[2] === "space" && process.argv[3] === "up") console.log("\\n  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)\\n  Your four words: come pilot company release");
+else { console.error("no"); process.exit(1); }\n`);
   const env = {
-    VYRE_WORDS_TRIES: "1",
+    VYRE_WORDS_TRIES: "1", VYRE_STATUS_TRIES: "1", VYRE_SPACE_TRIES: "1", VYRE_LINK_DIRS: "", VYRE_PROFILE: path.join(home, ".zprofile"),
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "", VYRE_HEADSCALE_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
     VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LaunchAgents"),
@@ -135,18 +138,52 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
-test("install-mac-server.sh: the Records choice from the install line lands in vyre.env: auto by default, sqlite when asked, a later choice replaces an older one, anything else refuses", t => {
+test("install-mac-server.sh: Records is always on: auto or nothing is Records, sqlite is refused unless the CI proof flag is set, anything else is refused, all before anything is installed", t => {
   const m = mac(t);
   const f = path.join(m.env.VYRE_HOME, "vyre.env");
   assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
   assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=auto$/m);
-  assert.equal(run({ ...m.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", m.src]).status, 0);
-  assert.equal(fs.readFileSync(f, "utf8").match(/^VYRE_STORE=/gm)?.length, 1);
-  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m);
-  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
-  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m, "no choice named keeps the one made");
+  const n = mac(t);
+  let r = run({ ...n.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", n.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more\. Run the install line again without VYRE_STORE \(or with VYRE_STORE=auto\)\./);
+  assert.ok(!fs.existsSync(n.env.VYRE_SERVER_DIR), "nothing was laid out");
+  const p2 = mac(t);
+  assert.equal(run({ ...p2.env, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1" }, ["--yes", "--from", p2.src]).status, 0);
+  assert.match(fs.readFileSync(path.join(p2.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m);
   const bad = run({ ...m.env, VYRE_STORE: "twenty" }, ["--yes", "--from", m.src]);
-  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto/);
+  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto \(Records\), not twenty\. Run the install line again without it\./);
+});
+
+test("install-mac-server.sh: under 4 GB of memory it stops before anything is laid out and says so; a dry run only says it; 4 GB goes on", t => {
+  const m = mac(t);
+  const r = run({ ...m.env, VYRE_RAM_BYTES: String(3 * 1024 ** 3) }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  assert.match(r.stderr, /Use a larger server, then run this again\./);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was laid out");
+  const d = run({ ...m.env, VYRE_RAM_BYTES: String(3 * 1024 ** 3) }, ["--dry-run", "--from", m.src]);
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout, /would stop: Vyre needs at least 4 GB of memory/);
+  const four = run({ ...m.env, VYRE_RAM_BYTES: String(4 * 1024 ** 3) }, ["--yes", "--from", m.src]);
+  assert.equal(four.status, 0, four.stderr);
+  assert.match(four.stdout, /8 GB or more is recommended/, "a warning under 8 GB");
+  const eight = mac(t);
+  const e8 = run({ ...eight.env, VYRE_RAM_BYTES: String(8 * 1024 ** 3) }, ["--yes", "--from", eight.src]);
+  assert.equal(e8.status, 0, e8.stderr);
+  assert.ok(!/recommended/.test(e8.stdout), "no warning at 8 GB");
+});
+
+test("install-mac-server.sh: a system install works under a home folder with a space in its path", t => {
+  const m = sys(t);
+  const home = path.join(m.base, "my home"); fs.mkdirSync(home);
+  const env = { ...m.env, HOME: home, VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LA") };
+  delete /** @type {any} */ (env).VYRE_PROFILE;
+  const r = run(env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(fs.existsSync(path.join(home, ".vyre-server", "cmd", "vyre")));
+  assert.match(fs.readFileSync(path.join(home, ".zshenv"), "utf8"), /# vyre: command/);
+  assert.match(r.stdout, /ok  vyre is at /);
 });
 
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {
@@ -309,6 +346,49 @@ test("install-mac-server.sh: a Docker Desktop already there is untouched and no 
   assert.equal(fs.readFileSync(path.join(app, "Info.plist"), "utf8"), "docker desktop");
 });
 
+test("install-mac-server.sh: --login-only with the app's bundled Node (VYRE_NODE_URL) and no node on PATH installs from the tarball", t => {
+  const m = noBrew(t);
+  fs.rmSync(path.join(m.base, "tools", "node"));
+  const nd = path.join(m.base, "nodepkg", "node-v0"); fs.mkdirSync(path.join(nd, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  const tgz = path.join(m.base, "node.tgz");
+  execFileSync("tar", ["-czf", tgz, "-C", path.dirname(nd), "node-v0"]);
+  const env = { ...m.env, VYRE_NODE_URL: `file://${tgz}`, VYRE_NODE_SHA256: sha(fs.readFileSync(tgz)) };
+  const r = run(env, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/needs Node 22\.5/.test(r.stderr), "never asks the person to install Node");
+  assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "node-dist", "bin", "node")), "the bundled Node lands in Vyre's own folder");
+  // a tarball that does not match its checksum installs nothing
+  const bad = run({ ...env, VYRE_NODE_SHA256: sha("other") }, ["--yes", "--from", m.src]);
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /pinned checksum/);
+});
+
+test("install-mac-server.sh: a disk with too little room stops before anything is installed, in plain words", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_FREE_KB: "300000" }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /only 292 MB free and Vyre needs about 4096 MB/);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was written");
+  assert.ok(!/did not finish/.test(r.stderr) || /Nothing was left/.test(r.stderr), "no leftovers claimed");
+});
+
+test("install-mac-server.sh: an install that stops half way says what it left and the one line that removes it, and leaves the person's own folders out of it", t => {
+  const m = noBrew(t);
+  // the release cannot be read, after Vyre's own folder exists
+  const env = { ...m.env, VYRE_BOX_URL: `file://${m.base}/nowhere/`, VYRE_NODE_URL: "", VYRE_FREE_KB: "99999999" };
+  const r = run(env, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /the install did not finish/);
+  assert.ok(r.stderr.includes(`rm -rf '${m.env.VYRE_SERVER_DIR}'`), r.stderr);
+  assert.match(r.stderr, /run this one line/);
+  // a folder that was already there is not claimed
+  fs.mkdirSync(m.env.VYRE_HOME, { recursive: true });
+  fs.rmSync(m.env.VYRE_SERVER_DIR, { recursive: true, force: true });
+  const r2 = run(env, ["--yes"]);
+  assert.ok(!r2.stderr.includes(`rm -rf '${m.env.VYRE_HOME}'`), "the person's own data folder is never in the removal line");
+});
+
 // ---------------------------------------------------------------------------------------------
 // The default mode: the system service (ADR 0040 phase 4). The root installer is a fake that acts
 // like the real one where the script can see it: it prints the enrolment line last, writes core.json
@@ -362,6 +442,9 @@ ${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
     VYRE_TEST_SCRIPT: patched, VYRE_ROOT_TMP: path.join(m.base, "roottmp"), VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
     VYRE_BOX_URL: `file://${site}/`, VYRE_NODE_URL: `file://${path.join(m.base, "node.tgz")}`, VYRE_NODE_SHA256: sha(fs.readFileSync(path.join(m.base, "node.tgz"))),
   };
+  // The server install always downloads its own pinned Colima, Lima and docker: the tests serve fakes from file:// (a hosted network is never touched).
+  const nb = noBrew(t);
+  for (const k of ["VYRE_COLIMA_URL", "VYRE_COLIMA_SHA256", "VYRE_LIMA_URL", "VYRE_LIMA_SHA256", "VYRE_DOCKER_URL", "VYRE_DOCKER_SHA256"]) env[k] = nb.env[k];
   const rootCalls = () => (fs.existsSync(path.join(m.base, "root.log")) ? fs.readFileSync(path.join(m.base, "root.log"), "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
   return { ...m, env, site, core, rootCalls };
 }
@@ -438,7 +521,8 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   r = run({ ...m.env }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.ok(!/Your four words|Go back to the Vyre app/.test(r.stdout));
-  assert.match(r.stdout, /Open the Vyre app, choose "Add a server", and run the line it shows on this Mac\./);
+  assert.match(r.stdout, /Vyre is running on this Mac\.\n  Get your space code on this Mac: vyre space up\n$/, "piped: where to get the code, never the code");
+  assert.ok(!/WINK-/.test(r.stdout), "a piped install prints no space code");
   assert.ok(!/wink\.server\.code|long code/i.test(r.stdout), "no terminal pairing text");
   // words that cannot be read are said so, with the command that shows them
   m = sys(t);
@@ -838,4 +922,121 @@ test("install-mac-server.sh: --dry-run with FileVault on prints the words and wh
   assert.match(d.stdout, /would stop here unless VYRE_ACCEPT_FILEVAULT=1/);
   const l = run({ ...m.env, VYRE_FDESETUP: fdesetup(m, "FileVault is On.") }, ["--dry-run", "--from", m.src]);
   assert.ok(!/FileVault/.test(l.stdout), "My Home (--login-only) is not a server and does not ask");
+});
+
+test("install-mac-server.sh: the same five steps as the Linux installer, in order, with the signature line", t => {
+  const m = sys(t);
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const heads = [...r.stdout.matchAll(/^\[(\d)\/5\] (.*)$/gm)].map(x => `${x[1]} ${x[2]}`);
+  assert.deepEqual(heads, ["1 Checking this Mac", "2 Downloading Vyre", "3 Laying out", "4 Adding the vyre command", "5 Starting Vyre"]);
+  assert.ok(r.stdout.indexOf("[2/5]") < r.stdout.indexOf("The download matches Vyre's signature") && r.stdout.indexOf("The download matches Vyre's signature") < r.stdout.indexOf("[3/5]"));
+});
+
+test("install-mac-server.sh: to a terminal-like stdout the install ends on the space code and how to get it again; a piped one never prints it", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, VYRE_SPACE_CODE_PIPED: "1" }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /Vyre is running on this Mac\.\n[\s\S]*Your space code: WINK-ABCD-EFGH[\s\S]*Get it again any time: vyre space up\n$/);
+});
+
+test("install-mac-server.sh: a start that is slow is said to be setting up, never 'not running', and the install still succeeds", t => {
+  const m = sys(t);
+  fs.writeFileSync(path.join(m.base, "pkg", "vyre", "bin", "vyre"), "console.log('  vyred waking')\n");
+  const r = run({ ...m.env, VYRE_STATUS_TRIES: "1" }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/not running/i.test(r.stdout + r.stderr));
+});
+
+test("install-mac-server.sh: the vyre command is a link in a writable folder on PATH, or one marked line in the profile, and --uninstall removes exactly that", t => {
+  let m = mac(t);
+  const links = path.join(m.base, "links"); fs.mkdirSync(links);
+  assert.equal(run({ ...m.env, VYRE_LINK_DIRS: links }, ["--yes", "--from", m.src]).status, 0);
+  assert.equal(fs.readlinkSync(path.join(links, "vyre")), path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre"));
+  assert.ok(!fs.existsSync(m.env.VYRE_PROFILE), "no profile change when a link did it");
+  assert.equal(run({ ...m.env, VYRE_LINK_DIRS: links }, ["--uninstall", "--yes"]).status, 0);
+  assert.ok(!fs.existsSync(path.join(links, "vyre")));
+  m = mac(t);
+  fs.writeFileSync(m.env.VYRE_PROFILE, "export MINE=1\n");
+  assert.equal(run(m.env, ["--yes", "--from", m.src]).status, 0);
+  const prof = fs.readFileSync(m.env.VYRE_PROFILE, "utf8");
+  assert.match(prof, /export MINE=1/);
+  assert.equal((prof.match(/# vyre: command/g) || []).length, 2);
+  // The profile adds only the command, after the person's own tools: Vyre's pinned docker, gh and colima never come ahead of theirs.
+  fs.mkdirSync(path.join(m.env.VYRE_SERVER_DIR, "bin"), { recursive: true });
+  for (const t2 of ["docker", "gh"]) fs.writeFileSync(path.join(m.env.VYRE_SERVER_DIR, "bin", t2), "#!/bin/sh\n", { mode: 0o755 });
+  const mine = path.join(m.base, "mine"); fs.mkdirSync(mine);
+  for (const t2 of ["docker", "gh"]) fs.writeFileSync(path.join(mine, t2), "#!/bin/sh\n", { mode: 0o755 });
+  const shown = spawnSync("sh", ["-c", `PATH="${mine}:/usr/bin:/bin"; . "${m.env.VYRE_PROFILE}"; command -v docker; command -v gh; command -v vyre`], { encoding: "utf8" }).stdout.trim().split("\n");
+  assert.deepEqual(shown, [path.join(mine, "docker"), path.join(mine, "gh"), path.join(m.env.VYRE_SERVER_DIR, "cmd", "vyre")]);
+  assert.equal(run(m.env, ["--yes", "--from", m.src]).status, 0);
+  assert.equal((fs.readFileSync(m.env.VYRE_PROFILE, "utf8").match(/# vyre: command/g) || []).length, 2, "a second run adds nothing");
+  assert.equal(run(m.env, ["--uninstall", "--yes"]).status, 0);
+  assert.equal(fs.readFileSync(m.env.VYRE_PROFILE, "utf8"), "export MINE=1\n");
+});
+
+test("install-mac-server.sh: uninstall removes Colima's VM only when this install made the folder, and never a person's own", t => {
+  let m = mac(t);
+  assert.equal(run(m.env, ["--yes", "--from", m.src]).status, 0);
+  fs.mkdirSync(path.join(m.home, ".colima"));
+  assert.equal(run(m.env, ["--uninstall", "--yes"]).status, 0);
+  assert.ok(!fs.existsSync(path.join(m.home, ".colima")), "Vyre's own VM is removed");
+  m = mac(t);
+  fs.mkdirSync(path.join(m.home, ".colima"));
+  assert.equal(run(m.env, ["--yes", "--from", m.src]).status, 0);
+  assert.equal(run(m.env, ["--uninstall", "--yes"]).status, 0);
+  assert.ok(fs.existsSync(path.join(m.home, ".colima")), "a VM that was there first stays");
+});
+
+test("install-mac-server.sh: a system install that stops after the root step names the system service and the one line that removes it", t => {
+  const m = sys(t, { noEnrol: true });
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /It left:[\s\S]*the system service/);
+  assert.match(r.stderr, /--uninstall --yes/);
+});
+
+test("install-mac-server.sh: every dependency is checked and said in one ok line, and a missing piece is a note with its fix", t => {
+  const m = sys(t);
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const h of [/ok  git runs/, /ok  Node v\d+\.\d+/, /ok  Colima runs/, /ok  the Linux computer for agents is sized from this Mac: \d+ CPU, \d+ GB memory/, /ok  vyre is at /]) assert.match(r.stdout, h);
+  assert.ok(r.stdout.indexOf("ok  git runs") < r.stdout.indexOf("[2/5]"), "git is checked in step 1, before anything is installed");
+});
+
+test("install-mac-server.sh: without the Command Line Tools it stops in step 1, installs nothing, and says what to do", t => {
+  const m = mac(t);
+  const bin = path.join(m.base, "bin");
+  fs.writeFileSync(path.join(bin, "xcode-select"), "#!/bin/sh\n[ \"$1\" = -p ] && exit 2\necho \"xcode-select $*\" >>\"" + path.join(m.base, "calls.log") + "\"\nexit 0\n", { mode: 0o755 });
+  const r = run(m.env, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /Command Line Tools/);
+  assert.match(r.stderr, /waiting for the Command Line Tools/);
+  assert.match(m.calls(), /xcode-select --install/);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was installed");
+});
+
+test("install-mac-server.sh: the server install always uses its own pinned Colima, Lima and docker, even with Homebrew and a docker already there, and never calls brew", t => {
+  const m = sys(t);
+  fs.writeFileSync(path.join(m.base, "bin", "docker"), "#!/bin/sh\necho theirs\n", { mode: 0o755 });
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const f of ["bin/colima", "bin/docker", "lima/bin/limactl"]) assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, f)), `${f} is Vyre's own`);
+  assert.ok(!/^brew /m.test(m.calls()), "no brew call");
+  assert.equal(fs.readFileSync(path.join(m.base, "bin", "docker"), "utf8"), "#!/bin/sh\necho theirs\n", "the person's docker is untouched");
+  const a = m.rootCalls()[0].argv;
+  const path1 = a.flatMap((x, i) => (x === "--colima-program" ? [a[i + 1]] : [])).find(x => x.startsWith("PATH="));
+  assert.ok(path1 && !path1.includes(path.join(m.base, "bin")), "the Colima job's PATH holds Vyre's folders and the system's, never the person's");
+  assert.match(r.stdout, /ok  Rosetta is not needed|ok  Colima runs/);
+});
+
+test("install-mac-server.sh: a home folder with a space in its path still gets the vyre command in its profile files, and uninstall removes them", t => {
+  const m = mac(t);
+  const home = path.join(m.base, "my home"); fs.mkdirSync(home);
+  const env = { ...m.env, HOME: home, VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LA"), SHELL: "/bin/bash" };
+  delete /** @type {any} */ (env).VYRE_PROFILE;
+  assert.equal(run(env, ["--yes", "--from", m.src]).status, 0);
+  for (const f of [".zshenv", ".bash_profile"]) assert.match(fs.readFileSync(path.join(home, f), "utf8"), /# vyre: command/);
+  assert.equal(run(env, ["--uninstall", "--yes"]).status, 0);
+  for (const f of [".zshenv", ".bash_profile"]) assert.ok(!/vyre: command/.test(fs.readFileSync(path.join(home, f), "utf8")));
 });

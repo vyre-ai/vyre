@@ -22,7 +22,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
-export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: { pageKey?: unknown }): PairingSession {
+/** `addAnother`: the person pressed "Add another server" on a device that already reaches a server over the relay (a phone, a browser): that press is their yes to pairing a further server with this identity. */
+export type PairExtra = { pageKey?: unknown; addAnother?: boolean };
+
+export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: PairExtra): PairingSession {
   // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
   let direct: PairingSession | null = null;
   let stopped = false;
@@ -45,7 +48,7 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     kind: "watch",
     async ready() {
       const { tool, BoxError } = await box();
-      if (!direct && code.kind === "ticket" && !(await boxReachable(tool, BoxError))) {
+      if (!direct && code.kind === "ticket" && (extra?.addAnother || !(await boxReachable(tool, BoxError)))) {
         const mine = await directSessionFor(code, extra);
         if (mine) { direct = mine; await mine.ready!(); return; }
       }
@@ -157,7 +160,7 @@ export async function serverPairInputs() {
  * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
  * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
  */
-async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: { pageKey?: unknown }): Promise<PairingSession | null> {
+async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: PairExtra): Promise<PairingSession | null> {
   // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
   const { pairServer } = await import("@vyre/relay-client/serverpair.js");
   const inputs = await serverPairInputs();
@@ -166,7 +169,8 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // A person who already has a box (a saved pairing) never takes this path, so a slow box cannot make a scan offer their identity to another server (reviewer-3 PD-D). The press on
   // Continue under "Pair this server to <name>?" (the install page) is the person's yes before anything is redeemed. A saved pairing the server no longer knows (an unfinished pairing an older
   // build kept) is not a box: it is let go first, or this path would wait on a server that is gone.
-  if (await loadPairing()) { if (!(await staleSavedPairing())) return null; await savePairing(null); }
+  // Pressing "Add another server" is that yes for a further server: the saved pairings stay, and this one is added beside them (a server paired twice replaces its own record).
+  if (!extra?.addAnother && (await loadPairing())) { if (!(await staleSavedPairing())) return null; await savePairing(null); }
   const { connect, disconnect } = await import("../api/box");
   let words: [string, string, string] = ["", "", ""];
   let wake: () => void = () => {};
@@ -197,6 +201,8 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
       await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });
+      // the Spaces of every server are asked again, so the switcher and the routing know the new one
+      void import("./space-servers").then((m) => m.refreshSpaceServers()).catch(() => {});
       // The connection made while there was no pairing (the box check) is stale: drop it so the next call goes over the relay to this server.
       await disconnect();
       await connect().catch(() => {});

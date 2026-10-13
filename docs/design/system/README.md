@@ -63,6 +63,8 @@ does not have it by design.
 | [Mode chip](components/mode-chip.md) | partial | partial | not built |
 | [Form controls](components/form-controls.md) | partial | partial | partial |
 | [Tabs](components/tabs.md) | partial | not built | not used |
+| [Role picker](components/role-picker.md) | not used | built | not used |
+| [Control row](components/control-row.md) | not used | built | not used |
 
 ### Containers
 

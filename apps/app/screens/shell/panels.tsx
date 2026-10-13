@@ -2,11 +2,12 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
-import { Avatar, SidebarRow, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
+import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
 import { useChats } from "../../src/state/chats";
 import { chatsOrdered, chatsShown } from "../chats/chats-model.js";
-import { effective, useSidebar } from "./sidebar";
+import { effective, saveList, useSidebar } from "./sidebar";
+import { useSpaces } from "./state";
 import { MOCK, tool } from "../../src/real/box";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
@@ -85,20 +86,25 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const path = usePathname();
   const params = useGlobalSearchParams();
   const router = useRouter();
-  const { base, mine } = useSidebar();
+  const { base, mine, load } = useSidebar();
+  const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
   const id = panelFor(path, search);
   const meta = id ? META[id] : undefined;
   if (!id || !meta) return { panel: null, id: null };
   const goBack = () => { const to = backTo(path, search); if (to) router.push(to as never); };
+  const all = effective(base, mine) as any[];
+  const edit = async (list: any[]) => { await saveList("me", space, list); await load(space); };
   const views = id === "records" ? (effective(base, mine) as any[]).filter((e) => e.kind === "view" && !e.hidden && String(e.href).startsWith("/u/records/")) : [];
   return {
     id,
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "records" ? [] : loaded[id] ?? [],
-      before: id === "records" ? <>{views.length ? views.map((v) => <SidebarRow key={v.id} label={v.label} icon={(v.icon as any) ?? "list"} on={`${path}` + (search ? `?${search}` : "") === v.href} onPress={() => onNavigate(v.href)} />) : <SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />}</> : undefined,
+      before: id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
+        <PinnedViews entries={all} onOpen={onNavigate}
+          onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
       after: id === "records" ? <><SidebarRow label="All record types" icon="records" tone="label" onPress={() => onNavigate("/u/record-types")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => onNavigate("/u/records/contact?newView=1")} /></> : undefined,
     },
   };

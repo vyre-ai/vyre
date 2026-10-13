@@ -85,3 +85,29 @@ test("automations: attach a Flow at the start or at a stage, once per point; ren
   b = removeAutomation(b, 0);
   assert.equal("automations" in b, false);
 });
+
+test("a template says what its projects are called, and the plural follows the singular until it is set by hand", async () => {
+  const { setNoun, nounOf } = await import("./edit.ts");
+  let b = setNoun(base(), "Matter");
+  assert.deepEqual(b.noun, { one: "Matter", many: "Matters" });
+  b = setNoun(b, "Campaign");
+  assert.deepEqual(b.noun, { one: "Campaign", many: "Campaigns" });
+  b = setNoun(b, "Case", "Cases");
+  assert.deepEqual(b.noun, { one: "Case", many: "Cases" });
+  assert.deepEqual(setNoun(b, "").noun, undefined);
+  assert.deepEqual(nounOf(setNoun(base(), "Policy")), { one: "Policy", many: "Policies" });
+  assert.deepEqual(nounOf(base()), { one: "Project", many: "Projects" });
+  assert.deepEqual(nounOf(null), { one: "Project", many: "Projects" });
+});
+
+test("a plural set by hand stays when the singular is edited", async () => {
+  const { setNoun } = await import("./edit.ts");
+  let b = setNoun(setNoun(base(), "Case"), "Case", "Cases here");
+  b = setNoun(b, "Cases");
+  assert.equal(b.noun.many, "Cases here");
+});
+
+test("a noun without a plural cannot be saved, and says what to add", async () => {
+  const { setNoun } = await import("./edit.ts");
+  assert.deepEqual(missing(setNoun(base(), "Matter", "")), ['Say what several matter projects are called, such as "Matters".']);
+});

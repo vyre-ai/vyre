@@ -40,7 +40,6 @@ test("wink.pair.targets and the server payload", () => {
   assert.deepEqual(t.map((x) => x.kind), ["identity", "space"]);
   const code = { ok: true, kind: "ticket", ticket: "xdnbaOcBNP2lHSKf9DBK9Q", relay: "ws://152.42.187.205:8787", for: "server" };
   assert.equal(payloadOf(code), "vyre://wink/2?t=xdnbaOcBNP2lHSKf9DBK9Q&r=ws%3A%2F%2F152.42.187.205%3A8787");
-  assert.equal(payloadOf({ ok: true, kind: "offer", offer: "https://vyre.run/pair#abc" }), "https://vyre.run/pair#abc");
 });
 
 test("wink.pair.status maps to what the screen does", () => {

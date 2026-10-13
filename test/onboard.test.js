@@ -80,11 +80,12 @@ async function freeZone(t) {
   });
 }
 
-test("onboard: canRelayJoin is false with a reason on darwin, true elsewhere", () => {
-  assert.deepEqual(canRelayJoin("darwin"), { relayJoin: false, reason: canRelayJoin("darwin").reason });
-  assert.match(canRelayJoin("darwin").reason, /vyre-core/);
-  assert.deepEqual(canRelayJoin("linux"), { relayJoin: true, reason: null });
-  assert.deepEqual(canRelayJoin("win32"), { relayJoin: true, reason: null });
+test("onboard: canRelayJoin is false with a reason on every platform (the classic pairing code is gone)", () => {
+  for (const platform of ["darwin", "linux", "win32"]) {
+    const c = canRelayJoin(platform);
+    assert.equal(c.relayJoin, false, platform);
+    assert.match(String(c.reason), /pairing with a code is gone/, platform);
+  }
 });
 
 // Reviewer's LOW, 28 Sep round 2: a Mac chosen as server must never even attempt port 7300,
@@ -208,25 +209,24 @@ test("onboard: join verify forwards to link.health, unknown without a node to na
   assert.equal(notOnline.error, undefined, JSON.stringify(notOnline.error));
 });
 
-test("onboard: join relay mints a pairing code without needing to reach the relay first", async t => {
+test("onboard: join relay refuses with words and the next step: Devices, Add a device", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
   const r = await call("onboard.join", { action: "relay" }, { root });
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.match(r.data.url, /^https:\/\/vyre\.run\/pair#/);
-  assert.equal(r.data.connected, false, "the dead-port relay never answers, and mint() says so rather than hanging");
-  assert.ok(r.data.expiresAt > Date.now());
+  assert.equal(r.data, undefined);
+  assert.match(String(r.error?.message), /Devices, Add a device/);
 });
 
 test("onboard: join is the owner's alone — an agent with a valid presence proof is still refused, not just ungated", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
-  // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, the same
-  // way relay.pair.start already does, whatever proof rides along (reviewer's HOLD on af604cf8).
+  // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, whatever proof rides along (reviewer's HOLD on af604cf8).
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
     const relay = await call("onboard.join", { action: "relay" }, { root, caller });
     assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
   }
-  // The owner's own surfaces still work.
-  assert.equal((await call("onboard.join", { action: "relay" }, { root, caller: "deck" })).error, undefined);
+  // The owner's own surfaces get the refusal in words, not a denial.
+  const own = await call("onboard.join", { action: "relay" }, { root, caller: "deck" });
+  assert.notEqual(own.error?.code, "denied");
+  assert.match(String(own.error?.message), /Devices, Add a device/);
 });
 
 test("onboard: join status and verify never need presence; relay always does", async t => {

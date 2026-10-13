@@ -10,11 +10,15 @@ import { SpaceDrive } from "./SpaceDrive";
 import { SharedLinks } from "./SharedLinks";
 import { SharedArtifacts } from "../chat-tools";
 import { REAL_TABS } from "./tabs.js";
+import { PlaceTag } from "../../src/real/PlaceTag";
+import { usePlaceText } from "../../src/real/PlaceTag";
+import { SpaceTag } from "@vyre/ui";
 
 type Tab = "space" | "shared" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
+  const driveTag = usePlaceText("home");
   const [tab, setTab] = useState<Tab>("space");
   const [made, setMade] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
@@ -67,7 +71,7 @@ export default function RealDrive() {
         <Card flush>
           {entries.length ? entries.map((e, i) => (
             <View key={e.name}>{i ? <Divider inset={60} /> : null}
-              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} onPress={() => show(e)} />
+              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} end={driveTag ? <SpaceTag text={driveTag} /> : undefined} onPress={() => show(e)} />
             </View>
           )) : <EmptyState title="Nothing here yet" body="This folder is empty, or everything in it is kept away from the app." />}
           {list.next != null ? <View className="p-s3"><Button kind="ghost" size="sm" label={`Show more (${entries.length} of ${list.total})`} onPress={() => share && load(share, path, list.next)} /></View> : null}
@@ -89,6 +93,7 @@ export default function RealDrive() {
 
   return (
     <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+      <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
       {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>

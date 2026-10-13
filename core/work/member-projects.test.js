@@ -73,6 +73,24 @@ test("a member starts a project from an installed template: its first stage's ta
   assert.ok(!(await w.as(ANA, "templates", {})).templates.some((/** @type {any} */ x) => x.template === draft.template), "and is not in her list");
 });
 
+test("a new template is made by the owner or an admin, a member only uses it; what its projects are called reaches her list and the project it starts", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const memberTool = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(ANA), {})).token }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
+  const body = { ...TEMPLATE, name: "Estate matter", noun: { one: "Matter", many: "Matters" } };
+  await assert.rejects(memberTool("work.template.define", { body }), /owner or an admin makes a new template/, "a member cannot make one, and the refusal says who can");
+  await w.owner("agents.create", { name: "research", kind: "agent", projects: [] });
+  const def = await w.owner("work.template.define", { body });
+  const row = (await w.owner("work.template.list", {})).templates.find((/** @type {any} */ x) => x.template === def.template);
+  assert.deepEqual(row.noun, { one: "Matter", many: "Matters" });
+  assert.equal(row.archived, false);
+  await w.owner("work.template.golive", { template: def.template, version: def.version });
+  const hers = (await w.as(ANA, "templates", {})).templates.find((/** @type {any} */ x) => x.template === def.template);
+  assert.deepEqual(hers.noun, { one: "Matter", many: "Matters" }, "she sees what it is called");
+  const started = await w.as(ANA, "start-project", { template: def.template, name: "Rivera" });
+  const proj = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === started.slug);
+  assert.equal(JSON.parse(proj.data.template_snapshot).noun.one, "Matter", "the project keeps the name its template gave it");
+});
+
 test("a person who is not a member, and a chain that is not one person's, get nothing", { timeout: 90_000 }, async t => {
   const w = await world(t);
   await assert.rejects(w.as(ZED, "project-create", { name: "Nope" }), /not found|not_found/i);

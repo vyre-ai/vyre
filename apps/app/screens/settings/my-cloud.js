@@ -101,11 +101,15 @@ export function cloudState(list) {
 
 /** What the card offers: add a server (Personal has none yet and no server is paired), set up (a server is paired), move (it exists and Personal has not moved), or done. @param {ReturnType<typeof cloudState>} s @param {boolean} hasServer a paired server exists to make it on @returns {"add" | "setup" | "move" | "moved" | "none"} */
 export function offerFor(s, hasServer) {
-  if (!s.personal) return "none";
+  // A window that runs on a server has no Personal space (its Vyre is the server's): with no server paired it is still offered the way to add one, and with one paired there is nothing to move.
+  if (!s.personal) return hasServer ? "none" : "add";
   if (s.movedTo) return "moved";
   if (s.cloud) return "move";
   return hasServer ? "setup" : "add";
 }
+
+/** What My Cloud reads when spaces.list could not be asked: a device with no pairing and no box of its own has no spaces yet (the card then offers to add a server); one that is paired is quiet (its server is only down). @param {boolean} paired @returns {any[] | null} */
+export const rowsOnFailure = (paired) => (paired ? null : []);
 
 /** The person's paired servers from spaces.servers ({ servers: [{ id, name, online }] }): the ones My Cloud can be made on. An empty list means none is paired, and the card stays away. @param {any} data @returns {{ id: string, name: string }[]} */
 export const serversOf = (data) => (Array.isArray(data?.servers) ? data.servers : []).filter((/** @type {any} */ d) => d && typeof d.id === "string" && d.id && typeof d.name === "string").map((/** @type {any} */ d) => ({ id: d.id, name: d.name }));

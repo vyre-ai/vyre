@@ -8,11 +8,14 @@ import { boxOrigin } from "../../src/api/box";
 import { bytesOf, textOf } from "./real-model";
 import { children, itemLine, linkAddress, linkAsk, linkRefusal, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
 import { linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
+import { usePlaceText } from "../../src/real/PlaceTag";
+import { SpaceTag } from "@vyre/ui";
 
 const say = (e: unknown) => spaceDriveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 const TEXT = /\.(txt|md|csv|json|xml|ya?ml|html?|log)$/i;
 
 export function SpaceDrive({ onLink }: { onLink?: () => void }) {
+  const spaceTag = usePlaceText("showing");
   const [prefix, setPrefix] = useState("");
   const [items, setItems] = useState<Item[] | null>(null);
   const [more, setMore] = useState(false);
@@ -79,7 +82,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
         <Card flush>
           {items.length ? items.map((i, k) => (
             <View key={i.path}>{k ? <Divider inset={60} /> : null}
-              <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} onPress={i.locked ? undefined : () => show(i)} /></View>
+              <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} end={spaceTag ? <SpaceTag text={spaceTag} /> : undefined} onPress={i.locked ? undefined : () => show(i)} /></View>
             </View>
           )) : <EmptyState title={prefix ? "Nothing here" : "The Drive is empty"} body={prefix ? "This folder has no file you may read." : "Files you add, or that assistants save, appear here with their versions."} />}
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}

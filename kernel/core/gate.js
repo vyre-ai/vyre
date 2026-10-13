@@ -3,6 +3,7 @@
 // (`not_found`, invariant 8) with the true reason kept on the error and in an `access.denied` event.
 import { isChain } from "./chain.js";
 import { KernelError } from "./errors.js";
+import { VIEWER_WORDS } from "../../lib/seat-levels.js";
 
 /** @param {{ authorizer: { authorize(i: any): Promise<any> }, log: any, enforce?: (chain: any, d: any) => void }} cfg */
 export function createGate(cfg) {
@@ -17,6 +18,8 @@ export function createGate(cfg) {
     if (!opts.quiet && d.obligations.some((/** @type {any} */ o) => o.type === "audit")) {
       try { log.append(chain, { type: "access.denied", sv: 1, subject: resource, data: { action, reason: d.reason }, prov: { decision: d.decision } }); } catch { /* the refusal stands even if the note cannot be written */ }
     }
+    // a viewer on a project reads it, so a refused write is said in words (it hides nothing from them) and names the next step
+    if (d.reason === "read_only") throw Object.assign(new KernelError("not_allowed", VIEWER_WORDS), { decision: d.decision });
     throw Object.assign(new KernelError("not_found", "no such record", d.reason), { decision: d.decision });
   }
   const allowed = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
