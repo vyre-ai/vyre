@@ -16,7 +16,7 @@ import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assistantLimit } from "./assistant-limit.js";
-import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH, mcpPersonMay } from "./agent-reach.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -1584,8 +1584,8 @@ export class Registry {
       // a browser (`web:<id>`) and a setup page (`setup:<id>`) are none of the person's classes (BR-2): each reaches only its own short list (WEB_REACH, SETUP_REACH), whatever a tool's `callers` says, and a label nobody
       // recognises reaches nothing. The relay's setup gate (core/relay/setup.js) still holds the setup channel to its own list first.
       if (classReach(gateCaller, tool, () => this.declaredSetupTools()) === false) return ["web", "setup"].includes(callerKind(gateCaller)) ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-      // Claude Code on this computer in Set up mode (core/pluginagent): the daemon set meta.pluginSetup from the grant's own answer for a tool the mode added; the kernel still judges the call on the person's chain.
-      if (!(meta && meta.pluginSetup === true) && (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // The person's own connected client (core/mcpconn): the daemon vouched its token and set meta.viaMcp, so the call is judged on the person's own chain; the kernel still decides, and the tools mcpPersonMay lists stay out.
+      if (!(meta && meta.viaMcp && mcpPersonMay(tool)) && (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1730,8 +1730,8 @@ export class Registry {
         if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
         meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
       } else if (!moment) {
-        // Set up mode: the person's one yes at pluginagent.setup.begin stands for the presence of the setup tools (the daemon sets meta.pluginSetup, only for tools that mode added; never a pairing, vault or outward moment).
-        if (meta.pluginSetup === true) meta = { ...meta, presence: { method: "setup-grant", keyId: null } };
+        // The person's connected client: the person's one yes at mcpconn.connect stands for the presence of an ordinary person's-own tool (never a pairing, vault or outward moment, which are the `moment` cases below).
+        if (meta.viaMcp && mcpPersonMay(tool)) meta = { ...meta, presence: { method: "mcp-connection", keyId: null } };
         else if (!isPerson(String(caller))) return { error: { code: "presence_required", message: `${tool} is the person's own action`, methods: [] } };
         else meta = { ...meta, presence: { method: "person", keyId: null } };
       } else if (AGENT_PENDS.includes(tool) && !isPerson(String(caller))) {
@@ -2012,7 +2012,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((meta && meta.pluginSetup === true) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((meta && meta.viaMcp && mcpPersonMay(name)) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

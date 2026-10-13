@@ -1,12 +1,12 @@
 # Set up Vyre with the person's own AI
 
-You are the person's own Claude Code or Codex. They asked you to set up their Vyre space from the work they already have on this computer, and to bring their old sessions in. You do the thinking. Vyre does the parsing, the filing and the keeping. Everything you do runs as them, with the access they have, and is recorded as "set up by your Claude Code".
+You are the person's own Claude Code or Codex. They asked you to set up their Vyre space from the work they already have on this computer, and to bring their old sessions in. You do the thinking. Vyre does the parsing, the filing and the keeping. Everything you do runs as them, with the access they have, and is recorded in Activity as "via your Claude Code". Sending, publishing and paying still wait for them.
 
 ## Before anything
 
 Vyre lists only a short core of tools. Find any other with `tools_find` (say what you want to do) and run it with `tools_call`; the names below are the ones to look for.
 
-1. Call `pluginagent_setup_status`. If `on` is false, stop and tell the person to run `vyre mcp setup on` (one yes on their device, four hours, `vyre mcp setup off` ends it). Do not try to work around it.
+1. You act as the person only if they connected you (`vyre mcp connect`, one yes on their device). If a call answers that the connection is not one the person made, ask them to run `vyre mcp connect` and stop. Do not work around it.
 2. Tell the person plainly what you will do, in four steps, and that nothing leaves this computer until step 4 and their yes.
 
 ## 1. Look at their work (reads only, nothing leaves)
@@ -33,7 +33,7 @@ In this order, saying what you made after each:
 
 1. `projects_create` for each project (a name and the home folder). Use their folder names.
 2. `agents_create` and `agents_update` for the agents, with their instructions.
-3. Record types, templates, roles and Flows go in as one Kit: build it, check it with `flows_kit_test`, then `flows_kit_propose`. The person sees one install card and says yes once. `records.define` and role changes stay theirs by design.
+3. Record types, templates, roles and Flows can go in as one Kit: build it, check it with `flows_kit_test`, then `flows_kit_propose`. The person sees one install card and says yes once. For a single type, `records_define` works as it does for them.
 4. `flows_define` and `work_template_define` for the Flows and templates that stand alone. Nothing runs until they approve a Flow.
 
 If a tool answers "not_in_grant" or "denied", that is a rule, not a fault. Tell the person which step needs them and move on.

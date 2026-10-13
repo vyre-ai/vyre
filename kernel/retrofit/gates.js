@@ -12,6 +12,7 @@ import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
 import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst, classReach, PERSON_FREE } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
+import { mcpPersonMay } from "../../core/modules/agent-reach.js";
 
 const SPACE = LEGACY_SPACE;
 const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
@@ -109,9 +110,9 @@ export function createLegacyGates(cfg) {
       if (!door && String(caller).startsWith("module:") && (await ask("declared", chain, tool, cls)).effect !== "allow") return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
       if ((await ask("outward", chain, tool, cls)).effect !== "allow") return (typeof reg.outwardRefusal === "function" ? await reg.outwardRefusal({ tool, def, caller, input, meta }) : null) || { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       if ((await ask("visible", chain, tool, cls)).effect !== "allow") return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      // Claude Code in Set up mode (core/pluginagent): the daemon set meta.pluginSetup from the person's one yes, for a tool that mode added. The callers, guest and session gates were written for the person's own
-      // surfaces and a session's assistant; the kernel still judges the call on the person's chain with the default assistant's hop (never a role, a grant or a send), and an outward act was held above.
-      if (meta && meta.pluginSetup === true) return null;
+      // The person's own connected client (core/mcpconn): the daemon vouched its token and set meta.viaMcp. The callers, guest and session gates were written for the person's own surfaces; the kernel still judges
+      // the call on the person's chain, and an outward act was held above.
+      if (meta && meta.viaMcp && mcpPersonMay(tool)) return null;
       if ((await ask("callers", chain, tool, cls)).effect !== "allow") return ["web", "setup"].includes(callerKind(caller)) && classReach(caller, tool, () => reg.declaredSetupTools()) === false ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
       const s = await ask("session", chain, tool, cls);

@@ -111,6 +111,9 @@ export function tailnetLabelHolds(label, peer, network) {
  */
 export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
   if (!k || !k.id) return null;
+  // The person's own connected client (core/mcpconn): the daemon vouched its key (via.viaMcp) on the plain `mcp` label, and the call is the owner's, on the chain a person's own terminal here carries (the linkBoxFacts shape), its session the connection the person made with presence. It is
+  // still labelled `mcp`, so the registry holds an outward act for it like a model's, and agent-reach.mcpPersonMay names what stays out of its reach.
+  if (!policy.caller && caller === "mcp" && via && typeof via.viaMcp === "string" && via.viaMcp && !via.thread && !via.agent) return { kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false, session: `mcp:${via.viaMcp}` };
   // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
@@ -171,17 +174,15 @@ function teamSpaceOfToken(token) {
 /** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
 const pluginTokensOf = new WeakMap();
 /** @param {any} registry @param {string} agent @returns {Promise<string | undefined>} */
-async function pluginToken(registry, agent, setup = false) {
+async function pluginToken(registry, agent) {
   const open = registry.deps && registry.deps.kernelSession;
   if (typeof open !== "function") return undefined;
   let mine = pluginTokensOf.get(registry);
   if (!mine) { mine = new Map(); pluginTokensOf.set(registry, mine); }
-  // Set up mode (core/pluginagent): the tools it adds run on the person's own chain with the kernel's default-assistant hop, which can do what the person can and never a role, a grant or a send. Its own session, so ending Set up mode ends it.
-  const key = setup ? `${agent}#setup` : agent;
-  let f = mine.get(key);
-  if (!f) { const s = await open(setup ? { thread: `plugin:${agent}:setup`, agent: null, rec: { agent_kind: "assistant" } } : { thread: `plugin:${agent}`, agent }); f = s && s.token; if (!f) return undefined; mine.set(key, f); }
+  let f = mine.get(agent);
+  if (!f) { const s = await open({ thread: `plugin:${agent}`, agent }); f = s && s.token; if (!f) return undefined; mine.set(agent, f); }
   const t = await f();
-  if (!t) mine.delete(key);
+  if (!t) mine.delete(agent);
   return t;
 }
 export const REPO = path.resolve(HERE, "..", "..");
@@ -1408,7 +1409,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
   /** @type {string | null} */ let pluginAgent = null;
-  let pluginSetup = false;
+  /** @type {string | null} */ let mcpConn = null;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
   } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
@@ -1424,6 +1425,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       // Not a thread's agent: its calls are a model's own (`mcp`), and what it is comes from the kernel token vyred stamps, never from the label.
       pluginAgent = said[1];
     }
+  } else if (req.headers["x-vyre-mcp-key"]) {
+    // The person's own connected client (core/mcpconn): `vyre mcp` sends the connection's id and key. A vouched connection is the person: the call runs on their own chain (the kernel token vyred stamps below)
+    // and the registry lets it use the person's own tools; the label stays `mcp`, so an outward act is held like any model's. Never on a socket bound to a Vyre session, and never with an agent's name.
+    const id = String(req.headers["x-vyre-mcp-id"] || ""), key = String(req.headers["x-vyre-mcp-key"] || "");
+    const v = id && key && caller === "mcp" ? await registry.call("mcpconn.vouch", { id, key }, "module:vyred").catch(() => null) : null;
+    if (!(v && v.data && v.data.ok === true)) return send(res, 403, { error: { code: "denied", message: "this connection is not one the person made, or it was revoked: connect again with vyre mcp connect" } });
+    mcpConn = id;
+    Object.assign(via, { viaMcp: id });
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.
@@ -1490,14 +1499,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
     // A member's own session is shown the tools it may call and no others (core/modules/door-gate.js).
     if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null) { const show = await registry.deps.doorGate.visible(String(caller), typeof tok === "string" ? { token: tok } : {}); if (show) data = data.filter(t => show(t.name)); } }
-    // The plugin agent is offered only what its grant names. Set up mode's tools are shown to it though their callers lists name only the person: the grant, not the list, decides those.
+    // The plugin agent is offered only what its grant names.
     if (pluginAgent) {
-      const have = new Set(data.map(t => t.name));
-      const wide = registry.listTools(caller, { ...via, pluginSetup: true }).filter(t => !policy.tool || policy.tool(t.name));
-      const ask = await registry.call("pluginagent.allows", { tools: wide.map(t => t.name) }, "module:vyred").catch(() => null);
+      const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
       const ok = new Set(ask && ask.data && Array.isArray(ask.data.allowed) ? ask.data.allowed : []);
-      const setupOnly = new Set(ask && ask.data && Array.isArray(ask.data.setup) ? ask.data.setup : []);
-      data = wide.filter(t => ok.has(t.name) && (have.has(t.name) || setupOnly.has(t.name)));
+      data = data.filter(t => ok.has(t.name));
     }
     return send(res, 200, { data });
   }
@@ -1563,8 +1569,6 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
       const ask = await registry.call("pluginagent.allows", { tools: carried ? [name, carried] : [name] }, "module:vyred").catch(() => null);
       const ok = ask && ask.data && Array.isArray(ask.data.allowed) && ask.data.allowed.includes(name) && (!carried || ask.data.allowed.includes(carried));
-      // Only the daemon sets this, from the grant's own answer: the tool is one that Set up mode added, and carried tools never ride link.call into it.
-      if (ok && !carried && ask.data.setup && ask.data.setup.includes(name)) { pluginSetup = true; Object.assign(via, { pluginSetup: true }); }
       if (!ok) return send(res, 403, { error: { code: "not_in_grant", message: `Claude Code on this computer was not given ${carried || name}: it reads memory, recall and the sessions of your projects, and suggests to memory` } });
     }
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
@@ -1638,10 +1642,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
+    // A person's connected client carries no kernel session of its own: callerFacts gives it the person's chain, built from vyred's own key. Whatever session header it sent is dropped.
+    if (mcpConn) delete req.headers["x-vyre-kernel-session"];
     // The plugin agent's token is vyred's, set here and never the client's: its session is opened by the daemon for that agent and renewed before it runs out.
     if (pluginAgent) {
       delete req.headers["x-vyre-kernel-session"];
-      const t = await pluginToken(registry, pluginAgent, pluginSetup).catch(() => null);
+      const t = await pluginToken(registry, pluginAgent).catch(() => null);
       if (t) req.headers["x-vyre-kernel-session"] = t;
     }
     const sessionToken = await kernelSession(req, kernelOf);
@@ -1687,6 +1693,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     let result = teamResult || await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+    // What a person's connected client changed is noted in Activity as done via their Claude Code: the tool's name and whether it worked, never its input.
+    if (mcpConn) { const d0 = registry.tools.get(name); if (d0 && d0.effect !== "read") registry.call("mcpconn.note", { conn: mcpConn, tool: name, ok: !(result && result.error) }, "module:vyred").catch(() => null); }
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

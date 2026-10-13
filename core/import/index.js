@@ -238,12 +238,11 @@ export default {
     // ---- the person's own AI doing the import (Set up mode, core/pluginagent): the same scan and the same sender, as session lines instead of folders, filed into projects the person confirmed.
     /** Rows the answer holds at most; a larger machine says `more` and the AI narrows with `folders` or `since`. */
     const ROWS = 2000;
-    /** Who may call: the person's surfaces, or Claude Code on this computer while the person has Set up mode on (never a Vyre session of an agent, which has a thread). */
+    /** Who may call: the person's surfaces, or the person's own connected client (core/mcpconn: the daemon vouched its key and set meta.viaMcp), never a Vyre session's agent, which has a thread. */
     const mayRun = async meta => {
       if (person(meta.caller)) return;
-      const plugin = String(meta.caller || "").startsWith("mcp") && !meta.thread && !meta.agent;
-      const on = plugin ? (await ctx.call("pluginagent.setup.status", {}).catch(() => null))?.data?.on === true : false;
-      if (!on) throw Object.assign(new Error("importing sessions is the person's own action; Claude Code may do it only while Set up mode is on (the person turns it on in Vyre)"), { code: "denied" });
+      if (String(meta.caller || "").startsWith("mcp") && typeof meta.viaMcp === "string" && meta.viaMcp && !meta.thread && !meta.agent) return;
+      throw Object.assign(new Error("importing sessions is the person's own action; Claude Code may do it once the person has connected it (vyre mcp connect)"), { code: "denied" });
     };
     const rowOf = (f, projectOf) => {
       const why = notSuggested(f.cwd, { quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null, isDev: cwd => VYRE_DIR.test(cwd) });

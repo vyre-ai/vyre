@@ -55,6 +55,11 @@ const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
 function ident() {
   if (AGENT) return { caller: CALLER };
   if (!process.env.VYRE_SOCKET) {
+    // The person connected their own AI (core/mcpconn, `vyre mcp connect`): this server then speaks as them, with the connection's id and key.
+    try {
+      const c = JSON.parse(fs.readFileSync(path.join(home(), "mcp-connection.json"), "utf8"));
+      if (c && /^[A-Za-z0-9_-]+$/.test(String(c.id)) && typeof c.key === "string" && c.key) return { caller: CALLER, headers: { "x-vyre-mcp-id": c.id, "x-vyre-mcp-key": c.key } };
+    } catch { /* not connected (yet) */ }
     try {
       const j = JSON.parse(fs.readFileSync(path.join(home(), "plugin-agent.json"), "utf8"));
       if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: `mcp:agent:${j.agent}`, headers: { "x-vyre-agent-key": j.key } };

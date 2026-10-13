@@ -121,7 +121,9 @@ export const PERSON_ONLY = new Map([
   ["files.drive.link.revoke", "takes an outsider's link away: the person's own decision about who reaches a file"],
   ["wink.server.probe", "the person's own device calls out to a server it paired: a network call as the person's device"],
   ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
-  ["pluginagent.setup.begin", "would let an assistant widen its own authority: turns on Set up mode for Claude Code on a computer, the person's own yes"],
+  ["mcpconn.connect", "needs the person's Face ID or presence: it widens an AI's authority to the person's own, the person's own yes"],
+  ["mcpconn.list", "the person's own connections of their AI: the person's own view"],
+  ["mcpconn.revoke", "the person's own stop: ends a connection of their AI; an assistant must not undo it"],
   ["pluginagent.revoke", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.decline", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.on", "the person's own decision about what Claude Code on a computer may reach"],
@@ -588,3 +590,17 @@ export const WEB_REACH = new Map([
  * @type {ReadonlyMap<string, string>}
  */
 export const SETUP_REACH = new Map([...SETUP_REASONS]);
+
+/**
+ * A connected client of the person's own (core/mcpconn: Claude Code or Codex through `vyre mcp`) acts AS the person: the daemon vouches its token and the call runs on the person's own chain, so the
+ * person-only setup tools work for it as they do in the app. It is still a model, not a face: outward acts stay held, and what a person proves with a face or a key, or does to the doors themselves,
+ * stays out of its reach. This is that list: a tool in PERSON_ONLY whose reason is the person's presence, devices, sign-in or secrets, the human-only tools, and these families.
+ */
+export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity."]);
+const NEVER_REASON = /face id|presence|device|pairing|sign[- ]?in|secret|passkey|identity|key/i;
+/** May a call that came in on a person's MCP connection use this tool as the person? @param {string} tool */
+export function mcpPersonMay(tool) {
+  if (MCP_NEVER_PREFIXES.some(p => tool.startsWith(p))) return false;
+  const why = PERSON_ONLY.get(tool);
+  return !(why && NEVER_REASON.test(why));
+}

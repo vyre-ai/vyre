@@ -10,6 +10,8 @@ import { open, migrate } from "../store/index.js";
 import { tempHome } from "../../test/helpers.js";
 import mod from "./index.js";
 
+/** The daemon vouched the person's own connection (core/mcpconn) and says so in meta. */
+const CONN = { viaMcp: "mcn_1" };
 const ID = i => `33333333-0000-4000-8000-${String(i).padStart(12, "0")}`;
 function sessions(root) {
   const mk = (folder, cwd, ids, extra = {}) => {
@@ -24,20 +26,18 @@ function sessions(root) {
   fs.writeFileSync(path.join(root, "claude", "projects", "-home-alex-Work-harlow", ".credentials.json"), "{\"token\":\"secret\"}");
 }
 
-async function world(t, { setup = true } = {}) {
+async function world(t) {
   const root = tempHome(t);
   sessions(root);
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
   const tools = new Map(), calls = [];
-  const state = { setup };
   const fake = {
     "sync.consent": i => ({ ok: true, ...i }),
     "sync.send": i => ({ sent: i.files.length, failed: 0, quarantined: 0, of: i.files.length, skipped: 0 }),
     "memory.pace": i => i,
     "projects.list": () => ({ projects: [{ slug: "harlow", name: "Harlow Legal", folders: ["/home/alex/Work/harlow"] }] }),
     "projects.add-threads": i => ({ project: i.project, added: i.threads }),
-    "pluginagent.setup.status": () => ({ on: state.setup }),
     "recall.status": () => ({ sessions: 0, turns: 0 }), "memory.stats": () => ({}),
   };
   const ctx = {
@@ -50,12 +50,12 @@ async function world(t, { setup = true } = {}) {
   const h = await mod.start(ctx);
   t.after(() => h.stop());
   const call = async (name, input, caller = "deck", meta = {}) => { try { return { data: await tools.get(name).run(input, { ...meta, caller }) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code, message: /** @type {Error} */ (e).message } }; } };
-  return { call, calls, state, tools };
+  return { call, calls, tools };
 }
 
 test("import.sessions.list: one line per session with its folder and project, nothing from temp folders suggested, no credential file", async t => {
   const { call } = await world(t);
-  const r = (await call("import.sessions.list", {}, "mcp")).data;
+  const r = (await call("import.sessions.list", {}, "mcp", CONN)).data;
   assert.equal(r.total, 6);
   const by = new Map(r.sessions.map(s => [s.id, s]));
   assert.equal(by.get(ID(1)).project, "harlow");
@@ -67,28 +67,26 @@ test("import.sessions.list: one line per session with its folder and project, no
   assert.ok(!JSON.stringify(r).includes("turn 1"), "what was said is never read");
 });
 
-test("sessions.import.*: Claude Code only while Set up mode is on, and never an agent's own thread", async t => {
-  const { call, state } = await world(t, { setup: false });
-  assert.equal((await call("import.sessions.list", {}, "mcp")).error.code, "denied", "mode off");
-  state.setup = true;
-  assert.ok((await call("import.sessions.list", {}, "mcp")).data);
-  assert.equal((await call("import.sessions.list", {}, "mcp:agent:kit", { agent: "kit", thread: "t" })).error.code, "denied", "a Vyre session's agent is not Claude Code on this computer");
+test("import.sessions.*: the person's own connected client, and nothing else that is not the person", async t => {
+  const { call } = await world(t);
+  assert.equal((await call("import.sessions.list", {}, "mcp")).error.code, "denied", "an mcp caller the daemon did not vouch");
+  assert.ok((await call("import.sessions.list", {}, "mcp", CONN)).data, "vouched");
+  assert.equal((await call("import.sessions.list", {}, "mcp:agent:kit", { agent: "kit", thread: "t", viaMcp: "mcn_1" })).error.code, "denied", "a Vyre session's agent is not the person's connection");
   assert.equal((await call("import.sessions.list", {}, "tailnet:alex@example.com")).error.code, "denied");
-  state.setup = false;
   assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: true }, "mcp")).error.code, "denied");
-  assert.ok((await call("import.sessions.list", {})).data, "the person's own surface needs no mode");
+  assert.ok((await call("import.sessions.list", {})).data, "the person's own surface needs no connection");
 });
 
 test("import.sessions.run: needs the scan, the person's yes, real ids and projects; then sends and files each session in its project", async t => {
   const { call, calls } = await world(t);
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: true }, "mcp")).error.code, "bad_input", "scan first");
-  await call("import.sessions.list", {}, "mcp");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }] }, "mcp")).error.code, "bad_input", "no yes, no upload");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: false }, "mcp")).error.code, "bad_input");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: "nope" }], confirmed: true }, "mcp")).error.code, "not_found");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1), project: "ghost" }], confirmed: true }, "mcp")).error.code, "not_found");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: true }, "mcp", CONN)).error.code, "bad_input", "scan first");
+  await call("import.sessions.list", {}, "mcp", CONN);
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }] }, "mcp", CONN)).error.code, "bad_input", "no yes, no upload");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: false }, "mcp", CONN)).error.code, "bad_input");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: "nope" }], confirmed: true }, "mcp", CONN)).error.code, "not_found");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1), project: "ghost" }], confirmed: true }, "mcp", CONN)).error.code, "not_found");
   assert.equal(calls.filter(c => c.tool === "sync.send").length, 0, "nothing was sent by the refusals");
-  const r = await call("import.sessions.run", { sessions: [{ id: ID(1), project: "Harlow Legal" }, { id: ID(2), project: "harlow" }, { id: ID(4) }], confirmed: true }, "mcp");
+  const r = await call("import.sessions.run", { sessions: [{ id: ID(1), project: "Harlow Legal" }, { id: ID(2), project: "harlow" }, { id: ID(4) }], confirmed: true }, "mcp", CONN);
   assert.equal(r.data.sessions, 3, JSON.stringify(r));
   assert.deepEqual(r.data.filed, { harlow: 2 });
   for (let i = 0; i < 50 && !calls.some(c => c.tool === "sync.send"); i++) await new Promise(res => setTimeout(res, 20));

@@ -1,0 +1,22 @@
+{
+  "name": "mcpconn",
+  "version": "0.1.0",
+  "description": "The person's own AI, connected: Claude Code or Codex on a computer of theirs, through `vyre mcp`. The person connects it once with presence; the connection is a per-device token (its hash here, the secret in a file only this OS user reads) and a call on it runs as the person, on their own chain, under the same kernel and door as the app. Listed and revoked by the person.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] } },
+  "does": {
+    "tools": [
+      { "name": "mcpconn.connect", "reach": "person", "effect": "write" },
+      { "name": "mcpconn.list", "reach": "person", "effect": "read" },
+      { "name": "mcpconn.revoke", "reach": "person", "effect": "write" },
+      { "name": "mcpconn.guide", "reach": "anyone", "effect": "read" },
+      { "name": "mcpconn.vouch", "reach": "modules", "effect": "read" },
+      { "name": "mcpconn.note", "reach": "modules", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["mcpconn.connected", "mcpconn.revoked", "mcpconn.did"] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

@@ -138,7 +138,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "outside.grant", "outside.list", "outside.register", "outside.revoke", "outside.token", "outside.ungrant",
   "planner.agenda", "planner.calendar.create", "planner.calendar.sync", "planner.delete", "planner.dismiss", "planner.done", "planner.get", "planner.settings",
   "planner.snooze", "planner.update",
-  "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.setup.begin", "pluginagent.setup.end", "pluginagent.setup.guide", "pluginagent.setup.status", "pluginagent.status",
+  "mcpconn.connect", "mcpconn.guide", "mcpconn.list", "mcpconn.revoke", "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.status",
   "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.locked", "presence.person.renew-allow", "presence.person.revoke", "presence.person.rotate",
   "presence.person.sessions", "presence.remove",
   "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",

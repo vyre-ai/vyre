@@ -42,8 +42,9 @@ async function serve(server = SERVER) {
 export const VERBS = [
   { verb: "serve", summary: "the MCP server on stdio, which Claude Code starts (vyre mcp alone is the same)", usage: "" },
   { verb: "design", summary: "the Design and Module MCP on stdio: blocks, screen checks, pictures, proposals, and the module kit", usage: "" },
-  { verb: "connect", summary: "the lines that connect your own Claude Code or Codex to Vyre, and the one step that lets it set Vyre up", usage: "[--json]" },
-  { verb: "setup", summary: "Set up mode for Claude Code on this computer: on (one yes, hours default 4), off, status", usage: "[on|off|status] [--hours N] [--json]" },
+  { verb: "connect", summary: "connect your own Claude Code or Codex so it acts as you (one yes), and print the lines that register it", usage: "[--client NAME] [--json]" },
+  { verb: "list", summary: "the connections of your own AI, with when each was last used", usage: "[--json]" },
+  { verb: "revoke", summary: "end a connection at once", usage: "<id> [--json]" },
   { verb: "install", summary: "print the claude mcp add line; --yes runs it", usage: "[--yes] [--json]" },
 ];
 
@@ -77,55 +78,48 @@ async function install(flags) {
   return code;
 }
 
-/** `vyre mcp connect`: both registration lines and what to say next. Nothing is run and nothing is changed. */
-function connect() {
-  const next = "vyre mcp setup on, then in a new session: /mcp__vyre__setup-vyre (Claude Code), or ask it to call pluginagent_setup_guide (Codex)";
-  if (json()) return emit({ claude: INSTALL_LINE, codex: CODEX_LINE, next });
+/** `vyre mcp connect [--client NAME]`: the person connects their own AI (one yes), then both registration lines are shown. @param {string[]} args */
+async function connect(args) {
+  const { flags } = parse(args, { values: ["client"], cmd: "mcp" });
+  await ensureUp();
+  const made = await call("mcpconn.connect", flags.client ? { client: String(flags.client) } : {});
+  if (made.error) return failTool(made.error);
+  const d = made.data;
+  const next = "start a new session and run /mcp__vyre__setup-vyre (Claude Code), or tell it to call mcpconn_guide (Codex)";
+  if (json()) return emit({ ...d, next });
+  out(`  ${signal("connected")} ${bold(d.client)} on ${d.device} ${dim("· it now acts as you; sending and publishing still wait for you · vyre mcp revoke " + d.id + " ends it")}`);
+  out("");
   out(`  ${bold("Claude Code")}  ${INSTALL_LINE}`);
   out(`  ${bold("Codex")}        ${CODEX_LINE}`);
-  out("");
-  out(dim("  Your AI then reads your memory and sessions. To let it set Vyre up from your work (projects, agents, records, flows)"));
-  out(dim("  and bring your old sessions in, give it a few hours:"));
-  out(`  vyre mcp setup on`);
-  out(dim("  then start a new session and run /mcp__vyre__setup-vyre, or tell it to call pluginagent_setup_guide."));
+  out(dim("  Run yours once, then " + next + "."));
   return 0;
 }
 
-/** `vyre mcp setup on|off|status`: Set up mode for Claude Code on this computer (core/pluginagent). @param {string[]} args */
-async function setup(args) {
-  const { flags, pos } = parse(args, { values: ["hours"], cmd: "mcp" });
-  const word = pos[0] || "status";
-  if (!["on", "off", "status"].includes(word)) return usage(`vyre mcp setup ${word}: not a word`, "vyre mcp setup on | off | status");
+/** `vyre mcp list`: the connections, newest first. */
+async function list() {
   await ensureUp();
-  if (word === "status") {
-    const r = await call("pluginagent.setup.status", {});
-    if (r.error) return failTool(r.error);
-    if (json()) return emit(r.data);
-    out(r.data.on ? `  Set up mode is ${signal("on")} until ${new Date(r.data.until).toLocaleTimeString()}` : "  Set up mode is off");
-    return 0;
-  }
-  if (word === "off") {
-    const r = await call("pluginagent.setup.end", {});
-    if (r.error) return failTool(r.error);
-    if (json()) return emit(r.data);
-    out(r.data.was ? `  Set up mode ${signal("off")}` : "  Set up mode was already off");
-    return 0;
-  }
-  const hours = flags.hours !== undefined ? Number(flags.hours) : undefined;
-  if (hours !== undefined && !(hours >= 0.25 && hours <= 24)) return usage("--hours is between 0.25 and 24", "vyre mcp setup on --hours 4");
-  // Claude Code needs its one grant first (reads memory and sessions); the same yes covers it when it is not given yet.
-  const st = await call("pluginagent.status", {});
-  if (st.error) return failTool(st.error);
-  if (!st.data.granted) { const g = await call("pluginagent.grant", {}); if (g.error) return failTool(g.error); }
-  const r = await call("pluginagent.setup.begin", hours ? { hours } : {});
+  const r = await call("mcpconn.list", {});
+  if (r.error) return failTool(r.error);
+  if (json()) return emit({ connections: r.data });
+  if (!r.data.length) { out(dim("  nothing connected (vyre mcp connect)")); return 0; }
+  for (const c of r.data) out(`  ${c.id}  ${bold(c.client)}  ${c.device}  ${dim(c.revoked ? "revoked" : c.lastUsed ? "last used " + new Date(c.lastUsed).toLocaleString() : "not used yet")}`);
+  return 0;
+}
+
+/** `vyre mcp revoke ID`: end a connection at once. @param {string[]} args */
+async function revoke(args) {
+  const [id] = args;
+  if (!id) return usage("vyre mcp revoke needs a connection id", "vyre mcp list");
+  await ensureUp();
+  const r = await call("mcpconn.revoke", { id });
   if (r.error) return failTool(r.error);
   if (json()) return emit(r.data);
-  out(`  Set up mode ${signal("on")} for ${r.data.hours} hours ${dim("· vyre mcp setup off ends it")}`);
+  out(`  ${signal("revoked")} ${id}`);
   return 0;
 }
 
 export default {
-  name: "mcp", order: 72, usage: "vyre mcp [serve | design | connect | setup [on|off|status] | install [--yes]] [--json]",
+  name: "mcp", order: 72, usage: "vyre mcp [serve | design | connect | list | revoke <id> | install [--yes]] [--json]",
   summary: "the Vyre MCP server on stdio, for plain claude",
   verbs: VERBS,
   /** @param {string[]} args */
@@ -143,8 +137,9 @@ export default {
       return serve(DESIGN);
     }
     if (verb === "install") return install(rest);
-    if (verb === "connect") return connect();
-    if (verb === "setup") return setup(rest);
+    if (verb === "connect") return connect(rest);
+    if (verb === "list") return list();
+    if (verb === "revoke") return revoke(rest);
     return usage(`vyre mcp ${verb}: not a verb`, "vyre mcp to serve, vyre mcp install to add it to Claude Code");
   },
 };
