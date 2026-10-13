@@ -2,19 +2,8 @@
 // Stages and people are read from what the page already has (the record's pinned template snapshot) and projects.list (a project's people); nothing new on the server.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Chip, Text, markRef } from "@vyre/ui";
+import { Avatar, Button, StatusPill, Text, markRef } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-
-/** "Stage 2 of 5" and the stage's name from the project's pinned template, or null for a free-flow project. */
-export function stageOf(data: Record<string, unknown> | undefined | null): { name: string; at: number; of: number } | null {
-  if (!data || typeof data.template_snapshot !== "string") return null;
-  try {
-    const stages: { name?: string }[] = JSON.parse(data.template_snapshot).stages ?? [];
-    const cur = String(data.template_stage ?? "");
-    const i = stages.findIndex((s) => String(s.name ?? "").replace(/^\d+\.\s*/, "") === cur.replace(/^\d+\.\s*/, ""));
-    return cur ? { name: cur.replace(/^\d+\.\s*/, ""), at: i + 1, of: stages.length } : null;
-  } catch { return null; }
-}
 
 /** The names of the people on a project (projects.list's `people` for its short name). */
 function usePeople(slug: string) {
@@ -32,13 +21,12 @@ function usePeople(slug: string) {
   return people;
 }
 
-export function ProjectHeaderStrip({ data, slug, onManage }: { data: Record<string, unknown> | undefined; slug: string; onManage: () => void }) {
-  const stage = stageOf(data);
-  const people = usePeople(slug);
-  if (!stage && !people.length) return null;
+export function ProjectHeaderStrip({ stage, owners, slug, onManage }: { stage: { name: string; at: number; of: number } | null; owners: string[]; slug: string; onManage: () => void }) {
+  const listed = usePeople(slug);
+  const people = [...new Set([...owners, ...listed])];
   return (
     <View className="flex-row flex-wrap items-center gap-s3">
-      {stage ? <Chip tone="accent" icon="flows">{`Stage ${stage.at > 0 ? `${stage.at} of ${stage.of}: ` : ""}${stage.name}`}</Chip> : null}
+      {stage ? <StatusPill at={stage.at} of={stage.of} name={stage.name} /> : null}
       <View className="flex-1" />
       {people.length ? (
         <View className="flex-row items-center gap-s2" accessibilityLabel={`Access: ${people.join(", ")}`}>

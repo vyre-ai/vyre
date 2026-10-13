@@ -17,9 +17,9 @@ export function SidebarRow({ label, icon, lead, on, onPress, badge, trailing, fo
   const row = (
     <Pressable accessibilityRole="link" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress}
       style={({ hovered }: any) => [{ minHeight: folded ? RAIL.foldedRow : RAIL.rowH, borderRadius: RAIL.rowRadius, paddingHorizontal: folded ? 0 : RAIL.rowPadX, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "flex-start", gap: 12, backgroundColor: on ? color["surface-3"] : hovered ? "var(--hover)" : "transparent" }]}>
-      {lead ?? (icon ? <View><Icon name={icon} tone={ink} size={RAIL.iconSize} />{folded && badge ? <View style={{ position: "absolute", right: -3, top: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: color.accent }} /> : null}</View> : null)}
+      {lead ?? (icon ? <View><Icon name={icon} tone={ink} size={RAIL.iconSize} />{folded && badge ? <View style={{ position: "absolute", right: -3, top: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: color.primary }} /> : null}</View> : null)}
       {folded ? null : <Text medium={Boolean(on)} style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, color: color[ink] }} numberOfLines={1} className="flex-1">{label}</Text>}
-      {!folded && badge ? <View className="min-w-s5 items-center rounded-full px-s2" style={{ backgroundColor: color["accent-wash"] }}><Text size="caption" medium tone="accent">{String(badge)}</Text></View> : null}
+      {!folded && badge ? <View className="min-w-s5 items-center rounded-full px-s2" style={{ backgroundColor: color.selected }}><Text size="caption" medium tone="default">{String(badge)}</Text></View> : null}
       {!folded ? trailing : null}
     </Pressable>
   );

@@ -345,7 +345,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "threads" && name === "accountKey") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (name === "personalStore" && module === "vault") || (module === "threads" && name === "accountKey") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -656,6 +656,8 @@ const RELAY_ALLOWED = Object.freeze({
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
+  // a team member's own MCP servers (mcp.mine.*) live in the member's own vault store: the mcp module asks it as the member, and the vault tool resolves the person from the relayed claim
+  mcp: ["vault.me.store."],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
@@ -1540,7 +1542,7 @@ export class Registry {
     { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
-    if (this.deps.doorGate && (!String(caller).startsWith("module:") || caller === "module:vyred")) { const refused = await this.deps.doorGate(tool, String(caller), meta); if (refused) return refused; } if (this.deps.limitedGate && String(caller).startsWith("device:")) { const refused = await this.deps.limitedGate(tool, String(caller)); if (refused) return refused; } // a Space member's own session (door-gate.js); a limited chain device (device-admin.js)
+    if (this.deps.doorGate && (!String(caller).startsWith("module:") || caller === "module:vyred")) { const refused = await this.deps.doorGate(tool, String(caller), meta); if (refused) return refused; } if (this.deps.limitedGate && String(caller).startsWith("device:")) { const refused = await this.deps.limitedGate(tool, String(caller), true); if (refused) return refused; } // a Space member's own session (door-gate.js); a limited chain device (device-admin.js)
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
     // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
     let approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;

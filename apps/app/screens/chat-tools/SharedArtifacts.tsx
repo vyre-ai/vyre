@@ -18,7 +18,7 @@ export function SharedArtifacts() {
     <View className="gap-s3">
       {err ? <Card flush><ErrorState title="Shared did not load" reason={err} retry={load} /></Card> : null}
       {!rows && !err ? <LoadingState rows={4} /> : null}
-      {rows && !rows.length ? <Card><EmptyState title="Nothing made yet" body="Pages, images and files an assistant makes for you show here." /></Card> : null}
+      {rows && !rows.length ? <Card><EmptyState title="Nothing made yet" body="Pages, images and files an agent makes for you show here." /></Card> : null}
       {rows && rows.length ? (
         <Card flush>
           {rows.map((a, i) => (

@@ -78,6 +78,7 @@ test("the facts under a record's name: up to three filled plain fields, never th
   const rec = { data: { title: "T", stage: "Intake", plan: "Trust", ssn: { sealed: "x" }, fee: { amount: 1200, currency: "USD" }, h: "no", opened: "2026-10-01", n: 4, e: "" } };
   assert.deepEqual(factsOf(def, rec).map((f) => f[0]), ["Plan", "Fee", "Opened"]);
   assert.equal(factsOf(def, rec)[1][1], "$1,200");
+  assert.match(factsOf(def, rec)[2][1], /^Oct 1/);
 });
 
 test("the field of a type that links to a record's type, so a new one can be started from that record's page", () => {

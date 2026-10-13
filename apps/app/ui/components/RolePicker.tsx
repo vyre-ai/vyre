@@ -29,7 +29,7 @@ export function RolePicker({ roles, value, onChange, projects, chosen = [], onCh
           <View key={r.id}>
             {i ? <Divider inset={0} /> : null}
             <Row dense title={r.name} sub={r.line} selected={r.id === value} accessibilityLabel={`${r.name}. ${r.line}`} onPress={() => onChange(r.id)}
-              end={r.id === value ? <Icon name="check" size={18} tone="accent" /> : r.note ? <Text size="secondary" tone="label">{r.note}</Text> : undefined} />
+              end={r.id === value ? <Icon name="check" size={18} tone="text" /> : r.note ? <Text size="secondary" tone="label">{r.note}</Text> : undefined} />
           </View>
         ))}
       </Card>

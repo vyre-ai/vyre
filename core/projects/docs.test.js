@@ -56,15 +56,18 @@ test("a viewer reads the project's instructions and cannot write; a contributor 
   assert.equal((await ben("projects.docs.set", { project: project.slug, file: "NOTES.md", text: "x" })).error.code, "bad_input");
 });
 
-test("a chat in the project sees its instructions and reference names in its brief; a project with none adds nothing", { timeout: 120_000 }, async t => {
+test("a chat in the project is oriented to its instructions and context by path, with one line of what they say; a project with none names none", { timeout: 120_000 }, async t => {
   const { owner, project } = await world(t);
   const before = (await owner("projects.context", { project: project.slug })).data.text;
-  assert.ok(!/instructions \(AGENTS/.test(before), "none yet: nothing added");
+  assert.ok(!/AGENTS\.md/.test(before), "none yet: no instructions named");
   await owner("projects.docs.set", { project: project.slug, file: "AGENTS.md", text: "Never send an email without the lawyer's yes." });
   await owner("projects.refs.add", { project: project.slug, name: "Fee schedule", text: "Flat fees." });
   const text = (await owner("projects.context", { project: project.slug })).data.text;
-  assert.match(text, /Never send an email without the lawyer's yes\./);
-  assert.match(text, /Fee schedule\.md/);
+  assert.match(text, /Vyre orientation/);
+  assert.match(text, new RegExp(`${project.home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/AGENTS\\.md`), "the instructions by path");
+  assert.match(text, /context\//, "the context folder by path");
+  assert.match(text, /The instructions begin: "Never send an email without the lawyer's yes\."/, "one line, not the whole file");
+  assert.ok(text.length < 3400);
 });
 
 test("an agent, a model or a guest caller is refused on every project instructions and context tool", { timeout: 120_000 }, async t => {

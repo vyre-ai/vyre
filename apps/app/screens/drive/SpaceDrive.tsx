@@ -72,11 +72,11 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
   return (
     <>
       <View className="flex-row flex-wrap items-center gap-s1">
-        <Button kind="ghost" size="sm" label="Drive" onPress={() => setPrefix("")} />
+        <Button kind="ghost" size="sm" label="Files" onPress={() => setPrefix("")} />
         {parts.map((p, i) => <View key={p + i} className="flex-row items-center"><Text tone="faint">/</Text><Button kind="ghost" size="sm" label={p} onPress={() => setPrefix(parts.slice(0, i + 1).join("/"))} /></View>)}
         {Platform.OS === "web" ? <View className="ml-auto"><Button size="sm" kind="primary" icon="plus" label={busy ? "Sending" : "Add a file"} onPress={busy ? () => {} : pick} /></View> : null}
       </View>
-      {err ? <Card flush><EmptyState title="The space's Drive did not open" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {err ? <Card flush><EmptyState title="Files did not open" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && items === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
       {!err && items ? (
         <Card flush>
@@ -84,7 +84,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
             <View key={i.path}>{k ? <Divider inset={60} /> : null}
               <View style={i.locked ? { opacity: 0.5 } : undefined}><Row dense chevron={i.dir && !i.locked} lead={<IconTile name={i.dir ? "drive" : "file"} />} title={i.name} sub={i.locked ? "You are not in this chat" : itemLine(i)} end={spaceTag ? <SpaceTag text={spaceTag} /> : undefined} onPress={i.locked ? undefined : () => show(i)} /></View>
             </View>
-          )) : <EmptyState title={prefix ? "Nothing here" : "The Drive is empty"} body={prefix ? "This folder has no file you may read." : "Files you add, or that assistants save, appear here with their versions."} />}
+          )) : <EmptyState title={prefix ? "Nothing here" : "No files yet"} body={prefix ? "This folder has no file you may read." : "Files you add, or that agents save, appear here with their versions."} />}
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}
         </Card>
       ) : null}

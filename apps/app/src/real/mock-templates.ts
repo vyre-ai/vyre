@@ -1,5 +1,7 @@
 // The template tools answered from memory, for the sample build (EXPO_PUBLIC_VYRE_MOCK=1) only: a Matter and a Campaign template, live, and a draft; what a person makes or changes stays for the session.
 // The shapes are the box's own (core/work/templates.js shape and list), so the screens run the same code against it.
+import { getStore } from "../store-core/store.js";
+
 type V = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string; tags: string[]; note?: string; body: any };
 
 const task = (title: string, doer: string, extra: any = {}) => ({ title, doer, output: { kind: "note" }, ...extra });
@@ -77,7 +79,14 @@ export const mockTools: Record<string, (i: any) => unknown> = {
   "work.template.test": (i) => { const v = versionsOf(i.template).find((x) => x.version === i.version)!; return { ok: true, lines: v.body.stages.flatMap((s: any, n: number) => [`Stage ${n + 1}: ${s.name}`, ...(s.tasks || []).map((t: any) => `  ${t.title} (${t.doer})`)]), totals: `${v.body.stages.length} stages` }; },
   "work.template.library": () => ({ templates: [] }),
   "work.template.from-project": (i) => mockTools["work.template.define"]({ body: { ...MATTER, name: `${i.name || "Rivera Family Trust"} (copy)` }, note: "made from a project" }),
-  "work.start-project": (i) => { const v = versionsOf(i.template).find((x) => x.state === "live"); if (!v) throw fail("bad_state", "that template has no live version: put a version live first"); return { project: `vyre://mock/project/${slug(i.name)}`, slug: slug(i.name), template: i.template, version: v.version, stage: v.body.stages[0].name, teammates: [], tasks_made: (v.body.stages[0].tasks || []).length }; },
+  // the sample store keeps the project, pinned to the playbook as the box does, so the screen that opens it finds it
+  "work.start-project": async (i) => {
+    const v = versionsOf(i.template).find((x) => x.state === "live"); if (!v) throw fail("bad_state", "that playbook has no live version: publish a version first");
+    const b = v.body;
+    const made = await getStore().create("project", { title: i.name, template: i.template, template_stage: b.stages[0].name, template_snapshot: JSON.stringify({ name: b.name, ...(b.noun ? { noun: b.noun } : {}), stages: b.stages }) });
+    return { project: `vyre://mock/project/${made.id}`, slug: slug(i.name), template: i.template, version: v.version, stage: b.stages[0].name, teammates: [], tasks_made: (b.stages[0].tasks || []).length };
+  },
+  "work.project.level": () => ({ ok: true }),
   "flows.list": () => ({ flows: [] }),
   "agents.list": () => [{ name: "research", label: "Research" }, { name: "scribe", label: "Scribe" }],
 };

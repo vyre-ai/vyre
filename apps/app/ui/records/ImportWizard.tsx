@@ -30,7 +30,7 @@ export function ImportWizard({ step, noun, source, fileName, headers, sample, ma
       <StageSteps stages={IMPORT_STEPS} current={step} />
       {step === 0 ? (
         <View className="gap-s3">
-          {uploader ?? <Card className="items-center gap-s2 py-s6"><Icon name="upload" size={24} tone="label" /><Text strong>{fileName || `Drop a CSV of ${noun} here`}</Text><Text size="caption" tone="label">Or choose a file. A header row is expected.</Text><Button kind="secondary" label="Choose a file" onPress={onNext} /></Card>}
+          {uploader ?? <Card className="items-center gap-s2 py-s6"><Icon name="upload" size={20} tone="label" /><Text strong>{fileName || `Drop a CSV of ${noun} here`}</Text><Text size="caption" tone="label">Or choose a file. A header row is expected.</Text><Button kind="secondary" label="Choose a file" onPress={onNext} /></Card>}
           {sources ? <><SectionLabel first>Or bring them from</SectionLabel>
           <View className="flex-row flex-wrap gap-s2">{["Clio", "Lawmatics", "HubSpot", "Google Contacts"].map((s) => <Chip key={s} icon="download" selected={source === s}>{s}</Chip>)}</View></> : null}
           <Text size="caption" tone="label">Nothing is written until you approve the check in step 3.</Text>

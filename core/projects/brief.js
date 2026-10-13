@@ -14,11 +14,10 @@
 
 import os from "node:os";
 import { clip } from "../../lib/folder-docs.js";
+import { orientation } from "../../lib/orientation.js";
 
 /** Characters, about 600 tokens, paid once per thread. */
 export const LIMIT = 2400;
-/** The most of a project's instructions a brief carries; the rest is in the file, which the chat can read. */
-export const INSTRUCTIONS = 1500;
 const THREADS = 6;
 const FACTS = 10;
 
@@ -56,10 +55,12 @@ export function compose({ project, threads = [], facts = [], instructions = "", 
   const lines = [];
   lines.push(`You are working in the Vyre project "${project.name}"${project.org ? ` (${project.org})` : ""}, home ${tilde(project.home)}.`);
   lines.push("This brief is background from Vyre, built from this project's own threads. What the user says now, and the files in front of you, take priority over it.");
-  // What the project's own people wrote for every chat in it (AGENTS.md at the project root, kept the same as CLAUDE.md), and the names of the reference items kept for it (context/).
-  const words = String(instructions || "").trim();
-  if (words) lines.push("The project's instructions (AGENTS.md at the project root):", clip(words, INSTRUCTIONS));
-  if (refs.length) lines.push(`Reference items kept for this project, in context/ at its root: ${refs.slice(0, 20).join(", ")}${refs.length > 20 ? `, and ${refs.length - 20} more` : ""}. A .link file names something in Vyre Files; read it there.`);
+  // The Vyre orientation: where this project's instructions and context are (paths only; Claude Code and Codex also read CLAUDE.md and AGENTS.md in the folder themselves), and what wins when they
+  // disagree. The instructions' own words are not copied here: the session reads the file, so this stays short and never stale. One line says what the file is about.
+  const hasDocs = Boolean(String(instructions || "").trim()), hasContext = refs.length > 0;
+  if (hasDocs || hasContext) lines.push(orientation({ project: { name: project.name, dir: project.home, instructions: hasDocs, context: hasContext } }));
+  const first = String(instructions || "").split("\n").map(s => s.replace(/^#+\s*/, "").trim()).find(Boolean);
+  if (first) lines.push(`The instructions begin: "${clip(first, 120)}"`);
   const people = project.people.map(p => (p.email && p.email !== p.name ? `${p.name} <${p.email}>` : p.name));
   if (people.length) lines.push(`People: ${people.join(", ")}.`);
   if (project.workspaces.length > 1) lines.push(`Folders: ${project.workspaces.map(tilde).join(", ")}.`);
@@ -76,7 +77,7 @@ export function compose({ project, threads = [], facts = [], instructions = "", 
   }
   let text = lines.join("\n");
   // Over the cap, cut at a line break so Claude never sees half a name or address.
-  const cap = LIMIT + (words ? INSTRUCTIONS + 200 : 0);
+  const cap = LIMIT + (hasDocs || hasContext ? 900 : 0);
   if (text.length > cap) {
     const cut = text.lastIndexOf("\n", cap - 2);
     text = (cut > 0 ? text.slice(0, cut) : text.slice(0, cap - 2)) + "\n…";

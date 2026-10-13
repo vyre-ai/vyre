@@ -30,6 +30,8 @@ const WHAT = {
   "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
   "flows.health": "One-line health of a Flow: last run, this week, next run, what needs a person, red if a Connection is red. No id lists all.",
+  "flows.access.get": "Who a Flow is shared with: { id }. Only its creator, an owner or an admin.",
+  "flows.access.set": "Share a Flow with a person: { id, subject (the person), level: use | edit | null }. Can use runs and sees it; Can edit changes it too; null takes the access away. Only its creator, an owner or an admin.",
   "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, step kinds, retries, checks, expressions, limits. Read it before writing a Flow.",
   "flows.from-chat": "Turn a chat's hand-made calls into a draft Flow: { name, calls: [{ tool, input }], variables?, propose? }. Never approved; propose also proposes it.",
   "flows.connections": "Which Flows use which Connections, with their health, so a red Connection shows what it stops. Name one Connection or list all.",

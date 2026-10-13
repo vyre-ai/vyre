@@ -8,7 +8,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -55,7 +55,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
   if (loading && !world) return frame("Records", <LoadingState rows={5} />);
   const def = world?.types.find((t) => t.name === type);
-  if (!world || !def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
+  if (!world || !def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
   // The person's own views of this type are laid over the type's own; they decide how the screen is drawn only when one of them is open, so they never change what the type opens as.
   const mineViews = personalViewsOf(type, entries);
   const full = withPersonalViews(def, mineViews);
@@ -97,10 +97,23 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
         <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
+        {phone ? (
+          <>
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
+            <Menu trigger={<IconButton icon="more" label="More" />} items={[
+              { label: "New view", onPress: () => setMaking(true) },
+              { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
+              { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
+            ]} />
+          </>
+        ) : (
+          <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
+          </>
+        )}
       </View>
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
       {world.types.length > TABS_MAX

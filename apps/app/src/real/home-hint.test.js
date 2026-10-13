@@ -42,3 +42,30 @@ test("the hint says whether the server admits chain devices; no flag means no ch
   assert.equal(offersChainSignIn(homeHintOf({ ...pairing, chainHello: 2 })), false, "only the version this app knows");
   assert.equal(offersChainSignIn(null), false);
 });
+
+import { makeHintStore } from "./home-hint.js";
+
+const kvOf = () => { const m = new Map(); return { m, get: async (k) => m.get(k) ?? null, set: async (k, v) => { m.set(k, v); }, del: async (k) => { m.delete(k); } }; };
+const GOOD = { v: 1, relay: "wss://r.example", route: "r".repeat(26), box: "b".repeat(43), name: "my droplet" };
+
+test("hint store: a good hint is kept and read back; the first vault read can name its server", async () => {
+  const s = makeHintStore(kvOf());
+  assert.equal(await s.load(), null);
+  assert.equal(await s.store(GOOD), true);
+  assert.deepEqual(await s.load(), GOOD);
+});
+
+test("hint store: a hint with no pin, a bad relay or junk is refused and nothing is kept", async () => {
+  const kv = kvOf();
+  const s = makeHintStore(kv);
+  for (const bad of [{ ...GOOD, box: "short" }, { ...GOOD, relay: "http://x" }, "junk", null, { ...GOOD, route: "" }]) assert.equal(await s.store(/** @type {any} */ (bad)), false);
+  assert.equal(kv.m.size, 0);
+});
+
+test("hint store: a string hint (as a bundle or a kit carries it) is parsed; a store that throws is no hint", async () => {
+  const s = makeHintStore(kvOf());
+  assert.equal(await s.store(JSON.stringify(GOOD)), true);
+  const broken = makeHintStore({ get: async () => { throw new Error("x"); }, set: async () => { throw new Error("x"); }, del: async () => {} });
+  assert.equal(await broken.load(), null);
+  assert.equal(await broken.store(GOOD), false);
+});

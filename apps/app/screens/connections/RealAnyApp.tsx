@@ -32,7 +32,7 @@ export default function RealAnyApp() {
         <Card key={p.id}>
           <View className="gap-s2">
             <Text strong>{p.title}</Text>
-            {p.why ? <Text size="secondary" tone="muted">{`${p.by === "mcp" ? "Your assistant" : p.by} says: ${p.why}`}</Text> : null}
+            {p.why ? <Text size="secondary" tone="muted">{`${p.by === "mcp" ? "Your agent" : p.by} says: ${p.why}`}</Text> : null}
             {p.lines.map((l, i) => <Text key={i} size="secondary">{l}</Text>)}
             <View className="flex-row gap-s2">
               <Button size="sm" kind="primary" label="Connect it" onPress={() => connections.madeApprove(p.id).then(() => { showToast("Connected."); load(); }).catch((e) => showToast(words(e)))} />
