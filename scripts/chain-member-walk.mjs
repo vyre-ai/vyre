@@ -111,7 +111,7 @@ try {
     console.log(`DIAG members.add ${JSON.stringify(add).slice(0, 240)}`);
     for (const who of [mac.identity.id, mem.identity.id]) { const st = await srv.registry.call("spaces.identity.state", { person: who }, "module:relay").catch((/** @type {any} */ e) => ({ thrown: String(e.message) })); console.log(`DIAG identity.state(${who === mac.identity.id ? "owner" : "member"}) ${JSON.stringify(st).slice(0, 300)}`); }
     console.log(`DIAG member name ${mem.identity.name} id ${mem.identity.id}`);
-    const c = await dial({ key: mem.identity.key, entry: mem.identity.key.eid, identity: mem.identity.id, name: "member-laptop" });
+    const c = await dial({ key: mem.identity.key, entry: mem.identity.key.eid, identity: mem.identity.id, name: mem.identity.name });
     const info = await callAs(c, "system.info");
     assert.equal(info.status, 200, `member chain device admitted: ${info.status} ${info.text}`);
     const call = await signIn(c);
