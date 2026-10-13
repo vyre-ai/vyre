@@ -47,7 +47,7 @@ export function TypeScreen() {
   };
   const pane = edit ? (
     <FieldEditor draft={edit.draft} onChange={(draft) => setEdit({ ...edit, draft })} owner={self} types={types} roles={ROLES} siblings={siblings} rules={edit.rules} onRules={(rules) => setEdit({ ...edit, rules })}
-      tried={edit.tried} editing={!!edit.orig} groups={groups.map((g) => g.name)} onSave={commit} onCancel={() => setEdit(null)} />
+      tried={edit.tried} editing={!!edit.orig} groups={groups.map((g) => g.name)} sealLocked={edit.orig && edit.orig.kind !== "sealed" ? "To seal values this field already holds, add a new sealed field. Moving existing values into the vault is not offered here yet." : edit.orig ? "A sealed field stays sealed. Who may reveal it can be changed below." : undefined} onSave={commit} onCancel={() => setEdit(null)} />
   ) : null;
   const stages = (def.stages ?? []).map((s) => s.name);
   const putStages = (n: string[]) => { const old = new Map((def.stages ?? []).map((s: any) => [s.name, s])); save({ ...def, stages: n.map((x) => old.get(x) ?? { name: x }) } as Def); };
