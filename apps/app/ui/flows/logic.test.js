@@ -312,7 +312,7 @@ test("a date or time field inside text is written as people read it, and {now} a
   assert.deepEqual(def.steps[1].until, { expr: "trigger.after.starts_at" }, "a whole value stays the raw time, for a wait");
   assert.deepEqual(checkFlow(def), []);
   assert.equal(fromDefinition(def).steps[0].body, body);
-  assert.equal(toDefinition(d).steps[0].input.body.expr.includes("datetime("), false, "without the object's fields a date is plain text");
+  assert.equal(toDefinition(d).steps[0].input.body.expr.includes("datetime(trigger"), false, "without the object's fields a date is plain text");
   assert.deepEqual(val("{today}"), { expr: "date(now, tz)" });
-  assert.equal(dateChoices ? true : true, true);
+  assert.deepEqual(dateChoices(d, "wait2", o).map(([t]) => t).filter((t) => t === "{now}" || t === "{today}"), [], "a wait cannot wait for the helpers");
 });
