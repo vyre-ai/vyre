@@ -6,7 +6,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Fi
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { config } from "./config";
-import { ACK_WORDS, DOCS, NOT_USED, add, addable, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
+import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, accessRow, addable, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 type Load<T> = { data: T | null; err: string; reload: () => void };
@@ -217,6 +217,41 @@ export function Used({ name }: { name: string }) {
         ) : (
           noteable.length ? <Card flush>{noteable.map((x, i) => <View key={x.name}>{i ? <Divider /> : null}<Row title={x.name} sub={x.kind} onPress={() => { setPicking(null); void flip(x.name, true); }} /></View>)}</Card> : <Text tone="muted">Nothing left in the Vault to note.</Text>
         )}
+      </Sheet>
+    </>
+  );
+}
+
+/** Who may use or edit the agent: people and roles, at Can use or Can edit. Shown to those who may edit it. */
+export function Sharing({ name }: { name: string }) {
+  const q = useLoad(() => config.access(name), [name]);
+  const [adding, setAdding] = useState(false);
+  if (q.err) return null;
+  if (!q.data) return null;
+  const { access, people, roles } = q.data;
+  const set = (kind: "person" | "role", subject: string, level: "use" | "edit" | null) => config.setAccess(name, kind, subject, level).then(q.reload).catch((e) => showToast(say(e)));
+  const open = [...people.filter((p) => !access.some((a) => a.kind === "person" && a.subject === p.id)).map((p) => ({ kind: "person" as const, id: p.id, title: p.name, sub: p.role ? `Person, ${p.role}` : "Person" })),
+    ...roles.filter((r) => !access.some((a) => a.kind === "role" && a.subject === r.id)).map((r) => ({ kind: "role" as const, id: r.id, title: r.name, sub: "Everyone with this role" }))];
+  return (
+    <>
+      <Sec title="Who can use it">
+        <Card><Text size="caption" tone="label">{LEVEL_NOTE}</Text></Card>
+        {access.length ? (
+          <Card flush>
+            {access.map((a, i) => {
+              const r = accessRow(a, people, roles);
+              return (
+                <View key={`${a.kind}:${a.subject}`}>{i ? <Divider /> : null}
+                  <Row title={r.title} sub={r.sub} end={<View className="flex-row items-center gap-s1"><Segmented label={`${r.title}'s access`} value={a.level} options={LEVELS as [string, string][]} onChange={(v) => void set(a.kind, a.subject, v as "use" | "edit")} /><IconButton icon="x" label={`Take ${r.title}'s access away`} onPress={() => void set(a.kind, a.subject, null)} /></View>} />
+                </View>
+              );
+            })}
+          </Card>
+        ) : <Card><Text tone="muted">{`Only you, the owner and the admins can use ${name}. Add people or a role.`}</Text></Card>}
+        <View className="flex-row"><Button size="sm" kind="secondary" label="Add people or a role" onPress={() => setAdding(true)} /></View>
+      </Sec>
+      <Sheet open={adding} onClose={() => setAdding(false)} title="Add people or a role">
+        {open.length ? <Card flush>{open.map((o, i) => <View key={`${o.kind}:${o.id}`}>{i ? <Divider /> : null}<Row title={o.title} sub={o.sub} onPress={() => { setAdding(false); void set(o.kind, o.id, "use"); }} /></View>)}</Card> : <Text tone="muted">Everyone is already on the list.</Text>}
       </Sheet>
     </>
   );

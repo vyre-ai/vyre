@@ -40,6 +40,7 @@ const refunds = (): State => ({
   instructions: REFUNDS_MD,
   lent: [],
 });
+let access: { kind: string; subject: string; level: string; by: string | null }[] = [{ kind: "person", subject: "per_dana", level: "edit", by: "per_you" }, { kind: "role", subject: "paralegal", level: "use", by: "per_you" }];
 const W: Record<string, State> = { intake: intake(), refunds: refunds() };
 const w = (i: any): State => W[String(i?.agent ?? i?.name ?? "intake")] ?? W.intake;
 const accounts = [
@@ -74,5 +75,7 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "vault.agent.grants": (i) => ({ grants: w(i).lent.map((g) => ({ ...g, status: "active", uses: 3 })) }),
   "vault.agent.grant": (i) => { w(i).lent.push({ id: `ag_${i.agent}_${w(i).lent.length + 1}`, agent: i.agent, item: i.item, origin: i.origin, expires: Date.now() + 30 * 86400000 }); return { grant: { status: "active", ...i } }; },
   "vault.agent.revoke": (i) => { for (const x of Object.values(W)) x.lent = x.lent.filter((g) => g.id !== i.id); return { revoked: true }; },
+  "agents.access.get": () => ({ access: access.slice(), people: [{ id: "per_dana", name: "Dana Reyes", role: "member" }, { id: "per_sam", name: "Sam Okafor", role: "admin" }, { id: "per_lee", name: "Lee Park", role: "member" }], roles: [{ id: "member", name: "Members" }, { id: "paralegal", name: "Paralegals" }] }),
+  "agents.access.set": (i) => { access = access.filter((a) => !(a.kind === i.kind && a.subject === i.subject)); if (i.level) access.push({ kind: i.kind, subject: i.subject, level: i.level, by: "per_you" }); return { ok: true }; },
   "agents.used": (i) => i.agent === "refunds" ? ({ chats: [{ id: "thr_ref_1", title: "Refund request, order 4471" }], flows: [{ id: "flw_refunds", name: "Refund requests" }] }) : ({ chats: [{ id: "thr_intake_1", title: "Priya Shah: first inquiry" }, { id: "thr_intake_2", title: "Weekly intake review" }], flows: [{ id: "flw_new_client", name: "New client intake" }] }),
 };

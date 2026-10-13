@@ -130,3 +130,17 @@ test("source: a login is lent through the vault's own grant for 30 days, listed 
   await s.takeBack("ag_1");
   assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["vault.agent.grant", { agent: "rex", item: "mail", origin: "https://m.test", expires: "30d" }], ["vault.agent.revoke", { id: "ag_1" }]]);
 });
+
+test("sharing: a row names a person or a role in plain words; the source reads and writes through the two tools", { skip: !strip }, async () => {
+  const m = await import("./config-model.ts");
+  assert.deepEqual(m.accessRow({ kind: "person", subject: "p1", level: "use" }, [{ id: "p1", name: "Dana Reyes", role: "member" }], []), { title: "Dana Reyes", sub: "Person, member" });
+  assert.deepEqual(m.accessRow({ kind: "role", subject: "paralegal", level: "edit" }, [], [{ id: "paralegal", name: "Paralegals" }]), { title: "Paralegals", sub: "Everyone with this role" });
+  assert.deepEqual(m.LEVELS.map((l) => l[1]), ["Can use", "Can edit"]);
+  const { configSource } = await import("./config-source.ts");
+  const b = box({ "agents.access.get": { data: { access: [{ kind: "person", subject: "p1", level: "use", by: null }], people: [], roles: [] } } });
+  const s = configSource(b.call);
+  assert.equal((await s.access("rex")).access.length, 1);
+  await s.setAccess("rex", "role", "paralegal", "edit");
+  await s.setAccess("rex", "role", "paralegal", null);
+  assert.deepEqual(b.seen.slice(1).map((x) => x.input.level), ["edit", null]);
+});

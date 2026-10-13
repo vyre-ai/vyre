@@ -3,6 +3,8 @@ import type { Call } from "../settings/real-source";
 import { accountsOf } from "../settings/accounts-model.ts";
 import { stepsOf, type ContextFile, type Doc, type Entry, type Step } from "./config-model.ts";
 
+export type Access = { kind: "person" | "role"; subject: string; level: "use" | "edit"; by: string | null };
+
 export function configSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
     const r = await call<T>(tool, input);
@@ -56,6 +58,12 @@ export function configSource(call: Call) {
     /** Lend a login to the agent for one site, for 30 days. The vault asks the person's own proof; the answer may be a request that waits for their yes. */
     lend: (agent: string, item: string, origin: string) => ask<any>("vault.agent.grant", { agent, item, origin, expires: "30d" }),
     takeBack: (id: string) => ask("vault.agent.revoke", { id }),
+    /** Who else may use or edit this agent, and the people and roles that could be added. Only an editor reads it. */
+    access: async (agent: string): Promise<{ access: Access[]; people: { id: string; name: string; role: string }[]; roles: { id: string; name: string }[] }> => {
+      const d = await ask<any>("agents.access.get", { agent });
+      return { access: Array.isArray(d?.access) ? d.access : [], people: Array.isArray(d?.people) ? d.people : [], roles: Array.isArray(d?.roles) ? d.roles : [] };
+    },
+    setAccess: (agent: string, kind: "person" | "role", subject: string, level: "use" | "edit" | null) => ask("agents.access.set", { agent, kind, subject, level }),
     used: (agent: string) => ask<any>("agents.used", { agent }),
   };
 }

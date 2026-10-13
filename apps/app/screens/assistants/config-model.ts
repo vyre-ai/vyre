@@ -79,3 +79,12 @@ export function usedRows(d: any, agent: string): Used[] {
   const flows = (Array.isArray(d?.flows) ? d.flows : []).map((f: any): Used => ({ kind: "flow", id: String(f.id), title: String(f.name || "Flow"), sub: `Flow. ${agent} is the doer` }));
   return [...chats, ...flows];
 }
+
+export const LEVELS: [string, string][] = [["use", "Can use"], ["edit", "Can edit"]];
+export const LEVEL_NOTE = "Can use: chat with it, pick it in a flow. Can edit: change its instructions, files, models and links. Everything it is linked to stays what the person who linked it could reach.";
+/** A sharing row: who, and what kind of who. */
+export function accessRow(a: { kind: string; subject: string; level: string }, people: { id: string; name: string; role: string }[], roles: { id: string; name: string }[]): { title: string; sub: string } {
+  if (a.kind === "role") return { title: roles.find((r) => r.id === a.subject)?.name || a.subject, sub: "Everyone with this role" };
+  const p = people.find((x) => x.id === a.subject);
+  return { title: p?.name || a.subject, sub: p?.role ? `Person, ${p.role}` : "Person" };
+}
