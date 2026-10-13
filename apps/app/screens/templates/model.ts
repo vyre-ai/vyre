@@ -1,6 +1,6 @@
 // The template studio's words and shapes, pure (no React, no calls): what a list of templates, one version's tree, a test run and the editor's text say. Tested by templates.test.js.
 export type Version = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string | null; kit?: string; note?: string; tags: string[]; body?: Body };
-export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[] };
+export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number };
 export type Stage = { name: string; owner?: string; moves_on_when?: string; tasks?: Task[] };
 export type Noun = { one: string; many: string };
 export type Body = { name: string; noun?: Noun; description?: string; tags?: string[]; opens_on?: string; automations?: { when: string; flow: string; note?: string }[]; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
@@ -19,6 +19,7 @@ export function rowLine(r: Row): string {
 export function whoWords(ref: string): string {
   const [kind, ...rest] = String(ref).split(":");
   const name = rest.join(":");
+  if (ref === "lead") return "the project lead";
   return kind === "role" ? `the ${name}` : kind === "teammate" ? name.charAt(0).toUpperCase() + name.slice(1) : kind === "person" ? "a person" : kind === "pool" ? `anyone in ${name}` : String(ref);
 }
 const first = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);

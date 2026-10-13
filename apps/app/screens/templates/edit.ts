@@ -48,6 +48,7 @@ export const setTask = (b: Body, si: number, ti: number, patch: Partial<Task> & 
   stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (t) => {
     const { output_kind, ...rest } = patch;
     const next: Task = { ...t, ...rest, ...(output_kind ? { output: { ...t.output, kind: output_kind } } : {}) };
+    if (rest.doer !== undefined && !String(rest.doer).startsWith("teammate:")) delete next.needs_yes; // a yes is asked of an assistant's work, not a person's
     return dropEmpty(next) as Task;
   }) })),
 });
@@ -71,6 +72,36 @@ export function removeRole(b: Body, role: string): Body {
 
 /** The doers a task can be given: this template's roles, then "a person" for work only a person does. */
 export const doerChoices = (b: Body): [string, string][] => [...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]), ["role:owner", "The owner"]];
+/** Who a task can be given to, in the order a person looks: this template's roles, the project's lead, the people of the Space, then its assistants. */
+export const assigneeChoices = (b: Body, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): [string, string][] => [
+  ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]),
+  ["lead", "The project lead"],
+  ...people.map((p): [string, string] => [`person:${p.id}`, p.name]),
+  ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (assistant)`]),
+];
+export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
+/** The doer in words, even when the person or assistant is not in the lists. */
+export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
+  const hit = assigneeChoices({ name: "", stages: [] }, people, agents).find(([v]) => v === d);
+  if (hit) return hit[1];
+  return d === "lead" ? "The project lead" : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (assistant)` : d;
+}
+const DAY = 86_400_000;
+/** A task's due, in whole days after the project enters the stage; "" for none. */
+export const dueDays = (t: Task & { due_offset_ms?: number }): string => (t.due_offset_ms ? String(Math.round(t.due_offset_ms / DAY)) : "");
+/** Set it from what a person typed: a number of days, or nothing/0 to take it away; anything else changes nothing. */
+export function setDueDays(b: Body, si: number, ti: number, text: string): Body {
+  const t = text.trim();
+  if (t !== "" && !/^\d{1,4}$/.test(t)) return b;
+  const n = t === "" ? 0 : Number(t);
+  return { ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (k) => { const { due_offset_ms: _d, ...rest } = k as Task & { due_offset_ms?: number }; return (n > 0 ? { ...rest, due_offset_ms: n * DAY } : rest) as Task; }) })) };
+}
+/** What waits for a person's yes before an assistant does this task (one line), or "". */
+export const approvalOf = (t: Task): string => (t.needs_yes || [])[0] || "";
+export function setApproval(b: Body, si: number, ti: number, text: string): Body {
+  const v = text.trim();
+  return { ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (k) => { const { needs_yes: _n, ...rest } = k; return (v ? { ...rest, needs_yes: [v] } : rest) as Task; }) })) };
+}
 export const firstDoer = (b: Body): string => doerChoices(b)[0][0];
 export const ownerChoices = (b: Body): [string, string][] => [["", "No one in particular"], ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`])];
 
