@@ -5,7 +5,7 @@
 /** @typedef {{ id: string, label: string, plural: string, spaces: string[], work: boolean, kit?: string, icon?: string, fields: Field[], stages: string[], rules?: Record<string,string> }} TypeDef */
 
 export const KINDS = [
-  ["text", "Text"], ["number", "Number"], ["money", "Money"], ["date", "Date"], ["choice", "Choice"], ["stage", "Stage"], ["actor", "Person or assistant"],
+  ["text", "Text"], ["number", "Number"], ["money", "Money"], ["date", "Date"], ["choice", "Choice"], ["stage", "Stage"], ["actor", "Person or agent"],
   ["link", "Link"], ["file", "File"], ["address", "Address"], ["phone", "Phone"], ["email", "Email"], ["richtext", "Rich text"], ["rating", "Rating"], ["sealed", "Sealed"],
 ];
 export const kindLabel = (/** @type {string} */ k) => KINDS.find((x) => x[0] === k)?.[1] ?? k;

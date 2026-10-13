@@ -73,13 +73,13 @@ export function RealAccount() {
 export function RealSeeing() {
   const [list, setList] = useState<Agent[] | null>(null);
   const [err, setErr] = useState("");
-  useEffect(() => { agentsList().then(setList).catch((e) => setErr(say(e, "Assistants did not answer."))); }, []);
+  useEffect(() => { agentsList().then(setList).catch((e) => setErr(say(e, "Agents did not answer."))); }, []);
   return (
-    <Page title="What my assistants can see" back="/u/settings">
-      {err ? <Card flush><ErrorState title="Assistants did not load" reason={err} /></Card> : null}
-      {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here, with the projects each works in." /></Card> : null}
+    <Page title="What my agents can see" back="/u/settings">
+      {err ? <Card flush><ErrorState title="Agents did not load" reason={err} /></Card> : null}
+      {list && !list.length ? <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here, with the projects each works in." /></Card> : null}
       {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
-      <Banner>Sealed fields stay hidden from every assistant. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
+      <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
     </Page>
   );
 }
@@ -95,11 +95,11 @@ export function RealPrivacy() {
       {ts ? (
         <Group title="Sealed fields">
           <Card flush>
-            {sealed.length ? sealed.map((s, i) => <View key={s.type + s.field}>{i ? <Divider /> : null}<Row lead={<Chip tone="sealed" icon="vault">Sealed</Chip>} title={`${s.typeLabel}, ${s.label}`} sub="Hidden from every assistant. They see it as on file, sealed." /></View>) : <EmptyState title="Nothing sealed yet" body="Seal a field in Customize." />}
+            {sealed.length ? sealed.map((s, i) => <View key={s.type + s.field}>{i ? <Divider /> : null}<Row lead={<Chip tone="sealed" icon="vault">Sealed</Chip>} title={`${s.typeLabel}, ${s.label}`} sub="Hidden from every agent. They see it as on file, sealed." /></View>) : <EmptyState title="Nothing sealed yet" body="Seal a field in Customize." />}
           </Card>
         </Group>
       ) : !err ? <LoadingState rows={3} /> : null}
-      <Card className="gap-s1"><Text size="caption" strong tone="label">What an assistant always sees for a sealed field</Text><Text tone="muted">{'"SSN on file, sealed". The label and the fact that it exists, never the value.'}</Text></Card>
+      <Card className="gap-s1"><Text size="caption" strong tone="label">What an agent always sees for a sealed field</Text><Text tone="muted">{'"SSN on file, sealed". The label and the fact that it exists, never the value.'}</Text></Card>
     </Page>
   );
 }

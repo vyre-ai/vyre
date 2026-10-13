@@ -140,14 +140,14 @@ export const assigneeChoices = (b: Body, people: { id: string; name: string }[] 
   ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]),
   ["lead", "The project lead"],
   ...people.map((p): [string, string] => [`person:${p.id}`, p.name]),
-  ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (assistant)`]),
+  ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (agent)`]),
 ];
 export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
-/** The doer in words, even when the person or assistant is not in the lists. */
+/** The doer in words, even when the person or agent is not in the lists. */
 export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
   const hit = assigneeChoices({ name: "", stages: [] }, people, agents).find(([v]) => v === d);
   if (hit) return hit[1];
-  return d === "lead" ? "The project lead" : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (assistant)` : d;
+  return d === "lead" ? "The project lead" : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (agent)` : d;
 }
 const DAY = 86_400_000;
 /** A task's due, in whole days after the project enters the stage; "" for none. */
@@ -159,7 +159,7 @@ export function setDueDays(b: Body, si: number, ti: number, text: string): Body 
   const n = t === "" ? 0 : Number(t);
   return { ...b, stages: at(b.stages, si, (s) => ({ ...s, tasks: at(s.tasks || [], ti, (k) => { const { due_offset_ms: _d, ...rest } = k as Task & { due_offset_ms?: number }; return (n > 0 ? { ...rest, due_offset_ms: n * DAY } : rest) as Task; }) })) };
 }
-/** What waits for a person's yes before an assistant does this task (one line), or "". */
+/** What waits for a person's yes before an agent does this task (one line), or "". */
 export const approvalOf = (t: Task): string => (t.needs_yes || [])[0] || "";
 export function setApproval(b: Body, si: number, ti: number, text: string): Body {
   const v = text.trim();

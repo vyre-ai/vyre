@@ -35,13 +35,13 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving, part 
         <Select label="A project of this playbook opens on" value={open} options={E.PAGES} onChange={(v: string) => onChange(E.setOpensOn(body, v))} />
       </Sec>
       <Sec title="Roles">
-        <Text tone="muted">A role is who a kind of work is for. Give it to an assistant to have it done for you, or leave it to a person with that role. One role can be the project lead.</Text>
+        <Text tone="muted">A role is who a kind of work is for. Give it to an agent to have it done for you, or leave it to a person with that role. One role can be the project lead.</Text>
         <Card flush>
           {(body.roles || []).map((r, i) => (
             <View key={r.role}>{i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
                 <Text strong>{r.role}</Text>
-                <Field label="Assistant that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
+                <Field label="Agent that fills it (leave empty for a person)" value={r.agent || ""} onChangeText={(v: string) => onChange(E.setRoleAgent(body, r.role, v))} placeholder="research" />
                 <View className="flex-row items-center gap-s3"><Switch on={Boolean(r.lead)} onChange={(v: boolean) => onChange(E.setRoleLead(body, r.role, v))} label={`${r.role} is the project lead`} /><Text>The project lead</Text></View>
                 <View className="self-start"><Button kind="ghost" size="sm" label="Remove this role" onPress={() => onChange(E.removeRole(body, r.role))} /></View>
               </View>

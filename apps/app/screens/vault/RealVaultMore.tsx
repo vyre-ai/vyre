@@ -276,7 +276,7 @@ function SharedPage({ reload }: Props) {
           {held.length ? <Card flush>{held.map((p, i) => {
             const l = passLine(p);
             return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
-          })}</Card> : <Text tone="muted">Nothing shared with you yet. When someone shares an item, it shows up here and your assistants can use it. The value stays with them.</Text>}
+          })}</Card> : <Text tone="muted">Nothing shared with you yet. When someone shares an item, it shows up here and your agents can use it. The value stays with them.</Text>}
           <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Accept a share" onPress={() => setAccepting(true)} /></View>
         </View>
       </Sec>
@@ -592,7 +592,7 @@ export function EditSheet({ item, onClose, onSaved }: { item: { name: string; de
         ))}
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
         <Button kind="primary" label={busy ? "Saving" : "Save"} disabled={busy} onPress={save} />
-        <Text size="caption" tone="label">Assistants use it and never see the value.</Text>
+        <Text size="caption" tone="label">Agents use it and never see the value.</Text>
       </View>
     </Sheet>
   );

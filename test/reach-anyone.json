@@ -2632,6 +2632,18 @@
   "vault.me.update": {
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "google.drive.read": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.drive.search": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.members.email": {
+   "module": "google",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before any list, set or clear"
   }
  }
 }

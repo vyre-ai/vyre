@@ -55,7 +55,7 @@ export function doneNotices(was, threads, o = {}) {
     now.set(String(t.id), status);
     if (!isWorking(was.get(String(t.id))) || isWorking(status) || o.openId === t.id) continue;
     const failed = /^(fail|error|stop|cancel)/i.test(status);
-    const name = String(t.name || t.title || "Your assistant");
+    const name = String(t.name || t.title || "Your agent");
     notices.push({ id: `done:${t.id}:${t.last || t.turns || 0}`, title: failed ? `${clip(name, 40)} stopped` : `${clip(name, 40)} is done`, body: failed ? "It stopped before it finished. Open it to see why." : "Open it to read what it did.", route: `/session/${encodeURIComponent(String(t.id))}` });
   }
   return { notices, was: now };

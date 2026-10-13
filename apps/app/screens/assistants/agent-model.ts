@@ -26,7 +26,7 @@ export function watcherLine(w: Watcher, names: Map<string, string> = new Map()):
   const files = Array.isArray(w.files) ? w.files.map((s) => names.get(String(s)) || String(s)).join(", ") : typeof w.files === "string" ? w.files : w.project ? names.get(w.project) || w.project : "Any project";
   return { title: `${sourceName(w.source)}: ${w.trigger || w.cadence || w.schedule || w.name}`, sub: files };
 }
-export const NO_WATCHER = (name: string) => `Nothing wakes ${name} yet. It works when you talk to it. Ask your assistant for one in plain words, for example "wake ${name} when mail labelled Ads arrives".`;
+export const NO_WATCHER = (name: string) => `Nothing wakes ${name} yet. It works when you talk to it. Ask your agent for one in plain words, for example "wake ${name} when mail labelled Ads arrives".`;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 const since = (at: number, now: number) => {

@@ -6,7 +6,8 @@ import { facesFor } from "../../src/theme/fonts";
 import { useUiTheme } from "../theme";
 
 /** One-line input shell, label above. `kind` picks the keyboard and the mask; the value is always a string at this layer. */
-export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, inputRef, onKey, autoFocus }: {
+export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, inputRef, onKey, autoFocus, onSubmit }: {
+  /** Pressed Enter in a one-line field. */ onSubmit?: () => void;
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string; kind?: "text" | "number" | "email" | "phone" | "password" | "url" | "date"; /** The accessible name when there is no visible label. */ name?: string;
   error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string; /** The text input itself, for a screen that moves focus to it (a list's search takes "/"). */ inputRef?: React.Ref<TextInput>; /** A key pressed in it (web: "Escape", "Enter"). */ onKey?: (key: string) => void; autoFocus?: boolean;
 }) {
@@ -21,6 +22,7 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
       <TextInput
         ref={inputRef}
         autoFocus={autoFocus}
+        onSubmitEditing={onSubmit}
         onKeyPress={onKey ? (e) => onKey(e.nativeEvent.key) : undefined}
         value={value}
         onChangeText={onChangeText}
@@ -36,7 +38,7 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
         style={[mono ? faces.mono : faces.regular, { outlineStyle: "none" } as any]}
-        className={cn("w-full min-w-0 rounded-field border bg-surface-3 px-s3 text-body text-text", multiline ? "min-h-row py-s2" : "h-control", focus ? "border-accent" : error ? "border-err" : "border-edge")}
+        className={cn("w-full min-w-0 rounded-field border bg-surface-3 px-s3 text-body text-text", multiline ? "min-h-row py-s2" : "h-control", focus ? "border-primary" : error ? "border-err" : "border-edge")}
       />
       {note ? <Text size="caption" tone={error ? "err" : "label"}>{note}</Text> : null}
     </View>
