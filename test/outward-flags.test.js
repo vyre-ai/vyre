@@ -19,7 +19,7 @@ const NOT_OUTWARD = {
   "appmods.publish.remove": "removes a site's server and keeps its data; module-only (Publish), taking a site down needs no yes",
   "vault.mcp.agent.call": "the Vault's own tool call as an outside agent: a read runs, anything that changes something outside is held for the person by the same relay as vault.request; only the outside-agents module asks",
   "stream.reply-mode": "says when the AI answers in a group chat; everyone in the chat sees the change as a line, and nothing leaves the chat",
-  "publish.preview": "builds a draft and puts it at a private preview address that only the Space's people can open, and refuses a build that holds a secret; going public is publish.go and waits for a person's yes",
+  "publish.preview": "puts a draft at an unguessable, noindex preview address, reachable on the person's own devices until the public door is on; it refuses a build that holds a secret; going public is publish.go and waits for a person's yes",
   "publish.domain.add": "starts connecting a domain: it returns the DNS record the person must add and serves nothing; nothing goes live until the site is published, which waits for a person's yes",
   "publish.domain.verify": "checks the DNS record of a connected domain; a read, and a verified domain still serves nothing until a person approves the publish",
   "publish.domain.status": "reads the domains of one site and the DNS record each still needs; a read, never a secret",
