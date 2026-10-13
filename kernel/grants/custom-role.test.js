@@ -34,7 +34,7 @@ test("a custom role: the grants carry source role:<id>, the membership keeps its
 });
 
 test("a custom role never holds an action outside its base, never has a base above admin, never a reserved id or a wider prefix", async () => {
-  const { set } = await rig();
+  const { set, active } = await rig();
   await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("wide", ["records.read", "records.define"]) }), { code: "not_allowed" }, "records.define is Admin's");
   await assert.rejects(() => set({ person: BOB, role: "admin", custom: custom("own", ["records.read"]) }), { code: "not_allowed" }, "base admin: it would still rank as an admin");
   await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("own", ["space.upgrade"]) }), { code: "not_allowed" }, "owner-only action");
@@ -43,7 +43,11 @@ test("a custom role never holds an action outside its base, never has a base abo
   await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("member", ["records.read"]) }), { code: "not_allowed" }, "reserved id");
   await assert.rejects(() => set({ person: BOB, role: "member", custom: { id: "far", grants: [{ actions: ["records.read"], resource: { prefix: "vyre://spc_bbbbbbbbbbbb/*/*" } }] } }), { code: "not_allowed" }, "another Space");
   await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("odd", ["records.read"], { conditions: { budget: { meter: "x", limit: 1 } } }) }), { code: "not_allowed" }, "only an expiry as a condition");
-  for (const bad of [{ conditions: { when: { expires: "soon" } } }, { conditions: { when: { expires: NaN } } }, { conditions: { when: { expires: 1 } } }, { resource: { prefix: all, where: [{ attr: "nope", op: "eq", value: "x" }] } }, { resource: { prefix: all, where: "project" } }, { resource: { prefix: all, fields: ["ok", ""] } }]) {
+  // a non-finite expiry never reaches applyRole: the presence gate hashes the input first and refuses it (fail closed), and nothing is made
+  await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("nan", ["records.read"], { conditions: { when: { expires: NaN } } }) }), "NaN is refused before any grant exists");
+  await assert.rejects(() => set({ person: BOB, role: "member", custom: custom("inf", ["records.read"], { conditions: { when: { expires: Infinity } } }) }), "Infinity is refused before any grant exists");
+  assert.deepEqual(await active(), [], "none of the refused assignments made a grant");
+  for (const bad of [{ conditions: { when: { expires: "soon" } } }, { conditions: { when: { expires: 1 } } }, { resource: { prefix: all, where: [{ attr: "nope", op: "eq", value: "x" }] } }, { resource: { prefix: all, where: "project" } }, { resource: { prefix: all, fields: ["ok", ""] } }]) {
     await assert.rejects(() => set({ person: BOB, role: "member", custom: { id: "typo", grants: [{ actions: ["records.read"], resource: { prefix: all }, ...bad }] } }), { code: "not_allowed" }, JSON.stringify(bad));
   }
 });
