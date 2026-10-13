@@ -69,7 +69,10 @@ test("a viewer reads the project and writes nothing in it: records, tasks, files
   const memo = await R.create(chains.eve, "memo", { body: "by a contributor" }, { attrs: { project: p1.id } });
   const task = await ask(chains.bob, EVE, p1.urn);
   await D.put(chains.bob, `${dir}/plan.txt`, enc("the plan"));
-  // reads stay open
+  // reads stay open: who can read the memo a contributor filed under the project (a diagnostic that names who cannot)
+  const cannot = [];
+  for (const [name, c] of Object.entries({ owner: chains.owner, bob: chains.bob, eve: chains.eve, vik: chains.vik })) { try { await R.get(c, "memo", memo.id); } catch (e) { cannot.push(`${name}: ${e.code} ${e.message}`); } }
+  assert.deepEqual(cannot, [], "everyone on the project, and the owner, reads the memo");
   assert.equal((await R.get(chains.vik, "memo", memo.id)).data.body, "by a contributor", "a viewer reads a record in the project");
   assert.ok(await R.get(chains.vik, "task", task.id), "and a task");
   assert.equal(dec(await D.get(chains.vik, `${dir}/plan.txt`)), "the plan", "and a file");
