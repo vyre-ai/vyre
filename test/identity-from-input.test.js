@@ -31,6 +31,10 @@ const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narro
   [/^planner\./, "as", "narrowing", "only a person's own label may send it (the Mac forwards an agent's call to the box), and it only makes the call LESS than the person: a named non-person source, never another person (core/planner who())"],
   [/^stream\./, "as", "shim", "read only when the kernel is off (the legacy-label shim); with the kernel on the chain's person wins (core/stream/group.js personOf)"],
   [/^undo\.list$/, "actor", "lookup", "a filter on whose actions to list"],
+  [/^(google|microsoft)\.members\.email$/, "person", "target", "the member whose work email the firm key may act as; owner only, checked from the kernel's chain in the tool (requireOwner), never from this field"],
+  [/^roles\.assign$/, "person", "target", "the person who is given a role; an owner or admin only, and the kernel's grants check the caller's own chain may set that role"],
+  [/^roles\.tools$/, "person", "lookup", "whose tools to list: the caller's own by default, anyone's only for an owner or admin (refused for others in the tool)"],
+  [/^work\.project\.level$/, "person", "target", "the person whose seat on the project changes; person-only reach, and the project team engine checks the caller's own chain may set it"],
 ]);
 
 test("every identity-looking field on a tool a person or model can reach is reviewed, and every review is still true", { timeout: 180_000 }, async t => {
