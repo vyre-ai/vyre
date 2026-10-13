@@ -7,7 +7,7 @@ import { useMayMakeTemplates } from "../templates/role";
 import { playbookPath } from "../templates/board";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
-import { PAGE_LABEL, RAIL_LABEL, WIDE, chatLabel, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
+import { PAGE_LABEL, RAIL_LABEL, WIDE, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
 import { callT } from "../../src/real/call-tool";
 import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
@@ -86,7 +86,7 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <>{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${wide && (at === "overview") ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />

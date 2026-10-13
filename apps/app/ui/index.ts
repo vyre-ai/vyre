@@ -170,5 +170,7 @@ export { listRows, chipWords, chipsToFilters, filterableFields } from "./records
 export type { Chip as FilterChip } from "./records/listfilter.js";
 export { parseCsv, parseGrid, toCsv, tableToCsv, importableFields, coerceRow, runImport } from "./records/csv.js";
 export { FileViewer } from "./files/FileViewer";
+export { DocOverlay } from "./files/DocOverlay";
+export type { DocOverlayProps } from "./files/DocOverlay";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";

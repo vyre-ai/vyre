@@ -76,5 +76,5 @@ export function configSource(call: Call) {
 /** An agent's instructions as the shared editor's api: AGENTS.md is its instructions, the one file. */
 export function agentDocsApi(call: Call, agent: string, canEdit = true) {
   const src = configSource(call);
-  return { id: `agent:${agent}`, canEdit, docs: async () => (await src.docs(agent)).files, saveDoc: (file: "AGENTS.md", text: string) => src.saveDoc(agent, file, text) };
+  return { id: `agent:${agent}`, canEdit, versioned: true, docs: async () => (await src.docs(agent)).files, saveDoc: (file: "AGENTS.md", text: string) => src.saveDoc(agent, file, text) };
 }
