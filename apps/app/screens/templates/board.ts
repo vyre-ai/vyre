@@ -74,13 +74,19 @@ export function initialsOf(label: string): string {
 export type TemplateCard = { name: string; projects: string; start: string; stages: string[]; counts: string; status: string; group: "Live" | "Drafts" };
 const n = (k: number, one: string, many = `${one}s`): string => `${k} ${k === 1 ? one : many}`;
 
+/** The button's words: "Start a matter"; a name that begins with an acronym keeps its capitals and takes no article ("Start ATP client"). */
+export function startLabel(one: string): string {
+  const first = one.split(/\s+/)[0] || "";
+  return first.length > 1 && first === first.toUpperCase() ? `Start ${one}` : `Start a ${one.toLowerCase()}`;
+}
+
 /** A template on the list as a card. `body` is null until it has been read: then only what the list knows (the running count) is said. */
 export function cardOf(r: Row, body: Body | null, running: number): TemplateCard {
   const one = r.noun?.one || body?.noun?.one || "project", many = r.noun?.many || body?.noun?.many || "Projects";
   const stages = body && stageModeOf(body) !== "none" ? body.stages.map((s) => s.name) : [];
   const tasks = body ? body.stages.reduce((k, s) => k + (s.tasks || []).length, 0) : 0;
   const parts = [...(body ? [...(stages.length ? [n(stages.length, "stage")] : []), n(tasks, "task")] : []), ...(running ? [`${running} running`] : [])];
-  return { name: r.name, projects: cap(many), start: `Start a ${one.toLowerCase()}`, stages, counts: parts.join(" · "), status: r.live !== null ? `v${r.live}` : `Draft v${r.latest}`, group: r.live !== null ? "Live" : "Drafts" };
+  return { name: r.name, projects: cap(many), start: startLabel(one), stages, counts: parts.join(" · "), status: r.live !== null ? `v${r.live}` : `Draft v${r.latest}`, group: r.live !== null ? "Live" : "Drafts" };
 }
 
 /** The list's search (a name or what its projects are called) and the Live/Draft filter. */

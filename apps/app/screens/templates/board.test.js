@@ -101,3 +101,10 @@ test("the list's search and filter: by name or what its projects are called, and
   assert.deepEqual(filterRows(rows, "", "draft").map((r) => r.template), ["b"]);
   assert.deepEqual(filterRows(rows, "zzz", "all"), []);
 });
+
+test("the start button's words keep an acronym's capitals and take no article", async () => {
+  const { startLabel } = await import("./board.ts");
+  assert.equal(startLabel("Matter"), "Start a matter");
+  assert.equal(startLabel("ATP client"), "Start ATP client");
+  assert.equal(startLabel("Project"), "Start a project");
+});
