@@ -207,9 +207,8 @@ test("publish: a model chain can create, preview and request, never decide, appr
   const juno = "mcp:agent:juno";
   const { deployment } = await b.ok("publish.create", DRAFT, juno);
   const id = deployment.id;
-  // a preview leaves Vyre, so it is outward: an agent's call is held in the approvals queue (never run) and the person's own call runs
-  assert.equal((await b.call("publish.preview", { deployment: id }, juno)).error?.code, "held_unavailable");
-  await b.ok("publish.preview", { deployment: id });
+  // a preview is a private address, so a model builds it directly: no second yes before the one that puts it live
+  assert.equal((await b.ok("publish.preview", { deployment: id }, juno)).deployment.stage, "Preview");
 
   const a = await b.ok("publish.approve", { deployment: id }, juno);
   assert.equal(a.held, true, "a model's approve is a request");
@@ -765,4 +764,48 @@ test("publish: a job's runs and its failure card are the project's people's, not
   b.pf.projectPeople = {};
   assert.equal((await as("per_sam", "publish.job.runs", { deployment: acme })).error?.code, "not_found", "no answer about the project: closed");
   assert.deepEqual((await as("per_sam", "publish.job.attention")).data.jobs, [], "and no failure card either");
+});
+
+test("publish: a model puts a site live end to end with one held yes, and cannot give it", async t => {
+  const b = await boxRegistry(t);
+  const juno = "mcp:agent:juno";
+  const harness = "harness";
+  for (const caller of [juno, harness]) {
+    const { deployment } = await b.ok("publish.create", { ...DRAFT, name: "site-" + caller.replace(/\W/g, "") }, caller);
+    const id = deployment.id;
+    await b.ok("publish.preview", { deployment: id }, caller);
+    // the domain and the DNS read are the model's too, and the record is public proof, not a secret
+    const host = `${caller.replace(/\W/g, "")}.example.com`;
+    const add = await b.ok("publish.domain.add", { host, deployment: id, canonical: "apex", www: true }, caller);
+    assert.equal(add.challenge.type, "TXT");
+    const shown = await b.ok("publish.domain.status", { deployment: id }, caller);
+    assert.deepEqual(shown.domains[0].record, add.challenge);
+    assert.equal(shown.domains[0].status, "pending");
+    assert.doesNotMatch(JSON.stringify(shown), /sk_live|nonce/);
+    const real = seams.dns;
+    t.after(() => { seams.dns = real; });
+    seams.dns = { resolveTxt: async () => [[add.challenge.value]] };
+    assert.equal((await b.ok("publish.domain.verify", { host }, caller)).verified, true);
+    // going live is HELD, with the plan; nothing is live
+    const held = await b.ok("publish.go", { deployment: id }, caller);
+    assert.equal(held.held, true);
+    assert.deepEqual(held.plan.urls, [`https://${host}`]);
+    assert.equal((await b.ok("publish.status", { deployment: id }, caller)).stage, "Preview");
+    // the hold is listed for the person with its plan and the task to decide
+    const open = (await b.ok("publish.holds", {})).holds.find((/** @type {any} */ h) => h.task === held.task);
+    assert.ok(open && open.plan.hash === held.plan.hash && open.plan_hash === held.plan.hash);
+    // a model never decides, with or without the plan hash; an undecided task cannot be resumed
+    assert.equal((await b.call("publish.decide", { task: held.task, approve: true }, caller)).error?.code, "denied");
+    assert.equal((await b.call("publish.decide", { task: held.task, approve: true, plan_hash: held.plan.hash }, caller)).error?.code, "denied");
+    assert.equal((await b.call("publish.go", { deployment: id, task: held.task }, caller)).error?.code, "needs_approval");
+    // a person's decision makes it live
+    assert.equal((await b.ok("publish.decide", { task: held.task, approve: true, plan_hash: held.plan.hash })).deployment.stage, "Production");
+    assert.equal((await b.ok("publish.holds", {})).holds.some((/** @type {any} */ h) => h.task === held.task), false, "a decided hold leaves the list");
+    // on a live site a model may not change the domains (the world would see it with no yes): the person does
+    assert.equal((await b.call("publish.domain.add", { host: "more-" + host, deployment: id }, caller)).error?.code, "denied");
+    assert.equal((await b.call("publish.domain.verify", { host }, caller)).error?.code, undefined, "a verified domain re-read is harmless");
+    // the model cannot take a site down or remove a domain either
+    assert.ok((await b.call("publish.retire", { deployment: id }, caller)).error);
+    assert.ok((await b.call("publish.domain.remove", { host }, caller)).error);
+  }
 });

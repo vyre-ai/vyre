@@ -69,11 +69,11 @@ const NO_TOOL = new Set(["no_such_tool", "not_available"]);
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
-/** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+/** The person's own surfaces and Vyre's modules. Writing the edge and revoking a secret are theirs. A model does every step of putting a site live (create, preview, domain, secret, go) and the person's one yes at publish.decide is the only gate. */
 /** What publish.quick says while the box has no public door. */
 const PUBLIC_LATER = "Public once the public door is on. Until then the address works on your own devices only.";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
-/** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
+/** The draft, the preview, a domain claim and the held acts (approve, publish, go, rollback, a real secret): a model may do each, and the publisher holds every act that goes public or hands out a secret for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -509,24 +509,54 @@ export default {
       },
     });
 
+    /** A domain on a LIVE site changes what the world sees at once, with no yes after it: a model may connect one while the site is still a draft, preview or approved version (the plan the person says yes to then names the address), and the person does it on a live site. @param {any} b @param {any} meta @param {string} deployment */
+    const liveDomainGuard = async (b, meta, deployment) => {
+      if (isPerson(meta)) return;
+      const d = await storeFor(b.space.id).get("deployments", deployment);
+      if (d && d.stage === "Production") throw refuse("this site is live, so a new domain changes what the world sees now: ask the person to connect it on the Sites screen, or make a new version with the domain and put it live with publish.go, which waits for their yes", "denied");
+    };
     ctx.tool("publish.domain.add", {
-      callers: PEOPLE,
-      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published.",
+      callers: WITH_MODELS,
+      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published (which waits for a person's yes). A model may do this while the site is not yet live.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
+        await liveDomainGuard(b, meta, i.deployment);
         const r = await b.pub.addDomain(b.chain, { host: i.host, deployment: i.deployment, canonical: i.canonical, www: i.www });
         return { domain: { host: r.record.host, status: r.record.status, method: r.record.method }, challenge: r.challenge };
       },
     });
     ctx.tool("publish.domain.verify", {
-      callers: PEOPLE,
-      description: "Check the DNS record (or the name you own) for a connected domain.",
+      callers: WITH_MODELS,
+      description: "Check the DNS record (or the name you own) for a connected domain. Verified does not put anything live: going live still waits for a person's yes.",
       input: obj({ host: str }, ["host"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
+        const rec = (await storeFor(b.space.id).list("domains")).find((/** @type {any} */ x) => x.host === String(i.host).toLowerCase());
+        if (rec && rec.status === "pending") await liveDomainGuard(b, meta, rec.deployment);
         const r = await b.pub.verifyDomain(b.chain, i.host);
         return { verified: r.verified, ...(r.reason ? { reason: r.reason } : {}), ...(r.challenge ? { challenge: r.challenge } : {}), domain: { host: r.record.host, status: r.record.status } };
+      },
+    });
+    ctx.tool("publish.domain.status", {
+      description: "The domains of one site: each host, its status, and for a pending one the exact DNS record to set (type, name, value). Read it to tell the person what to set, then recheck with publish.domain.verify. Never a secret.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => { const b = await begin(i, meta); return { domains: await b.pub.domainsOf(b.chain, i.deployment) }; },
+    });
+    ctx.tool("publish.holds", {
+      description: "Publishing acts waiting for a person's yes in this space: the plan of each (what goes public, at which address, with which secrets, replacing which version) and the task to decide with. Newest last. A model cannot decide them.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const st = storeFor(b.space.id);
+        /** @type {any[]} */ const out = [];
+        for (const t of await st.list("tasks")) {
+          if (t.state !== "needs_check") continue;
+          const h = await st.get("holds", t.id);
+          if (!h) continue;
+          out.push({ task: t.id, action: h.action, title: t.title, deployment: h.deployment, plan: t.plan, plan_hash: t.payload_hash, requested_by: t.requested_by, at: h.created_at });
+        }
+        return { holds: out.sort((x, y) => x.at - y.at) };
       },
     });
     ctx.tool("publish.domain.remove", {
