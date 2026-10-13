@@ -10,7 +10,7 @@ import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine
 import { worksLine, type Agent } from "./agents-model";
 import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
 import { useUpdate } from "../../src/state/update";
-import { aboutButton, aboutLine, appliedLine } from "./update-model.js";
+import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
@@ -103,20 +103,25 @@ export function RealPrivacy() {
 
 /** About: the version the box is running, and the open-source credits. */
 export function RealAbout() {
-  const { status, busy, check, apply } = useUpdate();
+  const { status, busy, asking, ask, cancel, check, apply } = useUpdate();
   const v = status ? status.current : null;
   const button = aboutButton(status);
   const run = () => {
     if (!button) return;
-    const job = button.action === "apply" ? apply().then((r) => showToast(appliedLine(r))) : check().then(() => undefined);
-    job.catch((e) => showToast(say(e)));
+    if (button.action === "apply") { ask(); return; }
+    check().catch((e) => showToast(say(e)));
+  };
+  const yes = () => {
+    apply().then((r) => showToast(appliedLine(r))).catch((e) => showToast(say(e)));
   };
   return (
     <Page title="About Vyre" sub={v ? `Version ${v}.` : undefined} back="/u/settings">
       {status ? (
         <Card className="gap-s2">
           <Text tone="muted">{aboutLine(status)}</Text>
-          {button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
+          {asking && status.available ? <Text>{askLine(status)}</Text> : null}
+          {asking && status.available ? <View className="flex-row gap-s2"><Button label={busy ? "Working" : "Yes, update"} disabled={busy} onPress={yes} /><Button label="Not now" disabled={busy} onPress={cancel} /></View>
+            : button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
         </Card>
       ) : null}
       <Group title="Open-source credits">

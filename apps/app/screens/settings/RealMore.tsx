@@ -5,6 +5,7 @@ import { Banner, Button, Card, Divider, EmptyState, Row, Switch, Text, showToast
 import { Group, Page } from "../places/Frame";
 import { autoLine, checkedLine, howLine, KIND_ROWS, noteLines, QUIET_DEFAULT, quietLine, updateLine, type PushDevice, type PushSettings, type UpdateStatus } from "./real-model";
 import { pushDevices, pushSet, pushSettings, updateApply, updateCheck, updateStatus } from "./real";
+import { askLine } from "./update-model.js";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -12,10 +13,11 @@ export function RealUpdates() {
   const [s, setS] = useState<UpdateStatus | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const load = useCallback(() => { setErr(""); updateStatus().then(setS).catch((e) => setErr(say(e, "Updates did not answer."))); }, []);
   useEffect(load, [load]);
   const check = () => { setBusy(true); updateCheck().then(setS).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
-  const apply = () => { setBusy(true); updateApply().then((r) => { showToast(r.requested === false ? r.reason ?? "Not started." : "Update requested."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
+  const apply = () => { setBusy(true); setAsking(false); updateApply().then((r) => { showToast(r.requested === false ? r.reason ?? "Not started." : "Update requested."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
     <Page title="Updates" back="/u/settings">
       {err ? <Card flush><ErrorState title="Updates did not load" reason={err} retry={load} /></Card> : null}
@@ -28,8 +30,10 @@ export function RealUpdates() {
             {noteLines(s.notes).length ? <View className="gap-s1 pt-s1">{noteLines(s.notes).map((n, i) => <Text key={i} size="secondary">{n}</Text>)}</View> : null}
             <View className="flex-row gap-s2 pt-s2">
               <Button size="sm" label={busy ? "Checking" : "Check for updates"} disabled={busy} onPress={check} />
-              {s.available && s.canApply ? <Button size="sm" kind="primary" label="Update now" disabled={busy} onPress={apply} /> : null}
+              {s.available && s.canApply && !asking ? <Button size="sm" kind="primary" label="Update" disabled={busy} onPress={() => setAsking(true)} /> : null}
+              {s.available && s.canApply && asking ? <><Button size="sm" kind="primary" label="Yes, update" disabled={busy} onPress={apply} /><Button size="sm" label="Not now" disabled={busy} onPress={() => setAsking(false)} /></> : null}
             </View>
+            {s.available && s.canApply && asking ? <Text>{askLine(s as never)}</Text> : null}
             {howLine(s) ? <Text size="caption" tone="label">{howLine(s)}</Text> : null}
           </Card>
           <Card className="gap-s1"><Text size="caption" strong tone="label">How updates happen</Text><Text tone="muted">{autoLine(s.auto)}</Text></Card>

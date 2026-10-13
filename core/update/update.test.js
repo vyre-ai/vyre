@@ -107,14 +107,35 @@ test("update.apply: with no host unit it says so and drops nothing; with one it 
   ready(b);
   const st = (await b.call("update.status")).data;
   assert.equal(st.canApply, true);
-  const yes = await b.call("update.apply");
+  const yes = await b.call("update.apply", { yes: true });
   assert.equal(yes.data.requested, true, JSON.stringify(yes));
   assert.equal(fs.readFileSync(path.join(b.req, "request"), "utf8"), "update\n", "one word, no arguments");
   assert.deepEqual(fs.readdirSync(b.req), ["request"], "no temp file left behind");
   assert.equal((await b.call("update.status")).data.pending, true);
-  const again = await b.call("update.apply");
+  const again = await b.call("update.apply", { yes: true });
   assert.equal(again.data.requested, false, "a second ask while one is pending does nothing");
-  for (const who of ["agent:x", "mcp", "module:other"]) assert.equal((await b.d.registry.call("update.apply", {}, who)).error?.code, "denied", who);
+  for (const who of ["agent:x", "mcp", "module:other"]) assert.equal((await b.d.registry.call("update.apply", { yes: true }, who)).error?.code, "denied", who);
+});
+
+test("nothing installs without the owner's yes: a found release drops no request, an apply without yes drops none and says how to say it, and the yes drops the one word the signed update runs on", async t => {
+  const next = bump(build().version, "minor");
+  const api = await releasesApi(t, { value: [rel(`v${next}`, "new")] });
+  const b = await box(t, api.url);
+  ready(b);
+  const looked = (await b.call("update.check")).data;
+  assert.equal(looked.available, next, "the check still finds it");
+  assert.equal(looked.install, false, "automatic installing is off by default");
+  assert.deepEqual(fs.readdirSync(b.req), [], "finding a release asks for nothing");
+  for (const input of [{}, { yes: false }, { yes: "true" }]) {
+    const r = await b.call("update.apply", input);
+    assert.equal(r.error?.code, "needs_yes", JSON.stringify(input));
+    assert.match(r.error.message, /not installed until you say yes/);
+    assert.match(r.error.message, /vyre update/, "it names the next step");
+  }
+  assert.deepEqual(fs.readdirSync(b.req), [], "no request without a yes");
+  const yes = await b.call("update.apply", { yes: true });
+  assert.equal(yes.data.requested, true);
+  assert.equal(fs.readFileSync(path.join(b.req, "request"), "utf8"), "update\n", "the yes is the one word the host's signed update acts on");
 });
 
 test("update.status: what the host wrote comes back as known words only, and a stale running is a failure", async t => {
@@ -125,7 +146,7 @@ test("update.status: what the host wrote comes back as known words only, and a s
   write({ state: "running", stage: "backing-up", message: "", from: "0.1.0", to: "0.2.0", at: Math.floor(Date.now() / 1000) });
   let r = (await b.call("update.status")).data.run;
   assert.deepEqual([r.state, r.stage, r.from, r.to], ["running", "backing-up", "0.1.0", "0.2.0"]);
-  assert.equal((await b.call("update.apply")).data.requested, false, "running: not again");
+  assert.equal((await b.call("update.apply", { yes: true })).data.requested, false, "running: not again");
   write({ state: "rolled_back", stage: "restarting", message: "rolled back to the release before", from: "0.1.0", to: "0.2.0", at: Math.floor(Date.now() / 1000) });
   r = (await b.call("update.status")).data.run;
   assert.equal(r.state, "rolled_back");

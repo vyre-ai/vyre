@@ -636,16 +636,22 @@ test("install-box.sh v2: a root run on Ubuntu with no Docker installs it from Do
   assert.equal(fs.existsSync(calls), false, "apt was not used on a system that is not Ubuntu or Debian");
 });
 
-test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE: auto (the default) or sqlite, written once into vyre.env; anything else stops the install", t => {
+test("install-box.sh v2: Records is always on: VYRE_STORE is auto or nothing, written once into vyre.env; sqlite is refused for a person and anything else stops the install", t => {
   const b = box(t);
   let r = run({ ...b.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, "without Records is not a choice");
+  assert.match(r.stderr, /Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more\. Run the install line again without VYRE_STORE/);
+  assert.ok(!fs.existsSync(b.dir), "nothing was installed");
+  // the CI install proof alone may still use the built-in store
+  const p = box(t);
+  r = run({ ...p.env, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "without Records: the small built-in store");
+  assert.match(fs.readFileSync(path.join(p.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the proof's built-in store");
   const d = box(t);
   r = run(d.env, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(fs.readFileSync(path.join(d.dir, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m, "with Records is the default");
-  // a person's choice already in vyre.env stays when the line is run again
+  assert.match(fs.readFileSync(path.join(d.dir, "vyre.env"), "utf8"), /^VYRE_STORE=auto$/m, "Records is the default");
+  // an older install's own VYRE_STORE already in vyre.env stays when the line is run again
   const e = box(t);
   fs.mkdirSync(e.dir, { recursive: true });
   fs.writeFileSync(path.join(e.dir, "vyre.env"), "VYRE_STORE=sqlite\n", { mode: 0o600 });
@@ -655,8 +661,26 @@ test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE
   const f = box(t);
   r = run({ ...f.env, VYRE_STORE: "twenty" }, ["--yes", "--from", REPO]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /VYRE_STORE is auto \(Records\) or sqlite/);
+  assert.match(r.stderr, /VYRE_STORE is auto \(Records\), not twenty/);
   assert.ok(!fs.existsSync(f.dir), "nothing was installed");
+});
+
+test("install-box.sh v2: a server with under 4 GB of memory is turned away before anything is laid out, in the words Vyre needs; a dry run says it and changes nothing; 4 GB or more passes", t => {
+  const meminfo = (mb, avail = mb) => { const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-mem-")), "meminfo"); fs.writeFileSync(f, `MemTotal: ${mb * 1024} kB\nMemAvailable: ${avail * 1024} kB\n`); t.after(() => fs.rmSync(path.dirname(f), { recursive: true, force: true })); return f; };
+  const small = box(t);
+  let r = run({ ...small.env, VYRE_MEMINFO: meminfo(2048) }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  assert.match(r.stderr, /Use a larger server, then run this again/);
+  assert.ok(!fs.existsSync(small.dir), "nothing was laid out");
+  const dry = box(t);
+  r = run({ ...dry.env, VYRE_MEMINFO: meminfo(2048) }, ["--yes", "--dry-run", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  const ok = box(t);
+  r = run({ ...ok.env, VYRE_MEMINFO: meminfo(4096, 3000) }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!/built-in store/.test(r.stdout + r.stderr), "no without-Records path is mentioned");
 });
 
 test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {
@@ -796,7 +820,7 @@ const SEES_ENV_WRAPPER = `#!/bin/sh\nprintf '%s|%s\\n' "$VYRE_STORE" "$VYRE_CODE
 test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command's environment, and the store choice still reaches vyre.env", t => {
   const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const saw = path.join(b.base, "saw.log");
-  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_NO_UP: "0" }, ["--yes"]);
+  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1", VYRE_NO_UP: "0" }, ["--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const seen = fs.existsSync(saw) ? fs.readFileSync(saw, "utf8").trim().split("\n") : [];
   assert.ok(seen.length > 0, "the installer ran the vyre command at least once");
