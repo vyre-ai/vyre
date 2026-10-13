@@ -56,6 +56,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     const on = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key === ",") { e.preventDefault(); router.push("/u/settings" as never); return; }
+      if (e.key === ".") { e.preventDefault(); router.push("/u/templates" as never); return; }
       const n = Number(e.key);
       const to = n >= 1 && n <= 4 ? arranged.items[n - 1]?.href : undefined;
       if (to) { e.preventDefault(); router.push(to as never); }

@@ -11,7 +11,7 @@ status: draft
 Library: `Shell` (rail), `SidebarRow`, `SidebarPanel`, `Tip`; numbers in `apps/app/ui/shell/rail-tokens.js`; rules in `rail-state.js` and `sidebar-stack.js`.
 
 ## Structure
-Top: space switcher (logo or monogram, name, address). Places: Now, Chat, Projects, Records, Drive. Group "AI": Agents, Flows. Group "Build" (owners and admins only): Templates, Record types, Kits. Foot: Settings, Collapse, then search icon, your face, name and address on one row. Everything else lives under Settings.
+Top: space switcher (logo or monogram, name, address). Places: Now, Chat, Projects, Records, Drive. Group "AI": Agents, Flows. Foot: Build (owners and admins only; opens a panel of Playbooks, Objects and Kits), Settings, Collapse, then search icon, your face, name and address on one row. Everything else lives under Settings.
 
 ## Rows
 38 high, radius 10, icon 18, label 15. Current row: raised fill, medium text. Count badge on Now only.
@@ -24,3 +24,6 @@ A path inside Projects, Chat, Records, Drive, Agents, Flows or Settings turns th
 
 ## Page width
 `--page-max` 1120, `--gutter` 40 (16 on a phone), top padding 32.
+
+## Type dropdown
+A panel whose list has more than one type shows a dropdown beside the search: All types first, the choice kept per device, and opening an item focuses its type. Records shows an object dropdown that opens that object's list.

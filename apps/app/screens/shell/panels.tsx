@@ -2,13 +2,14 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
-import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
+import { Avatar, PinnedViews, useRecordsWorld, viewDefOf, isHiddenType, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
 import { useChats } from "../../src/state/chats";
 import { chatsOrdered, chatsShown } from "../chats/chats-model.js";
 import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
+import { focusType, ofType, typeOptions } from "../../ui/shell/sidebar-stack.js";
 import { MOCK, tool } from "../../src/real/box";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
@@ -80,12 +81,28 @@ const SETTINGS: PanelItem[] = [
   { id: "notifications", label: "Notifications", href: "/u/settings/notifications", icon: "bell", group: "You" },
 ];
 
+/** Build: what an owner or admin builds with. One footer place, three screens. */
+const BUILD: PanelItem[] = [
+  { id: "playbooks", label: "Playbooks", href: "/u/templates", icon: "file" },
+  { id: "objects", label: "Objects", href: "/u/settings/customize", icon: "list" },
+  { id: "kits", label: "Kits", href: "/u/kits", icon: "box" },
+];
+
+/** The type each list is focused on, per panel, remembered on this device. */
+const TYPE_KEY = "vyre.sidebar.type";
+const readTypes = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(TYPE_KEY) || "{}") || {}; } catch { return {}; } };
+const useTypeChoice = create<{ by: Record<string, string>; pick: (panel: string, type: string) => void }>((set, get) => ({
+  by: readTypes(),
+  pick: (panel, type) => { const by = { ...get().by, [panel]: type }; try { localStorage.setItem(TYPE_KEY, JSON.stringify(by)); } catch { /* not kept */ } set({ by }); },
+}));
+
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
   chats: { title: "Chat", icon: "chat", search: "Search chats", empty: "No chats yet." },
   records: { title: "Records", icon: "records", empty: "" },
   agents: { title: "Agents", icon: "assistants", search: "Search agents", empty: "No agents yet." },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
+  build: { title: "Build", icon: "box", empty: "" },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
 };
 
@@ -102,10 +119,16 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const { base, mine, load } = useSidebar();
   const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
+  const chosen = useTypeChoice((s) => s.by);
+  const pickType = useTypeChoice((s) => s.pick);
+  const { data: recWorld } = useRecordsWorld();
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
   const id = panelFor(path, search);
   const meta = id ? META[id] : undefined;
   if (!id || !meta) return { panel: null, id: null };
+  const all0 = id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [];
+  const listTypes = id === "projects" || id === "chats" ? typeOptions(all0) : [];
+  const typeNow = listTypes.length ? focusType(all0, path, chosen[id] ?? "") : "";
   const goBack = () => { const to = backTo(path, search); if (to) router.push(to as never); };
   const all = effective(base, mine) as any[];
   const edit = async (list: any[]) => { await saveList("me", space, list); await load(space); };
@@ -113,8 +136,9 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   return {
     id,
     panel: {
-      id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
-      items: id === "settings" ? SETTINGS : id === "records" ? [] : loaded[id] ?? [],
+      id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: id === "build" ? BUILD.filter((b) => path === b.href || path.startsWith(b.href + "/")).sort((a, b) => b.href.length - a.href.length)[0]?.href : path,
+      items: listTypes.length ? ofType(all0, typeNow) : all0,
+      types: listTypes.length ? { options: listTypes, value: typeNow, onPick: (t: string) => pickType(id, t) } : id === "records" && recWorld ? { options: recWorld.types.filter((t: any) => !isHiddenType(t)).map((t: any) => ({ id: t.name, label: viewDefOf(t).plural })), value: /^\/u\/records\/([^/?]+)/.exec(path)?.[1] ?? "", onPick: (t: string) => onNavigate(`/u/records/${t}`) } : undefined,
       before: id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,

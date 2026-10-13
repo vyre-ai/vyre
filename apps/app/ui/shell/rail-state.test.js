@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RAIL_KEY, readCollapsed, writeCollapsed, isToggleKey, railWidth } from "./rail-state.js";
-import { panelFor, withSide, backTo, PANELS, filterItems, groupItems } from "./sidebar-stack.js";
+import { panelFor, withSide, backTo, PANELS, filterItems, groupItems, typeOptions, ofType, focusType } from "./sidebar-stack.js";
 
 const store = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => void m.set(k, v), m }; };
 
@@ -45,6 +45,9 @@ test("opening a place, or a path inside it, drills the sidebar into that place's
   assert.equal(panelFor("/u/assistants/a1"), "agents");
   assert.equal(panelFor("/u/settings/devices"), "settings");
   assert.equal(panelFor("/u/settings"), "settings", "Settings opens on its sections");
+  assert.equal(panelFor("/u/settings/customize"), "build", "the object editor is Build's, not Settings'");
+  assert.equal(panelFor("/u/templates"), "build");
+  assert.equal(panelFor("/u/kits/k1"), "build");
   assert.equal(panelFor("/u/now"), null);
   assert.equal(panelFor("/u/project/p1/"), "projects", "a trailing slash is the same place");
   assert.equal(panelFor("/u/projectx/p1"), null, "a prefix is a whole segment, not a string start");
@@ -72,4 +75,16 @@ test("a panel's list filters by a typed word and groups by a field, keeping orde
   assert.deepEqual(filterItems(items, "").map((i) => i.id), ["a", "b", "c"]);
   assert.deepEqual(groupItems(items).map((g) => [g.label, g.items.map((i) => i.id)]), [["Matter", ["a", "b"]], ["Campaign", ["c"]]]);
   assert.deepEqual(groupItems([{ id: "x", label: "X" }]).map((g) => g.label), [""], "no group: one unlabelled section");
+});
+
+test("a panel's type dropdown: All types first, only when there is more than one type; a choice shows that type; opening an item focuses its type", () => {
+  const items = [{ id: "a", label: "Smith", group: "Matter", href: "/u/project/a" }, { id: "b", label: "Jones", group: "Matter", href: "/u/project/b" }, { id: "c", label: "Ads", group: "Campaign", href: "/u/project/c" }];
+  assert.deepEqual(typeOptions(items).map((o) => o.id), ["", "Matter", "Campaign"]);
+  assert.deepEqual(typeOptions(items.slice(0, 2)), [], "one type: no dropdown");
+  assert.deepEqual(ofType(items, "Matter").map((i) => i.id), ["a", "b"]);
+  assert.deepEqual(ofType(items, "").map((i) => i.id), ["a", "b", "c"]);
+  assert.deepEqual(ofType(items, "Trip").map((i) => i.id), ["a", "b", "c"], "a type that is gone shows everything");
+  assert.equal(focusType(items, "/u/project/c", "Matter"), "Campaign");
+  assert.equal(focusType(items, "/u/project/c/", ""), "Campaign");
+  assert.equal(focusType(items, "/u/projects", "Matter"), "Matter", "a page that is no item keeps the choice");
 });

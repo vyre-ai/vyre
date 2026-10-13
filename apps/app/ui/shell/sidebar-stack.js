@@ -12,6 +12,7 @@ export const PANELS = Object.freeze([
   { id: "drive", title: "Files", root: "/u/files", prefixes: ["/u/files", "/u/drive"] },
   { id: "agents", title: "Agents", root: "/u/assistants", prefixes: ["/u/assistants"] },
   { id: "flows", title: "Flows", root: "/u/flows", prefixes: ["/u/flows"] },
+  { id: "build", title: "Build", root: "/u/templates", prefixes: ["/u/templates", "/u/playbooks", "/u/kits", "/u/settings/customize", "/u/record-types"] },
   { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about", "/u/install"] },
 ]);
 
@@ -60,4 +61,22 @@ export function groupItems(items) {
     g.items.push(it);
   }
   return out;
+}
+
+/** The kinds of things in a panel's list, from each item's group, in first-seen order, with "All types" first. @param {PanelItem[]} items @returns {{ id: string, label: string }[]} */
+export function typeOptions(items) {
+  const seen = [...new Set(items.map((i) => i.group).filter(Boolean))];
+  return seen.length > 1 ? [{ id: "", label: "All types" }, ...seen.map((g) => ({ id: String(g), label: String(g) }))] : [];
+}
+
+/** The items of one type; "" (or a type the list does not have any more) shows everything. @template {PanelItem} T @param {T[]} items @param {string} type */
+export function ofType(items, type) {
+  return type && items.some((i) => i.group === type) ? items.filter((i) => i.group === type) : items;
+}
+
+/** The type to focus when a page opens: the type of the item whose address is the page, else the choice already made. @param {(PanelItem & { href?: string })[]} items @param {string} path @param {string} chosen */
+export function focusType(items, path, chosen) {
+  const p = clean(path);
+  const here = items.find((i) => i.href && (p === clean(i.href) || p.startsWith(clean(i.href) + "/")));
+  return here?.group ?? chosen;
 }
