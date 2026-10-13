@@ -1459,6 +1459,8 @@ export function createPairing(o) {
           if (!typedOn()) return base;
           try { const c = await o.openCode("W1"); return { ...base, code: c.code, code_expires: c.expires, code_offer: c.offer, avatar: avatarOf(c.code) }; } catch { return { ...base, code: null }; }
         };
+        // a stranger's sign-in request (two minutes) never holds the slot against the owner: the owner's own code replaces it
+        if (phoneTicket && phoneTicket.signin && !phoneTicket.claimed) phoneTicket = null;
         if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) {
           const now0 = o.codeNow ? o.codeNow() : null;
           const base = { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
