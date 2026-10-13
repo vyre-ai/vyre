@@ -23,6 +23,8 @@ export function loadPairing(): Promise<Pairing | null>;
 export function savePairing(p: Pairing | null): Promise<void>;
 /** Every server this device is paired to, in the order they were added. */
 export function listPairings(): Promise<Pairing[]>;
+/** The keyed text store this platform keeps its small device records in. */
+export const keyedText: { get(key: string): Promise<string | null>; set(key: string, value: string): Promise<void>; del(key: string): Promise<void> };
 export function loadPairings(): Promise<import("./pairing-list").Pairings>;
 export function loadPairingFor(box: string): Promise<Pairing | null>;
 export function removePairingFor(box: string): Promise<void>;
