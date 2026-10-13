@@ -101,7 +101,7 @@ test("who.js reads the chain's facts and nothing else", async () => {
   const h = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const w = async meta => whoOfChain(await h.chain(meta));
   assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, conflict: false, module: null });
-  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, conflict: false, module: null }, "mobile is not an owner surface, as before");
+  await assert.rejects(w({ kernelFacts: socket("mobile") }), /could not establish who/, "a bare mobile surface is no person: the phone arrives as its paired device");
   assert.deepEqual([(await w({ kernelFacts: device("s1") })).signedIn, (await w({ kernelFacts: device("s1") })).nodeDevice, (await w({ kernelFacts: device("s1", "relay") })).nodeDevice], [true, true, false], "a Wink device reads like tailnet: did, a relay device like device: did");
   assert.equal((await w({ kernelFacts: device() })).signedIn, false);
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token, ag = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
