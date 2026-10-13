@@ -92,6 +92,22 @@ export function createDriveGateway(cfg) {
         if (o.maxBytes != null && typeof cfg.drive.stat === "function") { const st = cfg.drive.stat(p, { version: o.version ?? null }); if (st.size > o.maxBytes) throw new KernelError("too_large", "that file is larger than this call returns"); }
         return cfg.drive.get(p, { version: o.version ?? null });
       }, "file.accessed", { path: shown(p), version: o.version ?? null }); },
+    /** A range of one file, head or a named version, however large the file: `length` bytes from `offset`, and the file's whole size. The bytes come a chunk at a time and only the range is kept. @param {any} chain @param {string} p @param {{ version?: number | null, offset: number, length: number }} o */
+    async getRange(chain, p, o) {
+      if (o.version != null && (!Number.isInteger(o.version) || o.version < 1)) throw new KernelError("bad_input", "name a version number");
+      if (!Number.isInteger(o.offset) || o.offset < 0 || !Number.isInteger(o.length) || o.length < 1) throw new KernelError("bad_input", "a range is an offset and a length");
+      return read(chain, "drive.read", file(p), async () => {
+        const st = cfg.drive.stat(p, { version: o.version ?? null }), end = o.offset + o.length, parts = [];
+        let at = 0;
+        if (o.offset < st.size) for await (const c of cfg.drive.stream(p, { version: o.version ?? null })) {
+          const n = c.length, from = Math.max(o.offset - at, 0), to = Math.min(end - at, n);
+          if (from < to) parts.push(Buffer.from(c.subarray(from, to)));
+          at += n;
+          if (at >= end) break;
+        }
+        return { bytes: new Uint8Array(Buffer.concat(parts)), size: st.size };
+      }, "file.accessed", { path: shown(p), version: o.version ?? null, what: "range" });
+    },
     async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: shown(p), what: "history" }); },
     /** A file's version, size and content hash, without reading it: `drive.read` on it like a read, and no byte moves. @param {any} chain @param {string} p @returns {Promise<{ version: number, size: number, sha256: string | null }>} */
     async stat(chain, /** @type {string} */ p) {

@@ -201,3 +201,15 @@ test("drive.trash: a delete from a mount is a move into .trash/ (drive.write onl
   assert.equal(dec(await D.get(owner, t1.path)), "one", "the first one is still there, for an owner or admin to bring back");
   await assert.rejects(() => D.get(bob, t1.path), { code: "not_found" }, "trashing is not a way to widen a grant: the trash is the admin's");
 });
+
+test("drive.getRange: a range of a file under the caller's read grant, cut across chunk edges, with the file's whole size", async () => {
+  const { D, owner, bob } = await mountWorld();
+  await D.put(bob, "proj/r.txt", enc("0123456789"));
+  const r = await D.getRange(bob, "proj/r.txt", { offset: 3, length: 4 });
+  assert.equal(dec(r.bytes), "3456"); assert.equal(r.size, 10);
+  assert.equal(dec((await D.getRange(bob, "proj/r.txt", { offset: 8, length: 100 })).bytes), "89", "a range past the end is cut short");
+  assert.equal((await D.getRange(bob, "proj/r.txt", { offset: 50, length: 4 })).bytes.length, 0);
+  await D.put(owner, "other/o.txt", enc("o"));
+  await assert.rejects(() => D.getRange(bob, "other/o.txt", { offset: 0, length: 1 }), { code: "not_found" });
+  await assert.rejects(() => D.getRange(bob, "proj/r.txt", { offset: -1, length: 1 }), { code: "bad_input" });
+});

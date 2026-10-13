@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":350,"tool":1694,"event":538,"config":302,"env":304,"screen":0,"concept":39},
+  "counts": {"command":350,"tool":1698,"event":538,"config":302,"env":304,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -506,8 +506,12 @@
     {"kind":"tool","name":"files.drive.search","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdrivesearch","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.share","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveshare","module":"files","mentions":[{"page":"design/onboarding-v2.md","line":168,"anchor":"step-8-vyre-drive"},{"page":"design/drive-onboarding.md","line":17,"anchor":"drive-onboarding"}]},
     {"kind":"config","name":"files.drive.shares","definedIn":"core/files/drive.js","page":null,"mentions":[{"page":"adr/0014-tailnet.md","line":46,"anchor":"1-taildrive-the-boxs-folders-on-the-mac"}]},
+    {"kind":"tool","name":"files.drive.space.changes","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacechanges","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.space.list","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacelist","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.move","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacemove","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.space.read","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespaceread","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.stat","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacestat","module":"files","mentions":[]},
+    {"kind":"tool","name":"files.drive.space.trash","definedIn":"core/files/space-drive.js","page":"reference/tools.md#filesdrivespacetrash","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.status","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdrivestatus","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unmount","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunmount","module":"files","mentions":[]},
     {"kind":"tool","name":"files.drive.unshare","definedIn":"core/files/drive.js","page":"reference/tools.md#filesdriveunshare","module":"files","mentions":[]},
