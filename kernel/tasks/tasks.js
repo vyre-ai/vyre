@@ -303,7 +303,7 @@ export function createTasks(cfg) {
     if (typeof cfg.agentMaker !== "function") return false;
     const maker = await Promise.resolve(cfg.agentMaker(agentId)).catch(() => null);
     if (typeof maker !== "string" || !maker) return false;
-    const role = await Promise.resolve(cfg.members.roleOf({ kind: "person", id: maker, space: cfg.space })).catch(() => null);
+    const role = await Promise.resolve((cfg.makerRole || cfg.members.roleOf)({ kind: "person", id: maker, space: cfg.space })).catch(() => null);
     return role === "owner" || role === "admin";
   };
   /**
