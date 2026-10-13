@@ -53,8 +53,9 @@ test("each box is resolved for its own reader: a record the assignee cannot read
   const chain = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: w.cat.space });
   const m = await w.kernel.records.create(chain, "matter", { client: "Jane", stage: "Intake" });
   const { id } = await install(w, base([{ id: "go", kind: "assign", to: "person:" + BOB.id, title: "Call", output: { kind: "note" }, brief: "Call [[field:this#client]]", notes: { followers: "FYI [[field:this#client]]" }, followers: ["person:" + ALEX.id], record: m.urn }]));
-  w.kernel.rules.push({ match: i => i.action === "records.read" && i.chain.hops.at(-1).actor.id === BOB.id && i.chain.hops[0].actor.kind === "automation", effect: "deny", reason: "no access" });
-  w.kernel.denied.add(BOB.id);
+  // BOB's chain may not read the record (the kernel answers denied), everyone else's may
+  const get = w.kernel.records.get.bind(w.kernel.records);
+  w.kernel.records.get = async (c, ...rest) => { if (c.hops.at(-1).actor.id === BOB.id && c.hops[0].actor.kind === "automation") throw Object.assign(new Error("not allowed"), { code: "denied" }); return get(c, ...rest); };
   await w.runner.start(id, {}, w.kernel.as(ALEX));
   await settle(w);
   await w.kernel.pump();
