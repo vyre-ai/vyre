@@ -18,7 +18,7 @@ export function ShareFlow({ id, options }: { id: string; options: FlowOptions | 
       <View className="self-start"><Button kind="secondary" size="sm" icon="share" label="Share" onPress={() => setOpen(true)} /></View>
       <Sheet open={open} onClose={() => setOpen(false)} title="Share this Flow">
         <View className="gap-s3">
-          <Text tone="muted">Can use: run it and see it. Can edit: change its steps. A step only ever touches what the person who added it can reach.</Text>
+          <Text tone="muted">Can use: run it and see it. Can edit: change its steps. </Text>
           {allowsMock() ? who.map((w) => (
             <Row key={w.key} dense title={w.label} end={<View style={{ width: 150 }}><Select value={mine[w.key] ?? ""} options={LEVELS} onChange={(l) => setShare(id, w.key, l)} /></View>} />
           )) : <Banner tone="warn" icon="info"><Text>Sharing a single Flow is not available on this box yet. Today a Flow runs with the access of the person who approved it, and anyone with the Start Flows role can run it.</Text></Banner>}

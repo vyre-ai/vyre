@@ -28,7 +28,7 @@ function sources(d: Draft, before: number, o: Options): [string, string][] {
  * Refunds agent."), under it the trigger ("When") and the steps in order ("Then"), each a closed card that says what it does and opens to its settings, and "Add a step" with the palette of
  * what a Flow can do. It edits a draft; `toDefinition` writes the stored Flow. A step the engine cannot do yet is shown and marked Coming. See docs/design/system/components/flow-builder.md.
  */
-export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean }) {
+export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: { draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
@@ -46,7 +46,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
         </View>
       </Card>
 
-      <Text size="caption" tone="label">Each step can only touch what the person who added it can reach.</Text>
+      <Text size="caption" tone="label">{accessNote ?? "When it runs, it uses the access of the person who approved it, and pauses if that access is lost."}</Text>
       <View>
         <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => toggle("trigger")}
           last={!draft.steps.length && readOnly}>
