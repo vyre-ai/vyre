@@ -18,7 +18,7 @@ export default function Join() {
     const good = joinLink(fromHash ?? link);
     if (good) holdJoin(good);
     if (Platform.OS === "web" && typeof document !== "undefined") { const m = document.createElement("meta"); m.name = "referrer"; m.content = "no-referrer"; document.head.appendChild(m); }
-    const t = setTimeout(() => router.replace((good ? "/u/install/join?from=link" : "/u/install/join") as never), 0);
+    const t = setTimeout(() => router.replace((good ? "/onboard?path=join" : "/onboard?path=join") as never), 0);
     return () => clearTimeout(t);
   }, []);
   return null;

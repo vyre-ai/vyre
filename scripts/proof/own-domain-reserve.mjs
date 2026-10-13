@@ -19,7 +19,7 @@ const reservation = await mac.reserve(person);
 const me = await mac.becomeYourself({ name: reservation.name, code: reservation.code });
 console.log(`NAME=${reservation.name}`);
 const flow = mac.addServer();
-await flow.begin("plain");
+await flow.begin();
 const srv = await startInstallerServer({ dir: path.join(out, "server"), repo: REPO, code: flow.state.code, relayForServer: LIVE.relay, namesForServer: LIVE.names, store: "plain" });
 await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 420_000, "the app to find the server").catch(e => { console.log("INSTALL LOG TAIL:\n" + fs.readFileSync(path.join(out, "server", "install.log"), "utf8").split("\n").slice(-25).join("\n")); throw e; });
 if (flow.state.stage !== "found") throw new Error(`not found: ${flow.state.error && flow.state.error.message}`);

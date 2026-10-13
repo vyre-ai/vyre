@@ -76,6 +76,23 @@ export { FlowCanvas } from "./canvas/FlowCanvas";
 export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
 export { Meter } from "./components/Meter";
 
+// The guided-flow kit (setup, create a space, join a space, invite people).
+export { VyreMark } from "./components/VyreMark";
+export type { MarkState, MarkSize } from "./components/VyreMark";
+export { Stack } from "./components/Stack";
+export type { StackGap } from "./components/Stack";
+export { FlowStep } from "./components/FlowStep";
+export { CodeField } from "./components/CodeField";
+export { CodeDisplay } from "./components/CodeDisplay";
+export { MatchWords } from "./components/MatchWords";
+export { PasswordField } from "./components/PasswordField";
+export { ProviderRow } from "./components/ProviderRow";
+export type { ProviderState } from "./components/ProviderRow";
+export { ChoiceList } from "./components/ChoiceList";
+export type { Choice } from "./components/ChoiceList";
+export { passwordStrength } from "./lib/strength.js";
+export { formatCode, codeComplete } from "./lib/code.js";
+
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
 export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";
 export type { Screen as BlockScreenData, Handlers as BlockHandlers } from "./blocks";
