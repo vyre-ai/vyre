@@ -76,6 +76,31 @@ test("the server's log can tell which check refused, while the client hears one 
   assert.match((await thief.admit.check({ ...thief.hello(), sig: "x".repeat(86) }, CH)).detail, /^bad_signature/);
 });
 
+test("a brand-new entry the cached chain lacks makes the server read the chain again at once, at most every 10 seconds per identity", async () => {
+  const a = rig();
+  assert.equal((await a.admit.check(a.hello(), CH)).ok, true);
+  assert.equal(a.r.fetches, 1);
+  // the person adds a new device after the server cached the chain; its first hello arrives 11 seconds later
+  const fresh = key();
+  a.r.state = { ...a.r.state, seq: 6, head: "h6", entries: [...a.r.state.entries, { eid: EID("n"), kind: "device", pub: fresh.pub, since: T0 - 5 * DAY, addedBy: EID("o"), founder: false }] };
+  a.r.clock += 11_000;
+  const hn = { identity: IDENT, entry: EID("n"), ts: a.r.clock, nonce: "n".repeat(20), channel: CH };
+  const ok = await a.admit.check({ ...hn, sig: fresh.sign(chainHelloMessage(BOX, hn)) }, CH);
+  assert.equal(ok.ok, true, "admitted without waiting 5 minutes");
+  assert.equal(a.r.fetches, 2);
+});
+
+test("an entry the chain really lacks is looked up once per 10 seconds, not once per hello", async () => {
+  const a = rig();
+  assert.equal((await a.admit.check(a.hello(), CH)).ok, true);
+  a.r.clock += 11_000;
+  for (let n = 0; n < 5; n++) assert.equal((await a.admit.check(a.hello({ entry: EID("z") }), CH)).why, "bad_proof");
+  assert.equal(a.r.fetches, 2, "one refresh for the first unknown entry, none for the next four");
+  a.r.clock += 11_000;
+  assert.equal((await a.admit.check(a.hello({ entry: EID("z") }), CH)).why, "bad_proof");
+  assert.equal(a.r.fetches, 3, "and again after ten more seconds");
+});
+
 test("a hello replayed at another server, on another channel, or after the window is refused", async () => {
   const a = rig();
   const h = a.hello();
