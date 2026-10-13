@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as C from "../../../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../../../lib/identity/directory.js";
-import { createPasskeyKey, readAttestation, cbor, lowSDer, restorePasskeyKey, passkeyRp, PASSKEY_ORIGIN, WRONG_ORIGIN_SAY } from "./passkey.js";
+import { createPasskeyKey, readAttestation, cbor, lowSDer, restorePasskeyKey, passkeyRp, PASSKEY_ORIGIN, WEB_ORIGIN, WRONG_ORIGIN_SAY } from "./passkey.js";
 import { claimIdentityWithPasskey } from "./claim.js";
 import { authenticator, cborBytes, cborText, cborInt, cborMap } from "./soft-authenticator.js";
 
@@ -101,10 +101,11 @@ test("a kept passkey comes back as a passkey device key, not a seed key", async 
 
 test("a passkey is made only on app.vyre.run in a release build, and also on http://localhost in a development one", () => {
   assert.equal(passkeyRp(PASSKEY_ORIGIN), "app.vyre.run");
+  assert.equal(passkeyRp(WEB_ORIGIN), "web.vyre.run");
   assert.equal(passkeyRp("http://localhost:19006"), null, "a release build refuses localhost");
   assert.equal(passkeyRp("http://localhost:19006", { dev: true }), "localhost");
   assert.equal(passkeyRp("http://localhost", { dev: true }), "localhost");
-  for (const o of ["https://juniper.vyre.run", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://app.vyre.run:8443", "https://example.com", "http://localhost.evil.example", "http://127.0.0.1:3000", undefined, ""]) {
+  for (const o of ["https://juniper.vyre.run", "https://app.vyre.run.evil.example", "https://web.vyre.run.evil.example", "http://web.vyre.run", "https://web.vyre.run:8443", "https://xweb.vyre.run", "http://app.vyre.run", "https://app.vyre.run:8443", "https://example.com", "http://localhost.evil.example", "http://127.0.0.1:3000", undefined, ""]) {
     assert.equal(passkeyRp(o, { dev: true }), null, String(o));
     assert.equal(passkeyRp(o), null, String(o));
   }
@@ -117,10 +118,10 @@ test("on another origin the claim says where to go, before the browser is asked 
   for (const origin of ["https://juniper.vyre.run", "https://firm.example.com", "http://localhost:3000"]) {
     Object.defineProperty(globalThis, "location", { value: { origin }, configurable: true, writable: true });
     const prod = process.env.NODE_ENV; process.env.NODE_ENV = "production"; t.after(() => { if (prod === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prod; });
-    await assert.rejects(claimIdentityWithPasskey({ name: "wrongorigin", base: "http://127.0.0.1:1", params: FAST, webauthn: auth }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === "Open app.vyre.run to create your name.", origin);
+    await assert.rejects(claimIdentityWithPasskey({ name: "wrongorigin", base: "http://127.0.0.1:1", params: FAST, webauthn: auth }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === "Open web.vyre.run to create your name.", origin);
   }
   assert.equal(auth.seen.creates, 0, "the browser was never asked");
-  assert.equal(WRONG_ORIGIN_SAY, "Open app.vyre.run to create your name.");
+  assert.equal(WRONG_ORIGIN_SAY, "Open web.vyre.run to create your name.");
 });
 
 test("a browser that refuses the passkey for this origin (SecurityError) gets the same words, not 'could not make a passkey'", async () => {

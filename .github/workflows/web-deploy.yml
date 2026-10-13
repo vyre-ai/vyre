@@ -1,0 +1,134 @@
+# web.vyre.run follows the release: the Vyre app on the web, the release's own signed web export. When a stable release is published this
+# takes the `app-out` artifact the release run sealed and signed (scripts/build-app-out.mjs), verifies it against the pinned release key,
+# lays it out (scripts/build-web-out.mjs) and deploys relay/web to Cloudflare after the `deploy` environment's reviewer approves, then
+# checks the live site against the signed release (scripts/check-web-live.mjs: the exact bytes, the headers, and the first screen in a
+# headless browser). It never builds from a branch. It runs from main, because the `deploy` environment only accepts main and
+# work/stage-0.2. A prerelease or a dry run does nothing here. To redo one by hand, dispatch it on main with the release run's id:
+#
+#   gh workflow run web-deploy.yml --ref main -f sha=<the release commit, 40 hex> -f app_out_run=<the release run id>
+#
+# The Cloudflare token and account id are the ones relay-deploy.yml uses (the environment secret CLOUDFLARE_API_TOKEN, the variable
+# CLOUDFLARE_ACCOUNT_ID). web.vyre.run needs no new secret; its first deploy needs the Workers custom domain to be free (relay/web/README.md).
+name: web-deploy
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "The release commit (40 hex)"
+        required: true
+        type: string
+      app_out_run:
+        description: "The run id of the release run that uploaded the signed `app-out` artifact"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: web-deploy
+  cancel-in-progress: false
+env:
+  SHA: ${{ inputs.sha || github.event.workflow_run.head_sha }}
+  RUN: ${{ inputs.app_out_run || github.event.workflow_run.id }}
+  TAG: ${{ github.event.workflow_run.head_branch }}
+  W: ${{ github.workspace }}/tools/wrangler/node_modules/.bin/wrangler
+jobs:
+  assemble:
+    name: assemble (no credentials, nothing is changed)
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      go: ${{ steps.is.outputs.go }}
+    steps:
+      - name: this runs from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          [ "$REF" = refs/heads/main ] || { echo "::error::run this from main, not $REF"; exit 1; }
+      - id: is
+        name: a published stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          printf %s "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::sha must be 40 hex characters"; exit 1; }
+          if [ "$EVENT" = workflow_run ]; then
+            printf %s "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "$TAG is not a stable tag; nothing to deploy"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+            pre=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft -q '"\(.isPrerelease) \(.isDraft)"' 2>/dev/null || echo missing)
+            [ "$pre" = "false false" ] || { echo "$TAG is not a published stable release ($pre); nothing to deploy"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+          fi
+          echo "go=yes" >>"$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.is.outputs.go == 'yes'
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.is.outputs.go == 'yes'
+        with:
+          node-version: 22
+      - name: the signed build of this release (verified against the pinned key), laid out for web.vyre.run
+        if: steps.is.outputs.go == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/deploy/fetch-app-out.sh "$RUN" "$SHA"
+          node scripts/build-web-out.mjs --app-out app-out --out web-out
+      - name: wrangler, from the lockfile, dry run
+        if: steps.is.outputs.go == 'yes'
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix tools/wrangler
+          (cd relay/web && "$W" deploy --dry-run --outdir "$RUNNER_TEMP/web-bundle")
+  deploy:
+    name: deploy (waits for the deploy environment's reviewer)
+    needs: assemble
+    if: ${{ needs.assemble.outputs.go == 'yes' }}
+    runs-on: ubuntu-24.04
+    environment: deploy
+    timeout-minutes: 30
+    steps:
+      - name: this runs from main only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          [ "$REF" = refs/heads/main ] || { echo "::error::run this from main, not $REF"; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: the signed build again, checked again here
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/deploy/fetch-app-out.sh "$RUN" "$SHA"
+          node scripts/build-web-out.mjs --app-out app-out --out web-out
+      - name: wrangler, from the lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/wrangler && "$W" --version
+      - name: deploy relay/web (web.vyre.run)
+        working-directory: relay/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::the deploy environment has no Cloudflare token or account id"; exit 1; }
+          "$W" deploy
+      - name: a browser for the live check (the one pinned version, a throwaway runner)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.48.2
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: the live site is this release (bytes, headers, first screen)
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/
+        run: node scripts/check-web-live.mjs --app-out app-out --url https://web.vyre.run --browser --shot "$RUNNER_TEMP/web-first-screen.png"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: web-first-screen
+          path: ${{ runner.temp }}/web-first-screen.png
+          if-no-files-found: ignore
+          retention-days: 14
