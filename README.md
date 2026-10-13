@@ -147,7 +147,7 @@ VYRE_HOME=$(mktemp -d) bin/vyre up
 bin/vyre call system.echo '{"text":"hi"}'
 ```
 
-Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). How the docs are written: [Writing the docs](docs/CONTRIBUTING-DOCS.md).
+Write your own module: [Modules](docs/MODULES.md). Report a bug in [Issues](https://github.com/vyre-ai/vyre/issues). How the docs are written: [Writing the docs](docs/CONTRIBUTING-DOCS.md). Every rule for writing code here: [Development rules](DEVELOPMENT-RULES.md).
 
 ## License
 

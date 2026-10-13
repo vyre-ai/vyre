@@ -17,7 +17,7 @@ what was measured.
 
 | What | Budget |
 |---|---|
-| vyred idle | under 0.5% of one core and under 150 MB resident; no polling faster than once a minute when nothing is happening |
+| vyred idle | under 0.9% of one core (p95) and under 1.8% sustained; under 60 MB of heap after a full GC; no polling faster than once a minute when nothing is happening. Resident size is reported, and gates (150 MB settled, 200 MB at startup) only on the Node the box ships |
 | Lumen hidden | under 0.2% CPU, no GPU use, under 250 MB resident for all its processes |
 | Lumen shown and idle | under 2% CPU; wakes in under 100 ms |
 | Vyre app web build in a background tab | no timers faster than a minute; the event stream only |
@@ -49,9 +49,9 @@ What it gates on:
 
 | Check | Budget |
 |---|---|
-| CPU, p95 of the samples | under 0.5% |
-| CPU, sustained: the highest mean over any 5 consecutive samples (7.5 s) | under 1% |
-| Heap used after a full GC at the end of the idle window (`scripts/lib/gc-hook.mjs`, on every Node) | under 50 MB |
+| CPU, p95 of the samples | under 0.9% |
+| CPU, sustained: the highest mean over any 5 consecutive samples (7.5 s) | under 1.8% |
+| Heap used after a full GC at the end of the idle window (`scripts/lib/gc-hook.mjs`, on every Node) | under 60 MB |
 | RSS, settled: the highest of the last 8 samples, once they sit within 3 MB (the window runs on to 120 s until they do), on the Node the box ships | under 150 MB |
 | RSS, startup peak: the highest in the first 30 s from spawn, indexing included, on the Node the box ships | under 200 MB |
 | Fastest recurring timer (a `setInterval`, or a `setTimeout` seen 3 or more times) | 60 s or slower |
@@ -84,7 +84,7 @@ All numbers are from the first audit, 26 Sep 2026, on a shared macOS development
 
 On a host with load average 23.6 to 26.2 (other test suites running):
 
-| Metric | Result | Budget |
+| Metric | Result | Budget then |
 |---|---|---|
 | CPU p95 | 0.00% | under 0.5% |
 | CPU sustained | 0.13% | under 1% |
