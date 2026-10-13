@@ -1532,6 +1532,7 @@ export class Registry {
     { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
+    if (this.deps.doorGate && (!String(caller).startsWith("module:") || caller === "module:vyred")) { const refused = await this.deps.doorGate(tool, String(caller), meta); if (refused) return refused; } // a Space member's own session: core/modules/door-gate.js
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
     // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
     let approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
