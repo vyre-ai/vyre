@@ -144,6 +144,36 @@
         "summary": "the Project record's address for a short name (the agents module only)",
         "reach": "modules",
         "effect": "read"
+      },
+      {
+        "name": "projects.docs.get",
+        "reach": "anyone",
+        "effect": "read",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.docs.set",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.list",
+        "reach": "anyone",
+        "effect": "read",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.add",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project"
+      },
+      {
+        "name": "projects.refs.remove",
+        "reach": "anyone",
+        "effect": "write",
+        "projectArg": "project"
       }
     ]
   },
