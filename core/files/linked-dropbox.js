@@ -109,9 +109,11 @@ export function dropboxProvider({ client }) {
 
   async function walk(/** @type {string} */ person, /** @type {any} */ root) {
     const same = { path: root.path, recursive: true, include_deleted: false, include_non_downloadable_files: false };
-    const start = String((await rpc(person, "list_folder/get_latest_cursor", same, "the folder")).cursor);
-    let found;
-    try { found = await listAll(person, { ...same, limit: 2000 }, "the folder"); } catch (e) { if (/** @type {any} */ (e).code === "not_found") throw fail("this folder is not available to your Dropbox account", "denied"); throw e; }
+    let start, found;
+    try {
+      start = String((await rpc(person, "list_folder/get_latest_cursor", same, "the folder")).cursor);
+      found = await listAll(person, { ...same, limit: 2000 }, "the folder");
+    } catch (e) { if (/** @type {any} */ (e).code === "not_found") throw fail("this folder is not available to your Dropbox account", "denied"); throw e; }
     /** @type {any[]} */ const entries = [];
     for (const f of found) {
       if (f[".tag"] === "deleted") continue;

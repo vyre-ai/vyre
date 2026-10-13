@@ -57,7 +57,8 @@ export function fakeDropboxApi({ pageSize = 2000, conflicts = "copy" } = {}) {
       calls.push([person, p.replace("/2/files/", ""), a.path ?? a.from_path ?? ""]);
       if (p === "/2/files/get_metadata") return meta(need(person, String(a.path)));
       if (p === "/2/files/list_folder" || p === "/2/files/list_folder/get_latest_cursor") {
-        const root = low(String(a.path));
+        let root = low(String(a.path));
+        if (root.startsWith("id:")) { const r0 = nodes.get(String(a.path)); if (!r0 || r0.deleted) throw err(409, "path/not_found/."); root = low(r0.path); }
         if (root !== "") { const r = live(root); if (!r || !seen(person, r) || r.tag !== "folder") throw err(409, "path/not_found/."); }
         if (p.endsWith("get_latest_cursor")) return { cursor: cursorOf(root) };
         const all = [...nodes.values()].filter(f => seen(person, f) && (root === "" ? (a.recursive || !f.path.slice(1).includes("/")) : under(f, root, Boolean(a.recursive)))).map(meta);
