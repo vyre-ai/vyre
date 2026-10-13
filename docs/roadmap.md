@@ -11,7 +11,37 @@ status: draft
 This is direction, not a promise of dates. Each line has an ID; a line is ticked when it ships in a release. What is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](known-gaps.md).
 
 
-## 0.3.0 (releasing now)
+## 0.5.0
+- [x] R050-01 People and agents in the same chats; anyone in a Space makes an agent and shares it as use-only or full.
+- [x] R050-02 A task given to an agent wakes it; it finishes, hands on, or is marked stuck with a reason.
+- [x] R050-03 One AGENTS.md instructions file per agent and per project, with @ and # references.
+- [x] R050-04 Flows: more triggers (schedules with business hours and holidays, record changes, stages), wait until a date or event, find or create, readable dates in text, approvals and a run page.
+- [x] R050-05 Playbooks: stages, tasks per stage with assignee, approver and followers, and when a stage is done.
+- [x] R050-06 Records: tags, Excel and CSV import, CSV export on the web, field groups, and each field's template token shown and copyable.
+- [x] R050-07 Documents from templates, sent for signature; Files with linked Google Drive and Dropbox folders.
+- [x] R050-08 Vault in groups, shared as Can use or Can edit; a vault of their own for every member.
+- [x] R050-09 Sites an agent builds and puts live with one yes.
+- [x] R050-10 Needs you: one place for approvals, asks and stuck tasks, with typed cards.
+- [x] R050-11 Teams: members reach their own things on the team's server, per-project seat levels, custom roles, and a Space-wide Google or Microsoft 365 key for each member's own mail, calendar and drive.
+- [x] R050-12 Sign in by name replaces the pairing code; updates need the owner's yes.
+
+## 0.5.1
+- [ ] R051-01 Integrations: install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
+- [ ] R051-02 Agent deadlines: a due time on an agent step with a failure path, and a failure panel on every step in the editor.
+- [ ] R051-03 One chat per Flow, with a divider per run.
+- [ ] R051-04 Credentials lent to a woken agent for one job, use only.
+- [ ] R051-05 Per-record privacy for custom record types, write-once fields, and totals.
+- [ ] R051-06 Flow email with CC, BCC and attachments; date helpers (add to a date, a date-time picker in the Wait step).
+- [ ] R051-07 A partner-style audit screen: who changed what on a record, from the signed event log.
+- [ ] R051-08 One Chrome extension: vault fill, Chrome control for chats, and a chat in the browser side panel.
+
+## 0.5.2 (or 0.5.1)
+- [ ] R052-01 Skills screen: browse, write, version and roll back skills by scope.
+- [ ] R052-02 Plugins screen: install and enable per agent and project, carried to each provider where the parts translate.
+- [ ] R052-03 An eval that runs the same tasks with and without Vyre, as a release gate.
+- [ ] R052-04 Fewer tools loaded up front and shorter agent docs, without losing capability.
+
+## 0.3.0
 - [x] R030-01 One setup: reserve a name at vyre.run/setup, paste the code in the app, Join a team / Add a server / My Home.
 - [x] R030-02 Pairing finishes every time; phones added from the computer.
 - [x] R030-03 Mac mini as a server, Touch ID approves devices.
@@ -30,7 +60,9 @@ This is direction, not a promise of dates. Each line has an ID; a line is ticked
 - [ ] R030-16 Documents, first part: e-signature installed on your own server, with Waiting for signature and Send for signature in Vyre.
 - [ ] R030-17 Documents file themselves on the client: a Document record, a ready Flow filing a signature on the signer's client, Send for signature from a record.
 
-## 0.3.1 (next)
+## 0.3.1 (carried into 0.5)
+
+The lines in 0.3.1 and 0.3.2 were built across the releases up to 0.5. Their ticks have not been updated line by line; the CHANGELOG is the record of what shipped.
 
 **Projects, agents and templates**
 - [ ] R031-01 One kind of Project, which is a record; template optional.

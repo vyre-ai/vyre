@@ -1,6 +1,6 @@
 ---
 title: Known gaps
-summary: What Vyre 0.3.0 does not do yet, what to do today instead, and what comes next.
+summary: What Vyre 0.5 does not do yet, what to do today instead, and what comes next.
 audience: users, builders, operators, agents
 owner: docs
 status: draft
@@ -8,17 +8,50 @@ status: draft
 
 # Known gaps
 
-These docs describe what the code does today. This page lists where Vyre 0.3.0 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
+These docs describe what the code does today. This page lists where Vyre 0.5 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
 
-## Next, in 0.3.1
+## Next, in 0.5.1
 
-Screen Share. Watch and take over your agents' computers and Chrome, on every device.
+The 0.5.1 plan is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
 
-## Known gaps in 0.3.0
+## Known gaps in 0.5
 
-### My Cloud on another server keeps your chats in Personal
 
-Moving your Personal Space to My Cloud carries your memory, records and files. When My Cloud runs on a different server from Personal, your chats stay in the frozen Personal Space, readable there. Carrying them across comes in 0.3.0.
+### Members and custom record types
+
+A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.5.1.
+
+What to do today: keep sensitive rows in a built-in type, or in a Space the person is not a member of.
+
+### A Viewer's AI cannot open the project folder
+
+A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.
+
+### Renaming a project on a team server
+
+Renaming a project changes its short name, which keys the project's folder group. The next session started in the renamed project is refused in words that name the old name. A re-key step is planned.
+
+### Flows
+
+- A "For each" step handles up to 50 items in the editor, although the engine allows 1000, and a longer list is cut without a note on the run page.
+- An agent step has no deadline yet. A session that ends without finishing is marked stuck, but an agent that never ends is not timed out. Deadlines and failure paths in the editor are planned for 0.5.1.
+- A Flow email cannot yet carry CC, BCC or attachments.
+- Members cannot inspect a Flow over MCP (`flows.describe`, `flows.runs` and `flows.connections` are for owners).
+
+### Records export is a web feature
+
+CSV export is in the web app. A phone does not offer it yet.
+
+### Members and sign-ins
+
+- A member cannot add a setup token or API key as their own AI account; the member signs in with the provider's own sign-in.
+- A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
+- A member's MCP servers that they sign in to inside a session are not carried to their next session.
+- The firm Microsoft 365 app is read-only. Member sends are not open.
+
+### Vyre on a Mac as the server
+
+The Mac server installer is tested on a clean macOS in CI. The virtual machine for agents' computers, Records and an agent computer starting are not yet proven on real Mac hardware.
 
 ### Only Claude is proven live
 
@@ -32,15 +65,10 @@ Your server tries to make a direct path to your devices with IPv6, UPnP and NAT-
 
 What to do today: nothing. `vyre doctor` shows **Path to your server** and says whether it is direct.
 
-### Flows are mostly proven against recorded services
-
-The connectors Vyre ships were tested against recorded answers, not against your live accounts. The first live run of a Flow that sends or posts is the first real test of it. Every such step waits for your yes, so you see what would go out.
-
-What to do today: start with a Flow that reads, then add a step that sends once you trust it.
 
 ### Real devices
 
-Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
+Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Chrome control works today; Screen Share is not built. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 
 ### Notifications when the phone app is closed
 
@@ -64,15 +92,10 @@ You can hand one message to several models and see each answer in its own block,
 
 What to do today: use the fan-out for answers, and read plans and diffs as they come.
 
-### Idle sessions do not sleep under memory pressure, and there is no fair-share scheduler
-
-Today Vyre closes a session nobody is using after `idle_minutes` (10 by default) and brings it back on your next message, and `max_live` (6 on a server) limits how many run at once, closing the one idle longest to make room. See [Sessions](using/sessions.md). What is still to come in 0.2.5 is putting sessions to sleep because the server is short of memory, together with memory rollover. Until then a busy session holds its memory on the server until it ends or goes idle.
-
-What to do today: stop sessions you are done with, or lower `idle_minutes` or `max_live` as [Sessions](using/sessions.md) describes.
 
 ## True today, with no date
 
-- **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server in 0.2.9, and a Windows PC runs no sessions of its own; the Windows home comes in 0.3.0. See [Windows](using/windows.md). The Windows app is not code-signed yet, so Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
+- **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The Windows app is not code-signed yet, so Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
 - **Windows Hello has not been walked on a real PC.** A Windows PC claims your name with a Windows Hello passkey and the app asks you at the PC each time the key is used. This has passed its tests with a stand-in authenticator and in a Windows window on a test machine, which has no Hello. It has not been tried on a PC with Hello set up.
 - **Without Hello, the Windows key signs without asking each time.** A Windows PC with no Hello, or with Hello turned off, keeps its key in the app instead. That key is marked as one a script on the page could reach, so it cannot change who speaks for your name and a team's server does not accept it. Changes to your name's list come from your phone or your recovery code. A prompt for every signature on a computer with a TPM is not proven yet.
 - **Grok video and privacy.** With a Grok account's privacy switch on, xAI does not keep your sessions and Grok cannot make video. With it off, xAI keeps sessions and may train on them, and Grok can make video. Vyre shows the choice on the account and records it, but xAI holds the setting itself.
