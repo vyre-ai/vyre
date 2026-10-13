@@ -41,16 +41,20 @@ export const ADMIN_SHAPE = /^(relay\.(pair|devices|enable|disable|join|web|setup
 const NEXT = "Do this from your first device, or wait until this one has been on your list for 24 hours. A device that was added by signing in elsewhere is also kept from this until you confirm it from one you already use.";
 
 /**
- * The gate at the registry's entry. `isLimited(deviceId)` says whether that device is a chain device that is limited NOW (read from the chain, not remembered). Any failure to tell fails closed for the admin tools only.
+ * The gate at the registry's entry. The registry says whether the caller is a device (`isDevice`, from its own label check at the call site), so no module reads the label's shape here. For a device the id is read with
+ * lib/caller.js deviceIdOf; a device label with NO valid id is refused for a device-admin tool (fail closed), never skipped. `isLimited(deviceId)` says whether that device is a chain device that is limited NOW (read from
+ * the chain, not remembered); any failure to tell fails closed for the admin tools only.
  * @param {{ isLimited: (deviceId: string) => Promise<boolean> }} o
- * @returns {(tool: string, caller: string) => Promise<{ error: { code: string, message: string } } | null>}
+ * @returns {(tool: string, caller: string, isDevice: boolean) => Promise<{ error: { code: string, message: string } } | null>}
  */
 export function createLimitedGate(o) {
-  return async (tool, caller) => {
+  return async (tool, caller, isDevice) => {
+    if (!DEVICE_ADMIN.has(tool) || isDevice !== true) return null;
+    const deny = { error: { code: "denied", message: `${tool} is for a device you have set up in person. ${NEXT}` } };
     const id = deviceIdOf(String(caller));
-    if (!DEVICE_ADMIN.has(tool) || !id) return null;
+    if (!id) return deny;
     let limited = true;
     try { limited = await o.isLimited(id); } catch { limited = true; }
-    return limited ? { error: { code: "denied", message: `${tool} is for a device you have set up in person. ${NEXT}` } } : null;
+    return limited ? deny : null;
   };
 }
