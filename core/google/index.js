@@ -31,6 +31,8 @@ import { calendar, fieldsOf, dayRange } from "./calendar.js";
 import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
 import { connector } from "./connect.js";
+import { scopeFor } from "./member-scope.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const str = { type: "string" };
 const int = { type: "integer" };
@@ -68,8 +70,15 @@ export default {
     const gm = mail({ request });
 
     /** Run a tool body and scrub what comes back, errors included; codes pass through. */
+    // A team member's calls see only their own mailbox from the firm key; the owner and the home's own modules see every account (member-scope.js). The scope is resolved once per call.
+    const scoped = new AsyncLocalStorage();
+    const memberOf = id => (ctx.kernel && typeof ctx.kernel.memberRecord === "function" ? ctx.kernel.memberRecord(id) : null);
+    const visible = () => { const s = scoped.getStore(); return s ? s : accounts.all(); };
     const safe = fn => async (input, meta) => {
-      try { return creds.scrubAll(await fn(input, meta)); } catch (e) {
+      try {
+        const scope = await scopeFor({ kernel: ctx.kernel, all: () => accounts.all(), memberOf }, meta);
+        return creds.scrubAll(await scoped.run(scope, () => fn(input, meta)));
+      } catch (e) {
         const err = /** @type {any} */ (e);
         throw Object.assign(new Error(creds.scrub(String(err?.message || err))), { code: typeof err?.code === "string" ? err.code : "failed" });
       }
@@ -86,6 +95,8 @@ export default {
     // `on_behalf`, checked against the Switchboard (connectors/behalf.js); from anyone else that
     // field is ignored, so neither a model nor a home module can file a send under another thread.
     const hold = async (acct, to, content, input, meta) => {
+      // A send as a member from the firm key waits on rc1-d's ruling on who approves it: until then it is refused, never routed to the owner's Gate.
+      if (acct.member) throw fail("sending from a firm-key mailbox is not open yet: draft it and send it from Gmail", "denied");
       const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
       const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.name}`, to, content,
@@ -99,7 +110,7 @@ export default {
     ctx.tool("google.accounts", {
       description: "The Google accounts Vyre can use: name, address, and which vault item authenticates it (never a value).",
       input: obj({}),
-      run: safe(() => accounts.all()),
+      run: safe(() => visible()),
     });
 
     ctx.tool("google.add", {
@@ -182,7 +193,7 @@ export default {
       input: obj({ name: str }),
       callers: PEOPLE,
       run: safe(async ({ name }) => {
-        const acct = forWrite(accounts.all(), named(name));
+        const acct = forWrite(visible(), named(name));
         const out = await testAccount(acct);
         return acct.auth.type === "service-account" ? { ...out, ...(await delegation(acct)) } : out;
       }),
@@ -259,7 +270,7 @@ export default {
     ctx.tool("google.calendar.next", {
       description: "The next events, across every account unless one is named: [{id, account, title, start, end, where, attendees, url}].",
       input: obj({ account, limit: int }),
-      run: safe(({ account: a, limit }) => cal.next(forRead(accounts.all(), named(a)), { limit: clamp(limit, 1, 50, 5) })),
+      run: safe(({ account: a, limit }) => cal.next(forRead(visible(), named(a)), { limit: clamp(limit, 1, 50, 5) })),
     });
 
     // The Capsule's next-meeting line (capsule command `next`): today's upcoming and running meetings only, a
@@ -276,7 +287,7 @@ export default {
       description: "Today's remaining timed meetings, running ones included, each with title, start, end, join link (if any) and page link. Empty with no Google account.",
       input: obj({ limit: { type: "integer", description: "how many, 1 to 10; default 3" } }),
       run: safe(async ({ limit }) => {
-        const accts = accounts.all();
+        const accts = visible();
         const at = now();
         const n = clamp(limit, 1, 10, 3);
         if (!accts.length) return { events: [] };
@@ -298,13 +309,13 @@ export default {
     ctx.tool("google.calendar.list", {
       description: "Events between two times (ISO 8601), across every account unless one is named.",
       input: obj({ from: str, to: str, account, limit: int }, ["from", "to"]),
-      run: safe(({ from, to, account: a, limit }) => cal.list(forRead(accounts.all(), named(a)), { from, to, limit: clamp(limit, 1, 100, 25) })),
+      run: safe(({ from, to, account: a, limit }) => cal.list(forRead(visible(), named(a)), { from, to, limit: clamp(limit, 1, 100, 25) })),
     });
 
     ctx.tool("google.calendar.search", {
       description: "Events matching words (title, description, place, attendees), from 30 days ago unless `from` says otherwise.",
       input: obj({ q: str, from: str, to: str, account, limit: int }, ["q"]),
-      run: safe(({ q, from, to, account: a, limit }) => cal.search(forRead(accounts.all(), named(a)), { q, from, to, limit: clamp(limit, 1, 50, 10) })),
+      run: safe(({ q, from, to, account: a, limit }) => cal.search(forRead(visible(), named(a)), { q, from, to, limit: clamp(limit, 1, 50, 10) })),
     });
 
     const eventInput = { title: str, start: { type: "string", description: "ISO 8601 time, or a date for all day" }, end: str, where: str, description: str,
@@ -315,7 +326,7 @@ export default {
       description: "Create an event. With no attendees it is written at once; with attendees the invite is held at the Gate for the user.",
       input: obj(eventInput, ["title", "start"]),
       run: safe(async (input, meta) => {
-        const acct = forWrite(accounts.all(), named(input.account));
+        const acct = forWrite(visible(), named(input.account));
         const fields = fieldsOf(input, { create: true });
         const to = addresses(input.attendees, "attendees");
         if (!to.length) {
@@ -333,7 +344,7 @@ export default {
       description: "Change an event, only the fields given. Written at once unless attendees (the full new list) are given, which holds it at the Gate.",
       input: obj({ id: str, ...eventInput }, ["id"]),
       run: safe(async (input, meta) => {
-        const acct = forWrite(accounts.all(), named(input.account));
+        const acct = forWrite(visible(), named(input.account));
         const fields = fieldsOf(input, { create: false });
         const to = input.attendees === undefined ? [] : addresses(input.attendees, "attendees");
         // Clearing the guest list sends nothing to hold, so it is the person's own call, not a model's.
@@ -363,7 +374,7 @@ export default {
     ctx.tool("google.mail.search", {
       description: "Search Gmail, newest first, across every account unless one is named: [{id, thread_id, account, from, to, subject, date, snippet, url}].",
       input: obj({ q: { type: "string", description: "a Gmail query, such as from:dana subject:invoice newer_than:7d is:unread, or plain words" }, account, limit: int }, ["q"]),
-      run: safe(({ q, account: a, limit }) => gm.search(forRead(accounts.all(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
+      run: safe(({ q, account: a, limit }) => gm.search(forRead(visible(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
     });
 
     ctx.tool("google.mail.read", {
@@ -373,7 +384,7 @@ export default {
         if (!named(id) && !named(thread_id)) throw fail("give the message's id or a thread_id");
         let last;
         // Without an account, the message is in whichever account has it.
-        for (const acct of forRead(accounts.all(), named(a))) {
+        for (const acct of forRead(visible(), named(a))) {
           try { return await gm.read(acct, { id, thread_id: named(thread_id) }); } catch (e) {
             last = e;
             if (/** @type {any} */ (e).status !== 404) throw e;
@@ -404,7 +415,7 @@ export default {
       description: "Put an email in Gmail's drafts. It goes nowhere: the user sends it from Gmail, or you ask with google.mail.send.",
       input: obj(mailInput, ["to", "subject", "body"]),
       run: safe(async input => {
-        const acct = forWrite(accounts.all(), named(input.account));
+        const acct = forWrite(visible(), named(input.account));
         const { to, c } = mailContent(input);
         const out = await gm.draft(acct, to, c);
         ctx.events.emit("google.drafted", { account: acct.name });
@@ -417,7 +428,7 @@ export default {
       description: "Send an email as the user. It is always held at the Gate for the user's approval and edit; nothing is sent from here.",
       input: obj({ ...mailInput, why: str, on_behalf: obj({ thread: str, agent: str }) }, ["to", "subject", "body"]),
       run: safe(async (input, meta) => {
-        const acct = forWrite(accounts.all(), named(input.account));
+        const acct = forWrite(visible(), named(input.account));
         const { to, c } = mailContent(input);
         const id = await hold(acct, to, c, input, meta);
         return { held: id, message: `Held at the Gate: "${c.subject}" to ${to.join(", ")} from ${acct.email} goes out once the user approves it in Vyre.` };
@@ -493,7 +504,7 @@ export default {
       description: "Find events and messages for Lumen (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }.",
       input: obj({ q: { type: "string", description: "words, or what's next, today, tomorrow, email from someone, email about a topic" }, limit: int }, ["q"]),
       run: safe(async ({ q, limit }) => {
-        const all = accounts.all();
+        const all = visible();
         if (!all.length) return { rows: [] };
         const n = clamp(limit, 1, 20, 5), at = now(), many = all.length > 1;
         const p = parse(q);
@@ -515,7 +526,7 @@ export default {
       run: safe(async ({ id, as = "open" }) => {
         const r = parseRowId(id);
         if (!r) throw fail("that is not a Google result");
-        const acct = accounts.get(r.account);
+        const acct = visible().find(a => a.name === r.account);
         if (!acct) throw fail(`no Google account named ${r.account}`, "no_account");
         if (r.kind === "event") {
           if (as === "reply") throw fail("An event has no reply; open it instead.");

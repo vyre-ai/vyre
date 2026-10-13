@@ -38,3 +38,10 @@ test("domain scope: a firm key limited to a domain refuses other domains", () =>
   assert.equal(forMember([scoped], alice).length, 1);
   assert.throws(() => forMember([scoped], { id: "x", email: "a@other.test", verified: true }), e => e.code === "denied");
 });
+
+test("the derived name is stable, valid for a Gate sender, and marks the member", () => {
+  const a = forMember([firm], alice)[0], b = forMember([firm], alice)[0];
+  assert.equal(a.name, b.name);
+  assert.match(a.name, /^[a-z][a-z0-9-]{0,31}$/);
+  assert.equal(a.member, "p-alice");
+});
