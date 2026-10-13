@@ -4,7 +4,7 @@
 // row opens "About this chat" (AboutSheet.tsx).
 
 import { Pressable, View, StyleSheet } from "react-native";
-import { AvatarStack, Icon, Text, markRef, useUiTheme } from "@vyre/ui";
+import { Avatar, AvatarStack, Icon, Text, markRef, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { avatarStack } from "./group.js";
 
@@ -45,7 +45,9 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, line, phone, onBack, onOpen, onTools }: {
+export function ChatHeader({ title, participants, viewer, line, phone, onBack, onOpen, onTools, projectTile }: {
+  /** The project the chat is in: its tile shows before the quiet line. */
+  projectTile?: { slug: string; name: string } | null;
   title: string;
   participants: readonly Person[];
   viewer: string;
@@ -70,7 +72,12 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
         <HeaderStack faces={stack.shown} more={stack.more} />
         <View style={S.s2}>
           <Text strong numberOfLines={1}>{title}</Text>
-          {line ? <Text size="caption" tone="label" numberOfLines={1}>{line}</Text> : null}
+          {line || projectTile ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {projectTile ? <Avatar of={markRef("project", projectTile.name, projectTile.slug)} size={16} /> : null}
+              <Text size="caption" tone="label" numberOfLines={1} style={{ flexShrink: 1 }}>{line}</Text>
+            </View>
+          ) : null}
         </View>
       </Pressable>
       {onTools ? (
