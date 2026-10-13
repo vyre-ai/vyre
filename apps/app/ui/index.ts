@@ -113,3 +113,8 @@ export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
 export { formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { GroupedList } from "./components/GroupedList";
+export type { Group } from "./components/GroupedList";
+export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
+export { draftOf, applyDraft } from "./setup/logic.js";
+export { putField, moveField, regroup, parseRule } from "./setup/typeedit.js";

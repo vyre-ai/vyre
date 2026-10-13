@@ -31,7 +31,7 @@ import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../screens/records-setup/SetupDemos";
 import { DRAFTS } from "../screens/records-setup/data";
-import { ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
+import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -80,6 +80,7 @@ function Sample({ name }: { name: string }) {
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
   }
+  if (name === "grouped-list") return <GroupedTasksDemo />;
   if (name === "record-form") return <RecordFormDemo />;
   if (name === "record-form-errors") return <RecordFormDemo tried values={{ title: "", kind: "Real estate" }} />;
   if (name === "record-page") return <RecordPageDemo />;

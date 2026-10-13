@@ -4341,6 +4341,20 @@
     }
    }
   },
+  "grouped-list": {
+   "title": "Grouped list (tasks)",
+   "screens": {
+    "full": {
+     "component": "grouped-list"
+    },
+    "compact": {
+     "component": "grouped-list"
+    },
+    "glance": {
+     "component": "grouped-list"
+    }
+   }
+  },
   "record-form": {
    "title": "Records: create form",
    "screens": {

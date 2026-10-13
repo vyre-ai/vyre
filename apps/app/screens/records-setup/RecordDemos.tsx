@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { ActivityFeed, Banner, ImportWizard, RecordForm, RecordHeader, RelatedSection, SectionLabel, formErrors, guessMapping, importIssues, useUiTheme } from "@vyre/ui";
+import { ActivityFeed, Banner, Card, Divider, GroupedList, ImportWizard, Row, RecordForm, RecordHeader, RelatedSection, SectionLabel, formErrors, guessMapping, importIssues, useUiTheme } from "@vyre/ui";
 import type { Activity, DupeRule } from "@vyre/ui";
-import { ASSET_FIELDS } from "./data";
+import { ASSET_FIELDS, ASSET_GROUPS } from "./data";
 
 const ENV = { links: { "vyre://j/contact/1": { title: "Jane Doe", type: "contact" }, "vyre://j/contact/2": { title: "Marcus Doe", type: "contact" } } };
 
@@ -15,7 +15,7 @@ export function RecordFormDemo({ tried: t0 = false, values: v0 = {} }: { tried?:
     <View className="gap-s3">
       <SectionLabel first>New asset</SectionLabel>
       {tried && Object.keys(errors).length ? <Banner tone="warn">{`${Object.keys(errors).length} fields need a value.`}</Banner> : null}
-      <RecordForm fields={ASSET_FIELDS} values={values} onChange={(n, v) => setValues({ ...values, [n]: v })} errors={errors} env={ENV} noun="asset"
+      <RecordForm fields={ASSET_FIELDS} values={values} onChange={(n, v) => setValues({ ...values, [n]: v })} errors={errors} env={ENV} noun="asset" groups={ASSET_GROUPS}
         onCreate={() => setTried(true)} onCreateMore={() => { setTried(true); if (!Object.keys(formErrors(ASSET_FIELDS as any, values)).length) { setValues({}); setTried(false); } }} onCancel={() => {}} />
     </View>
   );
@@ -74,5 +74,18 @@ export function ImportDemo({ start = 0 }: { start?: number }) {
   return (
     <ImportWizard step={step} noun="assets" source="" fileName={step ? "assets-2026.csv" : ""} headers={HEADERS} sample={ROWS[0]} mapping={mapping} onMap={(h, f) => setMapping({ ...mapping, [h]: f })} fields={ASSET_FIELDS}
       issues={issues} total={ROWS.length} dupe={dupe} onDupe={setDupe} result={{ created: 4, updated: 0, skipped: 1, flagged: 1 }} onNext={() => setStep(Math.min(3, step + 1))} onBack={() => setStep(Math.max(0, step - 1))} />
+  );
+}
+
+const TASKS = [{ id: "1", title: "Research the client", group: "Intake" }, { id: "2", title: "Welcome email", group: "Intake" }, { id: "3", title: "Engagement letter signed", group: "Engagement" }, { id: "4", title: "Draft the documents", group: "Drafting" }, { id: "5", title: "Client review call", group: "Drafting" }, { id: "6", title: "Archive the file" }];
+
+/** The same component on another list: the tasks of a project, in groups a person added and ordered. */
+export function GroupedTasksDemo() {
+  const [state, setState] = useState({ groups: [{ name: "Intake" }, { name: "Engagement" }, { name: "Drafting", collapsed: true }], items: TASKS });
+  return (
+    <View className="gap-s3">
+      <SectionLabel first>Tasks</SectionLabel>
+      <GroupedList groups={state.groups} items={state.items} itemNoun="tasks" onChange={setState} renderItems={(items) => <Card flush>{items.map((t, i) => <View key={t.id}>{i ? <Divider /> : null}<Row dense title={t.title} /></View>)}</Card>} />
+    </View>
   );
 }

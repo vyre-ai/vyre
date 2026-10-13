@@ -4,6 +4,7 @@ import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
 import { Row } from "../components/Row";
+import { Select } from "../components/Select";
 import { SectionLabel } from "../components/SectionLabel";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
@@ -22,9 +23,9 @@ export type Rules = { visible: Rule | null; required: Rule | null };
  * One field, all of it: name and kind, then only what the kind needs (options for a choice, a relation for a link), then rules (required, unique, hidden), the conditions
  * (shown when, required when) and who sees it. It is a pane, drawn in a sheet on a phone and beside the field list on a desk. Errors show after the first Save.
  */
-export function FieldEditor({ draft, onChange, owner, types, roles, siblings, rules, onRules, tried, onSave, onCancel, editing }: {
+export function FieldEditor({ draft, onChange, owner, types, roles, siblings, rules, onRules, tried, onSave, onCancel, editing, groups }: {
   draft: Draft; onChange: (d: Draft) => void; owner: TypeRef; types: TypeRef[]; roles: RoleRef[]; siblings: FieldRef[]; rules: Rules; onRules: (r: Rules) => void;
-  tried: boolean; onSave: () => void; onCancel: () => void; editing?: boolean;
+  tried: boolean; onSave: () => void; onCancel: () => void; editing?: boolean; /** The type's group names, in order; given, the editor offers a Group picker. */ groups?: string[];
 }) {
   const { errors } = checkField(draft, editing ? siblings.filter((s) => s.name !== draft.name) : siblings, types);
   const err = (k: string) => (tried ? errors[k] : undefined);
@@ -36,6 +37,7 @@ export function FieldEditor({ draft, onChange, owner, types, roles, siblings, ru
       <View className="gap-s3">
         <Field label="Name" value={draft.label} onChangeText={(label) => set({ label })} placeholder="For example Estimated value" error={err("label")} />
         <Field label="Help text (optional)" value={draft.description} onChangeText={(description) => set({ description })} placeholder="What goes here, for the person filling it in" />
+        {groups ? <Select label="Group" value={draft.group} options={[["", "No group"], ...groups.map((g) => [g, g] as [string, string])]} onChange={(group) => set({ group })} /> : null}
         <View className="gap-s1">
           <Text size="caption" strong tone="label">Kind</Text>
           <View className="flex-row flex-wrap gap-s2">{(FIELD_KINDS as [string, string][]).filter(([k]) => k !== "sealed" && k !== "stage").map(([k, l]) => <Chip key={k} selected={draft.kind === k} icon={draft.kind === k ? "check" : undefined} onPress={() => set({ kind: k })}>{l}</Chip>)}</View>

@@ -28,12 +28,12 @@ export const STARTERS: Starter[] = [
 
 const base = (p: Partial<Draft> & { label: string; kind: string }): FieldRow => ({ ...newDraft(p.kind), ...p, name: p.label.toLowerCase().replace(/[^a-z0-9]+/g, "_") });
 export const ASSET_FIELDS: FieldRow[] = [
-  base({ label: "Name", kind: "text", required: true }),
-  base({ label: "Kind", kind: "choice", required: true, options: ["Real estate", "Bank account", "Retirement account", "Life insurance", "Vehicle", "Other"] }),
-  base({ label: "Client", kind: "link", required: true, to: "contact", many: false, inverse: "Assets" }),
-  base({ label: "Estimated value", kind: "money", hidden_from: ["intake"] }),
-  base({ label: "Account number", kind: "text", sealed: true }),
-  base({ label: "Held in", kind: "choice", options: ["Individual", "Joint", "Trust"] }),
+  base({ label: "Name", kind: "text", required: true, group: "Basics" }),
+  base({ label: "Kind", kind: "choice", required: true, group: "Basics", options: ["Real estate", "Bank account", "Retirement account", "Life insurance", "Vehicle", "Other"] }),
+  base({ label: "Client", kind: "link", required: true, group: "Basics", to: "contact", many: false, inverse: "Assets" }),
+  base({ label: "Estimated value", kind: "money", hidden_from: ["intake"], group: "Money" }),
+  base({ label: "Account number", kind: "text", sealed: true, group: "Money" }),
+  base({ label: "Held in", kind: "choice", options: ["Individual", "Joint", "Trust"], group: "Money" }),
 ];
 export const DRAFTS = {
   blank: newDraft("text"),
@@ -42,3 +42,5 @@ export const DRAFTS = {
   value: { ...newDraft("money"), name: "estimated_value", label: "Estimated value", hidden_from: ["intake"], required_if: 'kind != "Other"' },
   broken: { ...newDraft("choice"), label: "Held in", options: ["Joint", "joint"], required: true, hidden: true },
 } satisfies Record<string, Draft>;
+
+export const ASSET_GROUPS = [{ name: "Basics" }, { name: "Money" }];

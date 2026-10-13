@@ -1,14 +1,14 @@
 // @ts-check
 // The pure half of the setup screens (Records: a type, its fields, choices, relations, who sees a field). A draft is what a person is editing; toDefinition is the kernel's FieldDefinition it becomes.
 
-/** @typedef {{ name?: string, label: string, kind: string, description: string, required: boolean, unique: boolean, hidden: boolean, sealed: boolean, options: string[], to: string | null, many: boolean, inverse: string, hidden_from: string[], visible_if: string, required_if: string }} Draft */
+/** @typedef {{ name?: string, label: string, kind: string, description: string, required: boolean, unique: boolean, hidden: boolean, sealed: boolean, options: string[], to: string | null, many: boolean, inverse: string, hidden_from: string[], visible_if: string, required_if: string, group: string }} Draft */
 /** @typedef {{ name: string, label: string, plural: string }} TypeRef */
 
 export const UNIQUE_KINDS = ["text", "number", "url", "choice", "date", "datetime"];
 export const CHOICE_KINDS = ["choice", "multi_choice", "stage"];
 
 /** @param {string} kind @returns {Draft} */
-export const newDraft = (kind = "text") => ({ label: "", kind, description: "", required: false, unique: false, hidden: false, sealed: false, options: [], to: null, many: false, inverse: "", hidden_from: [], visible_if: "", required_if: "" });
+export const newDraft = (kind = "text") => ({ label: "", kind, description: "", required: false, unique: false, hidden: false, sealed: false, options: [], to: null, many: false, inverse: "", hidden_from: [], visible_if: "", required_if: "", group: "" });
 
 /** The stored name from a label: lower case, words joined by underscores. @param {string} label */
 export const nameOf = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "field";
@@ -69,7 +69,7 @@ export const seesField = (f, role) => !f.hidden && !(f.hidden_from ?? []).includ
 export function toDefinition(d) {
   /** @type {Record<string, any>} */
   const o = { name: d.name || nameOf(d.label), kind: d.sealed ? "sealed" : d.kind, label: d.label.trim() };
-  if (d.sealed) { if (d.description.trim()) o.description = d.description.trim(); if (d.required) o.required = true; if (d.hidden_from.length) o.hidden_from = [...d.hidden_from]; return o; }
+  if (d.sealed) { if (d.description.trim()) o.description = d.description.trim(); if (d.required) o.required = true; if (d.hidden_from.length) o.hidden_from = [...d.hidden_from]; if (d.group) o.group = d.group; return o; }
   if (d.description.trim()) o.description = d.description.trim();
   if (d.required) o.required = true;
   if (d.unique && canBeUnique(d.kind)) o.unique = true;
@@ -81,6 +81,7 @@ export function toDefinition(d) {
     if (d.inverse.trim()) o.inverse = { name: nameOf(d.inverse), label: d.inverse.trim() };
   }
   if (d.hidden_from.length) o.hidden_from = [...d.hidden_from];
+  if (d.group) o.group = d.group;
   if (d.visible_if) o.visible_if = d.visible_if;
   if (d.required_if) o.required_if = d.required_if;
   return o;
@@ -111,3 +112,26 @@ export function buildRule(r) {
 }
 /** @param {{ field: string, op: "is" | "is_not" | "filled", value?: string }} r @param {string} fieldLabel */
 export const ruleWords = (r, fieldLabel) => (r.op === "filled" ? `${fieldLabel} is filled in` : `${fieldLabel} ${r.op === "is" ? "is" : "is not"} ${r.value ?? ""}`.trim());
+
+/** A stored field as the editor holds it. A field of kind sealed, or one with a seal, reads as sealed. @param {any} def @returns {Draft} */
+export function draftOf(def) {
+  return {
+    ...newDraft(def.kind === "sealed" ? "text" : def.kind), name: def.name, label: def.label ?? "", description: def.description ?? "", required: !!def.required, unique: !!def.unique, hidden: !!def.hidden,
+    sealed: def.kind === "sealed" || !!def.seal, options: [...(def.options ?? [])], to: def.to ?? null, many: !!def.many, inverse: def.inverse?.label ?? "", hidden_from: [...(def.hidden_from ?? [])],
+    visible_if: def.visible_if ?? "", required_if: def.required_if ?? "", group: def.group ?? "",
+  };
+}
+
+const EDITED = ["description", "required", "unique", "hidden", "options", "to", "many", "inverse", "hidden_from", "visible_if", "required_if", "group", "seal"];
+
+/** The draft written back onto the stored field, so what the editor does not show (a computed total, an owner, a seal's class) is kept. A field of kind sealed stays sealed. @param {any} original @param {Draft} d */
+export function applyDraft(original, d) {
+  const base = { ...(original ?? {}) };
+  for (const k of EDITED) delete base[k];
+  const own = original?.kind === "sealed";
+  const def = toDefinition({ ...d, sealed: false, kind: own ? "sealed" : d.kind });
+  const out = { ...base, ...def, kind: own ? "sealed" : def.kind };
+  if (own) { out.seal = original.seal; delete out.options; }
+  else if (d.sealed) out.seal = original?.seal ?? { level: "ai", class: "free" };
+  return out;
+}
