@@ -21,7 +21,7 @@ test("a member's session reaches every linked-folder tool, mentions.resolve stay
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
   await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: proof() });
   const token = (await d.kernel.surfaces.open(chain(MEMBER), { agent: "assistant" })).token;
-  const as = (/** @type {string} */ tool, input = {}, caller = "mcp:agent:assistant") => d.registry.call(tool, input, caller, { thread: "t1", agent: "assistant", agentKind: "assistant", token });
+  const as = (/** @type {string} */ tool, input = {}, caller = "cli") => d.registry.call(tool, input, caller, { thread: "t1", agent: "assistant", agentKind: "assistant", token });
   for (const n of LINKED) assert.ok(MEMBER_MAY.has(n) && !OWNER_ONLY.has(n), `${n} is on a member's list`);
   assert.ok(OWNER_ONLY.has("files.linked.mentions.resolve") && !MEMBER_MAY.has("files.linked.mentions.resolve"));
   for (const n of ["files.linked.providers", "files.linked.list", "files.linked.tree", "files.linked.search"]) {

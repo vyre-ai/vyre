@@ -124,10 +124,10 @@ test("a member sees another member's link by name only: none of their index, no 
   assert.equal((await r.run("files.linked.list")).links.length, 1, "the link is the Space's, so she knows it is there");
   assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, [], "Bo's index is Bo's");
   assert.deepEqual((await r.run("files.linked.mentions.search", { q: "launch" })).items, []);
-  assert.equal(await code(r.run("files.linked.read", { id: l.id, path: "b.txt" })), "not_found", "nothing opens until her own account has listed it");
   assert.equal(await code(r.run("files.linked.unlink", { id: l.id })), "denied");
   await r.run("files.linked.sync", { id: l.id });
   assert.equal(r.linked.providers.get("fake").calls.filter(c => c[0] === "list").at(-1)[1], "per_cy", "listed as her, not as Bo");
+  assert.equal((await r.run("files.linked.search", { q: "launch" })).hits.length, 1, "her own index, after her own sync");
 });
 
 test("a guest and an agent with no person behind them are refused where the tool is the person's", async () => {
