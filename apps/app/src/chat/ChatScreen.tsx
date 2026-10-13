@@ -136,7 +136,7 @@ export function ChatScreen(p: ChatScreenProps) {
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
   const toolsOpen = panel !== null;
-  const chatProject = useChatProject(here.thread ?? p.sessionId, p.project);
+  const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
   const [filesOpen, setFilesOpen] = useState(false);
   // the person's latest message, for "Link this chat to Northwind?"

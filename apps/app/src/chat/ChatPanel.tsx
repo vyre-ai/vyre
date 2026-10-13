@@ -3,10 +3,11 @@
 // Mute and Pin are quiet header actions. "Answering" (which AI replies to the next message) stays in the composer: it is per message, these are the chat's standing settings.
 // Keyboard: Up, Down, Home and End move between rows, a letter jumps to the next row that starts with it, Enter opens, Esc goes back and then closes.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, TextInput, View } from "react-native";
-import { Avatar, Banner, Button, Chip, Divider, Icon, PickerList, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme, type PickerItem } from "@vyre/ui";
-import { filterItems, jumpIndex, moveActive, pickerKey, stepFocus } from "@vyre/ui/lib/picker-model.js";
+import { useEffect, useRef, useState } from "react";
+import { Platform, Pressable, View } from "react-native";
+import { Avatar, Banner, Button, Chip, Divider, Icon, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
+import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
 import type { Participant } from "./group.js";
 import type { AboutInfo } from "./AboutSheet";
@@ -97,7 +98,7 @@ export function ChatPanel(p: ChatPanelProps) {
 
   const here = p.info.runsOn === "mac" ? "This Mac" : "The server";
   const there = p.info.runsOn === "mac" ? "the server" : "this Mac";
-  const proj = p.project.current;
+  const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
 
   const root = (
     <View style={{ gap: 4 }}>
@@ -154,7 +155,7 @@ export function ChatPanel(p: ChatPanelProps) {
   );
 
   const sub: Record<string, React.ReactNode> = {
-    project: <ProjectPage projects={p.project.projects} current={p.project.current} onPick={async (slug) => { if (moving.current) return; moving.current = true; const r = await p.project.move(slug); moving.current = false; if (r) setProblem(r); else { showToast(slug ? "Moved to the project." : "Taken out of the project."); p.onPage("root"); } }} onBack={() => p.onPage("root")} />,
+    project: <ProjectPicker projects={p.project.projects} current={p.project.current} onPick={async (slug) => { if (moving.current) return; moving.current = true; const r = await p.project.move(slug); moving.current = false; if (r) setProblem(r); else { showToast(slug ? "Moved to the project." : "Taken out of the project."); p.onPage("root"); } }} onBack={() => p.onPage("root")} />,
     effort: <View>{EFFORTS.map((e, i) => <View key={e.label}>{i ? <Divider /> : null}<Row dense title={e.label} selected={(e.id ?? null) === (effort ?? null)} state={(e.id ?? null) === (effort ?? null) ? "Now" : undefined}
       onPress={() => { const was = effort; setEffort(e.id); void run(async () => { const r = await chatTools.effort(p.thread, e.id); if (!r.ok) setEffort(was); return r; }, () => p.onPage("root")); }} /></View>)}</View>,
     mode: <View>{modesOf(p.state?.modes).map((m, i) => <View key={m}>{i ? <Divider /> : null}<Row dense title={modeLabel(m)} selected={(mode || "default") === m} state={(mode || "default") === m ? "Now" : undefined}
@@ -187,35 +188,6 @@ export function ChatPanel(p: ChatPanelProps) {
     <View pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 30 }}>
       <Pressable accessibilityLabel="Close the chat panel" onPress={p.onClose} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
       <View accessibilityLabel="In this chat" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 400, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" } as object) : {}) }}>{body}</View>
-    </View>
-  );
-}
-
-/** The project picker: type to filter, Up and Down, Enter moves the chat there; "Remove from project" is the last row when it is in one. */
-function ProjectPage({ projects, current, onPick, onBack }: { projects: readonly ProjectRef[]; current: ProjectRef | null; onPick: (slug: string | null) => void; onBack: () => void }) {
-  const [q, setQ] = useState("");
-  const [active, setActive] = useState(0);
-  const items = useMemo(() => {
-    const rows: (PickerItem & { slug: string | null })[] = filterItems(projects.map((x) => ({ ...x, label: x.name })), q).map((x) => ({ key: x.slug, label: x.name, sub: x.slug === current?.slug ? "This chat is here" : undefined, leading: <Avatar of={markRef("project", x.name, x.slug)} size={24} />, checked: x.slug === current?.slug ? true : undefined, slug: x.slug }));
-    if (current && !q) rows.push({ key: "none", label: "Remove from project", leading: <Icon name="x" size={18} />, slug: null });
-    return rows;
-  }, [projects, current, q]);
-  useEffect(() => setActive(0), [q]);
-  return (
-    <View style={{ gap: 8 }}>
-      <TextInput
-        autoFocus value={q} onChangeText={setQ} placeholder="Find a project" accessibilityLabel="Find a project" placeholderTextColor="#888"
-        {...(Platform.OS === "web" ? ({ role: "combobox", "aria-expanded": true, "aria-controls": "project-pop", "aria-activedescendant": items.length ? `project-pop-opt-${active}` : undefined } as object) : {})}
-        onKeyPress={(e: any) => {
-          const ev = e.nativeEvent;
-          const a = pickerKey(ev, { query: q, count: items.length });
-          if (a === "next" || a === "prev") { e.preventDefault?.(); setActive((i) => moveActive(i, a === "next" ? 1 : -1, items.length)); }
-          else if (a === "pick") { e.preventDefault?.(); onPick(items[active].slug); }
-          else if (a === "close") { e.preventDefault?.(); e.stopPropagation?.(); onBack(); }
-        }}
-        style={{ minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontSize: 16, outlineStyle: "none" } as any}
-      />
-      <PickerList id="project-pop" label="Projects" items={items} active={active} onActive={setActive} onPick={(i) => onPick(items[i].slug)} footer="Type to filter. Up and Down, Enter to move, Esc to go back" maxRows={8} empty="No project matches" />
     </View>
   );
 }

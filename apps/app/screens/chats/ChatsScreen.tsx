@@ -3,6 +3,8 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, Field, LoadingState, Row, Sheet, Text, markRef, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
+import { ProjectPicker } from "../../src/chat/ProjectPicker";
+import { listProjects, moveChat, type ProjectRef } from "../../src/chat/useChatProject";
 import { chatPrefs, useChatPrefs } from "../../src/state/chat-prefs";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
@@ -44,11 +46,8 @@ export default function ChatsScreen() {
   // The row menu: Move to a project, Rename (the box's work.chat.move and work.chat.rename), and your own Pin and Mute.
   const [moving, setMoving] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
-  const [projects, setProjects] = useState<{ slug: string; name: string }[]>([]);
-  useEffect(() => {
-    if (!moving) return;
-    void callT<{ projects?: { slug?: string; name?: string }[] }>("projects.list", {}).then((r) => setProjects((r.data?.projects ?? []).filter((x) => x.slug).map((x) => ({ slug: String(x.slug), name: String(x.name || x.slug) }))));
-  }, [moving]);
+  const [projects, setProjects] = useState<ProjectRef[]>([]);
+  useEffect(() => { if (moving) void listProjects().then(setProjects); }, [moving]);
   const menu = (id: string) => [
     { label: "Open", onPress: () => router.push({ pathname: "/u/chats/[id]", params: { id } }) },
     { label: "Move to a project", onPress: () => setMoving(id) },
@@ -62,7 +61,8 @@ export default function ChatsScreen() {
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
       <PlaceTag of="showing" />
       <Sheet open={!!moving} onClose={() => setMoving(null)} title="Move to a project">
-        {projects.length ? projects.map((x) => <Row key={x.slug} dense title={x.name} onPress={async () => { const id = moving as string; setMoving(null); await done(await callT("work.chat.move", { chat: id, project: x.slug }), "Moved to the project."); }} />) : <Text tone="muted">No projects yet.</Text>}
+        <ProjectPicker projects={projects} current={projects.find((x) => x.name === chats.rows.find((c) => c.id === moving)?.project) ?? null} onBack={() => setMoving(null)}
+          onPick={async (slug) => { const id = moving as string; setMoving(null); if (!slug) return; const why = await moveChat(id, slug); await done(why ? { error: { message: why } } : {}, "Moved to the project."); }} />
       </Sheet>
       <Sheet open={!!renaming} onClose={() => setRenaming(null)} title="Rename chat">
         {renaming ? (
