@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -126,7 +127,14 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (policy.caller && ownerDevice(policy.caller)) {
     // A paired device is the owner's only by `deviceIsOwner`: Wink's own record says its person IS this home's owner, or the owner's own present act paired it. Anything else gives no person facts, before an owner's identity is
     // claimed as after (a confirmed device of another member is a paired device, not the owner's).
-    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device, k.id.owner)) return null;
+    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device, k.id.owner)) {
+      // A member's device that came in on HER identity chain (design B) acts as her: the person is the identity stored when the device was admitted, and only while she is a member right now (`memberRole`, read live by the
+      // caller of this function). The kernel then reads her role itself on every call. It is never the owner's, and `limited` rides along for the registry's device-admin gate.
+      if (device && device.viaChain && typeof device.viaChain.identity === "string" && device.viaChain.identity !== k.id.owner && typeof device.memberRole === "string" && device.memberRole !== "") {
+        return { kind: "device", device_key_id: String(policy.caller).slice(7), person: device.viaChain.identity, path: "relay", limited: device.viaChain.limited === true };
+      }
+      return null;
+    }
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
     return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
@@ -829,6 +837,8 @@ async function startLocked(opts, root, p, release) {
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
+    // A device that came in on the identity chain and is limited right now (a newcomer, a relay-held key, an unconfirmed GitHub device) is refused the device-admin tools at the registry's entry (core/modules/device-admin.js).
+    registry.deps.limitedGate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => { const r = /** @type {any} */ (await registry.call("relay.device.info", { id }, "module:vyred")); return Boolean(r && r.data && r.data.viaChain && r.data.viaChain.limited === true); } });
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
@@ -1619,6 +1629,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let deviceRow = null;
     if (policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
       try { const r = await registry.call("relay.device.info", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = r && r.data ? r.data : null; } catch { deviceRow = null; }
+      // a member's chain device: is she a member of this home's Space right now? (the role itself is the kernel's, read on every call)
+      if (deviceRow && deviceRow.viaChain && kernelOf() && deviceRow.viaChain.identity !== kernelOf().id.owner) { try { const m = await registry.call("spaces.membership", { person: deviceRow.viaChain.identity, space: kernelOf().id.space }, "module:vyred"); deviceRow = { ...deviceRow, memberRole: m && m.data && typeof m.data.role === "string" ? m.data.role : null }; } catch { deviceRow = { ...deviceRow, memberRole: null }; } }
       if (deviceRow) { try { const w = await registry.call("wink.device.record", { id: String(policy.caller).slice(7) }, "module:vyred"); deviceRow = { ...deviceRow, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null, homeOwner: Boolean(w && w.data && w.data.homeOwner) }; } catch { deviceRow = { ...deviceRow, person: null }; } }
     }
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);

@@ -13,15 +13,17 @@ function base32Head(h) {
 }
 
 /**
- * @param {{ sha256: (b: Uint8Array) => Promise<Uint8Array>, devicePub: Uint8Array, box: string, identity: string, entry: string, now?: number, sign: (m: Uint8Array) => Promise<Uint8Array> | Uint8Array, name?: string }} o
- * @returns {Promise<{ identity: string, entry: string, ts: number, nonce: string, channel: string, sig: string, name?: string }>}
+ * @param {{ sha256: (b: Uint8Array) => Promise<Uint8Array>, devicePub: Uint8Array, box: string, identity: string, entry: string, now?: number, sign: (m: Uint8Array) => Promise<Uint8Array> | Uint8Array, name?: string, presencePublicKey?: string }} o
+ * @returns {Promise<{ identity: string, entry: string, ts: number, nonce: string, channel: string, sig: string, name?: string, pk?: string }>}
  */
 export async function chainHello(o) {
   const channel = base32Head(await o.sha256(o.devicePub));
   const nonce = b64u(globalThis.crypto.getRandomValues(new Uint8Array(18)));
   const ts = o.now ?? Date.now();
-  const h = { identity: o.identity, entry: o.entry, ts, nonce, channel };
-  const message = Buffer.from(`vyre-chain-hello-v1\n${o.box}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`, "utf8");
+  // the presence key the hello will offer is bound by its hash: the entry key signs over it
+  const pk = o.presencePublicKey ? [...(await o.sha256(new TextEncoder().encode(o.presencePublicKey)))].map((x) => x.toString(16).padStart(2, "0")).join("") : "";
+  const h = { identity: o.identity, entry: o.entry, ts, nonce, channel, ...(pk ? { pk } : {}) };
+  const message = Buffer.from(`vyre-chain-hello-v1\n${o.box}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}\n${pk || "-"}`, "utf8");
   const sig = b64u(new Uint8Array(await o.sign(new Uint8Array(message))));
   return { ...h, sig, ...(o.name ? { name: o.name } : {}) };
 }

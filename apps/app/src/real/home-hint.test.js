@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HINT_MAX, homeHintOf, parseHomeHint, serializeHomeHint } from "./home-hint.js";
+import { HINT_MAX, homeHintOf, offersChainSignIn, parseHomeHint, serializeHomeHint } from "./home-hint.js";
 
 const KEY = "k".repeat(43);
 const pairing = { relay: "wss://relay.example.net", route: "r".repeat(26), box: KEY, name: "my droplet", device: "dev_secret", presence: { enrolled: true } };
@@ -32,4 +32,13 @@ test("a hint without a pin, with a wrong version, a relay that is not wss, or ju
 
 test("a pairing with no usable box key makes no hint", () => {
   assert.equal(homeHintOf({ ...pairing, box: "x" }), null);
+});
+
+test("the hint says whether the server admits chain devices; no flag means no chain sign-in", () => {
+  assert.equal(offersChainSignIn(homeHintOf(pairing)), false, "an old server's hint has no flag");
+  const on = homeHintOf({ ...pairing, chainHello: 1 });
+  assert.equal(offersChainSignIn(on), true);
+  assert.equal(offersChainSignIn(parseHomeHint(serializeHomeHint(/** @type {any} */ (on)))), true, "and it survives the escrow bundle");
+  assert.equal(offersChainSignIn(homeHintOf({ ...pairing, chainHello: 2 })), false, "only the version this app knows");
+  assert.equal(offersChainSignIn(null), false);
 });
