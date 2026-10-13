@@ -26,7 +26,7 @@ export default function RealMine() {
       {list.length ? (
         <Card flush>{list.map((s, i) => (
           <View key={s.name}>{i ? <Divider /> : null}
-            <Row title={s.name} end={<Button kind="ghost" size="sm" label="Remove" onPress={() => remove(s.name)} />}><Text size="secondary" tone="label" mono numberOfLines={1}>{s.url}</Text></Row>
+            <Row title={s.name} sub={<Text size="secondary" tone="label" mono numberOfLines={1}>{s.url}</Text>} end={<Button kind="ghost" size="sm" label="Remove" onPress={() => remove(s.name)} />} />
           </View>
         ))}</Card>
       ) : problem ? null : <EmptyState title="No accounts of your own yet" body="Add a mail, calendar or other MCP server you sign in to yourself." />}

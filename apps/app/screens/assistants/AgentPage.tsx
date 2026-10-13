@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
+import AgentWork from "./AgentWork";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
+import { AgentMemory } from "./AgentMemory";
 import { Page, Sec } from "../places/Frame";
 import { agent } from "./agent";
 import { useChats } from "../../src/state/chats";
@@ -14,8 +16,8 @@ import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, ty
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
-type Tab = "instructions" | "context" | "models" | "used" | "activity";
-const TABS: [Tab, string][] = [["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["used", "Where it is used"], ["activity", "Activity"]];
+type Tab = "instructions" | "context" | "models" | "memory" | "used" | "activity";
+const TABS: [Tab, string][] = [["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["memory", "Memory"], ["used", "Where it is used"], ["activity", "Activity"]];
 
 export default function AgentPage() {
   const { name, tab: want } = useLocalSearchParams<{ name: string; tab?: string }>();
@@ -38,8 +40,9 @@ export default function AgentPage() {
           {tab === "instructions" ? <Instructions name={a.name} /> : null}
           {tab === "context" ? <Context name={a.name} /> : null}
           {tab === "models" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
+          {tab === "memory" ? <AgentMemory name={a.name} /> : null}
           {tab === "used" ? <><Used name={a.name} /><Sharing name={a.name} /></> : null}
-          {tab === "activity" ? <><Talk name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /><ComputerCard a={a} onChange={load} /></> : null}
+          {tab === "activity" ? <><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /><ComputerCard a={a} onChange={load} /></> : null}
         </>
       ) : null}
     </Page>

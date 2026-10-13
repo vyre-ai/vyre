@@ -38,6 +38,9 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
   "vault.me.put", "vault.me.get", "vault.me.list", "vault.me.update", "vault.me.remove",
   "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
+/** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
+export const ME_MODULE_TOOLS = ["vault.me.release"];
+
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
@@ -52,16 +55,19 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.account.unlock", PERSON_SURFACES, "Unlock your own vault with your master password and the Secret Key your device holds.",
     obj({ password: str, secretKey: str }, ["password", "secretKey"]), mine((id, i) => people.unlock(id, i)));
   tool("vault.me.account.reset", PERSON_SURFACES, "Set a new master password with the recovery secret from your kit, for a forgotten password.",
-    obj({ recovery: str, password: str }, ["recovery", "password"]), mine((id, i) => people.reset(id, i)));
+    obj({ recovery: str, password: str }, ["recovery", "password"]), mine((id, i) => people.reset(id, i)),
+    presence("Set a new password for your own vault", () => "Set a new password for your own vault with your recovery kit"));
   tool("vault.me.account.lock", PERSON_SURFACES, "Lock your own vault now.", obj({}), mine(id => people.lock(id)));
   tool("vault.me.account.status", PERSON_SURFACES, "Whether you have a vault here and whether it is unlocked.", obj({}), mine(id => people.status(id)));
 
   tool("vault.me.put", PERSON_SURFACES, "Add an item to your own vault (an AI sign-in, a mail or calendar connection, a note).",
-    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => people.put(id, i)));
+    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => people.put(id, i)),
+    presence("Add an item to your own vault", ({ name }) => `Add ${String(name).slice(0, 64)} to your own vault`));
   tool("vault.me.get", PERSON_SURFACES, "Read one item of your own vault, value included.", obj({ name: str }, ["name"]), mine((id, i) => people.get(id, i)),
     presence("Read an item of your own vault", ({ name }) => `Show ${String(name).slice(0, 64)} from your own vault`));
   tool("vault.me.list", PERSON_SURFACES, "The names and kinds in your own vault. Never a value.", obj({ filter: str }), mine((id, i) => people.list(id, i)));
-  tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)));
+  tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)),
+    presence("Change an item of your own vault", ({ name }) => `Change ${String(name).slice(0, 64)} in your own vault`));
   // The JSON store other modules use for a member's own entries (people.js personalStore): the mcp module and the space list call these with the member's inherited token.
   const store = (/** @type {string} */ id) => people.personalStore(id);
   // A module (mcp, the space list) may call the store on the member's own turn: its hop inherits the member's token, so memberOf finds the one person in the chain. A module call with no person in its chain, or with an agent hop, is refused there.
@@ -79,5 +85,23 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
   tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
   tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
-  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
+  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)),
+    presence("Delete an item of your own vault", ({ name }) => `Delete ${String(name).slice(0, 64)} from your own vault`));
+  // One field of one of the member's own items, handed to the module that uses it for her (files: her Dropbox token for a linked folder). Modules only (reach "modules", like vault.release), only the
+  // module and item named here, and only for the one person in the call's chain: no `person` input, so the owner's vault and another member's are out of reach, and an agent's turn is refused.
+  const RELEASE_TO = /** @type {Record<string, string[]>} */ ({ "module:files": ["dropbox"] });
+  ctx.tool("vault.me.release", {
+    internal: true,
+    description: "One field of a member's own item, to the module that uses it for her: { name, field? } -> { person, value }. Only files, only her Dropbox item. Modules only.",
+    input: obj({ name: str, field: str }, ["name"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      const allowed = RELEASE_TO[String((meta && meta.caller) || "")];
+      if (!allowed || !allowed.includes(String(input && input.name))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const id = await memberOf(ctx.kernel, meta);
+      const it = await people.get(id, { name: String(input.name) });
+      const value = it.fields[String(input.field || "value")];
+      if (typeof value !== "string" || !value) throw new Error(`no ${String(input.field || "value")} on ${input.name}`);
+      return { person: id, value };
+    },
+  });
 }
