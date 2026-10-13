@@ -1731,11 +1731,15 @@
   },
   "vault.account.create": {
    "module": "vault",
-   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+   "reason": "callers list in code (cli, local, mobile, device): no model caller; presence proof required"
   },
   "vault.account.enroll-touchid": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.account.reset": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); the recovery secret and a presence proof are both required"
   },
   "vault.account.status": {
    "module": "vault",

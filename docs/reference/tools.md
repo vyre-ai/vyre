@@ -13315,11 +13315,11 @@ The person has read what is new in the running version: it is not shown again.
 
 ### `vault.account.create`
 
-Set the password for your personal vault. Returns your Secret Key once: print it on the recovery kit, it is not shown again.
+Set the password for your personal vault. Returns your recovery secret once, for the recovery kit; a terminal also gets the Secret Key. Neither is shown again.
 
 - Input:
   - `password` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`, `mobile`
 - Needs a person present.
 
 ### `vault.account.enroll-touchid`
@@ -13337,6 +13337,16 @@ Lock your personal vault now. Agents keep what is granted to them.
 
 - Input: none
 - Callers: any caller
+
+### `vault.account.reset`
+
+Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password.
+
+- Input:
+  - `password` string, required
+  - `recovery` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.account.status`
 
