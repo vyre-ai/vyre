@@ -39,7 +39,7 @@ function TaskBar({ done, total }: { done: number; total: number }) {
   return (
     <View className="flex-row items-center gap-s2" style={{ width: 92 }} accessible accessibilityLabel={`${done} of ${total} tasks done`}>
       <Text size="secondary" tone="muted" style={[TABULAR, { width: 30 }]}>{`${done}/${total}`}</Text>
-      <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 48, height: 3 }}><View className="h-full rounded-full bg-accent" style={{ width: `${(done / total) * 100}%` }} /></View>
+      <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 48, height: 3 }}><View className="h-full rounded-full bg-primary" style={{ width: `${(done / total) * 100}%` }} /></View>
     </View>
   );
 }
