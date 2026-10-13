@@ -41,7 +41,7 @@ test("a step runs only if its adder can still reach what it touches, even when t
   assert.equal(d.ok, true, JSON.stringify(d.errors));
   await w.runner.approve(d.id, d.version, OWNER, d.hash);
   w.kernel.rules.push({ match: i => i.action === "records.create" && i.resource.endsWith("/payment/*") && i.chain.hops.at(-1).actor.id === BOB.id, effect: "deny", reason: "no access" });
-  await w.runner.start(d.id, {}, chainOf(OWNER));
+  await w.runner.start(d.id, {}, w.kernel.as(OWNER));
   await settle(w);
   const [run] = await w.runner.listRuns({ flow: d.id });
   assert.notEqual(run.state, "done", "the adder lost access to payments, so the step does not run");
