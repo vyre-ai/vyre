@@ -56,6 +56,7 @@ export const T = {
 /** Rows read per page before yielding to the event loop. */
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
+const EMPTY = new Map();
 const yieldNow = () => new Promise(r => setImmediate(r));
 const yieldAndTidy = () => new Promise(r => setImmediate(() => { collectIfHeavy(); r(undefined); }));
 
@@ -415,7 +416,9 @@ export class Curator {
       const rows = obsPage.all(at[0], at[1], at[2], PAGE);
       for (const r of rows) {
         const s = String(r.session);
-        turnTs.set(s + "\u0000" + r.seq, Number(r.ts));
+        let ts = turnTs.get(s);
+        if (!ts) turnTs.set(s, ts = new Map());
+        ts.set(Number(r.seq), Number(r.ts));
         if (!obsBy.has(s)) obsBy.set(s, []);
         obsBy.get(s).push({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
       }
@@ -489,7 +492,7 @@ export class Curator {
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, Map<number, number>>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -807,7 +810,7 @@ export class Curator {
     /** @type {Want[]} */
     const want = [];
     const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t.seq]));
-    const tsOf = (session, seq) => turnTs.get(session + "\u0000" + seq) || 0;
+    const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();

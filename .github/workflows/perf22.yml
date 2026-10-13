@@ -14,7 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund
-      - name: idle profile
+      - name: three runs
         run: |
-          VYRE_PERF_IDLEPROF=/tmp/idle.cpuprofile node scripts/perf-check 2>&1 | grep -E "CPU \(|RSS \(" || true
-          node scripts/prof-tmp.mjs /tmp/idle.cpuprofile | cut -c1-400
+          for i in 1 2 3; do
+            echo "== run $i"
+            node scripts/perf-check 2>&1 | grep -E "CPU \((p95|sust)|RSS \((startup|settled)" || true
+          done
