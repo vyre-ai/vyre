@@ -40,7 +40,7 @@ async function rig(t) {
   const tok = async p => (await d.kernel.surfaces.open(chain(p), {})).token;
   const tokens = { alice: await tok(ALICE), bob: await tok(BOB) };
   /** a member's own surface (her app on a device): the person is the kernel's, the input names nobody */
-  const as = (who, tool, input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: tokens[who] });
+  const as = (who, tool, input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: tokens[who], person: { id: "ps-" + who, kind: "passkey" } });
   return { d, fake, root, owner, as, SPACE, OWNER };
 }
 
