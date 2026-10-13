@@ -110,8 +110,6 @@ try {
     const spaces = await mac.callTool("spaces.list"); const space = (spaces.data || spaces)[0].id;
     const add = await srv.team.grantMember(space, mac.identity.id, mem.identity.id, "member").catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) }));
     console.log(`DIAG members.add ${JSON.stringify(add).slice(0, 240)}`);
-    // a member the owner added by name is known to the home by that name (what the join / add-by-name path writes); the rig adds by id, so say the name the way the peer door does
-    console.log(`DIAG learn ${JSON.stringify(await srv.registry.call("spaces.person.learn", { id: mem.identity.id, name: mem.identity.name }, "module:vyred").catch((/** @type {any} */ e) => ({ thrown: e.message })))}`);
     for (const who of [mac.identity.id, mem.identity.id]) { const st = await srv.registry.call("spaces.identity.state", { person: who }, "module:relay").catch((/** @type {any} */ e) => ({ thrown: String(e.message) })); console.log(`DIAG identity.state(${who === mac.identity.id ? "owner" : "member"}) ${JSON.stringify(st).slice(0, 300)}`); }
     console.log(`DIAG member name ${mem.identity.name} id ${mem.identity.id}`);
     const c = await dial({ key: mem.identity.key, entry: mem.identity.key.eid, identity: mem.identity.id, name: mem.identity.name });
