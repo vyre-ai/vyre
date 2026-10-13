@@ -82,11 +82,11 @@ export function parseGrid(grid) {
   return { headers, rows: lines.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""]))) };
 }
 
-/** One value as a CSV cell: quoted when it holds a comma, a quote or a line break, with quotes doubled. A text that starts with =, +, - or @ (or a tab or carriage return) would run as a formula when a firm opens the file in Excel, so it gets a leading single quote (OWASP); a plain number such as -5 is not text and is left alone. @param {string} s */
-const csvCell = (s) => {
-  const safe = /^[=+\-@\t\r]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s) ? `'${s}` : s;
-  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-};
+/** One value as a CSV cell: quoted when it holds a comma, a quote or a line break, with quotes doubled. @param {string} s */
+const csvCell = (s) => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
+/** Text that starts with =, +, - or @ (or a tab or carriage return) would run as a formula when a firm opens the file in Excel, so it gets a leading single quote (OWASP). Only text is passed through this: a number or an amount is written as it is. @param {string} s */
+export const formulaSafe = (s) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
 
 /** Rows of text as CSV: CRLF between lines, no trailing break. @param {string[][]} lines */
 export function toCsv(lines) {
@@ -121,5 +121,6 @@ export function cellText(cell, col) {
 /** The table block's content as CSV: the columns the list shows (not the ones carried only for sorting or a phone's date), labelled as the list labels them, and the rows it holds in the order it holds them. @param {{ columns: any[], rows: any[] }} content */
 export function tableToCsv(content) {
   const cols = (content.columns ?? []).filter((c) => c.role !== "endDate" && c.role !== "sortOnly");
-  return toCsv([cols.map((c) => c.title), ...(content.rows ?? []).map((r) => cols.map((c) => cellText(r.cells?.[c.id], c)))]);
+  const NUMERIC = new Set(["number", "money", "rating"]);
+  return toCsv([cols.map((c) => formulaSafe(String(c.title ?? ""))), ...(content.rows ?? []).map((r) => cols.map((c) => { const t = cellText(r.cells?.[c.id], c); return NUMERIC.has(r.cells?.[c.id]?.k) ? t : formulaSafe(t); }))]);
 }

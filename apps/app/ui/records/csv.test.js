@@ -95,9 +95,12 @@ test("exporting a list writes the shown columns by label and the shown rows, wit
   assert.equal(out, 'Contact,Client since,Worth,SSN,Owner\r\n"Doe, Jane",2026-03-05,1250 USD,"SSN on file, sealed",Sam\r\nRoe,,,,');
 });
 
-test("a cell that would run as a formula in Excel gets a leading quote; plain numbers and ordinary text do not", async () => {
-  const { toCsv } = await import("./csv.js");
-  assert.equal(toCsv([["=1+1", "+cmd", "-cmd", "@SUM(A1)", "\tx", "-5", "+1.5", "a=b", "x"]]), "'=1+1,'+cmd,'-cmd,'@SUM(A1),'\tx,-5,+1.5,a=b,x");
-  assert.equal(toCsv([["=HYPERLINK(\"http://x\",\"y\")"]]), '"\'=HYPERLINK(""http://x"",""y"")"');
-  assert.equal(toCsv([["\r=x"]]), "\"'\r=x\"");
+test("text that would run as a formula in Excel gets a leading quote; numbers and money export as they are", async () => {
+  const { tableToCsv, formulaSafe } = await import("./csv.js");
+  assert.deepEqual(["=1+1", "+cmd", "-cmd", "@SUM(A1)", "\tx", "\r=x", "-5", "a=b", "x"].map(formulaSafe), ["'=1+1", "'+cmd", "'-cmd", "'@SUM(A1)", "'\tx", "'\r=x", "'-5", "a=b", "x"]);
+  const content = {
+    columns: [{ id: "_title", title: "Contact", role: "title" }, { id: "note", title: "Note", role: "col" }, { id: "n", title: "Balance", role: "col" }, { id: "m", title: "Owed", role: "end" }],
+    rows: [{ cells: { _title: { k: "title", v: "=HYPERLINK(\"http://x\",\"y\")" }, note: { k: "text", v: "-5" }, n: { k: "number", v: -5 }, m: { k: "money", v: { amount: -1200.5, currency: "USD" } } } }],
+  };
+  assert.equal(tableToCsv(content), "Contact,Note,Balance,Owed\r\n\"'=HYPERLINK(\"\"http://x\"\",\"\"y\"\")\",'-5,-5,-1200.5 USD");
 });
