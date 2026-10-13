@@ -8,6 +8,10 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Home](https://vyre.run/): what Vyre is and what it does
 - [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](https://vyre.run/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent's turn runs, the Gate
+- [Vault](https://vyre.run/vault/): how credentials are sealed, shared by grant, lease or use-only pass, and used by agents without a model seeing a value
+- [Records](https://vyre.run/records/): custom types, links with inverses, link hops in tokens, stage sets, views, sealed fields, import and export
+- [Flows](https://vyre.run/flows/): triggers, approved versions, the replay-safe runner and holds for a person
+- [Agents](https://vyre.run/agents/): instructions, memory, access, and how a task wakes an agent that finishes, hands on or says stuck
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 

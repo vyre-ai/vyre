@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): four deep product pages on vyre.run, /vault/, /records/, /flows/ and /agents/ (scripts/site/pillars.mjs, registered in gen-site.mjs): what each pillar holds, its architecture and how the kernel decides access, an animation of the key idea, a diagram, a screenshot of the app and a Connects to block; footer, sitemap, llms.txt and llms-full.txt list them.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
 - docs: the README shows the app in sharp animated WebP and 2x screenshots instead of 256-colour GIFs; unused old README images removed.
