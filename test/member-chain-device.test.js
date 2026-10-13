@@ -29,7 +29,7 @@ async function world() {
 }
 
 test("(a) a member's chain device gets HER person facts and the kernel reads her role: she can work, and the owner's own acts are not hers", async () => {
-  const { k } = await world();
+  const { k, o } = await world();
   const f = callerFacts("device:abcdefghijklmnop", policy, null, D, false, row());
   assert.equal(f?.kind, "device");
   assert.equal(f?.person, BOB);
@@ -37,8 +37,12 @@ test("(a) a member's chain device gets HER person facts and the kernel reads her
   const chain = k.chains.fromFacts(/** @type {any} */ (f));
   assert.equal((await k.gateway.records.create(chain, "contact", { name: "Made on her laptop" })).data.name, "Made on her laptop");
   assert.equal(deviceIsOwner(row(), OWNER), false, "never the owner's");
+  // the refusal is the kernel's rank rule, not the presence stand-in or a malformed call: the SAME call by the owner goes through
   const ownerOnly = { person: AMY, role: "admin" };
-  await assert.rejects(() => k.gateway.grants.setRole(chain, ownerOnly, { presence: proofFor("grants.role", ownerOnly, `vyre://${SPACE}/member/${AMY}`) }), /./, "an owner-only act is refused to her");
+  const presence = { presence: proofFor("grants.role", ownerOnly, `vyre://${SPACE}/member/${AMY}`) };
+  await assert.rejects(() => k.gateway.grants.setRole(chain, ownerOnly, presence), (/** @type {any} */ e) => e.code === "not_allowed" && /a member cannot make someone admin/.test(e.message), "an owner-only act is refused to her, by role");
+  await k.gateway.grants.setRole(o, ownerOnly, presence);
+  assert.equal(k.grants.roleOf({ kind: "person", id: AMY, space: SPACE }), "admin", "and the owner's call with the same proof stands");
 });
 
 test("(c) a member who was removed gets no facts at all, even with the same chain device", async () => {
