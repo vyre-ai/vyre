@@ -9,7 +9,7 @@ export const PANELS = Object.freeze([
   { id: "projects", title: "Projects", root: "/u/projects", prefixes: ["/u/project", "/u/projects"] },
   { id: "chats", title: "Chat", root: "/u/chats", prefixes: ["/u/chats"] },
   { id: "records", title: "Records", root: "/u/records/contact", prefixes: ["/u/records", "/u/record"] },
-  { id: "drive", title: "Drive", root: "/u/drive", prefixes: ["/u/drive"] },
+  { id: "drive", title: "Files", root: "/u/files", prefixes: ["/u/files", "/u/drive"] },
   { id: "agents", title: "Agents", root: "/u/assistants", prefixes: ["/u/assistants"] },
   { id: "flows", title: "Flows", root: "/u/flows", prefixes: ["/u/flows"] },
   { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about", "/u/install"] },
