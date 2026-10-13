@@ -9,7 +9,7 @@ const refusal = (/** @type {string} */ code, /** @type {string} */ message) => O
 
 /**
  * @param {{ connect: (o: any) => any, crypto: any, keyStore: any, about: any, deviceName: () => string,
- *   chainHelloFor: ((devicePub: Uint8Array, box: string) => Promise<any>) | null, timeoutMs?: number }} d
+ *   chainHelloFor: ((devicePub: Uint8Array, box: string, presencePublicKey?: string) => Promise<any>) | null, presenceKey?: () => Promise<{ public_key: string } | undefined | null>, timeoutMs?: number }} d
  * @returns {(e: { relay: string, route: string, box: string, name: string }) => Promise<{ relay: string, route: string, box: string, name: string, device: string, presence: null }>}
  */
 export function makeChainPairer(d) {
@@ -18,7 +18,9 @@ export function makeChainPairer(d) {
     if (typeof e.box !== "string" || e.box.length < PIN_MIN) throw refusal("server_not_ready", "That server has no pinned key on your list, so it is not connected by itself. Pair it with a code from that server.");
     if (typeof d.chainHelloFor !== "function") throw refusal("no_identity", "Choose your Vyre name on this device first, then connect your servers.");
     const chainHelloFor = d.chainHelloFor;
-    const conn = d.connect({ relay: e.relay, route: e.route, box: e.box, name: d.deviceName(), crypto: d.crypto, keyStore: d.keyStore, about: d.about, backoff: { min: 300, max: 600 }, chainHello: (/** @type {Uint8Array} */ pub) => chainHelloFor(pub, e.box) });
+    // this device's presence key: the chain hello binds its hash and the hello offers it, so the server can give the device a person session (without it the device is admitted but cannot sign in)
+    const pk = d.presenceKey ? await d.presenceKey().catch(() => null) : null;
+    const conn = d.connect({ relay: e.relay, route: e.route, box: e.box, name: d.deviceName(), crypto: d.crypto, keyStore: d.keyStore, about: d.about, backoff: { min: 300, max: 600 }, chainHello: (/** @type {Uint8Array} */ pub) => chainHelloFor(pub, e.box, pk && pk.public_key ? pk.public_key : undefined), ...(pk ? { presenceKey: pk } : {}) });
     let timer;
     try {
       await Promise.race([conn.ready(), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("timeout")), timeoutMs); })]);

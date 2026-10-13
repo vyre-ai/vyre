@@ -17,13 +17,13 @@ let chainPairer: ChainPairer = async (e) => {
   const { makeChainPairer } = await import("./chain-pairer.js");
   const { connect } = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
   const { chainHello } = await import("@vyre/relay-client/chainhello.js");
-  const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+  const { relayCrypto, relayKeyStore, about, deviceName, presenceKey } = await import("../api/relay");
   const { loadIdentity } = await import("../identity/store");
   const mine = await loadIdentity();
   const crypto = relayCrypto();
   return makeChainPairer({
-    connect, crypto, keyStore: relayKeyStore(), about, deviceName,
-    chainHelloFor: mine ? (pub, box) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), ...(/^[a-z0-9.-]{3,253}$/.test(String(mine.name || "").toLowerCase()) ? { name: String(mine.name).toLowerCase() } : {}) }) : null,
+    connect, crypto, keyStore: relayKeyStore(), about, deviceName, presenceKey,
+    chainHelloFor: mine ? (pub, box, presencePublicKey) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, ...(presencePublicKey ? { presencePublicKey } : {}), identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), ...(/^[a-z0-9.-]{3,253}$/.test(String(mine.name || "").toLowerCase()) ? { name: String(mine.name).toLowerCase() } : {}) }) : null,
   })(e);
 };
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }

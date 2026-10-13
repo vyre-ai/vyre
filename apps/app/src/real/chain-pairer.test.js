@@ -27,7 +27,7 @@ function fake(/** @type {"admit" | "refuse" | "hang"} */ outcome) {
     },
   };
 }
-const deps = (/** @type {any} */ f, over = {}) => ({ connect: f.connect, crypto: {}, keyStore: {}, about: { kind: "app" }, deviceName: () => "my laptop", chainHelloFor: async (/** @type {Uint8Array} */ pub, /** @type {string} */ box) => ({ identity: "per_x", entry: "e", box, pubLen: pub.length }), timeoutMs: 60, ...over });
+const deps = (/** @type {any} */ f, over = {}) => ({ connect: f.connect, crypto: {}, keyStore: {}, about: { kind: "app" }, deviceName: () => "my laptop", chainHelloFor: async (/** @type {Uint8Array} */ pub, /** @type {string} */ box, /** @type {string | undefined} */ presencePublicKey) => ({ identity: "per_x", entry: "e", box, pubLen: pub.length, presencePublicKey }), presenceKey: async () => ({ public_key: "PK-SPKI" }), timeoutMs: 60, ...over });
 
 test("a server that admits the device gives back the pairing, with the device id it answered, and the dial is closed", async () => {
   const f = fake("admit");
@@ -71,4 +71,19 @@ test("this device having no identity is a refusal that names it, and nothing is 
   const f = fake("admit");
   await assert.rejects(makeChainPairer(deps(f, { chainHelloFor: null }))(entry), (/** @type {any} */ e) => e.code === "no_identity");
   assert.equal(f.dials.length, 0);
+});
+
+test("the presence key rides in the hello and its hash is bound by the chain hello, so the device can open a session", async () => {
+  const f = fake("admit");
+  await makeChainPairer(deps(f))(entry);
+  const o = f.dials[0];
+  assert.deepEqual(o.presenceKey, { public_key: "PK-SPKI" });
+  const h = await o.chainHello(new Uint8Array(32));
+  assert.equal(h.presencePublicKey, "PK-SPKI");
+});
+
+test("a device with no presence key still dials (it is admitted without a session)", async () => {
+  const f = fake("admit");
+  await makeChainPairer(deps(f, { presenceKey: async () => undefined }))(entry);
+  assert.equal(f.dials[0].presenceKey, undefined);
 });
