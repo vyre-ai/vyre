@@ -1,46 +1,32 @@
-// The Vyre mark as a function of time. The approved master SVG is used as given; only the draw-in of the wire (a stroke-dash reveal of the masks the glass tube is cut with)
-// and the light of the bead (opacity and a halo) are driven from outside. Pure: markup in, markup out, so a test can hold it.
+// The Vyre mark as a function of time: the icon the site and the app use everywhere (the halftone V on a card with a folded corner, site/favicon.svg), used as given.
+// It is a vector, so it is crisp at any size. The states move the whole icon (it settles in, breathes while something waits, and gives one ring when something is done); nothing is redrawn.
+// Pure: markup in, markup out, so a test can hold it. The ring is ink, never violet: violet means "needs you" only.
 import { MASTER, SMALL } from "./vyre-art.js";
 
-/** The wire's length with its round caps (two segments, 466.5 and 268.2) and a little over. */
-export const WIRE = 740;
-const WIRE_D = 'd="M256 320 L496 720 L634 490"';
-// Element ids, not colours: written with a ref() so a colour scan does not take "#b14" for a hex value.
-const ref = (id) => `url(${String.fromCharCode(35)}${id})`;
-const GLOW_RING = `<circle cx="736" cy="320" r="360" fill="${ref("g_vyre")}" opacity=".5"/>`;
-const GLOW_MASK = `<g transform="translate(496 480) scale(1.08) translate(-496 -480)" filter="${ref("b14")}">`;
-const BEAD_OPEN = '<clipPath id="c20">';
-const BEAD_CLOSE = `</g><rect width="1024" height="1024" filter="${ref("grain")}"`;
-
-const must = (s, a) => { if (!s.includes(a)) throw new Error(`vyre-mark: the master changed, anchor not found: ${a.slice(0, 40)}`); };
-[WIRE_D, GLOW_RING, GLOW_MASK, BEAD_OPEN, BEAD_CLOSE].forEach((a) => must(MASTER, a));
+const INK = String.fromCharCode(35) + "F1EEE6";
+const OPEN_END = MASTER.indexOf(">") + 1;
+if (!MASTER.startsWith("<svg") || OPEN_END < 5 || !MASTER.endsWith("</svg>")) throw new Error("vyre-mark: the icon is not an svg");
 
 /**
  * @param {{ wire?: number, bead?: number, glow?: number, halo?: number, haloR?: number }} s
- *  wire 0..1 how much of the tube is drawn; bead 0..1 the bead's opacity; glow 0..1 the light on the tube; halo 0..1 an extra ring of light (the "done" pulse) at radius haloR.
+ *  wire 0..1 how much the icon has settled in (its opacity and size); glow 0..1 its light (a breath dims it to 60 percent); halo 0..1 a ring around the card (the "done" pulse).
+ *  bead and haloR are kept for the callers that pass them and do nothing.
  */
-export function markup({ wire = 1, bead = 1, glow = 1, halo = 0, haloR = 120 } = {}) {
-  const off = (1 - Math.max(0, Math.min(1, wire))) * WIRE;
-  const dash = `${WIRE_D} stroke-dasharray="${WIRE}" stroke-dashoffset="${off.toFixed(1)}"`;
-  let s = MASTER.split(WIRE_D).join(dash);
-  s = s.replace(GLOW_RING, `<circle cx="736" cy="320" r="360" fill="${ref("g_vyre")}" opacity="${(0.5 * glow).toFixed(3)}"/>`);
-  s = s.replace(GLOW_MASK, `<g opacity="${glow.toFixed(3)}">${GLOW_MASK}`);
-  // the glow group closes with two </g>; the extra opening above is closed right after the group it wraps
-  const WHITE = `<circle cx="736" cy="320" r="60" fill="${String.fromCharCode(35)}fff"/></g></g>`;
-  s = s.replace(WHITE, `${WHITE}</g>`);
-  s = s.replace(BEAD_OPEN, `<g opacity="${bead.toFixed(3)}">${BEAD_OPEN}`);
-  const ring = halo > 0.001 ? `<circle cx="736" cy="320" r="${haloR.toFixed(0)}" fill="${ref("g_vyre")}" opacity="${halo.toFixed(3)}" filter="${ref("b24")}"/>` : "";
-  s = s.replace(BEAD_CLOSE, `${ring}</g>${BEAD_CLOSE}`);
-  return s;
+export function markup({ wire = 1, glow = 1, halo = 0 } = {}) {
+  const w = Math.max(0, Math.min(1, wire)), g = Math.max(0, Math.min(1, glow));
+  const opacity = (w * (0.6 + 0.4 * g)).toFixed(3), scale = (0.94 + 0.06 * w).toFixed(3);
+  const ring = halo > 0.001 ? `<rect x="-1" y="-1" width="66" height="66" rx="12" fill="none" stroke="${INK}" stroke-width="1.6" opacity="${Math.min(1, halo).toFixed(3)}"/>` : "";
+  const open = MASTER.slice(0, OPEN_END).replace(/ width="[^"]*"/, "").replace(/ height="[^"]*"/, "");
+  return `${open}<g opacity="${opacity}" transform="translate(32 32) scale(${scale}) translate(-32 -32)">${MASTER.slice(OPEN_END, -"</svg>".length)}</g>${ring}</svg>`;
 }
 export const small = () => SMALL;
 
 const ease = (t) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
 const span = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 
-/** INTRO (900 ms): the wire draws in over the first 62 percent, then the bead's light comes on. t in 0..1. */
+/** INTRO (900 ms): the icon settles in over the first 62 percent, then its light comes fully on. t in 0..1. */
 export const intro = (t) => ({ wire: ease(span(t, 0, 0.62)), bead: ease(span(t, 0.55, 0.85)), glow: ease(span(t, 0.6, 1)) });
-/** WORKING: a slow breath of the bead's light, 2.4 s a cycle, between 55 and 100 percent. t in ms. */
+/** WORKING: a slow breath of the icon's light, 2.4 s a cycle, between 55 and 100 percent. t in ms. */
 export const working = (ms) => ({ glow: 0.775 + 0.225 * Math.sin((ms / 2400) * Math.PI * 2), halo: 0 });
-/** DONE (700 ms): one bright pulse out of the bead, then rest. t in 0..1. */
+/** DONE (700 ms): one ring out of the card, then rest. t in 0..1. */
 export const done = (t) => ({ glow: 1, halo: (1 - ease(t)) * 0.9, haloR: 90 + ease(t) * 240 });
