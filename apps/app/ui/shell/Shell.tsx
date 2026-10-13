@@ -14,6 +14,7 @@ import { useUiTheme } from "../theme";
 import { glass } from "../lib/glass";
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import { SpaceTile } from "../components/SpaceTile";
+import { SpaceTag } from "../components/SpaceTag";
 import { Tip } from "../components/Tip";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { SidebarRow } from "./SidebarRow";
@@ -64,7 +65,7 @@ function RailSwitcher({ p, folded }: { p: RailProps; folded: boolean }) {
       trigger={
         <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`} style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 12, padding: 4, borderRadius: RAIL.rowRadius + 2, justifyContent: folded ? "center" : "flex-start", backgroundColor: hovered ? "var(--hover)" : "transparent" }]}>
           {mark}
-          {folded ? null : <><View style={{ flex: 1, minWidth: 0 }}><Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text>{cur.sub ? <Text size="caption" tone="label" numberOfLines={1}>{cur.sub}</Text> : null}</View><Icon name="chevron-down" size={16} tone="label" /></>}
+          {folded ? null : <><View style={{ flex: 1, minWidth: 0 }}><Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text>{cur.sub ? <Text size="caption" tone="label" numberOfLines={1}>{cur.sub}</Text> : null}{!all && cur.tag ? <View style={{ alignSelf: "flex-start", marginTop: 2 }}><SpaceTag text={cur.tag} /></View> : null}</View><Icon name="chevron-down" size={16} tone="label" /></>}
         </Pressable>
       }
       items={p.spaces.map((s) => ({ label: s.id === p.space ? `${s.name} (showing)` : s.name, onPress: () => p.onSpace(s.id) }))}
