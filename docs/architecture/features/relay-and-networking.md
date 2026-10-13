@@ -31,7 +31,7 @@ A server dials out to the relay, and a device meets it there over an end-to-end 
 
 **Built-in network.** `core/wink/netd.js` starts, on a server home, one Headscale per Space on loopback, a gate in front of it, a Wink node and the node host's door, with states `off`, `no-binary`, `starting`, `up`, `failed`; on any failure the relay still carries everything. `network.wink.status`, `network.wink.whois`, `network.wink.join`, `network.wink.leave` (`core/network/wink.js`) are the public names; join and leave need the owner and presence. Whois answers from the identity list and sessions the door admitted, never from tags a peer could set. The gate carries only `POST /hooks/<route>` and `GET` or `HEAD /s/<token>` from the internet.
 
-**Tailscale is optional.** Vyre never installs, signs in to or asks for Tailscale. `core/network/other-vpn.js` runs `tailscale status --json` and, if another VPN client is running, Wink does not start a node and the link stays on the relay.
+**Another VPN is optional.** Vyre never installs, signs in to or asks for another VPN product. `core/network/other-vpn.js` asks the other client for its status and, if one is running, Wink does not start a node and the link stays on the relay.
 
 **Direct paths vs relay.** `core/wink/reach.js` tries, in the background and in order, IPv6, UPnP and NAT-PMP. A path is called direct only after `verify` reached it from outside (the relay dials the address back, `POST /v1/reach/check` in `relay/node/server.js`); otherwise the state stays "relay" and `tried` says why. A router that reports a private or carrier-grade external address is said not to be reachable. `relay.devices.path` lets a paired device report which way it reaches the box and its round trip.
 

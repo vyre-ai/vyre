@@ -17,7 +17,7 @@ The Files screen has five tabs (apps/app/screens/drive/tabs.js): **Space**, **Sh
 - **Space**: the Drive, a file's versions with **Put back** (restore as a new version), and **Share a link**.
 - **Shared**: links the person made, each with **Copy** and **Stop**. The empty state reads "No shared links. Open a file and choose Share a link. You say yes before anything is made."
 - **Linked**: **Link a folder**, a picker that walks the source one level at a time, a **Name in Files** field ("It appears at Linked/<name>"), then **Sync**, **Sync now**, **Edit** for text files and **Unlink**. "You see inside it only what your own account allows."
-- **On your server** and **On your computer**: the box's shared folders and the Mac's, opened where they are over Tailscale Drive, plus the `#` picker in chat that points at a file.
+- **On your server** and **On your computer**: the box's shared folders and the Mac's, opened where they are over your private network, plus the `#` picker in chat that points at a file.
 - A phone and a computer can send each other a file, and the receiver gets it when it next connects.
 
 ## How it works
@@ -29,7 +29,7 @@ The Files screen has five tabs (apps/app/screens/drive/tabs.js): **Space**, **Sh
 
 **Linked folders** (core/files/linked.js). `files.linked.link` records a pointer `{ name, provider, source }` in table `files_linked`, and no bytes move. A provider is Google Drive (`linked-gdrive.js`, source `{ folder }`) or Dropbox (`linked-dropbox.js`, source `{ path }` or `{ id }`), both behind one interface (`linked-provider.js`). Every call is made as the calling person. Google answers through that person's own account. Dropbox answers through that person's own Vault item, with no fallback to another person's and no firm key (`dropbox-seam.js`). Two people therefore see two different listings of one link. Each (link, person) pair has its own search index (`files_linked_index`, text capped at 100,000 characters per file), and `files.linked.sync` updates only the caller's. A file's content is fetched when opened and never ahead. `files.linked.write`, `rename` and `delete` go to the source, and a stale `baseRev` is a `conflict` that writes nothing. A Dropbox delete moves the file to "Vyre Trash" inside the linked folder. Whoever linked a folder, or the Space owner, can unlink it, and unlinking never touches the source.
 
-**Folders on the box and computer.** `files.search`, `files.stat`, `files.preview`, `files.fetch`, `files.dirs` and `files.recent` go through one guard (core/files/safety.js). The path must be absolute, inside a configured root, still inside after following symlinks, and outside Vyre's home, the vault, credential folders, dot-folders and any name that looks like a key. A refusal says only "not available". access.js decides which folders a named agent reaches: the assistant walks every mapped project, and any other agent only its granted projects. `files.drive.*` shares chosen folders over Tailscale Drive, read only unless a share says `rw`. `files.drive.audit` reports exposure and emits `drive.exposed`.
+**Folders on the box and computer.** `files.search`, `files.stat`, `files.preview`, `files.fetch`, `files.dirs` and `files.recent` go through one guard (core/files/safety.js). The path must be absolute, inside a configured root, still inside after following symlinks, and outside Vyre's home, the vault, credential folders, dot-folders and any name that looks like a key. A refusal says only "not available". access.js decides which folders a named agent reaches: the assistant walks every mapped project, and any other agent only its granted projects. `files.drive.*` shares chosen folders over the private network, read only unless a share says `rw`. `files.drive.audit` reports exposure and emits `drive.exposed`.
 
 **Sending.** `files.send`, `files.receive` and `files.drop.*` hand a file to another device, sealed to the receiver's key. The home keeps only ciphertext, for a bounded time (drop-store.js). Events: `files.sent`, `files.received`.
 
@@ -37,7 +37,7 @@ The Files screen has five tabs (apps/app/screens/drive/tabs.js): **Space**, **Sh
 - `core/files/index.js` the module. `module.json` tools and events.
 - `core/files/space-drive.js`, `space-links.js` Space Drive and shared links.
 - `core/files/linked.js`, `linked-read.js`, `linked-index.js`, `linked-provider.js`, `linked-gdrive.js`, `linked-dropbox.js`, `dropbox-seam.js` linked folders.
-- `core/files/safety.js`, `access.js`, `browse.js`, `dirs.js`, `drive.js` the guard, per-agent reach, box folders, Tailscale Drive.
+- `core/files/safety.js`, `access.js`, `browse.js`, `dirs.js`, `drive.js` the guard, per-agent reach, box folders, the private-network drive.
 - `core/files/drop-*.js` device to device drops.
 - `lib/files/layout.js` the one place that builds paths.
 - `kernel/gateway/drive.js`, `kernel/gateway/shares.js` the kernel's Drive and chat file shares.
