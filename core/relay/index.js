@@ -745,7 +745,7 @@ export default {
         const s = settings();
         if (s.enabled || await keys.exists()) await keys.ready();
         return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys.loaded ? route() : null,
-          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
+          devices: active().length, open: link ? link.open : 0, pairing: null,
           // the public door (relay.tunnel_url): off, connecting or live, for the Settings row that says whether people outside can reach signing pages and shared links
           tunnel: { url: tunnelUrl() || null, connected: Boolean(tlink && tlink.connected) } };
       },

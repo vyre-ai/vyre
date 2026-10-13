@@ -9,7 +9,7 @@
 // device key is a non-extractable CryptoKey in IndexedDB, and the box record in localStorage
 // holds no secret. release.js stamps the release public key below.
 
-import { pair, resolveTicket, pairOffer, connect, PAIR_BASE } from "./client/client.js";
+import { resolveTicket, pairOffer, connect } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
@@ -136,10 +136,10 @@ async function main() {
     if (!box) { status("Nothing was paired."); return; }
     store(BOX, box);
   } else if (location.pathname === "/pair" && location.hash.length > 1) {
-    status("Pairing this browser with your box");
-    box = await pair(PAIR_BASE + location.hash, { name: browserName(), about, keyStore, crypto });
-    store(BOX, box);
+    // The old bearer link (13 Oct 2026) pairs nothing.
     history.replaceState(null, "", "/");
+    status("That is an old kind of pairing code that no longer works. On a device you already use, open Devices, Add a device, and scan or type the new code.");
+    return;
   }
   if (!box) { status("This browser is not paired with a server yet. On your server, open Settings, Devices, and scan the code with this device's camera."); return; }
   status(`Connecting to ${box.name || "your box"}`);

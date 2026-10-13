@@ -48,7 +48,7 @@ async function status() {
   }
   out(`  relay ${d.enabled ? (d.connected ? bold("connected") : "on, not connected yet") : "off"} ${dim(`· ${d.url}`)}`);
   out(dim(`  ${d.devices} device${d.devices === 1 ? "" : "s"} paired · ${d.open} open now${d.route ? ` · route ${d.route}` : ""}`));
-  if (!d.devices) out(dim("  vyre relay pair to add your phone"));
+  if (!d.devices) out(dim("  add a device from your app: Devices, Add a device"));
   return 0;
 }
 
@@ -59,7 +59,7 @@ async function devices() {
     return emit(r.data, { kind: "table", title: "Relay devices", empty: "No devices paired through the relay", rows: r.data.devices,
       columns: [{ key: "name", label: "Name" }, { key: "id", label: "Id" }, { key: "kind", label: "Kind" }, { key: "online", label: "Online" }, { key: "trusted", label: "Trusted" }, { key: "lastSeen", label: "Last seen" }] });
   }
-  if (!r.data.devices.length) { out("  no devices paired through the relay"); out(dim("  vyre relay pair to add one")); return 0; }
+  if (!r.data.devices.length) { out("  no devices paired through the relay"); out(dim("  add one from your app: Devices, Add a device")); return 0; }
   for (const d of r.data.devices) {
     const kind = d.kind === "web" ? `web app${d.trusted ? ", trusted" : ""}${d.build === "unknown" ? ", unknown build" : d.release ? `, ${d.release}` : ""}` : "app";
     out(`  ${bold(d.name)} ${dim(d.id)}`);
