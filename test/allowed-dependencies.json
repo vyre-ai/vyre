@@ -14,6 +14,8 @@
    "wrangler": "deploys and runs the two Cloudflare Workers (names, relay) from a lockfile; the only Workers tool"
   },
   "apps/app/package.json": {
+   "@tanstack/react-virtual": "windows long lists so only the visible rows are drawn; nothing existing virtualises a list on the web build",
+   "react-arborist": "the Files tree: keyboard, drag and rename on a nested list; nothing existing draws an editable tree",
    "docx-preview": "renders a .docx in the file viewer on the web build; no existing package turns Word XML into a page",
    "papaparse": "parses a .csv in the file viewer, quoted fields and line breaks included; no existing CSV parser",
    "react-pdf": "draws a PDF page by page in the file viewer on the web build; nothing existing renders a PDF",
