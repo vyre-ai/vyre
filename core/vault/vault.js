@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   openItem, newIdentity, sealFor, openFrom, canonical, same, keyObject, newVaultKey, wrapVaultKey, unwrapVaultKey,
-  sealItemV2, openItemV2, macKey, rowMac, newAccountId, formatSecretKey, parseSecretKey, accountUnlockKey,
+  sealItemV2, openItemV2, macKey, rowMac, newAccountId, formatSecretKey, parseSecretKey, accountUnlockKey, formatRecoverySecret, parseRecoverySecret, recoveryKey,
   passwordKdf, clampKdf, ARGON2, AUK_SCRYPT, MIN_PASSWORD,
 } from "./crypto.js";
 import { keystore, defaultKind, secretKeyStore } from "./keys.js";
@@ -206,9 +206,13 @@ const ACCOUNT = "account.json";
 const TOUCHID = "touchid.json";
 /** The wrong-password count and the end of a lock-out, kept in the vault folder so a restart or a crash does not hand out five fresh tries. */
 const THROTTLE = "unlock-throttle.json";
+/** The same count for the recovery secret: a stolen or guessed kit gets the same few tries a password does. */
+const RESET_THROTTLE = "reset-throttle.json";
 const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
+/** The label the recovery wrap of the personal vault key carries, so it opens only as the recovery wrap. */
+const recoveryAad = (kv, acct) => `${vkAad(PERSONAL, kv, acct)}:recovery`;
 const locked = message => Object.assign(new Error(message), { code: "locked" });
 const isShared = cls => String(cls || "").startsWith("shared:");
 
@@ -708,12 +712,67 @@ export class Vault {
     // The Secret Key is stored before the account file, so a crash never leaves an account
     // whose Secret Key is nowhere.
     await this.secretKeys.put(secretKey);
-    writeJsonFile(this.dir, ACCOUNT, { v: 2, acct, ...params, salt: salt.toString("base64"), personal: { kv: KV, ...wrapVaultKey(auk, pvk, vkAad(PERSONAL, KV, acct)) } });
+    // The recovery secret wraps the same personal vault key a second time. It is returned once, for the kit, and kept nowhere: with it (and no password) a new password can be set.
+    const rbytes = crypto.randomBytes(16);
+    const recoverySecret = formatRecoverySecret(acct, rbytes);
+    const recovery = { kv: KV, ...wrapVaultKey(recoveryKey(rbytes, acct), pvk, recoveryAad(KV, acct)) };
+    rbytes.fill(0);
+    writeJsonFile(this.dir, ACCOUNT, { v: 2, acct, ...params, salt: salt.toString("base64"), personal: { kv: KV, ...wrapVaultKey(auk, pvk, vkAad(PERSONAL, KV, acct)) }, recovery });
     this.pvk = pvk;
     const moved = await this.migratePersonal();
     this.audit("account-create", null, who, true, `${moved} items moved into the personal vault`);
     this.emit("vault.unlocked", { vault: PERSONAL });
-    return { acct, secretKey, moved };
+    return { acct, secretKey, recoverySecret, moved };
+  }
+
+  /**
+   * Set a new password for a forgotten one, with the recovery secret from the kit. The personal vault key is opened by the recovery wrap, then wrapped again under the new password and a NEW
+   * Secret Key (put in this device's store); the recovery wrap stays, so the same kit works again. Touch ID unlock is turned off (its wrap held the old key) and other devices that held the old
+   * Secret Key must be added again. A wrong secret counts like a wrong password: five in a row and every try waits 30 s, doubling to 15 minutes. Leaves the personal vault open.
+   * @param {{ recovery: string, password: string }} input
+   */
+  async resetAccount({ recovery, password }, who = "cli") {
+    const f = this.resetFails || (this.resetFails = (() => { try { const j = readJsonFile(this.dir, RESET_THROTTLE); return j && Number.isFinite(j.n) && Number.isFinite(j.until) ? { n: Math.max(0, j.n), until: j.until } : { n: 0, until: 0 }; } catch { return { n: 0, until: 0 }; } })());
+    const persist = () => { try { writeJsonFile(this.dir, RESET_THROTTLE, { n: f.n, until: f.until }); } catch { /* the in-memory count still holds */ } };
+    const t0 = now();
+    if (t0 < f.until) {
+      this.audit("account-reset", null, who, false, "throttled after wrong recovery secrets");
+      throw Object.assign(new Error(`too many wrong recovery secrets in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled", detail: { retry_after_s: Math.ceil((f.until - t0) / 1000) } });
+    }
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet: run vyre vault account create"), { code: "no_account" });
+    if (!rec.recovery) throw Object.assign(new Error("this account was made before recovery kits held a recovery secret, so a kit cannot reset it"), { code: "no_recovery" });
+    if (typeof password !== "string" || password.normalize("NFKC").length < MIN_PASSWORD) throw Object.assign(new Error(`a vault password is at least ${MIN_PASSWORD} characters`), { code: "weak_password" });
+    let parsed;
+    try { parsed = parseRecoverySecret(recovery); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_recovery" }); }
+    if (parsed.acct !== rec.acct) { parsed.bytes.fill(0); throw Object.assign(new Error("that recovery secret belongs to another account"), { code: "wrong_account" }); }
+    await this.key();
+    f.n++;
+    if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
+    persist();
+    let pvk;
+    try { pvk = unwrapVaultKey(recoveryKey(parsed.bytes, rec.acct), rec.recovery, recoveryAad(Number(rec.recovery.kv), rec.acct)); }
+    catch {
+      this.audit("account-reset", null, who, false, `wrong recovery secret (${f.n} in a row)`);
+      throw Object.assign(new Error("that recovery secret does not open this vault"), { code: "wrong_recovery" });
+    } finally { parsed.bytes.fill(0); }
+    f.n = 0; f.until = 0; persist();
+    const params = clampKdf(this.kdfParams(), { test: Boolean(this.testKdf) });
+    const salt = crypto.randomBytes(16);
+    const sk = crypto.randomBytes(16);
+    const secretKey = formatSecretKey(rec.acct, sk);
+    const auk = accountUnlockKey({ password, secretKey: sk, acct: rec.acct, salt, params });
+    sk.fill(0);
+    // The new Secret Key is stored before the account file, as in createAccount: a crash never leaves an account whose Secret Key is nowhere (the kit still resets it).
+    await this.secretKeys.put(secretKey);
+    writeJsonFile(this.dir, ACCOUNT, { ...rec, ...params, salt: salt.toString("base64"), personal: { kv: Number(rec.personal.kv), ...wrapVaultKey(auk, pvk, vkAad(PERSONAL, Number(rec.personal.kv), rec.acct)) } });
+    fs.rmSync(path.join(this.dir, TOUCHID), { force: true });
+    this.pvk = pvk;
+    this.recoverStaged();
+    await this.migratePersonal();
+    this.audit("account-reset", null, who, true, "new password set with the recovery kit");
+    this.emit("vault.unlocked", { vault: PERSONAL });
+    return { reset: true, acct: rec.acct };
   }
 
   /** Open the personal vault with the password and this device's Secret Key. */

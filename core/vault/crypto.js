@@ -273,9 +273,9 @@ function luhn32(chars) {
 }
 
 /** Two check characters: a Luhn mod 32 character (no single typo slips past) and a hash character. */
-const skCheck = (acct, bytes) => {
+const skCheck = (acct, bytes, label = "vyre sk v2") => {
   const body = base32(bytes);
-  return luhn32(acct + body) + base32(crypto.createHash("sha256").update(`vyre sk v2:${acct}:`).update(bytes).digest()).slice(0, 1);
+  return luhn32(acct + body) + base32(crypto.createHash("sha256").update(`${label}:${acct}:`).update(bytes).digest()).slice(0, 1);
 };
 
 /**
@@ -296,6 +296,31 @@ export function parseSecretKey(text) {
   const bytes = unbase32(m[2], 16);
   if (base32(bytes) !== m[2] || skCheck(m[1], bytes) !== m[3]) { bytes.fill(0); throw new Error("that Secret Key has a typo: its check characters do not match"); }
   return { acct: m[1], bytes };
+}
+
+/**
+ * The recovery secret: 128 random bits made with the account, held only on the recovery kit. It wraps the personal vault key a second time, so a kit can set a new password for a forgotten
+ * one. Written like the Secret Key with its own prefix and check: `R1-<acct>-<26 base32>-<2 check>`. It is a different secret from the Secret Key: neither opens anything alone.
+ * @param {string} acct @param {Buffer} bytes 16 bytes
+ */
+export function formatRecoverySecret(acct, bytes) {
+  if (!/^[A-Z2-7]{6}$/.test(acct) || bytes.length !== 16) throw new Error("not a recovery secret");
+  return `R1-${acct}-${base32(bytes)}-${skCheck(acct, bytes, "vyre rk v1")}`;
+}
+
+/** Read a recovery secret back. Case, spaces and dashes do not matter; a wrong checksum throws. */
+export function parseRecoverySecret(text) {
+  const s = String(text ?? "").toUpperCase().replace(/[\s-]/g, "");
+  const m = /^R1([A-Z2-7]{6})([A-Z2-7]{26})([A-Z2-7]{2})$/.exec(s);
+  if (!m) throw new Error("that is not a Vyre recovery secret (R1-XXXXXX-...)");
+  const bytes = unbase32(m[2], 16);
+  if (base32(bytes) !== m[2] || skCheck(m[1], bytes, "vyre rk v1") !== m[3]) { bytes.fill(0); throw new Error("that recovery secret has a typo: its check characters do not match"); }
+  return { acct: m[1], bytes };
+}
+
+/** The key a recovery secret stands for. The secret has 128 random bits, so one HKDF is enough: there is no password to stretch. */
+export function recoveryKey(bytes, acct) {
+  return keyObject(Buffer.from(crypto.hkdfSync("sha256", bytes, Buffer.from(acct), "vyre recovery v1", 32)));
 }
 
 /** The password KDF's defaults (ADR 0006): Argon2id m = 64 MiB, t = 3, p = 4, or scrypt. */

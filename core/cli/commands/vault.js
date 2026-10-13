@@ -1835,8 +1835,9 @@ async function account(args) {
     say(`\n  ${signal("your personal vault has a password")}  ${dim(`account ${r.data.acct}`)}`);
     if (r.data.moved) say(dim(`  ${plural(r.data.moved, "item")} moved into it (logins, cards, notes, one-time codes)`));
     // The one time the Secret Key is shown. It is not written to any file here.
-    say(`\n  Secret Key  ${bold(r.data.secretKey)}\n`);
-    say(beacon("  write this down or run vyre vault kit now: ") + dim("it is shown this once, and with your password it is the only way into this vault on a new device\n"));
+    say(`\n  Secret Key        ${bold(r.data.secretKey)}`);
+    say(`  Recovery secret   ${bold(r.data.recoverySecret)}\n`);
+    say(beacon("  write both down or run vyre vault kit now: ") + dim("they are shown this once. The Secret Key with your password opens this vault on a new device; the recovery secret sets a new password if you forget it\n"));
     return 0;
   }
   if (verb === "unlock") {
