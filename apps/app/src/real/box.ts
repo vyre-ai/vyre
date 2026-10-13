@@ -43,6 +43,8 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
  * shot with real shapes and no box behind it. Never set in the app itself; only the /gallery route sets it.
  */
 let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
+/** True while a stand-in box is set (the gallery's and the tests'): screens that call through the app's own connection use `tool` instead so the stand-in answers. */
+export const hasBoxOverride = (): boolean => override !== null;
 export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
 
 /**
