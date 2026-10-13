@@ -20,8 +20,8 @@ test("a device removed from a Space has no person chain in it, and keeps its cha
   removed.add(`${SPACE}|dev1`);
   await assert.rejects(() => h.chain({ kernelFacts: facts("dev1") }), { code: "not_a_member", message: /no longer part of this Space/ }, "removed from this Space: refused, never the module's service chain");
   const svc = await h.chain({});
-  assert.deepEqual(svc.hops.map(x => x.actor.kind), ["module"], "a plain module service call (no device claim) still gets the module's own chain");
-  assert.deepEqual((await h.chain({ kernelFacts: { kind: "module", module: "probe", first_party: true } })).hops.map(x => x.actor.kind), ["module"], "a non-device fact is not a device claim");
+  assert.deepEqual(svc.hops.map(x => x.actor.kind), ["service"], "a plain module service call (no device claim) still gets the module's own chain");
+  assert.deepEqual((await h.chain({ kernelFacts: { kind: "module", module: "probe", first_party: true } })).hops.map(x => x.actor.kind), ["service"], "a non-device fact is not a device claim");
   assert.equal(await person(await h.chainIn(OTHER, { kernelFacts: facts("dev1") })), true, "still works in its other Space");
   removed.add(`${OTHER}|dev1`);
   await assert.rejects(() => h.chainIn(OTHER, { kernelFacts: facts("dev1") }), { code: "not_a_member" });
