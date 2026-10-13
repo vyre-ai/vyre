@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, Text, projectHeader, showToast, useProject, useTaskActions } from "@vyre/ui";
+import { Button, EmptyState, allowsMock, ErrorState, Field, IconButton, Menu, PageHeader, Sheet, ProjectView, Segmented, SkeletonRows, Text, projectHeader, showToast, useProject, useTaskActions } from "@vyre/ui";
 import { templates } from "../templates/templates";
 import { useMayMakeTemplates } from "../templates/role";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
 import { PAGE_LABEL, RAIL_LABEL, WIDE, chatLabel, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
-import { ProjectContext, ProjectInstructions } from "./ProjectDocs";
+import { callT } from "../../src/real/call-tool";
+import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
+import { projectFolder } from "../folderdocs/project";
+import { mockFolderApi } from "../folderdocs/mock-folder";
+import { ProjectAccess } from "./ProjectAccess";
 import { ProjectHeaderStrip } from "./ProjectHeaderStrip";
 
 /** /u/project/:id: a record of a type that holds work, as a project: stages made of tasks, the team, linked records, chats and files. */
@@ -18,6 +22,8 @@ export default function ProjectScreen() {
   const q = useProject(String(id));
   const [tab, setTab] = useState<PageTab | "overview" | null>(null);
   const [makingTemplate, setMaking] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
   const mayMake = useMayMakeTemplates();
   // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
   const makeTemplate = async (slug: string) => {
@@ -35,17 +41,20 @@ export default function ProjectScreen() {
   const slug = String(data?.slug || "");
   const ref = refOf(slug, pid);
   const wide = width >= WIDE;
+  // agent-page's editors reload when the api's id changes, so it is made once per project.
+  const folder = useMemo(() => (allowsMock() ? mockFolderApi(ref) : projectFolder(ref)), [ref]);
   const at: PageTab | "overview" = tab ?? (wide ? "overview" : "chats");
   const stages = data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null;
   const rail = (r: RailId) => {
     if (r === "stages") return stages;
-    if (r === "instructions") return pid ? <ProjectInstructions pid={pid} /> : <EmptyState title="No instructions here" body="This project has no id the Drive can keep a folder under." />;
-    if (r === "context") return pid ? <ProjectContext pid={pid} /> : <EmptyState title="No context here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} /> : <EmptyState title="No instructions here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} /> : <EmptyState title="No context here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "access") return slug ? <ProjectAccess slug={slug} /> : null;
     if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id the Drive can keep files under." />;
     return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;
-  const section = (r: RailId) => { const body = rail(r); return body ? <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View> : null; };
+  const section = (r: RailId) => { const body = rail(r); return body ? <View key={r} className="gap-s2">{r === "instructions" || r === "context" ? null : <Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>}{body}</View> : null; };
   const pageBody = (): React.ReactNode => {
     if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
@@ -55,14 +64,14 @@ export default function ProjectScreen() {
         <View className="min-w-0 gap-s5" style={{ flex: 1, maxWidth: 420 }}>{railFor(data).map(section)}</View>
       </View>
     );
-    if (at === "about") return <View className="gap-s5">{railFor(data).filter((r) => r === "stages" || r === "instructions" || r === "context").map(section)}</View>;
+    if (at === "about") return <View className="gap-s5">{railFor(data).filter((r) => r === "stages" || r === "instructions" || r === "context" || r === "access").map(section)}</View>;
     if (at === "files") return rail("files");
     if (at === "memory") return rail("memory");
     return chats;
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a template"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}</> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a template"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${wide && (at === "overview") ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />
@@ -77,6 +86,18 @@ export default function ProjectScreen() {
             </>
           )}
         {sheets}
+        <Sheet open={renaming !== null} onClose={() => setRenaming(null)} title="Rename project">
+          <View className="gap-s3">
+            <Field name="Project name" value={renaming ?? ""} onChangeText={setRenaming} />
+            <View className="self-start"><Button kind="primary" size="sm" label="Save" disabled={!renaming?.trim()} onPress={async () => { const name = (renaming ?? "").trim(); setRenaming(null); const r = await callT("projects.rename", { project: slug, name }); if (r.error) showToast(r.error.message || "That did not go through."); else { showToast("Renamed."); q.reload(); } }} /></View>
+          </View>
+        </Sheet>
+        <Sheet open={archiving} onClose={() => setArchiving(false)} title="Archive this project?">
+          <View className="gap-s3">
+            <Text tone="muted">It leaves the project list. Its folder, chats, team and history stay as they are, and you can bring it back.</Text>
+            <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Archive" onPress={async () => { setArchiving(false); const r = await callT("projects.archive", { project: slug, archived: true }); if (r.error) showToast(r.error.message || "That did not go through."); else { showToast("Archived."); back(); } }} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setArchiving(false)} /></View>
+          </View>
+        </Sheet>
       </ScrollView>
     </View>
   );

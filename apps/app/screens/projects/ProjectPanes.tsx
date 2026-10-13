@@ -6,7 +6,6 @@ import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
-import { showingJoined } from "../../src/real/team-join";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { treeOf, type Body } from "../templates/model";
 import { ChatsList } from "../chats/ChatsList";
@@ -40,15 +39,8 @@ export function FilesPane({ id }: { id: string }) {
   const fileTag = usePlaceText("showing");
   const router = useRouter();
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
-  // a member of a joined team lists the project's files through the team's door (files.list: the owner's and team's only); her own Drive screens are her home's
-  useEffect(() => {
-    void showingJoined().catch(() => false).then(async (joined) => {
-      if (!joined) return spaceList(undefined, `Projects/${id}/files`).then((r) => r.entries);
-      const r = await callT<{ files?: { name: string }[] }>("files.list", { project: id });
-      if (r.error) throw new Error(r.error.message);
-      return (r.data?.files ?? []).map((f) => ({ name: f.name, path: `Projects/${id}/files/${f.name}` }));
-    }).then(setRows).catch(() => setRows([]));
-  }, [id]);
+  // The Files screen's own door (files.drive.space.list); files.list is not a tool any module registers.
+  useEffect(() => { void spaceList(undefined, `Projects/${id}/files`).then((r) => setRows(r.entries.filter((e) => e.path && (allowsMock() || String(e.path).startsWith(`Projects/${id}/files/`))))).catch(() => setRows([])); }, [id]);
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">

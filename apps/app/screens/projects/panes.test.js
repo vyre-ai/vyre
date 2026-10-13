@@ -67,8 +67,8 @@ test("on a wide window the page a template chose leads the panes, and the others
 
 test("the redone project page: the rail's sections, the phone's tabs, and a project with no short name still has a reference", async () => {
   const { railFor, pageTabs, refOf } = await import("./panes.ts");
-  assert.deepEqual(railFor(free), ["instructions", "context", "files", "memory"]);
-  assert.deepEqual(railFor(tpl), ["stages", "instructions", "context", "files", "memory"]);
+  assert.deepEqual(railFor(free), ["instructions", "context", "files", "memory", "access"]);
+  assert.deepEqual(railFor(tpl), ["stages", "instructions", "context", "files", "memory", "access"]);
   assert.deepEqual(pageTabs().map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
   assert.equal(refOf("northwind", "rec-1"), "northwind");
   assert.equal(refOf("", "rec-1"), "rec-1", "no short name: the record id is the reference");
