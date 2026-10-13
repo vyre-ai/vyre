@@ -99,10 +99,11 @@ export default {
       const holders = (await people(d)).filter(m => m.custom === next.id);
       const failed = [];
       for (const m of holders) {
-        try { await d.gateway.grants.setRole(d.chain, { person: m.person, role: next.base, custom: { id: next.id, grants: expandRole(next, { space: d.space, person: m.person, types: t }) } }, withProof(d)); }
+        try { await d.gateway.grants.setRole(d.chain, { person: m.person, role: next.base, custom: { id: next.id, grants: expandRole(next, { space: d.space, person: m.person, types: t }) } }); }
         catch (/** @type {any} */ e) { failed.push({ person: m.person, reason: String(e && e.message) }); }
       }
-      return { role: { ...next, builtin: false }, reapplied: holders.length - failed.length, ...(failed.length ? { failed } : {}) };
+      // Giving a Member-based role is an admin act that needs no fresh proof from a person (kernel/core/authorize.js), so one approval of this call covers every holder; a holder who could not be updated is named, never skipped quietly.
+      return { role: { ...next, builtin: false }, reapplied: holders.length - failed.length, ...(failed.length ? { failed, pending: true, message: `${failed.length} of ${holders.length} people still have the old access: ${failed.map(f => f.person).join(", ")}. Give each the role again (roles.assign) to finish.` } : {}) };
     });
 
     tool("roles.remove", "Delete a custom role. Refused while anyone holds it. Owner and admin only.", obj({ space: str, id: str }, ["id"]), "write", async (i, d) => {

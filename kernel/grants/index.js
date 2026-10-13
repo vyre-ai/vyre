@@ -325,12 +325,7 @@ export function createGrantsStore(cfg) {
     return { op: role === "owner" ? "add" : "remove", person, by, role_was: was, role_is: role, space: cfg.space, ...(decision ? { decision: decision.decision || decision } : {}) };
   };
 
-  /** A custom role (core/roles) is Member narrowed: only Member as base, only actions Member holds, only a prefix inside this Space, only an expiry as a condition. */
-  const checkCustom = (/** @type {string} */ role, /** @type {any} */ cu) => {
-    // A custom role (core/roles) is the base role's grants narrowed: only Admin or Member as base, only actions that base holds, only a prefix inside this Space, only an expiry as a condition.
-    const badGrant = (/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS.member.includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || (x.resource.fields !== undefined && !(Array.isArray(x.resource.fields) && x.resource.fields.every((/** @type {any} */ f) => typeof f === "string" && f))) || (x.resource.where !== undefined && !(Array.isArray(x.resource.where) && x.resource.where.every((/** @type {any} */ w) => w && ["project", "created_by", "owner", "sensitivity"].includes(w.attr) && ["eq", "ne", "in"].includes(w.op) && w.value !== undefined))) || Object.keys(x.conditions || {}).some(k => k !== "when") || (x.conditions?.when !== undefined && !(Number.isFinite(x.conditions.when.expires) && x.conditions.when.expires > clock() && Object.keys(x.conditions.when).length === 1));
-    if (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || role !== "member" || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some(badGrant)) throw new KernelError("not_allowed", "a custom role starts from Member and holds only what Member holds, inside this Space")
-  };
+  const checkCustom = (/** @type {string} */ role, /** @type {any} */ cu) => { const badGrant = (/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS.member.includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || (x.resource.fields !== undefined && !(Array.isArray(x.resource.fields) && x.resource.fields.every((/** @type {any} */ f) => typeof f === "string" && f))) || (x.resource.where !== undefined && !(Array.isArray(x.resource.where) && x.resource.where.every((/** @type {any} */ w) => w && ["project", "created_by", "owner", "sensitivity"].includes(w.attr) && ["eq", "ne", "in"].includes(w.op) && w.value !== undefined))) || Object.keys(x.conditions || {}).some(k => k !== "when") || (x.conditions?.when !== undefined && !(Number.isFinite(x.conditions.when.expires) && x.conditions.when.expires > clock() && Object.keys(x.conditions.when).length === 1)); if (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || role !== "member" || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some(badGrant)) throw new KernelError("not_allowed", "a custom role starts from Member and holds only what Member holds, inside this Space") };
   /** Apply a role to a person (the shared step of `setRole` and an accepted invite): checks the issuer's CURRENT authority over both roles, replaces the role's grants, records the membership. */
   async function applyRole(/** @type {any} */ chain, /** @type {any} */ issuer, /** @type {any} */ m, /** @type {any} */ decision) {
     const d = { decision };
@@ -339,8 +334,7 @@ export function createGrantsStore(cfg) {
     const prior = memberships.get(m.person);
     if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
     if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
-    const cu = m.custom;
-    if (cu) checkCustom(m.role, cu);
+    const cu = m.custom; if (cu) checkCustom(m.role, cu);
     const actor = { kind: "person", id: m.person, space: cfg.space };
     // The last owner stays: the Space is never left without one.
     if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
@@ -729,8 +723,7 @@ export function createGrantsStore(cfg) {
     async inviteCreate(chain, i, o = {}) {
       const issuer = person(chain);
       if (!i || !ROLE_IDS.includes(i.role)) throw new KernelError("bad_input", "an invite names one of the five roles");
-      if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
-      if (i.custom) checkCustom(i.role, i.custom);
+      if (i.custom) checkCustom(i.role, i.custom); if (i.role === "temp" && (!Array.isArray(i.scope) || !i.scope.length || i.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(i.expires > clock()))) throw new KernelError("bad_input", "a temp invite needs a scope and an expiry");
       if (i.invitee !== undefined && (typeof i.invitee !== "string" || !i.invitee)) throw new KernelError("bad_input", "invitee is a person id");
       const d = await gate(chain, "grants.invite", urn("invite"), i, o.presence);
       const mine = roleOf(issuer);

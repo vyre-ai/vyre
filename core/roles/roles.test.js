@@ -129,3 +129,19 @@ test("an invite into a role that does not exist or was removed is refused in wor
   const { k, o } = await rig();
   await assert.rejects(() => customForInvite(k.gateway, o, SPACE, "ghost"), { code: "not_found", message: /no role "ghost".*roles\.list/ });
 });
+
+test("roles.update reapplies to every holder under one call: three holders all get the new grants, none stay on the old", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const { call } = await import("../daemon/client.js");
+  const ok = async (tool, input) => { const r = await call(tool, input, { root, caller: "cli" }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
+  await ok("roles.create", { role: role({ label: "Trio" }) });
+  for (const p of [BOB, ADA, "per_cat"]) await ok("roles.assign", { person: p, role: "trio" });
+  const upd = await ok("roles.update", { id: "trio", role: { can: ["view"] } });
+  assert.equal(upd.reapplied, 3);
+  assert.equal(upd.failed, undefined, "nobody left on the old access");
+  assert.equal(upd.pending, undefined);
+  assert.equal((await ok("roles.list", {})).roles.find(x => x.id === "trio").people, 3);
+});
