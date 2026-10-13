@@ -823,7 +823,7 @@ test("who reads a task: only the chain's PERSON counts, never a later hop; an as
 
 
 // ---- an agent as checker (rc1-d, 13 Oct) ----
-const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, record: `vyre://${SPACE}/matter/m1`, ...over });
+const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, ...over });
 
 test("agent checker: it passes the internal check under its own chain, and the card says an agent approved", async () => {
   const r = rig();
