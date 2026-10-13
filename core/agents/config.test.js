@@ -37,7 +37,8 @@ test("AGENTS.md is the agent's only instructions file (a version); CLAUDE.md can
 test("notes an older build kept in CLAUDE.md are appended once into AGENTS.md on the next write, and the folder keeps only a pointer", async t => {
   const { c, root } = await boot(t);
   await c("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "Draft intake." });
-  const a = /** @type {any} */ ((await c("agents.list", {})).data.agents.find((/** @type {any} */ x) => x.name === "intake"));
+  const listed = (await c("agents.list", {})).data;
+  const a = /** @type {any} */ ((Array.isArray(listed) ? listed : listed.agents).find((/** @type {any} */ x) => x.name === "intake"));
   const kept = path.join(root, agentPart(String(a.uid), "instructions"), "CLAUDE.md");
   fs.mkdirSync(path.dirname(kept), { recursive: true });
   fs.writeFileSync(kept, "Use plain words.\n");
