@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): the onboarding Invite step checks an admin invite's four words against the space's own before it confirms (checkInviteWordsFor, as Settings' invite does), which also fixes the typecheck after confirmTeamInviteWords took the space's name.
 - fix(app): every web build was blank (the splash stayed up, then nothing). pdf.js, which the file viewer's react-pdf brings in, has a Node-only code path that reads `import.meta.url`, and a classic web script cannot parse it, so the whole bundle stopped. The web build now resolves pdf.js to a copy with that expression replaced (metro.config.js, generated/ is ignored). The setup gate no longer keeps its cover up when the pairing check fails or stalls (after 4 s the person goes to setup), and a mock build is the sample world, already set up: it opens at /u/now, with /onboard reachable by its address.
 - fix(import,mcpconn): two refusals name a next step in plain words instead of a renamed tool (no such project: make the project first; no such key: open Settings > Your AI keys or run vyre mcp list). errors-teach no longer lists core/import or core/mcpconn.
 - fix(agents): the refusals in core/agents/config.js each say what to do next (errors-teach): a missing context file points at `agents.context.list`, a project the person cannot read says to ask its owner, a built-in agent says which tools to use on an agent they made.
