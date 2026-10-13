@@ -144,6 +144,23 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   assert.match(said, /pineapple/i, "the computer's Claude knows the fact told before the trip");
   assert.match(said, /teal/i, "and the one told on the server");
 
+  // The teammate's turn runs only on the teammate's OWN sign-in, never on the home's (0.5: a member with none is refused, account_required). So she signs in as her own: the same token, in an item of its own
+  // (carol-claude-token, not the owner's claude-setup-token), granted to threads, named by a Claude account that serves her person alone. A member's key account has no tool yet (sessions.accounts.add gives a member a login only,
+  // and her own vault is not read by sessions), so the row is written the way the Accounts store writes it, with her person on it.
+  const refusedFirst = await d.registry.call("threads.send", { thread: th.id, text: "hello", surface: "deck", chat: chatRow.id, asker: CAROL_ID }, "module:stream");
+  say(`4a. before she signs in, her message is refused: ${refusedFirst.error ? refusedFirst.error.code : "NOT REFUSED"}`);
+  assert.equal(refusedFirst.error && refusedFirst.error.code, "account_required", "a member with no sign-in of her own runs nothing on the home's");
+  { const put = await d.registry.call("vault.put", { name: "carol-claude-token", kind: "secret", description: "the teammate's own Claude sign-in (the walk's stand-in for her own account)", value: TOKEN }, "cli"); assert.ok(!put.error, JSON.stringify(put.error));
+    const grant = await d.registry.call("vault.grant", { name: "carol-claude-token", module: "threads" }, "cli"); assert.ok(!grant.error, JSON.stringify(grant.error)); }
+  { const now = Date.now();
+    /** @type {any} */ (d.registry.deps).db.prepare("INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, signed_in_at, added, updated, pending, person) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("carolown0001", "claude", "Carol's own Claude", "setup-token", "carol-claude-token", JSON.stringify("*"), JSON.stringify("*"), 1, 39999, now, now, now, 0, CAROL_ID); }
+  { const hers = /** @type {any} */ ((await d.registry.call("sessions.accounts.resolve", { provider: "claude", person: CAROL_ID }, "module:vyred")).data);
+    say(`4b. the account her turn will use: ${hers && hers.label}, vault item ${hers && hers.vault_item}`);
+    assert.ok(hers && hers.id === "carolown0001" && hers.vault_item === "carol-claude-token" && hers.person === CAROL_ID, "her own account serves her");
+    assert.notEqual(hers.vault_item, acct && acct.vault_item, "not the home's sign-in");
+    const owners = /** @type {any} */ ((await d.registry.call("sessions.accounts.resolve", { provider: "claude", person: ownerId }, "module:vyred")).data);
+    assert.equal(owners && owners.vault_item, "claude-setup-token", "and the owner's stays the owner's"); }
   say("4. a teammate writes in the same chat: her turn never runs on the owner's computer; the server takes the chat back and answers");
   const other = await turn("the teammate's turn", () => asPerson(CAROL_ID, "threads.send", { thread: th.id, text: "I am a teammate. What word did the owner ask you to remember? Reply with only the word." }));
   say(`   where it runs now: ${where()}; the teammate's answer: ${JSON.stringify(other)}`);
