@@ -81,7 +81,7 @@ export function updatesOf(rows: KitRow[], lib: LibraryKit[]): Record<string, num
   return out;
 }
 
-const KIND_WORD: Record<string, string> = { type: "Object", flow: "Flow", template: "Playbook", role: "Role", teammate: "Assistant", view: "View" };
+const KIND_WORD: Record<string, string> = { type: "Object", flow: "Flow", template: "Playbook", role: "Role", teammate: "Agent", view: "View" };
 const partText = (p: Part): string => `${KIND_WORD[p.kind] ?? p.kind} ${p.name}`;
 
 /** The diff as lines for the diff block: a plus for a part added, a minus for one removed, a plain line for one changed. */

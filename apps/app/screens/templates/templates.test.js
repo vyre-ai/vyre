@@ -53,7 +53,7 @@ test("a project is started under a name, and the page opens by the id the box an
 test("starting a project says where the tasks are, or which could not be made and why", () => {
   assert.equal(startWords("Rivera", { tasks_made: 2 }), "Rivera is started. Its first tasks are in Now.");
   assert.equal(startWords("Rivera", { tasks_made: 0, tasks_skipped: [{ task: "Gather", why: "research is not in this space yet" }, { task: "Check", why: "research is not in this space yet" }] }),
-    "Rivera is started, but 2 of its first tasks could not be made: research is not in this space yet. Add the assistant in Settings, Assistants, and start again.");
+    "Rivera is started, but 2 of its first tasks could not be made: research is not in this space yet. Add the agent in Settings, Agents, and start again.");
   assert.match(startWords("Rivera", { tasks_made: 1, tasks_skipped: [{ task: "Check", why: "drafting is not in this space yet" }] }), /1 of its first tasks could not be made: drafting is not in this space yet\. The others are in Now\./);
 });
 

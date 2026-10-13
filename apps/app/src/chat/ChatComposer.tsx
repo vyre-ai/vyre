@@ -83,10 +83,10 @@ const POP_ID = "composer-pop";
 function nestIcon(r: NestRow): IconName {
   if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
   const k = (r.pick as { kind?: string } | undefined)?.kind;
-  return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
+  return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" || k === "linked" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
 }
 /** What a token in the words shows: @ a person, # by what was picked. */
-const tokenIcon = (lead: "@" | "#", kind?: string): IconName => (lead === "@" ? "mention" : kind === "collection" ? "records" : kind === "project" ? "projects" : kind === "file" ? "file" : "hash");
+const tokenIcon = (lead: "@" | "#", kind?: string): IconName => (lead === "@" ? "mention" : kind === "collection" ? "records" : kind === "project" ? "projects" : kind === "file" || kind === "linked" ? "file" : "hash");
 type Pop = null | "plus" | "files" | "vyrefiles" | "answering" | "model";
 /** An icon for a file by its name: a picture, sound, film or document. Pictures with a thumbnail show the thumbnail instead. */
 const fileIcon = (name: string): IconName => (/\.(png|jpe?g|gif|webp|heic|svg)$/i.test(name) ? "eye" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) ? "mic" : /\.(mp4|mov|webm|mkv)$/i.test(name) ? "play" : "file");

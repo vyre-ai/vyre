@@ -77,5 +77,5 @@ function tasksWords(name: string, r: { tasks_made?: number; tasks_skipped?: { ta
   if (!skipped.length) return `${name} is started. Its first tasks are in Now.`;
   const made = Number(r.tasks_made) || 0;
   const why = [...new Set(skipped.map((x) => x.why))].slice(0, 2).join("; ");
-  return `${name} is started, but ${skipped.length} of its first ${made + skipped.length === 1 ? "task" : "tasks"} could not be made: ${why}. ${made ? "The others are in Now." : "Add the assistant in Settings, Assistants, and start again."}`;
+  return `${name} is started, but ${skipped.length} of its first ${made + skipped.length === 1 ? "task" : "tasks"} could not be made: ${why}. ${made ? "The others are in Now." : "Add the agent in Settings, Agents, and start again."}`;
 }
