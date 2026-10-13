@@ -106,7 +106,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"], mints: [{ prefix: "flow-act", actions: ["flows.act-standing"] }, { prefix: "flow", actions: ["flows.run", "flows.define"] }] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }, { prefix: "flow-act", actions: ["flows.act-standing"] }, { prefix: "flow", actions: ["flows.run", "flows.define"] }] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
@@ -408,7 +408,14 @@ export function createFlowsHost(o) {
     // The agent's own flag on a task whose job failed: the chain the kernel takes for the doer (the assigner first, then the agent), built here by the kernel's own builder, for that one act.
     const agentChain = (/** @type {any} */ t) => k.chains.fromFacts({ kind: "agent_session", agent: String(t.doer.id), session: "agent-wake", thread: "agent-wake", person: t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : ownerOf(), vouched: true });
     if (typeof o.callModule === "function") {
-      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
+      const lendSource = (/** @type {string} */ id) => `flows:task:${id}`;
+      // The agent gets tasks.read and tasks.work on this one task (a grant the Flows service makes, which the kernel limits to the task address and these two actions), ending with the task or in a day.
+      const lend = async (/** @type {any} */ t) => {
+        if ((await sh.mint.list({ source: lendSource(t.id) })).some((/** @type {any} */ g) => g.subject && g.subject.actor && g.subject.actor.id === t.doer.id)) return;
+        await sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(t.doer.id), space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 } }, source: lendSource(t.id), reason: "the agent was given this task" });
+      };
+      const reclaim = (/** @type {string} */ id) => sh.mint.end({ source: lendSource(id), reason: "the task is over" });
+      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
       k.log.subscribe("agent-wake", {}, wakeUp);
       // A job that ends with its task still open is not left in silence (core/daemon/agent-wake.js).
       if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });
