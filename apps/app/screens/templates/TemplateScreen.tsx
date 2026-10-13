@@ -97,7 +97,7 @@ export default function TemplateScreen() {
   const panel = draft && selected ? <TaskPanel body={draft} si={selected.si} ti={selected.ti} onChange={setDraft} onClose={() => setSelected(null)} people={people} agents={agents} /> : null;
   return (
     <Frame back={playbookPath()} title={title} sub={cur ? `${draft?.noun ? `Its projects are called ${draft.noun.many}. ` : ""}${stateWord(cur.state)}, version ${cur.version}` : undefined}
-      actions={cur ? <>
+      actions={cur && !phone ? <>
         <View className="flex-row items-center gap-s2"><Switch on={test !== null || testing} onChange={(v: boolean) => void doTest(v)} label="Test mode" /><Text size="caption" tone="muted">Test mode</Text></View>
         {mayMake ? <Button kind="ghost" size="sm" label="Improve with the Engineer" onPress={() => setDescribing(true)} /> : null}
         {live ? <Button kind="primary" size="sm" label={`Start a ${noun.toLowerCase()}`} onPress={() => setStartOpen(true)} /> : null}
@@ -105,6 +105,7 @@ export default function TemplateScreen() {
       {err ? <Card flush><ErrorState title="That playbook did not load" reason={err} retry={load} /></Card> : null}
       {!cur && !err ? <LoadingState rows={4} /> : null}
       {versions && versions.length > 1 ? <View className="flex-row flex-wrap gap-s2">{versions.map((v) => <Button key={v.version} kind={v.version === pick ? "primary" : "ghost"} size="sm" label={`v${v.version} ${stateWord(v.state)}`} onPress={() => setPick(v.version)} />)}</View> : null}
+      {cur && phone ? <View className="gap-s2">        <View className="flex-row items-center gap-s2"><Switch on={test !== null || testing} onChange={(v: boolean) => void doTest(v)} label="Test mode" /><Text size="caption" tone="muted">Test mode</Text></View>        {mayMake ? <Button kind="ghost" size="sm" label="Improve with the Engineer" onPress={() => setDescribing(true)} /> : null}        {live ? <Button kind="primary" size="sm" label={`Start a ${noun.toLowerCase()}`} onPress={() => setStartOpen(true)} /> : null}      </View> : null}
       {cur && draft ? (
         <>
           {compose ? (
