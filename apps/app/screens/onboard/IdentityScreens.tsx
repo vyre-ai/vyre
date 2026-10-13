@@ -1,16 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner, Button, ChoiceList, CodeDisplay, CodeField, Field, FlowStep, MatchWords, Stack, Switch, Text, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
-import { DEMO, SIGNIN_WORDS } from "./flow-model.js";
+import { DEMO, SIGNIN_WORDS, afterGithub, nameFromLogin } from "./flow-model.js";
+import { enterWithGithub, signInWithGithub } from "./real-github";
 import { claimNewName, dropKit, holdKit, kitText, nameExists, nameState, readKit, recoverWithKit, requestSignIn, saveKit } from "./real-identity";
 import type { ScreenProps } from "./types";
 
 const HINT = "Prototype hint";
 
-export function IdChoice({ go, back, steps }: ScreenProps) {
+export function IdChoice({ set, go, back, steps }: ScreenProps) {
   const [pick, setPick] = useState<"signin" | "new" | "">("");
+  const [busy, setBusy] = useState(false);
+  const [say, setSay] = useState("");
+  // GitHub fills in the name and picture. A person already linked goes on to the master password; a new one picks a name.
+  const github = async () => {
+    setBusy(true); setSay("");
+    const r = await signInWithGithub({ signin: pick === "signin" });
+    if (!r.ok) { setBusy(false); setSay(r.say); return; }
+    const u = r.user;
+    set({ github: u, githubSession: r.session, avatar: u.avatarUrl, name: u.linkedName || nameFromLogin(u.login) });
+    // A name already linked to this GitHub account: this device is added to it, then the master password opens the vault.
+    if (u.linkedName) {
+      const e = await enterWithGithub(r.session, u.linkedName);
+      setBusy(false);
+      if (!e.ok) { setSay(e.say); return; }
+      set({ githubSession: null });
+    } else setBusy(false);
+    go(afterGithub(u));
+  };
   return (
-    <FlowStep hero mark="intro" steps={steps} onBack={back} title="Sign in to Vyre" lead="Your name is how Vyre knows you on every device." primary={{ label: "Continue", disabled: !pick, onPress: () => go(pick === "signin" ? "id.signin" : "id.new") }}>
+    <FlowStep hero mark="intro" steps={steps} onBack={back} title="Sign in to Vyre" lead="Your name is how Vyre knows you on every device." failure={say || undefined}
+      secondary={{ label: "Continue with GitHub", loading: busy, disabled: busy, onPress: () => { void github(); } }}
+      primary={{ label: "Continue", disabled: !pick, onPress: () => go(pick === "signin" ? "id.signin" : "id.new") }}>
       <ChoiceList label="Sign in or start" value={pick || undefined} onChange={setPick} options={[
         { value: "signin", title: "I already have a name", sub: "Sign in on this device. You approve it from a device you already use.", icon: "person" },
         { value: "new", title: "I am new to Vyre", sub: "Pick a name and save your recovery kit.", icon: "plus" },
