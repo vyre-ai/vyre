@@ -125,3 +125,30 @@ export function removeToken(text, lead, name) {
   const end = start + m[2].length;
   return text.slice(0, start) + text.slice(text[end] === " " ? end + 1 : end);
 }
+
+/** The next row (after `current`, wrapping) whose label starts with what was typed; -1 when none. A longer word searches from the current row. @param {readonly string[]} labels @param {number} current @param {string} typed */
+export function jumpIndex(labels, current, typed) {
+  const q = typed.toLowerCase();
+  if (!q) return -1;
+  const n = labels.length;
+  for (let k = q.length > 1 ? 0 : 1; k <= n; k++) {
+    const i = (((current + k) % n) + n) % n;
+    if (labels[i].toLowerCase().startsWith(q)) return i;
+  }
+  return -1;
+}
+
+/** The row a navigation key lands on in a list of `count` rows, or -1 when the key is not one. @param {number} current @param {number} count @param {string} key */
+export function stepFocus(current, count, key) {
+  if (!count) return -1;
+  if (key === "ArrowDown") return (current + 1) % count;
+  if (key === "ArrowUp") return (current - 1 + count) % count;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return -1;
+}
+
+/** Moving a chat to a project: the one to add it to (null when it is already there or none) and the ones to take it out of. `to` null is "remove from project". @param {readonly string[]} current @param {string | null} to */
+export function moveProject(current, to) {
+  return { add: to && !current.includes(to) ? to : null, remove: current.filter((c) => c !== to) };
+}

@@ -42,6 +42,8 @@ export type ComposerProps = {
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
+  /** A command the screen answers itself (/move opens the chat panel on its project page): true when it did, and nothing is sent. */
+  onLocalCommand?: (name: string) => boolean;
   onAttachFile?: () => void;
   /** Files in the Vyre space the person can attach by picking from a list (the structured Files layout); with `onAttachVyreFile` this makes "From Vyre Files". */
   vyreFiles?: readonly { id: string; name: string; path: string }[];
@@ -189,6 +191,7 @@ export function ChatComposer(p: ComposerProps) {
 
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
+    if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
     if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
     const r = pick(text, trig, o.pick);
     setText(r.text);
@@ -200,6 +203,8 @@ export function ChatComposer(p: ComposerProps) {
   const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
     if (!t && !files) return;
+    const typed = /^\/(\w+)\s*$/.exec(t);
+    if (typed && !files && p.onLocalCommand?.(typed[1])) { setText(""); setCaret(0); return; }
     const people = p.people ?? [];
     // A chosen set of AIs goes by name; Everyone is all the chat's assistants. Anything @mentioned still adds its own.
     const chosen = answering.length ? slots.filter((s) => answering.includes(s.id)).map((s) => people.find((x) => x.family === "assistant" && x.name.toLowerCase() === s.label.toLowerCase())?.name ?? s.label) : [];

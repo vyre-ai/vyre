@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterItems, moveActive, pickerKey, deleteTokenBack, scrollTopFor, composerShortcut, tokensIn, removeToken, toggleAnswering, answeringSummary } from "./picker-model.js";
+import { filterItems, moveActive, pickerKey, deleteTokenBack, scrollTopFor, composerShortcut, tokensIn, removeToken, jumpIndex, stepFocus, moveProject, toggleAnswering, answeringSummary } from "./picker-model.js";
 
 const items = [{ id: 1, label: "Dana Wine" }, { id: 2, label: "Anna" }, { id: 3, label: "Claude" }, { id: 4, label: "Wine list" }];
 
@@ -110,4 +110,29 @@ test("a name with a space is written in quotes and the token model follows it", 
   assert.deepEqual(deleteTokenBack('hi #"Q3 intake" ', 16, ["Q3 intake"]), { text: "hi ", caret: 3 });
   assert.deepEqual(tokensIn('see #"Q3 intake" now', ["Q3 intake"]), [{ lead: "#", name: "Q3 intake" }]);
   assert.equal(removeToken('see #"Q3 intake" now', "#", "Q3 intake"), "see now");
+});
+
+test("jumpIndex finds the next row that starts with what was typed", () => {
+  const labels = ["Fork this chat", "Effort", "Files", "Mode", "Mute"];
+  assert.equal(jumpIndex(labels, 0, "f"), 2);
+  assert.equal(jumpIndex(labels, 2, "f"), 0);
+  assert.equal(jumpIndex(labels, 0, "mu"), 4);
+  assert.equal(jumpIndex(labels, 3, "m"), 4);
+  assert.equal(jumpIndex(labels, 0, "zz"), -1);
+});
+
+test("stepFocus moves one row and wraps; Home and End go to the ends", () => {
+  assert.equal(stepFocus(0, 5, "ArrowUp"), 4);
+  assert.equal(stepFocus(4, 5, "ArrowDown"), 0);
+  assert.equal(stepFocus(2, 5, "Home"), 0);
+  assert.equal(stepFocus(2, 5, "End"), 4);
+  assert.equal(stepFocus(2, 5, "x"), -1);
+  assert.equal(stepFocus(0, 0, "ArrowDown"), -1);
+});
+
+test("moveProject says what to add and remove to move a thread", () => {
+  assert.deepEqual(moveProject(["a"], "b"), { add: "b", remove: ["a"] });
+  assert.deepEqual(moveProject(["a", "b"], "b"), { add: null, remove: ["a"] });
+  assert.deepEqual(moveProject([], "b"), { add: "b", remove: [] });
+  assert.deepEqual(moveProject(["a"], null), { add: null, remove: ["a"] });
 });
