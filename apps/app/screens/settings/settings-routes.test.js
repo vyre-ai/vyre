@@ -59,7 +59,7 @@ test("every entry in the Settings panel opens a screen that exists, and has a pl
 test("every Settings row says in one line what it is", () => {
   for (const g of settingsGroups("Space")) for (const r of g.rows) {
     assert.ok(r[1] && r[1].length > 12, `${r[0]} has no description`);
-    assert.ok(!/[—§]/.test(r[1]), `${r[0]} uses a banned character`);
+    assert.ok(!/[\u2014\u00a7]/.test(r[1]), `${r[0]} uses a banned character`);
   }
 });
 
