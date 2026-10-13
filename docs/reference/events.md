@@ -562,7 +562,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | --- | --- |
 | `device.joined` | not found in the source (the type is built at run time) |
 | `device.moved` | `id`, `path`; sometimes `rtt` |
-| `device.paired` | `fingerprint`, `id`, `kind`, `name`, `via`; sometimes `build`, `gate`, `release` |
+| `device.paired` | `id`, `kind`, `name`, `via`; sometimes `build`, `fingerprint`, `gate`, `release` |
 | `device.removed` | `id`, `why` |
 | `device.renamed` | `id`, `kind`, `name` |
 | `device.trust-asked` | `fingerprint`, `id`, `name` |

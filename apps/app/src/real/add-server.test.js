@@ -30,13 +30,12 @@ function fakes({ after = 1, contested = false, words = ["lantern", "quiet", "riv
 const make = (f, extra = {}) => createAddServer({ client: f.client, relay: "ws://x", identity: async () => ({ id: "per_abc" }), connect: f.connect, pair: async qr => { f.calls.paired.push(qr); }, sleep: () => new Promise(r => setTimeout(r, 2)), pollMs: 2, ...extra });
 
 test("the two choices: Records first and the default, then the small server; the line carries the code and the choice, the variables on sh", () => {
-  assert.deepEqual(CHOICES.map(c => [c.id, c.label, c.store]), [["records", "With Records (recommended)", "auto"], ["plain", "Without Records", "sqlite"]]);
+  assert.deepEqual(CHOICES.map(c => [c.id, c.label, c.store]), [["records", "With Records (recommended)", "auto"]]);
   assert.equal(DEFAULT_CHOICE, "records");
   assert.match(CHOICES[0].note, /8 GB.*4 GB/);
-  assert.match(CHOICES[1].note, /2 GB/);
   assert.equal(installLine("0.3.0", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`);
-  assert.equal(installLine("0.3.0", { code: CODE, store: "sqlite" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=sqlite sh`);
-  assert.equal(installLine("0.3.0", { code: CODE, store: "anything-else" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "only the two values ever reach the line");
+  assert.equal(installLine("0.3.0", { code: CODE, store: "sqlite" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "the app never asks for the small built-in store");
+  assert.equal(installLine("0.3.0", { code: CODE, store: "anything-else" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "only auto ever reaches the line");
   assert.equal(installLine("0.3.0-rc.1", { code: CODE, store: "auto" }), `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/ VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a release candidate's own script");
   assert.equal(installLine("1.0.0; rm -rf /", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a version that is not one is ignored");
   assert.equal(choiceOf("nope").id, "records");
@@ -48,17 +47,15 @@ test("memory: said plainly when the server cannot run the choice, and nothing wh
   assert.equal(memoryNote("records", 7900), null);
   assert.equal(memoryNote("records", 3900), null, "4 GB is the least");
   assert.match(String(memoryNote("records", 2000)), /start without Records.*Settings/);
-  assert.equal(memoryNote("plain", 1990), null);
-  assert.match(String(memoryNote("plain", 900)), /2 GB/);
   assert.equal(memoryNote("records", NaN), null);
 });
 
 test("add-server: the line is shown first, the offer is found without copying anything back, and NOTHING opens until the words are confirmed", async () => {
   const f = fakes({ after: 3, lines: ["[1/4] Checking Docker"] });
   const a = make(f);
-  await a.begin("plain");
+  await a.begin();
   assert.equal(a.state.stage, "install");
-  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "sqlite" }));
+  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "auto" }));
   await until(() => a.state.stage === "found");
   assert.deepEqual(a.state.box && a.state.box.words, ["lantern", "quiet", "river", "oak"]);
   assert.equal(a.state.box && a.state.box.name, "harlow-server");
@@ -133,9 +130,9 @@ test("add-server: starting again drops the old run (its offer and its lines neve
   const f = fakes({ after: 2 });
   const a = make(f);
   await a.begin();
-  await a.begin("plain");
+  await a.begin();
   await until(() => a.state.stage === "found");
-  assert.equal(a.state.choice, "plain");
+  assert.equal(a.state.choice, "records");
   a.stop();
   assert.equal(a.state.stage, "idle");
 });
@@ -143,9 +140,9 @@ test("add-server: starting again drops the old run (its offer and its lines neve
 test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Records choice", async () => {
   const f = fakes({ after: 3, lines: [] });
   const a = make(f);
-  await a.begin("plain", "mac");
-  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "sqlite", os: "mac" }));
-  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=sqlite sh$/);
+  await a.begin("records", "mac");
+  assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "auto", os: "mac" }));
+  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
   a.stop();
 });
 

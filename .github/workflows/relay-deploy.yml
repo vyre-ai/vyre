@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "The stage commit to deploy (40 hex). It must be on work/stage-0.2."
+        description: "The stage commit to deploy (40 hex). It must be on work/stage-0.2, work/rc3/stage or main."
         required: true
         type: string
       relay:
@@ -46,6 +46,14 @@ on:
         description: "Also set the names Worker's runtime secrets CF_API_TOKEN and CF_ZONE_ID from the environment's NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID (first deploy only)"
         type: boolean
         default: false
+      github_secrets:
+        description: "Also set the relay's GitHub sign-in secrets GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET from the deploy environment secrets GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET (GitHub reserves the GITHUB_ prefix) (relay/worker/github.js)"
+        type: boolean
+        default: false
+      escrow:
+        description: "Deploy escrow/worker (escrow.vyre.run) and set its ESCROW_RELAY_SECRET, ESCROW_KEK_<kid> and ESCROW_KEK_CURRENT, and the relay's ESCROW_RELAY_SECRET, from the deploy environment secrets ESCROW_RELAY_SECRET, ESCROW_KEK, ESCROW_KEK_ID. Never remove an old ESCROW_KEK_<kid> from the escrow Worker: there is no rewrap yet, and every bundle sealed under it would be lost"
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -75,8 +83,13 @@ jobs:
           SHA: ${{ inputs.sha }}
         run: |
           printf %s "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::sha must be 40 hex characters"; exit 1; }
-          git fetch -q origin work/stage-0.2
-          git merge-base --is-ancestor "$SHA" origin/work/stage-0.2 || { echo "::error::$SHA is not on work/stage-0.2"; exit 1; }
+          # on a stage (the old one, for old relays, or the current one) or on main; a branch that is none of them is refused
+          ok=0
+          for b in work/stage-0.2 work/rc3/stage main; do
+            git fetch -q origin "$b" 2>/dev/null || continue
+            if git merge-base --is-ancestor "$SHA" "origin/$b"; then ok=1; break; fi
+          done
+          [ "$ok" = 1 ] || { echo "::error::$SHA is not on work/stage-0.2, work/rc3/stage or main"; exit 1; }
           echo "deploying $(git rev-parse --short=12 HEAD): $(git log -1 --format=%s)"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -141,6 +154,40 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           "$W" deploy
+      - name: relay/worker GitHub sign-in secrets
+        if: ${{ inputs.relay && inputs.github_secrets }}
+        working-directory: relay/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: |
+          [ -n "$GITHUB_OAUTH_CLIENT_ID" ] && [ -n "$GITHUB_OAUTH_CLIENT_SECRET" ] || { echo "::error::GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET must be environment secrets"; exit 1; }
+          printf %s "$GITHUB_OAUTH_CLIENT_ID" | "$W" secret put GITHUB_OAUTH_CLIENT_ID
+          printf %s "$GITHUB_OAUTH_CLIENT_SECRET" | "$W" secret put GITHUB_OAUTH_CLIENT_SECRET
+      - name: escrow/worker
+        if: ${{ inputs.escrow }}
+        working-directory: escrow/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          "$W" deploy
+      - name: escrow/worker secrets, and the relay's shared secret
+        if: ${{ inputs.escrow }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ESCROW_RELAY_SECRET: ${{ secrets.ESCROW_RELAY_SECRET }}
+          ESCROW_KEK: ${{ secrets.ESCROW_KEK }}
+          ESCROW_KEK_ID: ${{ secrets.ESCROW_KEK_ID }}
+        run: |
+          [ "${#ESCROW_RELAY_SECRET}" -ge 32 ] || { echo "::error::ESCROW_RELAY_SECRET must be an environment secret of at least 32 characters"; exit 1; }
+          printf %s "$ESCROW_KEK" | grep -Eq '^[A-Za-z0-9_-]{43}$' || { echo "::error::ESCROW_KEK must be 32 random bytes as 43 base64url characters"; exit 1; }
+          printf %s "$ESCROW_KEK_ID" | grep -Eq '^[A-Za-z0-9]{1,16}$' || { echo "::error::ESCROW_KEK_ID must be 1 to 16 letters or digits (the key id)"; exit 1; }
+          (cd escrow/worker && printf %s "$ESCROW_RELAY_SECRET" | "$W" secret put ESCROW_RELAY_SECRET && printf %s "$ESCROW_KEK" | "$W" secret put "ESCROW_KEK_$ESCROW_KEK_ID" && printf %s "$ESCROW_KEK_ID" | "$W" secret put ESCROW_KEK_CURRENT)
+          (cd relay/worker && printf %s "$ESCROW_RELAY_SECRET" | "$W" secret put ESCROW_RELAY_SECRET)
       - name: names/worker
         if: ${{ inputs.names }}
         working-directory: names/worker

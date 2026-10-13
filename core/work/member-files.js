@@ -8,6 +8,7 @@
 //   - no versions, restore, links, shares, delete or move: a member on a team gets those later (team/BACKLOG.md rc.3).
 
 import { KernelError } from "../../kernel/core/errors.js";
+import { projectFiles, whereIs } from "../../lib/files/layout.js";
 
 // The door carries a request of at most 256 KB and an answer of at most 2 MB (kernel/remote/wire.js MAX_REQUEST_BYTES / MAX_RESPONSE_BYTES), and a file travels as base64 (a third larger): so what fits is 150 KB up and 1.4 MB down. A bigger file is not a member call yet (chunks: team/BACKLOG.md rc.3).
 export const MAX_BYTES = 150 * 1024;
@@ -36,7 +37,7 @@ export function createMemberFiles(o) {
     try { rec = await k.records.get(chain, "project", id); } catch { rec = null; }
     if (!rec) rec = ((await k.records.query(chain, "project", { filter: { field: "slug", op: "eq", value: id }, page: { limit: 1 } })).rows || [])[0] || null;
     if (!rec || !rec.data || typeof rec.data.drive_path !== "string" || !/^Projects\/[A-Za-z0-9_-]{1,64}$/.test(rec.data.drive_path)) throw new KernelError("not_found", "No project like that that you can open. Ask the project's owner to add you.");
-    return `${rec.data.drive_path}/files`;
+    return projectFiles(/** @type {any} */ (whereIs(rec.data.drive_path)).id);
   };
   const clean = (/** @type {string} */ call, /** @type {any} */ input) => {
     const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};

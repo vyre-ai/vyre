@@ -62,7 +62,7 @@ export default function TemplateScreen() {
       {cur && cur.state === "live" ? (
         <Sec title="Start a project"><View className="gap-s3">
           <Text tone="muted">Makes the project with its team and these stages, and puts the first stage's tasks in Now. Projects already running keep their own version.</Text>
-          <Field name="Project name" value={projectName} onChangeText={setProjectName} placeholder="Rivera Family Trust" />
+          <Field label="Project name" value={projectName} onChangeText={setProjectName} placeholder="Rivera Family Trust" />
           <View className="self-start"><Button kind="primary" size="sm" label={busy === "start" ? "Starting" : "Start project"} loading={busy === "start"} disabled={!projectName.trim()} onPress={() => void start()} /></View>
         </View></Sec>
       ) : null}

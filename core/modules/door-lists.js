@@ -12,7 +12,6 @@
 export const MEMBER_MAY = Object.freeze(new Set([
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
-  "computer.targets",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
@@ -30,6 +29,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "providers.list",
   "records.actors", "records.create", "records.events", "records.forget.propose", "records.get", "records.holders", "records.kits.get", "records.kits.library",
   "records.linked", "records.list", "records.me", "records.reference", "records.roles", "records.seal-put", "records.types", "records.update",
+  "roles.catalogue", "roles.get", "roles.list", "roles.tools",
   "rules.get", "rules.list", "rules.test",
   "runner.move",
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
@@ -47,7 +47,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
   "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
-  "work.know.suggestions", "work.link.suggest", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
+  "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
 ]));
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
@@ -73,7 +73,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
   "commands.list",
   "comms.send",
-  "computer.use",
+  "computer.targets", "computer.use",
   "computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
@@ -145,8 +145,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",
   "previews.signin", "previews.signin-done", "previews.signin-get", "previews.step", "previews.stop", "previews.thumb", "previews.url",
   "projects.access.check", "projects.access.grant", "projects.access.list", "projects.access.pending", "projects.access.restore", "projects.access.revoke",
-  "projects.add-threads", "projects.add-workspace", "projects.archive", "projects.catalog", "projects.context", "projects.create", "projects.history", "projects.of",
+  "projects.sync", "projects.add-threads", "projects.add-workspace", "projects.archive", "projects.catalog", "projects.context", "projects.create", "projects.history", "projects.of",
   "projects.remove-threads", "projects.rename", "projects.threads", "projects.watchers.add", "projects.watchers.remove",
+  "roles.assign", "roles.create", "roles.remove", "roles.update",
   "publish.approve", "publish.create", "publish.decide", "publish.domain.add", "publish.domain.remove", "publish.domain.verify", "publish.edge", "publish.edge.down",
   "publish.edge.up", "publish.flow", "publish.go", "publish.job.attention", "publish.job.run", "publish.job.runs", "publish.list", "publish.plan", "publish.preview",
   "publish.publish", "publish.quick", "publish.retire", "publish.rollback", "publish.secret.grant", "publish.secret.revoke", "publish.status",
@@ -257,3 +258,50 @@ export const PLUMBING = Object.freeze(new Set([
 export const MEMBER_OUTWARD = Object.freeze({});
 
 export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
+
+/**
+ * The tool groups a role can switch on (lib/roles/catalogue.js TOOL_IDS: mail, calendar, documents, files, publish, computers, browser). A group is a list of tool names, and every tool in one is on OWNER_ONLY:
+ * a Member does not have it, and a custom role that turns the group on gives its holders exactly these tools and nothing else. Only the tools a person USES are in a group; the set-up, admin and
+ * approval tools of the same areas (accounts and connections, domains, edge, secrets, limits, a member's computer, the owner's yes on a publish) stay the owner's and an admin's whatever a role says.
+ * Left out on purpose until each is scoped to the person: the planner's event tools (agenda, get, update, delete, done, snooze, dismiss, calendar.*), which show any person's events.
+ */
+export const TOOL_GROUPS = Object.freeze({
+  mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send"]),
+  calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "connectors.calendar.today"]),
+  documents: Object.freeze(["documents.generate", "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
+    "documents.signing.waiting", "documents.template.add", "documents.template.get", "documents.template.list"]),
+  files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
+    "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
+  publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),
+  computers: Object.freeze(["computer.targets", "computers.checkout", "computers.get", "computers.giveback", "computers.list", "computers.release", "computers.watch"]),
+  browser: Object.freeze(["chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type", "glass.close", "glass.open", "glass.release", "glass.take", "glass.targets",
+    "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree"]),
+});
+
+/**
+ * The groups a role can really turn on today: none. A group not here is accepted by the role record but ignored at the door, because its handlers do not yet keep a member to her own account or project:
+ * mail and calendar use the Space's connected Gmail and Google (the owner's), computers and browser drive a computer and browser signed in as the owner, and documents, files and publish act in the Space's
+ * drive and as the Space (only files.drive.space.* and the member door's project files are scoped to her, and they are already on her list). A group moves here when its handlers use the caller's own account or
+ * project and a test as a member proves it. (The daemon takes a test seam, `doorScopedGroups`, to prove the role path itself.)
+ */
+export const SCOPED_GROUPS = Object.freeze(/** @type {string[]} */ ([]));
+
+/** The group a tool belongs to, or undefined. */
+export const GROUP_OF = Object.freeze(new Map(Object.entries(TOOL_GROUPS).flatMap(([group, tools]) => tools.map(t => /** @type {[string, string]} */ ([t, group])))));
+
+/**
+ * What a Guest (kernel role `temp`: a contractor or helper) may call: a smaller list than a Member's, only what is shared with them. Every entry is on MEMBER_MAY (a test checks it), where the handler or the
+ * kernel judges her on her own chain. The sign-in and pairing steps are here, or a Guest could never sign in.
+ */
+export const GUEST_MAY = Object.freeze(new Set([
+  "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
+  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
+  "records.get", "records.list", "records.me", "records.types",
+  "roles.tools",
+  "spaces.list",
+  "stream.catchup", "stream.mark-read", "stream.open", "stream.react", "stream.read", "stream.send", "stream.typing",
+  "tasks.get", "tasks.list", "tasks.submit",
+  "threads.get", "threads.items", "threads.list",
+  "work.chat.get", "work.chat.list", "work.file.list",
+  "files.drive.space.list", "files.drive.space.read",
+]));
