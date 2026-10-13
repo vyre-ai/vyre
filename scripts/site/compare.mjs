@@ -171,7 +171,7 @@ const PAGES = [
     ],
     faq: [
       ['Does Vyre include its own model?', 'No. Vyre is free, and you pay your AI providers directly. It runs Claude, Codex, Grok and OpenRouter through your own subscriptions or keys.'],
-      ['Which model is proven in Vyre today?', 'Claude is the model Vyre has run end to end on real accounts. Codex, Grok and OpenRouter are supported through the same session layer.'],
+      ['Which AI accounts does Vyre work with?', 'The ones you add. Vyre works with Claude, Codex, Grok and others through your own sign-ins and keys, and one chat can hold more than one.'],
     ],
     connects: [['/architecture/', 'How an agent’s turn runs, and the door every call passes'], ['SESSIONS', 'Sessions and models, in the repository'], ['MCP', 'MCP and the Engineer, in the repository'], ['AGENTS', 'Agents, in the repository']],
   },
