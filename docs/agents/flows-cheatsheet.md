@@ -4,7 +4,7 @@ summary: The whole Flows language on one page, generated from the code: triggers
 audience: agents
 owner: docs
 status: stable
-tokens: 1950
+tokens: 2200
 when: You are about to write or change a Flow and need the exact keys, an example of each step, and the limits.
 ---
 
