@@ -17,6 +17,7 @@ export const PERSON_ONLY = new Map([
   ["spaces.storage.delete", "deletes from the person's own per-member storage: the person's own act (lead, 0.2.9)"],
   ["assistant.access.narrow", "turns tools or areas off for the person's own assistant: only the person narrows their assistant (G23, the owner's ruling); the assistant never limits or frees itself"],
   ["assistant.access.restore", "turns tools or areas back on for the person's own assistant: the person's own yes, never the assistant's (G23)"],
+  ["projects.sync", "hands every project's folders under /work to the project's own group on a team server: the owner's own act on a quiet box, and an assistant has no reason to resync project folders"],
   ["runner.places", "where the person's own chats run (the lent computer of each): the person's own view"],
   ["runner.placement", "where one of the person's own chats runs and why it moved: the person's own view"],
   ["runner.why-not", "why one of the person's own chats is not running on their computer: the person's own view"],
