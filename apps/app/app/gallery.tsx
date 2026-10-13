@@ -1,8 +1,9 @@
 // The living gallery: every block and a few whole screens, drawn from generated fixtures (apps/app/ui/blocks/fixtures.generated.json) with no box behind them. The picture tests
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
+import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, Markdown, MatchWords, PasswordField, ProviderRow, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -29,6 +30,12 @@ import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
+import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../screens/records-setup/SetupDemos";
+import { DRAFTS } from "../screens/records-setup/data";
+import { DocumentsBar } from "../screens/records/DocumentsBar";
+import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
+import { ChatComposer } from "../src/chat/ChatComposer";
+import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -77,6 +84,34 @@ function Sample({ name }: { name: string }) {
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
   }
+  if (name === "documents-bar") {
+    // The Documents tools answered from recorded shapes, so the bar is drawn with no box behind it.
+    setBoxOverride(async (tool) => {
+      if (tool === "documents.template.list") return { templates: [{ name: "Engagement letter" }, { name: "Trust summary" }] };
+      if (tool === "documents.template.get") return { name: "Engagement letter", version: 1, placeholders: ["contact.name", "contact.email", "firm.address", "date"], loops: [] };
+      if (tool === "documents.signing.waiting") return { requests: [{ submission: 41, signer: "Jane Doe", email: "jane.doe@example.com", template: "Engagement letter", at: Date.now() - 5 * 3600_000 }] };
+      return {};
+    });
+    return <DocumentsBar def={{ name: "contact", label: "Contact" }} rec={{ id: "1", urn: "vyre://s/contact/1" }} related={[{ urn: "vyre://s/project/9", type: "project" }]} email="jane.doe@example.com" canSend />;
+  }
+  if (name === "grouped-list") return <GroupedTasksDemo />;
+  if (name === "record-form") return <RecordFormDemo />;
+  if (name === "record-form-errors") return <RecordFormDemo tried values={{ title: "", kind: "Real estate" }} />;
+  if (name === "record-page") return <RecordPageDemo />;
+  if (name === "import-1") return <ImportDemo start={0} />;
+  if (name === "import-2") return <ImportDemo start={1} />;
+  if (name === "import-3") return <ImportDemo start={2} />;
+  if (name === "import-4") return <ImportDemo start={3} />;
+  if (name === "setup-model") return <ModelMapDemo />;
+  if (name === "setup-starter") return <StarterDemo />;
+  if (name === "setup-type") return <TypeSetupDemo />;
+  if (name === "setup-type-editing") return <TypeSetupDemo open="kind" />;
+  if (name === "setup-field-new") return <FieldPaneDemo draft={DRAFTS.blank} />;
+  if (name === "setup-field-choice") return <FieldPaneDemo draft={DRAFTS.kind} />;
+  if (name === "setup-field-link") return <FieldPaneDemo draft={DRAFTS.client} />;
+  if (name === "setup-field-access") return <FieldPaneDemo draft={DRAFTS.value} rules={{ visible: null, required: { field: "kind", op: "is_not", value: "Other" } }} />;
+  if (name === "setup-field-seal") return <FieldPaneDemo draft={DRAFTS.sealed} />;
+  if (name === "setup-field-errors") return <FieldPaneDemo draft={DRAFTS.broken} tried />;
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
     const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });
@@ -125,6 +160,9 @@ function Sample({ name }: { name: string }) {
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
   }
+  if (name === "shell") return <ShellStates />;
+  if (name.startsWith("shell-")) return <ShellSample state={name.slice(6) as "main"} />;
+  if (name === "space-tiles") return <SpaceTileSheet />;
   if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
   if (name === "explain-card") return <ExplainCard text="It ran because the stage moved to Engagement. It made Welcome note and handed Send the welcome email to an assistant. It is waiting for a person (step Approve the email)." />;
   if (name === "record-timeline") {
@@ -185,10 +223,78 @@ function StartingSample() {
   return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
+/** The guided-flow kit (FlowStep, Stack, CodeField, CodeDisplay, MatchWords, PasswordField, ChoiceList, ProviderRow) in one page: /gallery?f=flow-kit. */
+function FlowKit() {
+  const [code, setCode] = useState("WINK-7QMK");
+  const [pw, setPw] = useState("river amber");
+  const [pick, setPick] = useState<"a" | "b">("a");
+  return (
+    <FlowStep steps={{ labels: ["Identity", "Master password", "Inference", "Space", "Ready"], current: 1 }} onBack={() => {}} title="Flow step" lead="Back, the step strip, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
+      <CodeField label="Code field" prefix="WINK" value={code} onChangeText={setCode} />
+      <CodeDisplay label="Code display" code="WINK-7QMK-4P2X" note="Good for 10 min." />
+      <MatchWords label="Match words" words={["river", "amber", "stone", "quiet"]} note="Check them against your server." />
+      <PasswordField label="Password field" meter value={pw} onChangeText={setPw} />
+      <ChoiceList label="Choice list" value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "You need a server.", icon: "space" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "users" }]} />
+      <Card flush>
+        <ProviderRow provider="claude" title="Claude" sub="Sign in with your Claude subscription." state="idle" onConnect={() => {}} />
+        <ProviderRow provider="codex" title="Codex" sub="Sign in with your ChatGPT account." state="connected" onConnect={() => {}} onTest={() => {}} />
+        <ProviderRow provider="grok" title="Grok" sub="Sign in with your Grok account." state="failed" problem="Sign-in did not finish." onConnect={() => {}} />
+      </Card>
+      <Stack row gap={2}><Text tone="label">Stack, row, gap 2</Text><Text tone="muted">Stack</Text></Stack>
+    </FlowStep>
+  );
+}
+
+const CMP_PEOPLE = [
+  { name: "Dana Wine", family: "person" as const }, { name: "Anna Reyes", family: "person" as const },
+  { name: "Claude", family: "assistant" as const, doing: "Drafting the estate letter" }, { name: "Codex", family: "assistant" as const }, { name: "Grok", family: "assistant" as const },
+];
+const CMP_RECORDS = [
+  { name: "Wine estate plan", type: "Matter", sealed: 2, urn: "urn:rec:1", kind: "record" }, { name: "Q3 intake", type: "Project", sealed: 0, urn: "urn:rec:2", kind: "project" },
+  { name: "Trust certificate.pdf", type: "File", sealed: 0, urn: "urn:rec:3", kind: "file" }, { name: "Quarterly review", type: "Tag", sealed: 0, urn: "urn:rec:4", kind: "tag" },
+];
+const CMP_SLOTS = [{ id: "s1", label: "kit on Claude", provider: "claude" }, { id: "s2", label: "kit on Codex", provider: "codex" }, { id: "s3", label: "Grok", provider: "grok" }];
+const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", label: "Sonnet", fit: 88 }, { id: "haiku", label: "Haiku", fit: 71 }];
+
+/** The composer, before and after, side by side: /gallery?f=composer. The "after" is live: try / @ # and Cmd+/ with the keyboard only. */
+function ComposerCompare() {
+  const [model, setModel] = useState("opus");
+  const [where, setWhere] = useState<"mac" | "server">("server");
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
+  return (
+    <View style={{ gap: 24 }}>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">Chat panel (live, keyboard: arrows, letters, Enter, Esc)</Text><PanelSample phone={false} /></View>
+      <View style={{ gap: 6, maxWidth: 390 }}><Text size="caption" tone="label">After, phone width</Text><ChatComposer {...common} phone autoFocus={false} /></View>
+    </View>
+  );
+}
+
+/** The one chat panel, open on a page: /gallery?f=composer shows it beside the composer; ?f=chat-panel&page=project|effort|... one page. */
+function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
+  const [page, setPage] = useState<PanelPage>(first);
+  const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
+  const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
+  const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];
+  return (
+    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#8883", borderRadius: 12, width: phone ? 390 : undefined }}>
+      <ChatPanel open phone={false} page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
+        muted={false} pinned={false} onMute={() => {}} onPin={() => {}} onMove={() => {}} onLinkRecord={() => {}}
+        project={{ current: cur, projects, move: async (to) => { setCur(projects.find((x) => x.slug === to) ?? null); return null; } }}
+        thread="demo" chat="demo" shared replyMode="every" otherPlace="mac" />
+    </View>
+  );
+}
+
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
+  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
+  if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
+  if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
+  if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);
   if (given) FX.given = { title: String(given.title ?? "Screen"), screens: { [form]: given } };

@@ -24,7 +24,7 @@ export function loadMembers(): Member[] {
 }
 
 export function loadTeammates(): Teammate[] {
-  return [{ id: "kit", name: "kit", sub: "Assistant, works as Alex" }];
+  return [{ id: "kit", name: "kit", sub: "Agent, works as Alex" }];
 }
 
 export const TEMP_PROJECTS = ["Doe estate plan", "Ortiz power of attorney", "Site rebuild"];

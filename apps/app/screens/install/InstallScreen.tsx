@@ -3,7 +3,8 @@ import { spaceName as spaceNameOf } from "../../src/state/space-name.js";
 import { Linking, Platform, ScrollView, Share, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
+import { useSpaces } from "../shell/state";
+import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile, LogoPicker } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { MyCloudCard } from "../settings/MyCloudCard";
@@ -99,6 +100,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [spaceName, setSpaceName] = useState(DATA.defaultSpaceName);
   const [addr, setAddr] = useState<string | null>(null);
   const [look, setLook] = useState("amber");
+  const [logo, setLogo] = useState<string | null>(null);
   const where = "server" as const;
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
@@ -124,6 +126,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // Real box only: what the directory said about each name, the space being made, the recovery code (shown once, never kept), another device's setup, the invite.
   const [taken, setTaken] = useState<Record<string, "free" | "taken" | "unknown">>({});
   const [spaceId, setSpaceId] = useState<string | null>(null);
+  useEffect(() => { if (spaceId && logo) useSpaces.getState().setLook(spaceId, { logo }); }, [spaceId, logo]);
   const [recovery, setRecovery] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [owned, setOwned] = useState(0);
@@ -510,7 +513,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
         {MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
-        <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
+        <LogoPicker space={{ id: spaceId || sn, name: sn, logo }} onChange={(l) => { setLogo(l); if (spaceId) useSpaces.getState().setLook(spaceId, { logo: l ?? undefined }); }} />
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />
       </Page>
@@ -530,7 +533,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "ai") {
     body = (
-      <Page title="Connect your AI accounts" sub="Your assistant works on your own AI account. Connect Claude now, or later from Settings.">
+      <Page title="Connect your AI accounts" sub="Your agent works on your own AI account. Connect Claude now, or later from Settings.">
         {MOCK ? <Card><Row dense title="Claude" sub="Connected with your Claude subscription" /></Card> : <ConnectClaude />}
         <View className="flex-row gap-s2">
           <Button kind="primary" label="Continue" onPress={() => advance("ai")} />
@@ -555,7 +558,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "kit") {
     body = (
-      <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
+      <Page title="Start with a Kit" sub="A Kit adds objects, Flows and views in one step. Pick one, or start empty.">
         <Card flush>
           {(MOCK ? DATA.kits : kitList ?? []).map((k) => (
             <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />

@@ -37,7 +37,7 @@ export function RealSites() {
       <PlaceTag of="home" />
       {err ? <Card flush><ErrorState title="Publish did not load" reason={err} retry={load} /></Card> : null}
       {deps === null && !err ? <LoadingState rows={3} /> : null}
-      {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Drive folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
+      {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Files folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
       {rows.length ? <SitesList rows={rows} onOpen={(name) => router.push(`/u/sites/${name}` as never)} /> : null}
       <Sheet open={!!draft} onClose={() => setDraft(null)} title="Publish">
         {draft ? (

@@ -8,6 +8,7 @@ const FONT = ["system", "serif", "sans"];
 const CORNERS = ["sharp", "default", "round"];
 const ACCENT = ["violet", "amber", "sky", "sage", "rose", "custom"];
 const HEX = /^#[0-9a-fA-F]{6}$/;
+import { keepableLogo } from "../../ui/marks/logo.js";
 const pick = (/** @type {any} */ v, /** @type {string[]} */ list) => (typeof v === "string" && list.includes(v) ? v : undefined);
 
 /** @param {any} p the person's settings in force */
@@ -30,6 +31,7 @@ export function cleanLook(l) {
   const d = pick(l?.density, DENSITY); if (d) out.density = d;
   const f = pick(l?.font, FONT); if (f) out.font = f;
   const c = pick(l?.corners, CORNERS); if (c) out.corners = c;
+  const logo = keepableLogo(l?.logo); if (logo) out.logo = logo;
   return out;
 }
 

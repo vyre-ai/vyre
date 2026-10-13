@@ -88,9 +88,11 @@ export const visibility = {
 /** expo/fetch streams a response body, which React Native's own fetch does not (the event stream needs it). */
 export const directFetch = expoFetch as unknown as typeof fetch;
 
-const pairingStore = makePairingStore({
-  get: (k) => SecureStore.getItemAsync(k, ONLY_HERE),
-  set: (k, v) => SecureStore.setItemAsync(k, v, ONLY_HERE),
-  del: (k) => SecureStore.deleteItemAsync(k, ONLY_HERE),
-});
+/** The keyed text store this platform keeps its small device records in (the pairings, and the space list's two counters). */
+export const keyedText = {
+  get: (k: string) => SecureStore.getItemAsync(k, ONLY_HERE),
+  set: (k: string, v: string) => SecureStore.setItemAsync(k, v, ONLY_HERE),
+  del: (k: string) => SecureStore.deleteItemAsync(k, ONLY_HERE),
+};
+const pairingStore = makePairingStore(keyedText);
 export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;

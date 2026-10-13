@@ -5,6 +5,7 @@
 // and people who are not members of the target are listed as `former`. Resumable: a chat already in the target is skipped.
 import crypto from "node:crypto";
 import { carryChat, carriedOf } from "./chat-carry.js";
+import { projectDir } from "../../lib/files/layout.js";
 
 const CHAT = "chat-record", PROJECT = "project";
 /** Where a chat's history travels: numbered chunks and a manifest in the chat's own folder (sealed with its files), never anywhere else. */
@@ -84,7 +85,7 @@ async function generalIn(to) {
   const have = await to.records.query(to.chain, PROJECT, { filter: { field: "slug", op: "eq", value: "general" }, page: { limit: 1 } });
   if (have.rows && have.rows[0]) return have.rows[0];
   const made = await to.records.create(to.chain, PROJECT, { name: "General", slug: "general", status: "active", memory_scope: "project:general" });
-  return to.records.update(to.chain, PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
+  return to.records.update(to.chain, PROJECT, made.id, { drive_path: projectDir(made.id) }, made.version);
 }
 
 /**

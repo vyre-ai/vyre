@@ -18,3 +18,11 @@ test("a project that is not from a template, or has a broken snapshot, is not on
   assert.equal(templateStage({ template_snapshot: JSON.stringify({ stages: [] }) }), null);
   assert.equal(templateStage(undefined), null);
 });
+
+test("the New menu never says the same thing twice: a record type whose label a template already offers is left out", async () => {
+  const { newMenuItems } = await import("./template-stage.js");
+  const types = [{ name: "matter", label: "Matter" }, { name: "trip", label: "Trip" }, { name: "project", label: "Project" }];
+  const choices = [{ label: "New matter", key: "tpl_estate" }, { label: "New blank project", key: null }];
+  assert.deepEqual(newMenuItems(types, choices).map((x) => x.label), ["New matter", "New blank project", "New trip"]);
+  assert.deepEqual(newMenuItems(types, undefined).map((x) => x.label), ["New matter", "New trip", "New project"]);
+});

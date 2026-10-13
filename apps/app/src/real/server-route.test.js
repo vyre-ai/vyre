@@ -326,3 +326,9 @@ test("mergeAmbiguous: an id seen in two places becomes ambiguous and stays so", 
   m = mergeAmbiguous(m, { x: "boxa" });
   assert.equal(m.x, "", "once ambiguous, always");
 });
+
+// The personal vault's list note is the one named exception: it is called with an explicit server (the main one), never under a Space. Without one, a vault call is still refused.
+test("route: a vault call that names its server goes there under All spaces; the same call without a server is refused", () => {
+  assert.deepEqual(go({ tool: "vault.reveal", explicit: "boxa", input: { name: "vyre-space-list", field: "text" } }), { box: "boxa" });
+  assert.ok(go({ tool: "vault.reveal", input: { name: "vyre-space-list", field: "text" } }).error);
+});

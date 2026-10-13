@@ -19,7 +19,7 @@ export function firstStep(kind, canClaim) {
 
 export const WELCOME = {
   title: "Vyre",
-  line: "Your assistants, your team and your work, in one place you control.",
+  line: "Your agents, your team and your work, in one place you control.",
   start: "Start",
   have: "I already have a name",
 };
@@ -29,14 +29,14 @@ export const SERVER_SETUP_ROUTE = "/u/setup/server";
 
 /**
  * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
- * `code` is the one-time setup code the app made for this server and `store` the Records choice (auto, or sqlite for a small server); both ride as variables on sh, the reader of the script.
+ * `code` is the one-time setup code the app made for this server and `store` the Records choice (always auto: Records is on for every server); both ride as variables on sh, the reader of the script.
  * @param {string | null | undefined} version @param {{ code?: string, store?: string, os?: string }} [vars]
  */
 export function installLine(version, vars = {}) {
   const v = String(version ?? "").trim();
   const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
-  const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? `VYRE_STORE=${vars.store === "sqlite" ? "sqlite" : "auto"}` : ""].filter(Boolean).join(" ");
+  const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? "VYRE_STORE=auto" : ""].filter(Boolean).join(" ");
   // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice and prints the same four words.
   if (vars.os === "mac") return `curl -fsSL ${rc ? `${base}install-mac-server.sh` : "vyre.run/box/install-mac-server.sh"} | ${env ? `${env} ` : ""}sh`;
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
@@ -120,8 +120,8 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
  */
 export const EMPTY = {
   now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/u/chats" },
-  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/u/chats/new" },
-  agents: { title: "No assistants yet", line: "An assistant works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
+  chats: { title: "No chats yet", line: "Start one with an agent.", action: "New chat", route: "/u/chats/new" },
+  agents: { title: "No agents yet", line: "An agent works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
 };
 
 /** The box has not answered and nothing is cached: one line, one action, never a blank screen. */
@@ -183,7 +183,7 @@ export const WEB_SAY = {
 /** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
 export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
 /** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
-export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
+export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your agent, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
 
 /**
  * What a long code read on this device starts. A phone's code (`for: "phone"`, from Add a device) adds THIS device to the person's name; a server's code pairs this device to that server. A browser that cannot

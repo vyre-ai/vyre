@@ -95,7 +95,7 @@ export function memberEmails(db) {
   return {
     get: person => { const r = /** @type {any} */ (db.prepare("SELECT person, email FROM google_member_emails WHERE person = ?").get(String(person))); return r ? { id: String(r.person), email: String(r.email), verified: true } : null; },
     holder: email => { const r = /** @type {any} */ (db.prepare("SELECT person FROM google_member_emails WHERE email = ?").get(String(email).toLowerCase())); return r ? String(r.person) : null; },
-    all: () => db.prepare("SELECT person, email, at FROM google_member_emails ORDER BY person").all().map(r => ({ person: String(r.person), email: String(r.email), at: Number(r.at) })),
+    all: () => db.prepare("SELECT person, email, by, at FROM google_member_emails ORDER BY person").all().map(r => ({ person: String(r.person), email: String(r.email), ...(r.by ? { by: String(r.by) } : {}), at: Number(r.at) })),
     set: (person, email, by, now) => { db.prepare("INSERT INTO google_member_emails (person, email, by, at) VALUES (?,?,?,?) ON CONFLICT(person) DO UPDATE SET email = excluded.email, by = excluded.by, at = excluded.at").run(String(person), String(email).toLowerCase(), by || null, now); },
     clear: person => Number(db.prepare("DELETE FROM google_member_emails WHERE person = ?").run(String(person)).changes) > 0,
   };

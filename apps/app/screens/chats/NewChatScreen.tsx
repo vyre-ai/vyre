@@ -57,13 +57,13 @@ export default function NewChatScreen() {
     <Page title="New chat" sub="Who do you want to talk to?" back="/u/chats">
       {loadErr ? <Card><EmptyState title="Your Vyre did not answer" body={loadErr} action={{ label: "Back to Chat", onPress: () => router.replace("/u/chats" as never) }} /></Card>
         : agents === null ? <LoadingState rows={3} />
-        : !agents.length ? <Card><EmptyState title="No assistants yet" body="A chat needs an assistant to talk to." action={{ label: "Connect your AI account", onPress: () => router.replace("/u/settings/ai" as never) }} /></Card>
+        : !agents.length ? <Card><EmptyState title="No agents yet" body="A chat needs an agent to talk to." action={{ label: "Connect your AI account", onPress: () => router.replace("/u/settings/ai" as never) }} /></Card>
         : (
           <View className="gap-s3">
             <Card flush>
               {agents.map((a, i) => (
                 <View key={a.name}>{i ? <Divider /> : null}
-                  <Row lead={<Avatar of={markRef(a.assistant ? "assistant" : "agent", a.name)} size={40} />} title={a.name} sub={a.assistant ? "Your assistant" : "Agent"} selected={pick === a.name} onPress={() => setPick(a.name)} />
+                  <Row lead={<Avatar of={markRef(a.assistant ? "assistant" : "agent", a.name)} size={40} />} title={a.name} sub={a.assistant ? "Your agent" : "Agent"} selected={pick === a.name} onPress={() => setPick(a.name)} />
                 </View>
               ))}
             </Card>

@@ -25,6 +25,7 @@ test("a space with a logo shows the logo; a broken or empty logo falls back to t
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "https://x/y.png" }, { failed: true }).kind, "monogram");
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "" }).kind, "monogram");
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "javascript:alert(1)" }).kind, "monogram");
+  assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "data:image/svg+xml;base64,AAAA" }).kind, "monogram", "an SVG can carry script, so it is never drawn");
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio" }).kind, "monogram");
 });
 

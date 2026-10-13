@@ -71,7 +71,7 @@ test("unread is a count on the row when the box sends one, and nothing when it d
   assert.deepEqual(rows.map((r) => r.unread), [3, 0, 0, 0]);
 });
 
-test("your assistant's pinned chat is always first and the Engineer's chat is not in the list (R031-94)", async () => {
+test("your agent's pinned chat is always first and the Engineer's chat is not in the list (R031-94)", async () => {
   const { chatsFrom, chatsOrdered, chatsShown } = await import("./chats-model.js");
   const rows = chatsFrom({ chats: [
     { chat: "c1", title: "Needs you", asks: 2, last_active: "3", open: true },
@@ -120,11 +120,11 @@ test("chats list: each chat is one list-block row with faces, provider marks, it
     { ...base, id: "c", title: "Failed one", status: "failed", last: 0 },
     { ...base, id: "d", title: "Not yours", open: false },
   ], now, { places: [{ chat: "b", computer: "Dana's MacBook", online: true }] });
-  assert.equal(rows[0].title, "Your assistant");
+  assert.equal(rows[0].title, "Your agent");
   assert.equal(rows[0].subtitle, "Always here. Lumen talks to this chat too.");
   assert.deepEqual(rows[1].faces, [{ kind: "person", name: "alex" }, { kind: "assistant", name: "kit" }]);
   assert.deepEqual(rows[1].providers, ["claude", "codex"]);
-  assert.deepEqual(rows[1].accessories.map((a) => [a.label, a.tone, a.as]), [["Needs you", "accent", undefined], ["99+", "accent", undefined], ["6m", undefined, "text"]]);
+  assert.deepEqual(rows[1].accessories.map((a) => [a.label, a.tone, a.as]), [["Needs you", "accent", undefined], ["99+", "plain", undefined], ["6m", undefined, "text"]]);
   assert.match(rows[1].subtitle, /^1 waiting on you · On Dana's MacBook · alex, kit · Northwind/);
   assert.deepEqual(rows[2].accessories.map((a) => a.label), ["Failed"], "no age when it never moved");
   assert.equal(rows[3].dim, true);

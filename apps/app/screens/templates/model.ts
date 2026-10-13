@@ -1,9 +1,10 @@
 // The template studio's words and shapes, pure (no React, no calls): what a list of templates, one version's tree, a test run and the editor's text say. Tested by templates.test.js.
 export type Version = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string | null; kit?: string; note?: string; tags: string[]; body?: Body };
-export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[] };
-export type Stage = { name: string; owner?: string; moves_on_when?: string; tasks?: Task[] };
+export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number; group?: string; followers?: string[]; notes?: { approver?: string; followers?: string } };
+export type Group = { name: string; collapsed?: boolean };
+export type Stage = { name: string; owner?: string; groups?: Group[]; done_when?: "all" | "needed" | "sign_off"; sign_off?: string; moves_on_when?: string; tasks?: Task[] };
 export type Noun = { one: string; many: string };
-export type Body = { name: string; noun?: Noun; description?: string; tags?: string[]; opens_on?: string; automations?: { when: string; flow: string; note?: string }[]; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
+export type Body = { name: string; noun?: Noun; stage_mode?: "ordered" | "any" | "none"; description?: string; tags?: string[]; opens_on?: string; automations?: { when: string; flow: string; note?: string }[]; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
 export type Row = { template: string; name: string; live: number | null; latest: number; versions: number; owner: string | null; tags: string[]; noun?: Noun; archived?: boolean };
 
 export const STATE: Record<string, string> = { draft: "Draft", live: "Live", retired: "Retired" };
@@ -19,6 +20,7 @@ export function rowLine(r: Row): string {
 export function whoWords(ref: string): string {
   const [kind, ...rest] = String(ref).split(":");
   const name = rest.join(":");
+  if (ref === "lead") return "the project lead";
   return kind === "role" ? `the ${name}` : kind === "teammate" ? name.charAt(0).toUpperCase() + name.slice(1) : kind === "person" ? "a person" : kind === "pool" ? `anyone in ${name}` : String(ref);
 }
 const first = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
@@ -66,7 +68,11 @@ export const projectIdOf = (urn: string): string => String(urn).split("/").pop()
  * What the toast says after Start project: where the first tasks are, or which could not be made and why (an assistant that is not in this space yet), so "its first tasks are in Now" is never said of tasks
  * that do not exist.
  */
-export function startWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }): string {
+export function startWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[]; seats_failed?: { person: string; why: string }[] }): string {
+  const seats = (Array.isArray(r.seats_failed) ? r.seats_failed : []).map((x) => ` ${x.person} could not be added to the team: ${x.why}.`).join("");
+  return `${tasksWords(name, r)}${seats}`;
+}
+function tasksWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }): string {
   const skipped = Array.isArray(r.tasks_skipped) ? r.tasks_skipped : [];
   if (!skipped.length) return `${name} is started. Its first tasks are in Now.`;
   const made = Number(r.tasks_made) || 0;

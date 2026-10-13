@@ -25,6 +25,11 @@ export default {
     const creds = new Credentials({ fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}), log: (m, f) => ctx.log(m, f) });
     const g = graphTools(graph({ creds }));
     const memberOf = id => emails.get(id);
+    /** Who attested an email, for the audit trail: the person on the call's chain, else the call's own label. */
+    const attester = async meta => {
+      try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null; const h = c && Array.isArray(c.hops) ? c.hops.find(x => x.actor && x.actor.kind === "person") : null; if (h) return String(h.actor.id); } catch {}
+      return String((meta && meta.caller) || "owner");
+    };
 
     /** Run a tool body and scrub what comes back, errors included; codes pass through. */
     const safe = fn => async (input, meta) => {
@@ -81,7 +86,7 @@ export default {
         if (!EMAIL.test(String(email))) throw fail("email must be an address");
         const why = emailProblem({ email: String(email), person, firmKeys: accounts.all(), taken: e => emails.holder(e) });
         if (why) throw fail(why);
-        emails.set(person, email, null, now());
+        emails.set(person, email, await attester(meta), now());
         return { person, email: String(email).toLowerCase() };
       }),
     });

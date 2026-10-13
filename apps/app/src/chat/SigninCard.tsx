@@ -44,7 +44,7 @@ export function SigninCard({ block, sample }: { block: Sign; sample?: { name: st
       {block.why && state === "waiting" ? <Text tone="muted">{block.why}</Text> : null}
       {state === "waiting" && logins.length && !open ? (
         <View style={{ gap: 8 }}>
-          <Text size="secondary" tone="muted">{`Your Vault has ${logins.length === 1 ? "a login" : "logins"} for ${block.site}. It is lent to ${block.computer} for one hour, for this site only, and the assistant never sees it.`}</Text>
+          <Text size="secondary" tone="muted">{`Your Vault has ${logins.length === 1 ? "a login" : "logins"} for ${block.site}. It is lent to ${block.computer} for one hour, for this site only, and the agent never sees it.`}</Text>
           {logins.slice(0, 3).map((l, i) => <View key={l.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Fill from the Vault: ${l.name}`} disabled={busy} onPress={() => fill(l)} /></View>)}
         </View>
       ) : <Text size="secondary" tone="muted">{w.detail}</Text>}

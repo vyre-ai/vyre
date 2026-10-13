@@ -28,6 +28,9 @@ import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
 import { createMirror } from "./mirror.js";
+import { agentDir } from "../../lib/files/layout.js";
+import { orientation } from "../../lib/orientation.js";
+import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -56,6 +59,10 @@ export const MIGRATIONS = [
   // this table is the one place that says a thread is one, so agents.scope can narrow it and the activity feed can nest it.
   `CREATE TABLE agents_subs (id TEXT PRIMARY KEY, parent TEXT NOT NULL, parent_thread TEXT NOT NULL, thread TEXT, label TEXT NOT NULL, only TEXT, project TEXT, state TEXT NOT NULL DEFAULT 'running', result TEXT, at INTEGER NOT NULL, ended INTEGER);
    CREATE INDEX agents_subs_thread ON agents_subs (thread)`,
+  // The configuration page (core/agents/config.js): folders linked as context, and the Vault item names put at an agent's disposal.
+  ...CONFIG_MIGRATIONS,
+  // One thread per (agent, person) for a person who chats on their own AI account: her words never ride on another person's sign-in.
+  `CREATE TABLE agents_person_threads (agent TEXT NOT NULL, person TEXT NOT NULL, thread TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, person))`,
 ];
 
 /**
@@ -69,17 +76,24 @@ const ENGINEER_0_3_0 = [
   "A Kit goes through flows.kit.propose. A change to record types goes through flows.propose with what: types and a diff.",
   "Each proposal becomes one task in Now. An owner or an admin approves it; you cannot. Say what you proposed and what it will do, in plain words, and wait.",
 ].join("\n");
+const ENGINEER_0_3_4 = [
+    "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
+    "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
+    "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
+    "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
+    "Say what you proposed and what it will do, in plain words, and wait for the card.",
+  ].join("\n");
 export const ENGINEER = Object.freeze({
   name: "engineer",
   instructions: [
-    "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
+    "You are the Engineer. You set up the Space for the person you are talking to, by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. You can only build what that person can themselves: you work on their access, with their own AI. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
     "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
     "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
     "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
     "Say what you proposed and what it will do, in plain words, and wait for the card.",
   ].join("\n"),
   /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
-  previous: Object.freeze([ENGINEER_0_3_0]),
+  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4]),
   /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
   tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
@@ -102,7 +116,7 @@ export const envFor = (value, as) => (as === "api-key" ? { ANTHROPIC_API_KEY: va
  * What an agent's thread is told about itself, after Claude Code's own system prompt.
  * @param {any} a an agent record
  */
-export function preamble(a) {
+export function preamble(a, { withWords = true } = {}) {
   const scope = a.projects === "*" ? "every project on this machine" : a.projects.length ? `only these projects: ${a.projects.join(", ")}` : "no project";
   const lines = a.kind === "assistant"
     ? [`You are ${a.name}, the user's assistant in Vyre. You can see ${scope}.`,
@@ -112,7 +126,8 @@ export function preamble(a) {
        "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
        "When a watch fires, the user sees it in Lumen and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
-  if (a.instructions) lines.push("", String(a.instructions));
+  // the instructions are the agent's AGENTS.md, read from its folder (named by the orientation); copied here only when there is no folder to read them from
+  if (a.instructions && withWords) lines.push("", String(a.instructions));
   return lines.join("\n");
 }
 
@@ -130,6 +145,10 @@ export default {
     const db = ctx.store.db;
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
+    /** Where agents' folders live: beside the projects (never inside VYRE_HOME: the session sandbox refuses a working folder there), so an agent session runs IN its own folder and reads its instructions natively. */
+    const agentsBase = ctx.config && typeof ctx.config.projectsDir === "string" && ctx.config.projectsDir ? path.dirname(ctx.config.projectsDir) : root;
+    /** The configuration page's half (core/agents/config.js); its brief is added to a launch. */
+    let config = /** @type {{ brief(a: any): string, sharedLine(a: any): Promise<string[]>, materialize(a: any): { dir: string, instructions: boolean, context: boolean }, sharesFor(meta: any, a: any, staff: boolean): Promise<{ made_by: string | null, shares: { person: string, level: string }[] }>, clearShared(a: any): Promise<void>, levelOf(meta: any, a: any): Promise<"edit" | "use" | "none"> } | null} */ (null);
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
@@ -149,7 +168,7 @@ export default {
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name} (agents.list shows them)`), { code: "not_found" }); return a; };
-    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(shape), log: m => ctx.log(m) });
+    const mirror = createMirror({ kernel: () => ctx.kernel, rows: async () => Promise.all(db.prepare("SELECT * FROM agents_agents").all().map(async r => { const a = shape(r); return { ...a, users: config ? await config.sharedLine(a) : [] }; })), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
@@ -284,31 +303,57 @@ export default {
     /** Where an agent works: its one project's home, else a folder of its own beside the projects (`~/Vyre/agents/<name>`). Never inside VYRE_HOME: the session sandbox refuses a working folder there. */
     const workdir = async a => {
       if (Array.isArray(a.projects) && a.projects.length === 1) return { project: a.projects[0] };
-      const projectsDir = ctx.config && typeof ctx.config.projectsDir === "string" && ctx.config.projectsDir ? ctx.config.projectsDir : null;
-      const dir = projectsDir ? path.join(path.dirname(projectsDir), "agents", a.name) : path.join(root, "agents", a.name);
+      const dir = path.join(agentsBase, agentDir(String(a.uid)));
+      // an earlier build kept the working folder by NAME beside the projects: it moves to the agent's id once, so nothing it held is lost
+      const old = path.join(agentsBase, "agents", a.name);
+      try { if (fs.existsSync(old) && !fs.existsSync(dir)) { fs.mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 }); fs.renameSync(old, dir); } } catch { /* a folder that cannot move is made fresh */ }
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return { cwd: dir };
     };
 
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
-    const launch = async (a, { prompt, resume, job, project, forPerson } = {}) => {
-      const creds = await credentials(a);
+    /**
+     * The chatter's OWN AI sign-in, when she has a real one (not the home's, not the owner's): in a chat an agent runs on the account of the person talking to it,
+     * never on the agent's credentials; those are for flows and jobs (nobody to ask). Null when she has none, so the agent's own are used as before.
+     * @param {any} a @param {string | undefined} person
+     */
+    const ownAccount = async (a, person) => {
+      if (!person || person === "automation") return null;
+      const r = await ctx.call("sessions.accounts.resolve", { provider: "claude", person, agent: a.name }).catch(() => null);
+      const acct = r && !r.error ? r.data : null;
+      return acct && !acct.synthetic && acct.person === person ? acct : null;
+    };
+    const launch = async (a, { prompt, resume, job, project, forPerson, own } = {}) => {
+      const creds = own ? { auth: "ambient" } : await credentials(a);
       // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
       let caps = "";
       if (a.kind === "assistant") {
         const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
         if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
       }
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
+      // Where the session runs, and the Vyre orientation for it: the agent's own folder (its instructions and context, written fresh from the stored truth) and, when it works in a project, that project's.
+      const wd = job && project ? { project } : await workdir(a);
+      const mine = config ? config.materialize(a) : null;
+      let place = null;
+      if (wd.project) {
+        const pl = await ctx.call("projects.list", {}).catch(() => null);
+        const p = pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects.find((/** @type {any} */ x) => x.slug === wd.project) : null;
+        if (p && p.home) place = { name: String(p.name || p.slug), dir: String(p.home), instructions: fs.existsSync(path.join(String(p.home), "AGENTS.md")), context: fs.existsSync(path.join(String(p.home), "context")) };
+      }
+      const oriented = orientation({ ...(mine ? { agent: { name: a.name, dir: mine.dir, instructions: mine.instructions, context: mine.context } } : {}), ...(place ? { project: place } : {}) });
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a, { withWords: !mine }) + (oriented ? "\n\n" + oriented : "") + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
-        ...(forPerson ? { for_person: forPerson } : {}) };
+        ...(forPerson ? { for_person: forPerson } : {}),
+        // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
+        ...(own ? { account: String(own.id), person: forPerson } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
-      if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
-      const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
-      db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
+      if (job) return use("threads.launch", { ...input, ...wd, name: a.name });
+      const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...wd, name: a.name });
+      if (own) db.prepare("INSERT INTO agents_person_threads (agent, person, thread, at) VALUES (?,?,?,?) ON CONFLICT(agent, person) DO UPDATE SET thread = excluded.thread, at = excluded.at").run(a.name, String(forPerson), t.id, Date.now());
+      else db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
     };
 
@@ -329,6 +374,27 @@ export default {
     const checkProjects = p => {
       if (p === undefined) return;
       if (p !== "*" && !(Array.isArray(p) && p.every(x => typeof x === "string"))) throw new Error('projects must be "*" or a list of project slugs');
+    };
+
+
+    /**
+     * An agent a non-staff person makes or edits can never exceed her: projects only ones she can read herself, never "*"; a computer, the personal-memory flag and credentials are the owner's and the admins'.
+     * @param {any} meta @param {{ projects?: any, computer?: any, auth?: any, personal?: any }} i
+     */
+    const clamp = async (meta, i) => {
+      if (await seesFull(meta)) return;
+      const deny = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "denied" });
+      if (i.projects === "*") throw deny("only the owner or an admin gives an agent every project; pick the projects you work in");
+      if (Array.isArray(i.projects) && i.projects.length) {
+        const me = await personOf(meta);
+        for (const slug of i.projects) {
+          const may = me ? await ctx.call("work.project.may-read", { project: String(slug), person: me }).catch(() => null) : null;
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw deny(`you cannot read the project ${slug} yourself, so an agent of yours cannot have it`);
+        }
+      }
+      if (i.computer) throw deny("only the owner or an admin gives an agent a computer");
+      if (i.personal === true) throw deny("only the owner or an admin lets an agent read personal memory");
+      if (i.auth && typeof i.auth === "object" && Object.keys(i.auth).length) throw deny("an agent's credentials are the owner's to pick; leave them out and it runs on the AI account of whoever asks it, or ask the owner");
     };
 
     /** Only the assistant may drive other sessions, from inside its own thread. */
@@ -490,6 +556,22 @@ export default {
       },
     });
 
+    config = registerConfig(ctx, { db, root: agentsBase, must, mayChange, notYours, guard, modelMay, personOf, scope, seesFull,
+      changed: () => { void mirror.schedule(); },
+      staffOf: async person => {
+        if (!K) return true;
+        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        if (K.owner && canon(person) === canon(String(K.owner))) return true;
+        const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        return Boolean(m && (m.role === "owner" || m.role === "admin"));
+      },
+      chainPerson, roleOf: async person => {
+        const m = K && typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        if (m && m.role) return String(m.role);
+        return null;
+      },
+      setWords: (a, text, by) => { writeVersion(a, { instructions: text.trim() || null }, { by, approved_by: by }); void mirror.schedule(); } });
+
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
@@ -503,7 +585,7 @@ export default {
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
-          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) }) : rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) }))));
+          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)), ...(config ? await config.sharesFor(meta, a, true) : {}) }) : { ...rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) }), ...(config ? await config.sharesFor(meta, a, false) : {}) })));
       },
     });
 
@@ -522,6 +604,7 @@ export default {
         if (String(i.name).trim().toLowerCase() === "assistant" && kind !== "assistant") throw new Error("assistant is the name of your assistant: pick another name for this agent");
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
+        await clamp(meta, i);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
         // created, rather than one whose memory access silently does not match what it says.
@@ -561,6 +644,7 @@ export default {
         // A built-in agent keeps its shape: only its words, model and effort change.
         if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
+        await clamp(meta, { projects: i.projects, computer: i.computer, auth: i.auth, personal: i.personal });
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
         const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };
@@ -623,14 +707,18 @@ export default {
         };
         // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
         // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
+        // A thread on the chatter's own account is the agents module's: her words go in as this module (the thread's account is hers already), not as a chat she was never put in.
+        let ownThread = false;
         const sendWords = async thread => {
           await capNotice(thread);
-          if (!byPerson) return use("threads.send", { thread, text: i.text, surface });
+          if (!byPerson || ownThread) return use("threads.send", { thread, text: i.text, surface });
           const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };
         const a = must(i.agent);
+        // A person talks to an agent, the assistant included (it sees every project), only if it is theirs or shared with them (Can use or Can edit); the owner and the admins always may.
+        if (isPerson(caller) && config && (await config.levelOf(meta0, a)) === "none") throw Object.assign(new Error(`${a.name} is not shared with you. Ask its owner for Can use.`), { code: "denied" });
         const surface = i.surface || String(caller || "vyre");
         // whoever the call acts for (her own session's person included), so the gate judges her when the agent starts for her words
         const forPerson = (await personOf(meta0)) || undefined;
@@ -646,17 +734,22 @@ export default {
           ctx.events.on("thread.stopped", e => { if (e.thread === thread) finish({ ok: false, note: `the thread stopped: ${e.payload.reason}` }); }),
         ];
         try {
-          const cur = a.thread ? (await ctx.call("threads.get", { thread: a.thread, limit: 1 })).data?.thread : null;
+          // a person with her own AI sign-in talks to the agent on a thread of her own, on her own account
+          const own = a.kind === "agent" ? await ownAccount(a, forPerson) : null;
+          ownThread = Boolean(own);
+          const mineRow = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(forPerson))) : null;
+          const curId = own ? (mineRow ? String(mineRow.thread) : null) : a.thread;
+          const cur = curId ? (await ctx.call("threads.get", { thread: curId, limit: 1 })).data?.thread : null;
           if (!cur) {
             // A new thread learns its id only from the launch, so the listeners key on it after;
             // the reply cannot beat a model's first token back.
-            const t = await launch(a, { forPerson });
+            const t = await launch(a, { forPerson, own });
             thread = t.id;
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
-            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson });
+            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson, own });
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
@@ -830,6 +923,8 @@ export default {
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
+        if (config) await config.clearShared(a).catch(() => {});
+        for (const t of ["agents_context_links", "agents_vault_items"]) db.prepare(`DELETE FROM ${t} WHERE agent = ?`).run(a.name);
         await mirror.schedule();
         return { agent: a.name, deleted: true };
       },

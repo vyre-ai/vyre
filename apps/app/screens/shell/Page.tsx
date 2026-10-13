@@ -6,7 +6,7 @@ import { Button, Text } from "@vyre/ui";
 export function Page({ title, sub, back, actions, children }: { title: string; sub?: string; back?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const router = useRouter();
   return (
-    <ScrollView className="flex-1" contentContainerClassName="w-full max-w-page gap-s4 self-center p-s4 pb-s12">
+    <ScrollView className="flex-1" contentContainerClassName="w-full max-w-page gap-s5 self-center px-gutter pt-s8 pb-s12">
       {back ? <View className="flex-row"><Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => router.push(back as never)} /></View> : null}
       <View className="flex-row items-end gap-s3">
         <View className="min-w-0 flex-1 gap-s1">

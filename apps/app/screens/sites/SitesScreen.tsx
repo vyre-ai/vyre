@@ -12,8 +12,8 @@ import { RealSites } from "./RealSites";
 
 const HOW: { kind: keyof typeof SOURCES; title: string; body: string; name: string }[] = [
   { kind: "github", title: "From a GitHub repo", body: "Builds on every push to the branch you pick.", name: "Referral form" },
-  { kind: "drive", title: "From a Drive folder", body: "Publishes the pages in a folder and keeps in step with it.", name: "Northwind menu site" },
-  { kind: "artifact", title: "From an assistant's artifact", body: "Packages what an assistant built in a chat.", name: "Fee calculator" },
+  { kind: "drive", title: "From a Files folder", body: "Publishes the pages in a folder and keeps in step with it.", name: "Northwind menu site" },
+  { kind: "artifact", title: "From an agent's artifact", body: "Packages what an agent built in a chat.", name: "Fee calculator" },
 ];
 
 function SampleSitesScreen() {
@@ -34,7 +34,7 @@ function SampleSitesScreen() {
                 end={<Chip tone={st.tone}>{st.label}</Chip>} />
             </View>
           );
-        }) : <EmptyState title="Nothing published in this space" body="Publish a site from a repo, a Drive folder or an assistant's artifact." action={{ label: "Publish", onPress: () => setPick(true) }} />}
+        }) : <EmptyState title="Nothing published in this space" body="Publish a site from a repo, a Files folder or an agent's artifact." action={{ label: "Publish", onPress: () => setPick(true) }} />}
       </Card>
       <Sheet open={pick} onClose={() => setPick(false)} title="Publish from">
         {HOW.map((h) => (

@@ -51,6 +51,7 @@ test("a firm key row and an attested member email round-trip through the tables"
   assert.equal(me.get("p-alice"), null);
   me.set("p-alice", "Alice@Firm.test", "owner", 2);
   assert.deepEqual(me.get("p-alice"), { id: "p-alice", email: "alice@firm.test", verified: true });
+  assert.deepEqual(me.all().map(r => [r.person, r.by]), [["p-alice", "owner"]]);
   assert.equal(me.clear("p-alice"), true);
 });
 
