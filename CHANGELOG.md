@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): a mark's space badge sits outside the mark's corner so a project's monogram letters are never covered; the folded rail always shows the main places (inside a drill a column of identical icons could not be told apart), and unfolding returns to the drill's list.
 - fix(app): opening Projects (or Chat, Flows, Records, Settings) drills the sidebar into that place's list with Back, not only a path inside it. A project's mark is a monogram on a calm tint (the generated pattern is gone from projects too). The sidebar's New view row opens the New view sheet (`NewViewHost`, mounted in the shell) from any records page. A member whose saved sidebar still pins an admin place does not see it (test).
 - ci(relay-deploy): the sha to deploy may now be on work/rc3/stage or main as well as work/stage-0.2 (the check tries each in turn); the environment approval, the dry run and the inputs are unchanged. The dispatch-ref check (main or work/stage-0.2) is untouched.
 - feat(app): the onboarding Invite step uses InviteRolePicker (built-in and custom roles, projects, a Guest's end date) and shows the made invite as the InviteMade card; the role goes to the invite call as the wire role with its projects and days. Stage 0278ddadf merged in.
