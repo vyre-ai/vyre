@@ -199,3 +199,14 @@ test("mock walk: a fresh device opens the vault and lists both servers under Fou
   assert.equal(v.writes(), 0);
   assert.deepEqual(foundRows({ found: [], confirm: [], failed: out.failed }), []);
 });
+
+test("the vault door is the list note only: any other vault name is refused before a call is made", async () => {
+  const { onlyTheList } = await import("./space-list-flow.js");
+  /** @type {string[]} */ const seen = [];
+  const t = onlyTheList(async (n, i) => { seen.push(`${n}:${i?.name}`); return {}; });
+  await t("vault.reveal", { name: ITEM, field: FIELD });
+  await assert.rejects(() => t("vault.reveal", { name: "bank", field: "pw" }), (e) => /** @type {any} */ (e).code === "not_the_list");
+  await assert.rejects(() => t("vault.list", {}), (e) => /** @type {any} */ (e).code === "not_the_list");
+  await assert.rejects(() => t("records.list", { name: ITEM }), (e) => /** @type {any} */ (e).code === "not_the_list");
+  assert.deepEqual(seen, [`vault.reveal:${ITEM}`]);
+});

@@ -4,13 +4,19 @@
 // locked, or a list that could not be read, changes nothing; a leave made then is kept on this device and written at the next open. Each device keeps two small counters, never the list: the highest seq it has
 // seen (a lower one is a rollback) and the removals not yet written. Connecting a listed server uses its pinned box key through `pairByChain` (the server's admission of a chain device, lane 2) and no typed code.
 // Pure: every outside thing (the vault's tools, the pairing, the counters) comes in as a port.
-import { entriesFromDevice, mergeLists, notOlder, pruneTombstones, toPair, unpinned, withAdded, withRemoved, isPinned } from "./space-list.js";
+import { ITEM, entriesFromDevice, mergeLists, notOlder, pruneTombstones, toPair, unpinned, withAdded, withRemoved, isPinned } from "./space-list.js";
 import { readList, writeList } from "./space-list-vault.js";
 
 /** @typedef {import("./space-list.js").Entry} Entry */
 /** @typedef {import("./space-list.js").ServerEntry} ServerEntry */
 /** @typedef {{ relay: string, route: string, box: string, name?: string }} Pairing */
 /** @typedef {{ found: ServerEntry[], confirm: ServerEntry[], unavailable?: string }} Found */
+
+/** The only vault door the list gets: tools of the vault family on the list note by name. Vault calls go to a named server outside any Space (the routing's one exception), so nothing else may ride them. @param {(name: string, input?: Record<string, unknown>) => Promise<any>} tool */
+export const onlyTheList = (tool) => (name, input) => {
+  if (!/^vault\./.test(name) || !input || input.name !== ITEM) return Promise.reject(Object.assign(new Error("That is not the list of your servers."), { code: "not_the_list" }));
+  return tool(name, input);
+};
 
 /**
  * @param {{
@@ -24,10 +30,11 @@ import { readList, writeList } from "./space-list-vault.js";
  */
 export function makeListFlow(io) {
   const now = io.now ?? Date.now;
+  const tool = onlyTheList(io.tool);
 
   /** Read, bring this device and the vault together, write when something changed. @param {{ added?: Entry[] }} [o] @returns {Promise<Found>} */
   async function run(o = {}) {
-    const there = await readList(io.tool);
+    const there = await readList(tool);
     if (there.unavailable) return { found: [], confirm: [], unavailable: there.unavailable };
     const seen = await io.state.seen();
     if (!notOlder(there, seen).ok) return { found: [], confirm: [], unavailable: "rolled_back" };
@@ -43,7 +50,7 @@ export function makeListFlow(io) {
     const merged = mergeLists(base, mine);
     const changed = base !== there || JSON.stringify(merged.entries) !== JSON.stringify(there.entries);
     const list = pruneTombstones(changed && merged.seq === there.seq ? { ...merged, seq: there.seq + 1 } : merged, now());
-    if (changed) { await writeList(io.tool, list); await io.state.setPending([]); }
+    if (changed) { await writeList(tool, list); await io.state.setPending([]); }
     else if (pending.length !== (await io.state.pending()).length) await io.state.setPending(pending);
     await io.state.setSeen(Math.max(seen, list.seq));
     return { found: toPair(list, have), confirm: unpinned(list, have) };
