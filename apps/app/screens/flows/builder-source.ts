@@ -13,8 +13,8 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
 }
 const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArray(d?.[key]) ? d[key] : []);
 
-export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string }[] }[], space?: string | null): Promise<FlowOptions> {
-  const [agents, tpls, roles, fl, conns, mailCreds, smsCreds] = await Promise.all([ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list"), ask("connectors.connection.list"), ask("comms.credentials", { kind: "email" }), ask("comms.credentials", { kind: "sms" })]);
+export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string }[] }[], space?: string | null, reload?: () => void): Promise<FlowOptions> {
+  const [vaultNames, agents, tpls, roles, fl, conns, mailCreds, smsCreds] = await Promise.all([ask("vault.items.names"), ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list"), ask("connectors.connection.list"), ask("comms.credentials", { kind: "email" }), ask("comms.credentials", { kind: "sms" })]);
   // comms.* is an owner's on a member's door: where it cannot be read the picker says an owner chooses
   const creds = (d: any) => (d && Array.isArray(d.credentials) ? d.credentials.map((c: any) => ({ id: String(c.id), name: String(c.name), provider: String(c.provider), step: String(c.step) })) : null);
   // an agent may approve only if an owner or an admin made it: the agent's page says so (agents.docs.get made_by.staff); where that cannot be read it is not offered
@@ -28,6 +28,14 @@ export async function realOptions(types: { name: string; label: string; fields?:
     types,
     agents: await Promise.all(list(agents, "agents").map(async (a) => ({ name: String(a.name), label: String(a.label || a.name), staff: await staffOf(String(a.name)) }))),
     templates,
+    vaultItems: (Array.isArray(vaultNames) ? vaultNames : list(vaultNames, "names")).map((n: any) => ({ name: String(typeof n === "string" ? n : n.name), label: String(typeof n === "string" ? n : n.label || n.name) })),
+    addConnection: async (c) => {
+      const r = await call<any>("connectors.connection.create", { label: c.label, base_url: c.base_url, send: { how: c.how, ...(c.header ? { name: c.header } : {}) }, credential: { item: c.item }, check: { path: c.check || "/" } });
+      if (r.error) throw new Error(r.error.message);
+      reload?.();
+      const id = String(r.data?.id || r.data?.connection?.id || c.label);
+      return { name: id, label: c.label };
+    },
     connections: list(conns, "connections").map((c) => ({ name: String(c.name), label: String(c.label || c.name) })),
     credentials: creds(mailCreds) && creds(smsCreds) ? { email: creds(mailCreds), sms: creds(smsCreds) } : null,
     flows: list(fl, "flows").filter((f) => f.active).map((f) => ({ name: String(f.name), label: String(f.label || f.name) })),
@@ -47,13 +55,14 @@ export function useFlowOptions(): FlowOptions | null {
   const space = useSpaces((s) => s.space);
   const loadTypes = useKernelTypes((s) => s.load);
   const [opts, setOpts] = useState<FlowOptions | null>(allowsMock() ? SAMPLE_OPTIONS : null);
+  const [tick, setTick] = useState(0);
   useEffect(() => { if (!allowsMock()) loadTypes().catch(() => {}); }, [loadTypes]);
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    realOptions(defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name) })) })), space).then((o) => { if (live) setOpts(o); });
+    realOptions(defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name) })) })), space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
     return () => { live = false; };
-  }, [defs, space]);
+  }, [defs, space, tick]);
   return opts;
 }
 

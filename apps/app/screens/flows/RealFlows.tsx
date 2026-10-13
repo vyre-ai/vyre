@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Button, Menu, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
@@ -41,9 +41,8 @@ export function RealFlows() {
           );
         })}
       </Card>
-      <View className="flex-row flex-wrap gap-s3 pt-s4">
-        <Button kind="primary" size="lg" className={phone ? "w-full" : undefined} icon="plus" label="New flow" onPress={() => router.push("/u/flows/new" as never)} />
-        <Button kind="secondary" size="lg" className={phone ? "w-full" : undefined} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} />
+      <View className="flex-row pt-s4">
+        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => router.push("/u/engineer" as never) }]} />
       </View>
     </Frame>
   );

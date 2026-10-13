@@ -11,7 +11,7 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat } from "./tree.js";
 

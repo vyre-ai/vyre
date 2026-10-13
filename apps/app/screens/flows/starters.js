@@ -26,6 +26,9 @@ export const SAMPLE_OPTIONS = {
   ],
   flows: [{ name: "send_welcome", label: "Send the welcome" }],
   connections: [{ name: "crm_api", label: "CRM API" }, { name: "slack_hook", label: "Slack alerts" }],
+  vaultItems: [{ name: "crm_key", label: "CRM key" }, { name: "slack_token", label: "Slack token" }],
+  // the sample build keeps a new connection in memory, as the box would keep it in the Vault
+  addConnection: async (c) => { const name = c.label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "connection"; (SAMPLE_OPTIONS.connections ||= []).push({ name, label: c.label }); return { name, label: c.label }; },
   credentials: { email: [{ id: "v_resend", name: "Firm Resend", provider: "sending-service", step: "comms.email" }, { id: "v_gmail", name: "Office Gmail", provider: "google-oauth", step: "comms.send" }], sms: [{ id: "v_twilio", name: "Firm Twilio", provider: "twilio", step: "comms.send" }] },
   roles: [{ name: "attorney", label: "Attorney" }, { name: "paralegal", label: "Paralegal" }, { name: "manager", label: "Manager" }],
   people: [{ name: "ana", label: "Ana Ruiz" }, { name: "chris", label: "Chris Park" }],

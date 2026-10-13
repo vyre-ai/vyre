@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Divider, EmptyState, GroupedList, IconTile, Row, Switch, Text, allowsMock, flowSentence } from "@vyre/ui";
+import { Button, Menu, Card, Divider, EmptyState, GroupedList, IconTile, Row, Switch, Text, allowsMock, flowSentence } from "@vyre/ui";
 import { RealFlows } from "./RealFlows";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
@@ -35,9 +35,8 @@ function SampleFlowsScreen() {
   );
   return (
     <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps: make a record, start a project, hand work to an agent." scope>
-      <View className="flex-row flex-wrap gap-s3">
-        <Button kind="primary" size="lg" className={phone ? "w-full" : undefined} icon="plus" label="New flow" onPress={() => router.push("/u/flows/new" as never)} />
-        <Button kind="secondary" size="lg" className={phone ? "w-full" : undefined} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} />
+      <View className="flex-row">
+        <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => router.push("/u/engineer" as never) }]} />
       </View>
       {!items.length ? <Card><EmptyState title="No Flows in Mine" body="Flows live in a space. Make one, ask @Engineer, or install a Kit." /></Card> : (
         <GroupedList groups={groups} items={items} itemNoun="Flows" addLabel="Add a group"

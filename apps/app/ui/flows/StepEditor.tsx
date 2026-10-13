@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { View } from "react-native";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -213,10 +214,11 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       ) : null}
       {s.kind === "web" ? (
         <>
-          <Select label="Send with (a connection from the Vault)" value={s.connector ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connector) => set({ connector })} />
+          <Select label="Send with (a connection)" value={s.connector ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connector) => set({ connector })} />
           <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
           <ValueField label="Path" value={s.path ?? "/"} onChange={(path) => set({ path })} placeholder="For example /v1/customers" draft={draft} stepId={s.id} options={options} />
           {(s.method ?? "GET") !== "GET" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <NewConnection options={options} onAdded={(connector) => set({ connector })} />
           <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>
       ) : null}
@@ -247,6 +249,38 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         </>
       ) : null}
     </>
+  );
+}
+
+/** A new connection, inline: a name, one https address, how the key is sent and which Vault item holds it. It is saved as a Connection in the Vault (connectors.connection.create); the key itself is never typed here. */
+function NewConnection({ options, onAdded }: { options: Options; onAdded: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ label: "", base_url: "https://", how: "bearer", header: "", item: "", check: "/" });
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!options.addConnection) return null;
+  if (!open) return <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="New connection" onPress={() => setOpen(true)} /></View>;
+  const ok = f.label.trim() && /^https:\/\/[^/\s]+$/.test(f.base_url.trim()) && f.item;
+  const save = async () => {
+    setBusy(true); setErr("");
+    try { const c = await options.addConnection!({ ...f, label: f.label.trim(), base_url: f.base_url.trim() }); onAdded(c.name); setOpen(false); }
+    catch (e) { setErr(e instanceof Error ? e.message : "That did not save."); } finally { setBusy(false); }
+  };
+  return (
+    <Card>
+      <View className="gap-s2">
+        <Text strong>New connection</Text>
+        <Field label="Name" value={f.label} onChangeText={(label) => setF({ ...f, label })} placeholder="For example CRM" />
+        <Field label="Address (one https host)" value={f.base_url} onChangeText={(base_url) => setF({ ...f, base_url })} placeholder="https://api.example.com" kind="url" />
+        <Select label="How the key is sent" value={f.how} options={[["bearer", "As a bearer token"], ["header", "In a header"], ["basic", "As a basic login"], ["query", "In the address"]]} onChange={(how) => setF({ ...f, how })} />
+        {f.how === "header" || f.how === "query" ? <Field label={f.how === "header" ? "Header name" : "Parameter name"} value={f.header} onChangeText={(header) => setF({ ...f, header })} placeholder="For example X-Api-Key" /> : null}
+        <Select label="The key (an item in the Vault)" value={f.item} options={pick(options.vaultItems ?? [])} placeholder={(options.vaultItems ?? []).length ? "Choose a Vault item" : "No items in the Vault yet"} onChange={(item) => setF({ ...f, item })} />
+        <Field label="A path to check it works" value={f.check} onChangeText={(check) => setF({ ...f, check })} placeholder="/" />
+        <Text size="caption" tone="label">Add the key to the Vault first (Settings, Vault). It is never typed or shown here.</Text>
+        {err ? <Text size="caption" tone="err">{err}</Text> : null}
+        <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save the connection" disabled={!ok} loading={busy} onPress={save} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setOpen(false)} /></View>
+      </View>
+    </Card>
   );
 }
 
