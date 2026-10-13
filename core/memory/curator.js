@@ -57,6 +57,10 @@ export const T = {
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
 const EMPTY = new Map();
+// The turns behind one (node, session) pair. Most pairs have one, so a lone turn is a bare number and a list only exists from the second: a list per pair was the largest part of what derive holds.
+const addTurn = (/** @type {{ t: number | number[] | null }} */ b, /** @type {number} */ seq) => { if (b.t === null) b.t = seq; else if (typeof b.t === "number") b.t = [b.t, seq]; else b.t.push(seq); };
+const turnList = (/** @type {{ t: number | number[] | null } | undefined} */ b) => (!b || b.t === null ? [] : typeof b.t === "number" ? [b.t] : b.t);
+const packTurns = (/** @type {number[]} */ l) => (l.length === 0 ? null : l.length === 1 ? l[0] : l);
 const yieldNow = () => new Promise(r => setImmediate(r));
 const yieldAndTidy = () => new Promise(r => setImmediate(() => { collectIfHeavy(); r(undefined); }));
 
@@ -513,9 +517,9 @@ export class Curator {
         agg.set(id, a);
       }
       let b = a.by.get(session);
-      if (!b) { b = { n: 0, turns: [], last: 0 }; a.by.set(session, b); }
+      if (!b) { b = { n: 0, t: null, last: 0 }; a.by.set(session, b); }
       b.n += n;
-      b.turns.push(seq);
+      addTurn(b, seq);
       if (ts > b.last) b.last = ts;
       a.parents.add(parentOf(session, sess));
       a.mentions += n;
@@ -692,9 +696,9 @@ export class Curator {
         const a = /** @type {Agg} */ (agg.get(from)), b = /** @type {Agg} */ (agg.get(to));
         for (const [s, x] of a.by) {
           const y = b.by.get(s);
-          if (!y) { b.by.set(s, { n: x.n, turns: [...x.turns], last: x.last }); continue; }
+          if (!y) { b.by.set(s, { n: x.n, t: Array.isArray(x.t) ? [...x.t] : x.t, last: x.last }); continue; }
           y.n += x.n;
-          y.turns = [...y.turns, ...x.turns.filter(t => !y.turns.includes(t))].sort((p, q) => p - q);
+          { const mine = turnList(y); y.t = packTurns([...mine, ...turnList(x).filter(t => !mine.includes(t))].sort((p, q) => p - q)); }
           y.last = Math.max(y.last, x.last);
         }
         for (const p of a.parents) b.parents.add(p);
@@ -811,15 +815,15 @@ export class Curator {
     collectIfHeavy();
     /** @type {Want[]} */
     const want = [];
-    const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
+    const turnsIn = (id, session, max = T.turnsPerMention) => turnList(agg.get(id)?.by.get(session)).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
     const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();
       const put = (s, q) => { const k = s + "\u0000" + q; if (!seen.has(k) && out.length < T.evidencePerEdge) { seen.add(k); out.push(/** @type {[string, number]} */ ([s, q])); } };
       const xt = new Map(), yt = new Map();
-      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) xt.set(s + "\u0000" + t, [s, t]);
-      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) yt.set(s + "\u0000" + t, [s, t]);
+      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of turnList(b)) xt.set(s + "\u0000" + t, [s, t]);
+      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of turnList(b)) yt.set(s + "\u0000" + t, [s, t]);
       for (const [k, v] of xt) if (yt.has(k)) put(v[0], v[1]);
       const ys2 = new Set([...yt.values()].map(v => v[0]));
       for (const v of xt.values()) if (ys2.has(v[0])) put(v[0], v[1]);
@@ -1513,7 +1517,7 @@ function orgStems(label) {
 }
 
 /**
- * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, turns: number[], last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
+ * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, t: number | number[] | null, last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
  * @typedef {{ module: string, kind: string, key: string, at: number, factAt: number, text: string|null, claims: import("./teach.js").Claim[], project: string[]|null }} Lesson
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work
