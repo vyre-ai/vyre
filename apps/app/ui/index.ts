@@ -96,6 +96,8 @@ export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, us
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
 export { MenuRow } from "./blocks/RowMenu";
+export { GroupedList } from "./components/GroupedList";
+export type { Group } from "./components/GroupedList";
 export { SecretField, SECRET_REVEAL_MS, SECRET_CLIPBOARD_MS } from "./components/SecretField";
 export { AccessList, LEVEL_WORDS } from "./components/AccessList";
 export type { Level } from "./components/AccessList";
