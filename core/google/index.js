@@ -26,7 +26,7 @@
 import { Credentials, CredentialError } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
-import { MIGRATIONS, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
+import { MIGRATIONS, memberEmails, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
 import { calendar, fieldsOf, dayRange } from "./calendar.js";
 import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
@@ -72,8 +72,10 @@ export default {
     /** Run a tool body and scrub what comes back, errors included; codes pass through. */
     // A team member's calls see only their own mailbox from the firm key; the owner and the home's own modules see every account (member-scope.js). The scope is resolved once per call.
     const scoped = new AsyncLocalStorage();
-    const memberOf = id => (ctx.kernel && typeof ctx.kernel.memberRecord === "function" ? ctx.kernel.memberRecord(id) : null);
-    const visible = () => { const s = scoped.getStore(); return s ? s : accounts.all(); };
+    const emails_ = memberEmails(ctx.store.db);
+    const memberOf = id => emails_.get(id);
+    // The owner's own list leaves the firm key out: it is a key to act as members, not a mailbox to read by default.
+    const visible = () => { const s = scoped.getStore(); return s ? s : accounts.all().filter(a => !a.firm); };
     const safe = fn => async (input, meta) => {
       try {
         const scope = await scopeFor({ kernel: ctx.kernel, all: () => accounts.all(), memberOf }, meta);
@@ -110,12 +112,26 @@ export default {
     ctx.tool("google.accounts", {
       description: "The Google accounts Vyre can use: name, address, and which vault item authenticates it (never a value).",
       input: obj({}),
-      run: safe(() => visible()),
+      run: safe(() => (scoped.getStore() ? visible() : accounts.all())),
+    });
+
+    ctx.tool("google.members.email", {
+      description: "The work email the firm key may act as for a team member: { person, email } sets or edits it, { person } alone clears it, no input lists them. Owner and admins only; a member never sets their own.",
+      input: obj({ person: str, email: str }),
+      callers: PEOPLE,
+      run: safe(async ({ person, email }) => {
+        if (person === undefined) return emails_.all();
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(String(person))) throw fail("person must be a member id");
+        if (email === undefined) return { removed: emails_.clear(person) };
+        if (!EMAIL.test(String(email))) throw fail("email must be an address");
+        emails_.set(person, email, null, now());
+        return { person, email: String(email).toLowerCase() };
+      }),
     });
 
     ctx.tool("google.add", {
       description: "Connect a Google account: `auth` names a vault item, an OAuth env-set (client_id, client_secret, refresh_token, token_uri) or a service-account JSON; a service account acts as `subject` (default: `email`) through domain-wide delegation. The item still needs `vyre vault grant <item> google`.",
-      input: obj({ name: str, email: str, auth: obj({ type: { type: "string", enum: ["oauth", "service-account"] }, item: str, subject: str }, ["type", "item"]), base: str },
+      input: obj({ name: str, email: str, auth: obj({ type: { type: "string", enum: ["oauth", "service-account"] }, item: str, subject: str }, ["type", "item"]), base: str, firm: { type: "boolean", description: "a Workspace service account with domain-wide delegation that team members use as their own mailbox only" }, domain: str },
         ["name", "email", "auth"]),
       callers: PEOPLE,
       run: safe(input => addAccount(input)),

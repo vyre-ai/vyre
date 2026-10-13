@@ -37,3 +37,19 @@ test("an unreadable chain on a claimed call is refused", async () => {
   const d = { ...deps([]), kernel: { owner: "p-owner", chain: async () => { throw new Error("x"); } } };
   await assert.rejects(scopeFor(d, claim), e => e.code === "denied");
 });
+
+import { DatabaseSync } from "node:sqlite";
+import { MIGRATIONS, store, memberEmails } from "./accounts.js";
+test("a firm key row and an attested member email round-trip through the tables", () => {
+  const db = new DatabaseSync(":memory:");
+  for (const m of MIGRATIONS) db.exec(m);
+  const accts = store(db);
+  accts.put({ name: "firm", email: "admin@firm.test", auth: { type: "service-account", item: "sa" }, firm: true, domain: "Firm.Test" }, 1);
+  assert.equal(accts.get("firm").firm, true);
+  assert.equal(accts.get("firm").domain, "firm.test");
+  const me = memberEmails(db);
+  assert.equal(me.get("p-alice"), null);
+  me.set("p-alice", "Alice@Firm.test", "owner", 2);
+  assert.deepEqual(me.get("p-alice"), { id: "p-alice", email: "alice@firm.test", verified: true });
+  assert.equal(me.clear("p-alice"), true);
+});

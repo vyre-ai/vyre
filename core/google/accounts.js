@@ -10,6 +10,10 @@ export const MIGRATIONS = [
   `CREATE TABLE google_accounts (
      name TEXT PRIMARY KEY, email TEXT NOT NULL, auth TEXT NOT NULL, base TEXT, added INTEGER NOT NULL
    );`,
+  `ALTER TABLE google_accounts ADD COLUMN firm INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE google_accounts ADD COLUMN domain TEXT;`,
+  // The work email the owner attested for a team member: what the firm key may act as for them. Owner-typed (or edited), never the member's own claim.
+  `CREATE TABLE google_member_emails (person TEXT PRIMARY KEY, email TEXT NOT NULL, by TEXT, at INTEGER NOT NULL);`,
 ];
 
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -26,6 +30,9 @@ export function check(input) {
   if (!ITEM.test(String(a.item || ""))) return "auth.item must name a vault item";
   if (a.subject !== undefined && !EMAIL.test(String(a.subject))) return "auth.subject must be the address the service account acts as";
   if (a.type === "oauth" && a.subject !== undefined) return "auth.subject is for a service account; OAuth acts as whoever consented";
+  if (input.firm !== undefined && typeof input.firm !== "boolean") return "firm must be true or false";
+  if (input.firm === true && a.type !== "service-account") return "a firm key is a service account with domain-wide delegation";
+  if (input.domain !== undefined && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(String(input.domain))) return "domain must be a domain such as firm.com";
   if (input.base !== undefined && input.base !== null && !loopback(input.base)) return "base must be a loopback origin such as http://127.0.0.1:8080 (it exists for test fakes)";
   return null;
 }
@@ -41,7 +48,7 @@ export function loopback(base) {
 /** @param {import("node:sqlite").DatabaseSync} db */
 export function store(db) {
   const row = r => r && ({ name: String(r.name), email: String(r.email), auth: JSON.parse(String(r.auth)),
-    ...(r.base ? { base: String(r.base) } : {}), added: Number(r.added) });
+    ...(r.base ? { base: String(r.base) } : {}), ...(r.firm ? { firm: true } : {}), ...(r.domain ? { domain: String(r.domain) } : {}), added: Number(r.added) });
   return {
     /** @returns {import("./api.js").Account[] & any[]} */
     all: () => db.prepare("SELECT * FROM google_accounts ORDER BY added, name").all().map(row),
@@ -51,9 +58,9 @@ export function store(db) {
       // A service account acts as a person; by default the one whose address the account is.
       const auth = a.type === "service-account" ? { type: a.type, item: a.item, subject: a.subject || input.email } : { type: a.type, item: a.item };
       const base = input.base ? new URL(input.base).origin : null;
-      db.prepare(`INSERT INTO google_accounts (name, email, auth, base, added) VALUES (?,?,?,?,?)
-        ON CONFLICT(name) DO UPDATE SET email = excluded.email, auth = excluded.auth, base = excluded.base`)
-        .run(input.name, input.email, JSON.stringify(auth), base, now);
+      db.prepare(`INSERT INTO google_accounts (name, email, auth, base, added, firm, domain) VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(name) DO UPDATE SET email = excluded.email, auth = excluded.auth, base = excluded.base, firm = excluded.firm, domain = excluded.domain`)
+        .run(input.name, input.email, JSON.stringify(auth), base, now, input.firm === true ? 1 : 0, input.domain ? String(input.domain).toLowerCase() : null);
       return this.get(input.name);
     },
     remove: name => Number(db.prepare("DELETE FROM google_accounts WHERE name = ?").run(String(name)).changes) > 0,
@@ -81,4 +88,14 @@ export function forWrite(all, name) {
   const list = forRead(all, name);
   if (list.length > 1) throw Object.assign(new Error(`say which account this goes from: ${list.map(a => a.name).join(", ")}`), { code: "ambiguous" });
   return list[0];
+}
+
+/** The owner-attested work emails of team members. @param {import("node:sqlite").DatabaseSync} db */
+export function memberEmails(db) {
+  return {
+    get: person => { const r = /** @type {any} */ (db.prepare("SELECT person, email FROM google_member_emails WHERE person = ?").get(String(person))); return r ? { id: String(r.person), email: String(r.email), verified: true } : null; },
+    all: () => db.prepare("SELECT person, email, at FROM google_member_emails ORDER BY person").all().map(r => ({ person: String(r.person), email: String(r.email), at: Number(r.at) })),
+    set: (person, email, by, now) => { db.prepare("INSERT INTO google_member_emails (person, email, by, at) VALUES (?,?,?,?) ON CONFLICT(person) DO UPDATE SET email = excluded.email, by = excluded.by, at = excluded.at").run(String(person), String(email).toLowerCase(), by || null, now); },
+    clear: person => Number(db.prepare("DELETE FROM google_member_emails WHERE person = ?").run(String(person)).changes) > 0,
+  };
 }
