@@ -18,14 +18,20 @@ test("a device removed from a Space has no person chain in it, and keeps its cha
   assert.equal(await person(await h.chain({ kernelFacts: facts("dev1") })), true, "enrolled: the person's chain");
   assert.equal(await person(await h.chainIn(OTHER, { kernelFacts: facts("dev1") })), true, "enrolled in the other Space too");
   removed.add(`${SPACE}|dev1`);
-  assert.equal(await person(await h.chain({ kernelFacts: facts("dev1") })), false, "removed from this Space: no person chain here");
+  await assert.rejects(() => h.chain({ kernelFacts: facts("dev1") }), { code: "not_a_member", message: /no longer part of this Space/ }, "removed from this Space: refused, never the module's service chain");
+  const svc = await h.chain({});
+  assert.deepEqual(svc.hops.map(x => x.actor.kind), ["module"], "a plain module service call (no device claim) still gets the module's own chain");
+  assert.deepEqual((await h.chain({ kernelFacts: { kind: "module", module: "probe", first_party: true } })).hops.map(x => x.actor.kind), ["module"], "a non-device fact is not a device claim");
   assert.equal(await person(await h.chainIn(OTHER, { kernelFacts: facts("dev1") })), true, "still works in its other Space");
   removed.add(`${OTHER}|dev1`);
   await assert.rejects(() => h.chainIn(OTHER, { kernelFacts: facts("dev1") }), { code: "not_a_member" });
   assert.equal(await person(await h.chain({ kernelFacts: facts("dev2") })), true, "another device is unaffected");
+  // a removed device cannot reach a reach-anyone tool's Space data: there is no chain to hand records.list
+  const rec = async c => k.gateway.records.query(c, "note", { page: { limit: 1 } });
+  await assert.rejects(async () => rec(await h.chain({ kernelFacts: facts("dev1") })), { code: "not_a_member" });
   const broken = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), deviceEnrolled: async () => { throw new Error("spaces down"); } });
   const hb = broken.kernelFor({ name: "probe", needs: { kernel: { actions: [] } } });
-  assert.equal(await person(await hb.chain({ kernelFacts: facts("dev1") })), false, "an error is a no");
+  await assert.rejects(() => hb.chain({ kernelFacts: facts("dev1") }), { code: "not_a_member" }, "an error is a no");
   assert.equal(await person(await hb.chain({ kernelFacts: { kind: "socket", surface: "cli", uid: 501, pid: 1, inside_model_process: false } })), true, "a local surface has no device to remove");
 });
 
