@@ -139,6 +139,7 @@
       { "name": "vault.me.store.put", "effect": "write", "reach": "anyone" },
       { "name": "vault.me.store.list", "effect": "read", "reach": "anyone" },
       { "name": "vault.me.store.remove", "effect": "write", "reach": "anyone" },
+      { "name": "vault.me.shared.list", "effect": "read", "reach": "anyone" },
       { "name": "vault.me.remove", "effect": "write", "reach": "anyone" },
       { "name": "vault.history", "reach": "anyone" },
       { "name": "vault.revert", "effect": "write", "reach": "person" },

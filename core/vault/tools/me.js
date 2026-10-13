@@ -34,13 +34,13 @@ export async function memberOf(kernel, meta) {
 /** The names this file registers: the member gate lets exactly these through. */
 export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "vault.me.account.reset", "vault.me.account.lock", "vault.me.account.status",
   "vault.me.put", "vault.me.get", "vault.me.list", "vault.me.update", "vault.me.remove",
-  "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
+  "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.me.shared.list"];
 
 /**
- * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
+ * @param {{ ctx: any, people: import("../people.js").PeopleVaults, vault?: import("../vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
-export function register({ ctx, people, tool }) {
+export function register({ ctx, people, vault, tool }) {
   /** @param {(id: string, input: any, meta: any) => any} fn */
   const mine = fn => async (/** @type {any} */ input, /** @type {any} */ meta) => fn(await memberOf(ctx.kernel, meta), input || {}, meta);
 
@@ -76,5 +76,19 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
   tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
   tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
+  // Items the owner shared with her (vault.access.set): the kernel's grant on the item's address decides, per item, for the person on the chain. Names, kinds and the level only; a value never comes from here.
+  tool("vault.me.shared.list", PERSON_SURFACES, "The owner's items shared with you, and whether you may use or edit each. Never a value.", obj({}), mine(async (_id, _i, meta) => {
+    const k = ctx.kernel, a = vault && /** @type {any} */ (vault).access;
+    if (!vault || !a || !k || typeof k.authorize !== "function") return { items: [] };
+    const chain = await k.chain(meta);
+    const out = [];
+    for (const r of /** @type {any} */ (vault).list({}).items) {
+      const resource = await a.urn(String(r.name));
+      const allow = async (/** @type {string} */ action) => { const d = await k.authorize({ chain, action, resource }).catch(() => null); return Boolean(d && d.effect === "allow"); };
+      if (await allow("vault.edit")) out.push({ name: r.name, kind: r.kind, description: r.description, level: "edit" });
+      else if (await allow("vault.use")) out.push({ name: r.name, kind: r.kind, description: r.description, level: "use" });
+    }
+    return { items: out };
+  }));
   tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
 }

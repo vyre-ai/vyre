@@ -17,7 +17,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
-  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.shared.list", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",

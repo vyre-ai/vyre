@@ -15,15 +15,18 @@ const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per
 const PW = "a long master password";
 const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: { kind, id } });
 
-function rig(/** @type {import("node:test").TestContext} */ t) {
+function rig(/** @type {import("node:test").TestContext} */ t, /** @type {{ grants?: Record<string, string[]> }} */ o = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF });
   t.after(() => people.close());
-  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) };
+  // grants: "<person>|<item>" -> actions allowed; the kernel's authorize answers per chain person, action and address
+  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }),
+    authorize: async (/** @type {any} */ q) => { const who = q.chain.hops[0].actor.id, item = String(q.resource).split("/item/")[1]; return { effect: ((o.grants || {})[`${who}|${item}`] || []).includes(q.action) ? "allow" : "deny" }; } };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = gateTools({ kernel, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
-  register({ ctx, people, tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
+  const vault = { list: () => ({ items: [{ name: "stripe", kind: "api-key", description: "Stripe", secret: "NEVER" }, { name: "clio", kind: "login", description: "Clio" }, { name: "private", kind: "login", description: "Owner only" }] }), access: { urn: async (/** @type {string} */ n) => `vyre://spc/vault/v1/item/${n}` } };
+  register({ ctx, people, vault: /** @type {any} */ (vault), tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
   // a tool of the space (owner's) vault, as index.js registers it
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
   ctx.tool("vault.get", { callers: ["cli"], run: async () => "space vault read" });
@@ -118,4 +121,15 @@ test("vault.me.store.*: only the mcp module may call it, and only on a member's 
   assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, OWNER, via(OWNER))).error.code, "denied", "the owner is refused");
   for (const other of ["module:appmods", "module:spaces", "module:some-installed-app"]) for (const n of ["get", "list"]) assert.equal((await call("vault.me.store." + n, { key: "mcp/a" }, BOB, via(BOB, { caller: other }))).error.code, "denied", `${other} is refused even with her token`);
   assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { caller: "device:abc" }))).data, { t: "bob" }, "her own device still reads");
+});
+
+test("vault.me.shared.list: only what the kernel grants her, with the level; never a value; another member sees their own", async t => {
+  const { call } = rig(t, { grants: { [`${BOB}|stripe`]: ["vault.use"], [`${BOB}|clio`]: ["vault.use", "vault.edit"], [`${EVE}|clio`]: ["vault.use"] } });
+  const bob = (await call("vault.me.shared.list", {}, BOB)).data.items;
+  assert.deepEqual(bob.map((/** @type {any} */ i) => [i.name, i.level]), [["stripe", "use"], ["clio", "edit"]]);
+  assert.ok(!JSON.stringify(bob).includes("NEVER"));
+  assert.deepEqual((await call("vault.me.shared.list", { person: BOB }, EVE)).data.items.map((/** @type {any} */ i) => [i.name, i.level]), [["clio", "use"]], "the person is the chain's, never the input");
+  assert.equal((await call("vault.me.shared.list", {}, OWNER)).error.code, "denied");
+  assert.equal((await call("vault.me.shared.list", {}, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied", "an agent turn is refused");
+  assert.deepEqual((await call("vault.me.shared.list", {}, "per_" + "q".repeat(26))).data.items, [], "nothing granted, nothing listed");
 });

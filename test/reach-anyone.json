@@ -2613,6 +2613,10 @@
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
   },
+  "vault.me.shared.list": {
+   "module": "vault",
+   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
   "vault.me.store.get": {
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
