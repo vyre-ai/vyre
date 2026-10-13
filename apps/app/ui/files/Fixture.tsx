@@ -64,8 +64,8 @@ function Box({ title, h = 360, children }: { title: string; h?: number; children
   );
 }
 
-/** One sample per kind, so each is its own URL (?f=file-viewer&kind=md|code|json|image|csv|docx|diff|pdf|edit|bare|unknown|empty|loading|error); no kind shows them all. */
-export type FixtureKind = "md" | "code" | "json" | "image" | "csv" | "docx" | "diff" | "pdf" | "edit" | "bare" | "unknown" | "empty" | "loading" | "error";
+/** One sample per kind, so each is its own URL (?f=file-viewer&kind=md|code|json|image|csv|docx|diff|pdf|edit|bare|hosted|unknown|empty|loading|error); no kind shows them all. */
+export type FixtureKind = "md" | "code" | "json" | "image" | "csv" | "docx" | "diff" | "pdf" | "edit" | "bare" | "hosted" | "unknown" | "empty" | "loading" | "error";
 
 const never: FileSource = { load: () => new Promise(() => {}) };
 const failing: FileSource = { load: async () => { throw Object.assign(new Error("The file did not load."), { code: "failed" }); } };
@@ -79,6 +79,7 @@ export function FileViewerFixture({ kind }: { kind?: string }) {
       {one("diff") ? <Box title="Markdown, Show changes on" h={420}><FileViewer name="notes/plan.md" source={versioned(MD, MD_OLD)} startChanges /></Box> : null}
       {one("edit") ? <Box title="Markdown, the editor open (instructions)" h={520}><FileViewer name="AGENTS.md" kind="markdown" source={text(MD, true)} startEditing /></Box> : null}
       {one("bare") ? <Box title="Instructions, bare (no header, just Edit)" h={300}><FileViewer name="AGENTS.md" kind="markdown" bare source={text(MD, true)} /></Box> : null}
+      {one("hosted") ? <Box title="Hosted (the host shows the name; the viewer keeps its version line and actions)" h={420}><FileViewer name="notes/plan.md" chrome="hosted" source={versioned(MD, MD_OLD)} onOpenInFiles={() => {}} /></Box> : null}
       {one("code") ? <Box title="Code"><FileViewer name="src/total.js" source={text(CODE)} /></Box> : null}
       {one("json") ? <Box title="JSON"><FileViewer name="matters.json" source={text(JSON_TEXT)} /></Box> : null}
       {one("image") ? <Box title="Image"><FileViewer name="logo.svg" source={{ load: async () => ({ base64: b64(SVG), bytes: bytesOfText(SVG) }) }} /></Box> : null}

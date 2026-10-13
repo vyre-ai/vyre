@@ -175,7 +175,7 @@ export function register(ctx, h) {
       const a = h.must(agent);
       await writeOk(meta, a);
       const f = path.join(ctxDir(a), contextName(name));
-      if (!contextName(name) || !inside(ctxDir(a), f) || !fs.existsSync(f)) throw Object.assign(new Error(`${a.name} has no context file ${name}`), { code: "not_found" });
+      if (!contextName(name) || !inside(ctxDir(a), f) || !fs.existsSync(f)) throw Object.assign(new Error(`${a.name} has no context file ${name}. agents.context.list shows what it keeps`), { code: "not_found" });
       fs.rmSync(f);
       return { ok: true };
     },
@@ -198,7 +198,7 @@ export function register(ctx, h) {
         const owning = (pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects : []).filter((/** @type {any} */ p) => (a.projects === "*" || a.projects.includes(p.slug)) && [p.home, ...(p.workspaces || p.folders || [])].filter(Boolean).some((/** @type {string} */ c) => { try { return inside(fs.realpathSync(c), real); } catch { return false; } }));
         for (const p of owning) {
           const may = await ctx.call("work.project.may-read", { project: p.slug, person }).catch(() => null);
-          if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Link a folder of a project you can open`), { code: "denied" });
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Ask the project's owner to add you, or link a folder of a project you can open`), { code: "denied" });
         }
       }
       db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, by, at) VALUES (?,?,?,?)").run(a.name, real, await h.personOf(meta), Date.now());
@@ -222,7 +222,7 @@ export function register(ctx, h) {
     run: async ({ agent, item }, meta) => {
       const a = h.must(agent);
       await writeOk(meta, a);
-      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and takes no Vault items`), { code: "denied" });
+      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and takes no Vault items. Put the item on an agent you made, with agents.vault.assign`), { code: "denied" });
       if (typeof item !== "string" || !ITEM.test(item)) throw bad("that is not a Vault item name");
       db.prepare("INSERT OR IGNORE INTO agents_vault_items (agent, item, by, at) VALUES (?,?,?,?)").run(a.name, item, await h.personOf(meta), Date.now());
       return { ok: true };
@@ -259,7 +259,7 @@ export function register(ctx, h) {
     run: async ({ agent, kind, subject, level }, meta) => {
       const a = h.must(agent);
       await shareOk(meta, a);
-      if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
+      if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared. Share an agent you made instead, with agents.access.set`), { code: "denied" });
       if (kind !== "person") throw bad("an agent is shared with a person for now; a role comes later");
       if (typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name the person to share with");
       if (level !== null && level !== undefined && !["use", "edit"].includes(level)) throw bad("level is use, edit or null");

@@ -13,6 +13,7 @@
 // Only those folders are watched, not the whole repo. tsconfig.json has the same paths.
 
 import { createRequire } from "node:module";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -51,8 +52,21 @@ if (process.env.EXPO_PUBLIC_VYRE_MOCK !== "1") {
   config.resolver.blockList = [].concat(config.resolver.blockList ?? [], [/[\\/]app[\\/](gallery|shots-[a-z]+|terminal-demo|keycheck)\.tsx$/]);
 }
 
-// pdf.js has import.meta in a Node-only path, a syntax error in a web bundle: scripts/import-meta-transformer.cjs rewrites it.
-config.transformer.babelTransformerPath = require.resolve("./scripts/import-meta-transformer.cjs");
+// pdf.js (react-pdf, the file viewer) ships one Node-only code path that reads import.meta.url. A classic web script cannot even parse that, so the whole page stayed blank. The web build gets a copy with that
+// one expression replaced (a canvas for Node is never made in a browser); the original in node_modules is untouched.
+const PDFJS = path.resolve(here, "node_modules/pdfjs-dist/build/pdf.mjs");
+const PDFJS_WEB = path.resolve(here, "generated/pdfjs-web.mjs");
+function pdfjsForWeb() {
+  if (!fs.existsSync(PDFJS)) return PDFJS;
+  const src = fs.readFileSync(PDFJS, "utf8");
+  const patched = src.replace(/import\.meta\.url/g, '"file:///pdfjs"');
+  fs.mkdirSync(path.dirname(PDFJS_WEB), { recursive: true });
+  if (!fs.existsSync(PDFJS_WEB) || fs.readFileSync(PDFJS_WEB, "utf8") !== patched) fs.writeFileSync(PDFJS_WEB, patched);
+  return PDFJS_WEB;
+}
+
+// Made now, before Metro crawls the folder: a file made later is not in its map and has no hash.
+const PDFJS_WEB_FILE = pdfjsForWeb();
 
 const upstream = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, name, platform) => {
@@ -65,7 +79,9 @@ config.resolver.resolveRequest = (context, name, platform) => {
     return { type: "sourceFile", filePath: file };
   }
   // A file inside a shared folder importing its neighbour ("./tool-detail.js") resolves as usual.
-  return (upstream ?? context.resolveRequest)(context, name, platform);
+  const r = (upstream ?? context.resolveRequest)(context, name, platform);
+  if (platform === "web" && r && r.type === "sourceFile" && r.filePath === PDFJS) return { ...r, filePath: PDFJS_WEB_FILE };
+  return r;
 };
 
 export default withNativeWind(config, { input: "./global.css" });

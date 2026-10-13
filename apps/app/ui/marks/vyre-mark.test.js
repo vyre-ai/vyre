@@ -1,18 +1,25 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WIRE, done, intro, markup, working } from "./vyre-mark.js";
+import { done, intro, markup, small, working } from "./vyre-mark.js";
 
 const balanced = (s) => (s.match(/<g[ >]/g) || []).length === (s.match(/<\/g>/g) || []).length;
 
 test("the markup stays balanced in every state", () => {
   for (const st of [intro(0), intro(0.5), intro(1), working(0), working(1200), done(0), done(0.5), done(1), {}]) assert.ok(balanced(markup(st)));
 });
-test("the wire is hidden at 0 and whole at 1", () => {
-  assert.match(markup({ wire: 0 }), new RegExp(`stroke-dashoffset="${WIRE.toFixed(1)}"`));
-  assert.match(markup({ wire: 1 }), /stroke-dashoffset="0.0"/);
+test("the icon is the site's: a card with a folded corner, no glass master, no violet ring", () => {
+  const m = markup({ halo: 1 });
+  assert.match(m, /clipPath id="card"/);
+  assert.ok(!/g_vyre|grain/.test(m));
+  assert.ok(m.includes("stroke=\"" + String.fromCharCode(35) + "F1EEE6\""), "the ring is ink");
+  assert.equal(small(), small());
 });
-test("intro draws the wire before the bead lights", () => {
+test("the icon is hidden at 0 and whole at 1", () => {
+  assert.match(markup({ wire: 0 }), /<g opacity="0.000"/);
+  assert.match(markup({ wire: 1 }), /<g opacity="1.000"/);
+});
+test("intro settles the icon in before its light is full", () => {
   assert.ok(intro(0.4).wire > 0.5 && intro(0.4).bead === 0);
   assert.deepEqual([intro(1).wire, intro(1).bead, intro(1).glow], [1, 1, 1]);
 });
