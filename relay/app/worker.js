@@ -42,7 +42,7 @@ export default {
     // request that reaches here (no worker yet) is a 404, never the loader page.
     if (url.pathname.startsWith("/app/")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
     if (url.pathname.startsWith("/v/")) {
-      if (!/^\/v\/[a-f0-9]{40}\/[\w./@[\]-]+$/.test(url.pathname) || url.pathname.includes("..")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
+      if (!/^\/v\/[a-f0-9]{40}\/[\w./@[\]+-]+$/.test(url.pathname) || url.pathname.includes("..")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
       return dress(await env.ASSETS.fetch(req), IMMUTABLE);
     }
     const r = await env.ASSETS.fetch(req);
