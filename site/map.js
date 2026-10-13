@@ -19,11 +19,12 @@
 
   function el(tag, cls, text) { var e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function sv(tag, attrs) { var e = doc.createElementNS(NS, tag); if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined; }
   function has(a, x) { return a.indexOf(x) > -1; }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function clean(s) { return String(s).replace(/[~&=#]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
-  function ind() { return S.ind ? D.industries[S.ind] : null; }
+  function ind() { return S.ind ? own(D.industries, S.ind) : null; }
   function preset(c) { var p = ind(); return p ? p[c] : []; }
   function opts(c) { return uniq(preset(c).concat(D.more[c], S.extra[c])); }
 
@@ -44,7 +45,7 @@
     var h = location.hash.replace(/^#/, '');
     if (h.indexOf('i=') < 0 && h.indexOf('z=') < 0) return false;
     var q = new URLSearchParams(h), i = q.get('i');
-    if (i && D.industries[i]) S.ind = i; else return false;
+    if (i && own(D.industries, i)) S.ind = i; else return false;
     var z = parseInt(q.get('z'), 10); if (z >= 0 && z < D.sizes.length) S.size = z;
     var p = parseInt(q.get('p'), 10); if (p >= 1 && p <= 5) S.step = p - 1;
     CATS.forEach(function (c) {
@@ -61,9 +62,9 @@
   // ---------- the model of the business ----------
   function model() {
     var roles = S.sel.roles.slice(), approver = roles[0] || 'the owner';
-    var rec = S.sel.things.map(function (t) { var d = D.things[t] || ['Name, Status, Owner, Dates', '']; return { name: t, fields: d[0], sealed: d[1] }; });
+    var rec = S.sel.things.map(function (t) { var d = own(D.things, t) || ['Name, Status, Owner, Dates', '']; return { name: t, fields: d[0], sealed: d[1] }; });
     var wk = S.sel.work.map(function (w) {
-      var d = D.work[w] || { stages: ['To do', 'In progress', 'Review', 'Done'], trigger: 'A person, a schedule or a record change', steps: ['Find the record', 'Agent drafts', 'Ask a person', 'Carry out'], gate: 'Anything that leaves the team', agent: [w + ' helper', 'does the first pass; a person decides'], custom: true };
+      var d = own(D.work, w) || { stages: ['To do', 'In progress', 'Review', 'Done'], trigger: 'A person, a schedule or a record change', steps: ['Find the record', 'Agent drafts', 'Ask a person', 'Carry out'], gate: 'Anything that leaves the team', agent: [w + ' helper', 'does the first pass; a person decides'], custom: true };
       return { name: w, d: d };
     });
     var tl = S.sel.tools.map(function (t) { return { name: t, planned: has(D.planned, t) }; });
