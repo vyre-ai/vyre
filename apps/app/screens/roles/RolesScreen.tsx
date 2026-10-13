@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, ControlRow, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, ControlRow, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
-import { ACCESS, BUILT_INS, CAN_DO, TOOLS, WHERE, builtInName, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
+import { ACCESS, CAN_DO, TOOLS, WHERE, builtInName, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
 
 /** Settings, Roles: the space's roles with how many people hold each; open one to edit its four sections. Owner and admin only. */
@@ -45,7 +45,7 @@ export function RolesScreen() {
 
 function NewRole({ open, onClose, roles, create }: { open: boolean; onClose: () => void; roles: Role[]; create: (from: string, name: string) => Promise<void> }) {
   const [name, setName] = useState("");
-  const [from, setFrom] = useState("member");
+  const from = "member";
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const go = async () => {
@@ -56,10 +56,8 @@ function NewRole({ open, onClose, roles, create }: { open: boolean; onClose: () 
   };
   return (
     <Sheet open={open} onClose={onClose} title="New role">
-      <Text tone="muted">It starts as a copy of a built-in role. You change what it can do next.</Text>
+      <Text tone="muted">It starts as a Member and you change what it can do next. A role is never wider than Admin.</Text>
       <Field label="Name" name="Role name" value={name} onChangeText={(v) => { setName(v); setProblem(""); }} placeholder="Paralegal, Contractor, Bookkeeper" error={problem} />
-      <Segmented label="Start from" value={from} onChange={setFrom} options={BUILT_INS.filter((b) => b.id !== "guest").map((b) => [b.id, b.name] as [string, string])} />
-      <Text size="caption" tone="label">{BUILT_INS.find((b) => b.id === from)?.line}</Text>
       <View className="flex-row gap-s2"><Button kind="primary" label="Make the role" loading={busy} onPress={() => void go()} /><Button kind="ghost" label="Cancel" onPress={onClose} /></View>
     </Sheet>
   );

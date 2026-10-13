@@ -200,10 +200,10 @@ test("the real source reads each role with roles.get and sends roles.create with
   assert.deepEqual(w.roles.map((r) => [r.id, r.holders]), [["owner", 1], ["paralegal", 2]]);
   assert.equal(w.roles[1].tools.mail, true);
   assert.ok(w.types.length > 0, "types fall back to the sample types when the box does not say");
-  await src.create("guest", "Contractor");
+  await src.create("admin", "Contractor");
   const made = seen.find((s) => s.tool === "roles.create")?.input.role;
   assert.equal(made.label, "Contractor");
-  assert.equal(made.base, "member", "guest is not a base for a custom role");
+  assert.equal(made.base, "member", "a custom role starts from Member only");
   await assert.rejects(src.remove("x"), { code: "role_in_use" });
   await src.save({ ...w.roles[1], name: "Para" });
   assert.deepEqual(seen.find((s) => s.tool === "roles.update")?.input.id, "paralegal");

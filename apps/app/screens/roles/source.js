@@ -1,7 +1,7 @@
 // @ts-check
 // Roles over the box (the roles.* tools, answered by roles-core) or, in the sample world, over a small store in memory. One shape for both:
 // read() gives the roles, the record types the data section lists and the projects "chosen projects" picks from; the writes answer the stored role.
-import { SAMPLE_TYPES, duplicateRole, newRole, removeRefusal, nameProblem, withTypes } from "./model.js";
+import { SAMPLE_TYPES, builtInRoles, duplicateRole, newRole, removeRefusal, nameProblem, withTypes } from "./model.js";
 import { MOCK_PROJECTS, sampleRoles } from "./mock.js";
 
 /** @typedef {import("./model.js").Role} Role */
@@ -62,14 +62,16 @@ export function rolesSource(call) {
       const useTypes = ts.length ? ts : SAMPLE_TYPES;
       const rows = rolesOf(list);
       // The list answers a line per role; each role's settings come from roles.get.
-      const full = await Promise.all(rows.map(async (row) => { try { return { ...roleOf((await ask("roles.get", { id: row.id }))?.role, useTypes), holders: row.holders }; } catch { return row; } }));
+      const tmpl = builtInRoles({}, useTypes);
+      // A built-in role is a fixed definition the box does not spell out: it is drawn from what each starts as.
+      const full = await Promise.all(rows.map(async (row) => { const b = row.builtin ? tmpl.find((t) => t.id === row.id) : null; if (b) return { ...b, holders: row.holders }; try { return { ...roleOf((await ask("roles.get", { id: row.id }))?.role, useTypes), holders: row.holders }; } catch { return row; } }));
       return /** @type {World} */ ({ roles: full.map((r) => withTypes(r, useTypes)), types: useTypes, projects: projectsOf(projects), catalogue: catalogueOf(cat) });
     },
-    create: async (/** @type {string} */ from, /** @type {string} */ name) => roleOf((await ask("roles.create", { role: { label: name.trim(), base: from === "admin" ? "admin" : "member", ...bodyOf(newRole(from, name, [])) } }))?.role),
+    create: async (/** @type {string} */ _from, /** @type {string} */ name) => { const r = newRole("member", name, []); return roleOf((await ask("roles.create", { role: { id: r.id, label: r.name, base: "member", ...bodyOf(r) } }))?.role); },
     duplicate: async (/** @type {string} */ id) => {
       const src = roleOf((await ask("roles.get", { id }))?.role);
       const copy = duplicateRole(src, rolesOf(await ask("roles.list")));
-      return roleOf((await ask("roles.create", { role: { label: copy.name, base: copy.from === "admin" ? "admin" : "member", ...bodyOf(copy) } }))?.role);
+      return roleOf((await ask("roles.create", { role: { id: copy.id, label: copy.name, base: copy.from === "admin" ? "admin" : "member", ...bodyOf(copy) } }))?.role);
     },
     save: async (/** @type {Role} */ role) => roleOf((await ask("roles.update", { id: role.id, role: { label: role.name, ...bodyOf(role) } }))?.role),
     remove: async (/** @type {string} */ id) => { await ask("roles.remove", { id }); },
