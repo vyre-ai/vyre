@@ -7,6 +7,7 @@ import { recordTitle } from "../../ui/tasks/model";
 import { useChats } from "../../src/state/chats";
 import { chatsOrdered, chatsShown } from "../chats/chats-model.js";
 import { effective, useSidebar } from "./sidebar";
+import { MOCK, tool } from "../../src/real/box";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -31,6 +32,17 @@ function ChatsLoader() {
   useEffect(() => {
     put("chats", chatsOrdered(chatsShown(chats.rows)).filter((c: any) => c.open !== false).map((c: any) => ({ id: c.id, label: c.title, href: `/u/chats/${c.id}` })));
   }, [chats.rows, put]);
+  return null;
+}
+
+function FlowsLoader() {
+  const put = useLoaded((s) => s.put);
+  useEffect(() => {
+    if (MOCK) return;
+    let live = true;
+    tool<any[]>("flows.list", {}).then((rows) => { if (live && Array.isArray(rows)) put("flows", rows.map((f) => ({ id: String(f.id), label: String(f.name || f.label || f.id), href: `/u/flows/${f.id}` }))); }, () => {});
+    return () => { live = false; };
+  }, [put]);
   return null;
 }
 
@@ -59,12 +71,13 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
   chats: { title: "Chat", icon: "chat", search: "Search chats", empty: "No chats yet." },
   records: { title: "Records", icon: "records", empty: "" },
+  flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
 };
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
 export function PanelLoader({ id }: { id: string | null }) {
-  return id === "projects" ? <ProjectsLoader /> : id === "chats" ? <ChatsLoader /> : null;
+  return id === "projects" ? <ProjectsLoader /> : id === "chats" ? <ChatsLoader /> : id === "flows" ? <FlowsLoader /> : null;
 }
 
 /** The panel the path opens, or null (the main sidebar): a place with no list built yet stays on the main sidebar. */
