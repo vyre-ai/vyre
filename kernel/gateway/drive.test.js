@@ -189,7 +189,7 @@ test("drive.move: one file to a new path under the caller's grants, the old path
 });
 
 test("drive.trash: a delete from a mount is a move into .trash/ (drive.write only), and a second one of the same path does not overwrite the first", async () => {
-  const { D, bob } = await mountWorld();
+  const { D, owner, bob } = await mountWorld();
   await D.put(bob, "proj/a.txt", enc("one"));
   const t1 = await D.trash(bob, "proj/a.txt");
   assert.equal(t1.path, ".trash/proj/a.txt");
@@ -198,5 +198,6 @@ test("drive.trash: a delete from a mount is a move into .trash/ (drive.write onl
   const t2 = await D.trash(bob, "proj/a.txt");
   assert.notEqual(t2.path, t1.path);
   assert.match(t2.path, /^\.trash\/.+\/proj\/a\.txt$/);
-  assert.equal(dec(await D.get(bob, t1.path)), "one", "the first one is still there");
+  assert.equal(dec(await D.get(owner, t1.path)), "one", "the first one is still there, for an owner or admin to bring back");
+  await assert.rejects(() => D.get(bob, t1.path), { code: "not_found" }, "trashing is not a way to widen a grant: the trash is the admin's");
 });
