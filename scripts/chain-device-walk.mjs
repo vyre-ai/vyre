@@ -78,6 +78,18 @@ try {
     return `pairing.box=${String(p.box).length} chars (${/^[A-Za-z0-9_-]+$/.test(String(p.box)) ? "base64url" : "other"}), identity ${mac.identity.id}, chain founder entry ${mac.identity.key.eid}`;
   });
 
+  await step("0b. diagnostics: the server's owner claim, and the same hello checked offline against the live chain with box = pairing.box", async () => {
+    const claimed = await srv.operator("spaces.owner.claimed", {}).catch((/** @type {any} */ e) => ({ error: e.message }));
+    const { createChainAdmit } = await import("../core/relay/chain-admit.js");
+    const devicePub = crypto.randomBytes(32);
+    const h = await chainHello({ sha256, devicePub, box: String(mac.pairing.box), identity: mac.identity.id, entry: mac.identity.key.eid, sign: (m) => mac.identity.key.sign(m) });
+    const admit = createChainAdmit({ boxId: async () => String(mac.pairing.box), roleOf: async () => "owner",
+      fetchState: async () => { const r = await (await fetch(`${ins.names}/v1/ids/resolve?name=${encodeURIComponent(mac.identity.name)}`)).json(); return C.verifyChain(r.data.ops, { now: Date.now() + C.SKEW_MS }); } });
+    const r = await admit.check(h, h.channel);
+    const state = await (async () => { const rr = await (await fetch(`${ins.names}/v1/ids/resolve?name=${encodeURIComponent(mac.identity.name)}`)).json(); return C.verifyChain(rr.data.ops, { now: Date.now() + C.SKEW_MS }); })();
+    return `owner.claimed=${JSON.stringify(claimed).slice(0, 200)} (identity ${mac.identity.id}); offline check: ${JSON.stringify(r).slice(0, 200)}; chain entries: ${JSON.stringify(state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, alg: e.alg, held: e.held, founder: e.founder })))}`;
+  });
+
   // 1-3: the founder's own chain key, on a NEW Noise device the server never paired
   /** @type {any} */ let conn = null;
   await step("1-4. a never-paired device with the founder chain key dials with chainHello: admitted, calls run as the owner; the box string is accepted", async () => {
