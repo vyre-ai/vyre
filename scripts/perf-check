@@ -132,6 +132,7 @@ async function main() {
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
     // (see that file), so reading it any earlier always finds nothing.
     await stopChild(child);
+    if (process.env.VYRE_PERF_GCLOG) process.stderr.write(child.__output());
     const timers = readTimers(timersFile);
 
     const exitCode = report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc);

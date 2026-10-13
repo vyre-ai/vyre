@@ -14,9 +14,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund
-      - name: three runs
+      - name: gc log
         run: |
-          for i in 1 2 3; do
-            echo "== run $i"
-            node scripts/perf-check 2>&1 | grep -E "CPU \((p95|sust)|RSS \((startup|settled)" || true
-          done
+          VYRE_PERF_NODEARGS="--trace-gc" VYRE_PERF_GCLOG=1 node scripts/perf-check 2>&1 | grep -E "Mark-Compact|Scavenge|RSS \(startup|CPU \(sust" | cut -c1-170 | awk '{print}' | head -150
