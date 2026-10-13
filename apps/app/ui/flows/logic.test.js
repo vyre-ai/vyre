@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
+import { triggerPhrase } from "./logic.js";
 import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources, askChoices, val, dateChoices } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
@@ -372,4 +373,53 @@ test("an emails field is its main address: in text, and as the To, Reply-To or F
   assert.equal(back.steps[0].body, d.steps[0].body);
   assert.equal(back.steps[1].to, "{after.phone}");
   assert.deepEqual(toDefinition(d).steps[0].input.to, { expr: "trigger.after.email" }, "without the object's fields the value is as it is");
+});
+
+test("the triggers the engine has are in the builder: removed, a module event, a watcher, and schedules with a time", () => {
+  const cases = [
+    [{ kind: "removed", type: "client" }, { on: "event", event: "client.removed" }],
+    [{ kind: "event", event: "documents.signed" }, { on: "event", event: "documents.signed" }],
+    [{ kind: "watcher", watcher: "new-mail" }, { on: "watcher", watcher: "new-mail" }],
+    [{ kind: "schedule", every: "Every 15 minutes" }, { on: "time", every_ms: 900000 }],
+    [{ kind: "schedule", every: "Every hour" }, { on: "time", cron: "0 * * * *" }],
+    [{ kind: "schedule", every: "Every day", at: "09:00" }, { on: "time", cron: "0 9 * * *" }],
+    [{ kind: "schedule", every: "Every weekday", at: "17:30" }, { on: "time", cron: "30 17 * * 1-5" }],
+    [{ kind: "schedule", every: "Every Monday", at: "08:05" }, { on: "time", cron: "5 8 * * 1" }],
+    [{ kind: "schedule", every: "Every month", at: "06:00" }, { on: "time", cron: "0 6 1 * *" }],
+  ];
+  for (const [trigger, stored] of cases) {
+    const def = toDefinition({ name: "T", trigger, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] });
+    assert.deepEqual(def.trigger, stored);
+    assert.deepEqual(checkFlow(def), [], JSON.stringify(stored));
+    assert.deepEqual(fromDefinition(def).trigger, trigger);
+  }
+  assert.deepEqual(fromDefinition({ format: 1, name: "t", trigger: { on: "time", cron: "0 9 * * *" }, steps: [] }).trigger, { kind: "schedule", every: "Every day", at: "09:00" }, "an older daily Flow keeps its time");
+  assert.equal(fromDefinition({ format: 1, name: "t", trigger: { on: "time", cron: "0 9 15 * *" }, steps: [] }).trigger.kind, "advanced", "a schedule the builder cannot say is kept as it is");
+  assert.equal(triggerPhrase({ kind: "schedule", every: "Every weekday", at: "17:30" }, O), "it is every weekday at 17:30");
+  assert.equal(triggerPhrase({ kind: "event", event: "documents.signed" }, O), "a document is signed");
+  assert.ok(draftProblems({ name: "T", trigger: { kind: "schedule", every: "Every day", at: "9am" }, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] }, O).some((p) => /like 09:00/.test(p)));
+  assert.ok(draftProblems({ name: "T", trigger: { kind: "watcher", watcher: "" }, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] }, O).includes("Name the watcher."));
+});
+
+test("Look up one record and Keep only some of a list are in the palette and round-trip", () => {
+  assert.equal(choiceOf("pick").label, "Look up one record");
+  assert.equal(choiceOf("filter").label, "Keep only some of a list");
+  const o = { types: [{ name: "client", label: "Client", fields: [{ name: "email", label: "Email" }] }], agents: [], templates: [], roles: [], people: [] };
+  const d = { name: "P", trigger: { kind: "form", path: "f" }, steps: [
+    { id: "find1", kind: "find", type: "client", where: "", limit: 20 },
+    { id: "filter2", kind: "filter", from: "steps.find1.rows", where: 'record.email == "a@b.co"' },
+    { id: "pick3", kind: "pick", type: "client", where: "record.email == trigger.email" },
+    { id: "update4", kind: "update", type: "client", record: "pick3", field: "Note", value: "Hi" },
+  ] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[1], { id: "filter2", kind: "filter", from: "steps.find1.rows", where: 'record.email == "a@b.co"' });
+  assert.deepEqual(def.steps[2], { id: "pick3", kind: "pick", type: "client", where: "record.email == trigger.email" });
+  assert.deepEqual(def.steps[3].record, { expr: "steps.pick3.record.id" });
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+  assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
+  const tokens = valueSources(d, "update4", o).map(([t]) => t);
+  assert.ok(tokens.includes("{steps.filter2.rows}") && tokens.includes("{steps.pick3.found}") && tokens.includes("{steps.pick3.record.data.email}"));
+  assert.equal(stepProblem({ id: "filter2", kind: "filter", from: "", where: "" }, o), "Choose the list to narrow. Add a Find records step first.");
+  assert.equal(newStep("filter", { ...d, steps: d.steps.slice(0, 1) }, o).from, "steps.find1.rows");
 });
