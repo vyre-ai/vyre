@@ -16,7 +16,7 @@ test("a type's own created event starts a Flow, which reads the record from even
   const runs = await w.runner.listRuns({ flow: id });
   assert.equal(runs.length, 1, "one created record, one run");
   assert.equal(runs[0].state, "done", JSON.stringify(runs[0].error));
-  assert.equal((await w.kernel.records.read(chain, "matter", m.id)).data.stage, "Engagement", "the update reached the record that started the Flow");
+  assert.equal((await w.kernel.records.get(chain, "matter", m.id)).data.stage, "Engagement", "the update reached the record that started the Flow");
 });
 
 test("a form trigger hands its body to the steps as `trigger`, and a later step reads the record the create step made", async () => {
@@ -30,6 +30,6 @@ test("a form trigger hands its body to the steps as `trigger`, and a later step 
   await settle(w);
   const [run] = await w.runner.listRuns({ flow: id });
   assert.equal(run.state, "done", JSON.stringify(run.error));
-  const rows = (await w.kernel.records.query(chain, "matter", {})).rows;
+  const rows = (await w.kernel.records.query(chain, "matter", { page: { limit: 10 } })).rows;
   assert.deepEqual(rows.map(r => [r.data.client, r.data.stage]), [["Pat", "Engagement"]]);
 });
