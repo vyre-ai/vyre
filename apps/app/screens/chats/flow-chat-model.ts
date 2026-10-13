@@ -17,7 +17,9 @@ const STATE: Record<WakeState, string> = { running: "Running", waiting: "Waiting
 
 /** The Flow origin of a thread row, or null when the thread was not started by a Flow step. */
 export function markerOf(row: any): Marker | null {
-  const o = row && typeof row.origin === "object" && row.origin ? row.origin : row && typeof row.wake === "object" ? row.wake : null;
+  // threads.list gives the Flow origin as flow_origin (row.origin is the launch surface, a string); the older object shapes are still read
+  const pick = (v: any) => (v && typeof v === "object" ? v : null);
+  const o = pick(row?.flow_origin) ?? pick(row?.origin) ?? pick(row?.wake);
   if (!o || !s(o.flow) || !s(o.run)) return null;
   return { flow: s(o.flow), run: s(o.run), step: s(o.step), ...(s(o.task) ? { task: s(o.task) } : {}), ...(s(o.record) ? { record: s(o.record) } : {}),
     ...(s(o.flow_name) ? { flowName: s(o.flow_name) } : {}), ...(s(o.step_name) ? { stepName: s(o.step_name) } : {}), ...(s(o.run_no) ? { runNo: s(o.run_no) } : {}), ...(s(o.record_name) ? { recordName: s(o.record_name) } : {}), ...(s(o.approver) ? { approver: s(o.approver) } : {}) };
