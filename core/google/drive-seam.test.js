@@ -49,6 +49,7 @@ test("only Drive files, changes and uploads pass", async () => {
   const { seam } = rig();
   for (const path of ["/gmail/v1/users/me/messages", "/drive/v3/files/../about", "/drive/v3/about", "/calendar/v3/calendars/primary/events"]) assert.equal((await code(seam.run(OWNER, { path }))).code, "bad_input", path);
   assert.equal((await code(seam.run(OWNER, { method: "PUT", path: "/drive/v3/files" }))).code, "bad_input");
+  assert.equal((await code(seam.run(OWNER, { method: "DELETE", path: "/drive/v3/files/abc123" }))).code, "bad_input", "a permanent delete is never offered; the provider trashes");
 });
 
 test("an error carrying a bearer token or an access_token comes out stripped and cut to 300", async () => {

@@ -37,7 +37,7 @@ import { scopeFor, requireOwner, emailProblem } from "./member-scope.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const str = { type: "string" };
-const METHODS_DRIVE = ["GET", "POST", "PATCH", "DELETE"];
+const METHODS_DRIVE = ["GET", "POST", "PATCH"];
 const int = { type: "integer" };
 const emails = { anyOf: [str, { type: "array", items: str }], description: "an address, a comma list, or a list" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });

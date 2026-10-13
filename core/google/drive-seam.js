@@ -10,7 +10,7 @@
 import { forMember } from "./member-account.js";
 
 export const NO_ACCOUNT = "Connect your Google account in Settings first";
-const METHODS = ["GET", "POST", "PATCH", "DELETE"];
+const METHODS = ["GET", "POST", "PATCH"];
 const PATHS = /^\/(?:upload\/)?drive\/v3\/(?:files(?:\/[A-Za-z0-9_-]{1,128}(?:\/(?:export|revisions))?)?|changes(?:\/startPageToken)?)$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const fail = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
