@@ -12,6 +12,7 @@ import { ChatsList } from "../chats/ChatsList";
 import { chatsFrom, chatsOrdered, sampleChats, type ChatRow } from "../chats/chats-model.js";
 import { useChatMenu } from "../chats/useChatMenu";
 import { playbookPath } from "../templates/board";
+import { dayOf } from "../../src/time/show.js";
 
 /** A project's chats (work.chat.list for the project, by short name or record id): the same rows and the same row menu as the Chat list; the ones the person is in open, the others only show that they exist. */
 export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; name?: string }) {
@@ -68,7 +69,7 @@ function sourceOf(f: Fact): { line: string; href: string | null } {
   if (s.startsWith("vyre://") || s.includes("/files/")) return { line: "From a file", href: "/u/files" };
   return { line: s ? `From ${s}` : "Added by hand", href: null };
 }
-const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : new Date(n).toLocaleDateString(); };
+const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : dayOf(n); };
 
 /** What this project has learned (memory.space.recall for the project): each item says what was learned, where it came from and when, with Pin, Edit and Forget, and an "Add a memory" field (memory.space.file, memory.space.retire, memory.pin). */
 export function MemoryPane({ id }: { id: string }) {
