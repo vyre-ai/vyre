@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): a file opened from a chat shows in the chat panel (a "file" page, Back to the panel) on a wide screen and in a sheet on a phone; the sheet no longer scrolls twice (Sheet takes `scroll={false}`), shows the file's folder under its name, and the viewer's Open in Files goes to /u/files.
 - fix(app): the Projects list's task bar is ink, not violet (Meter was not used: it is a budget bar that turns warm past 90 percent, wrong for progress).
 - fix(app): ui-audit round 2. The chat panel sits beside the thread on a wide screen and pushes it over (nothing is cut off); the streaming caret is the text colour, not violet; the message action icons carry a title (name and key) as well as the tooltip.
 - feat(app): one library StatusPill (neutral "Stage 2 of 5", violet only as "Needs you"; spec docs/design/system/components/status-pill.md) used by the Projects list and the project page strip; on the project page Instructions are open first and the rest of the rail closed; the sample Doe estate plan has three estate chats.
