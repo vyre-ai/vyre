@@ -22,7 +22,6 @@ export async function walk(w) {
   const dir = path.join(w.out, tag);
   fs.rmSync(dir, { recursive: true, force: true });   // a walk starts from nothing: a home left by an earlier run would already have an owner
   fs.mkdirSync(dir, { recursive: true });
-  const pick = store === "records" ? "records" : "plain";
   const person = `walker${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`;
   const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
   /** @type {any} */ let reservation = null, flow = null, srv = null, session = null;
@@ -57,10 +56,10 @@ export async function walk(w) {
 
     await run.step(S("add a server: the app shows the install line"), async () => {
       flow = mac.addServer();
-      await flow.begin(pick);
+      await flow.begin();
       const line = flow.state.installLine;
       assert.ok(line.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
-      assert.ok(line.includes(`VYRE_STORE=${store === "records" ? "auto" : "sqlite"}`), "the line carries the store choice");
+      assert.ok(line.includes("VYRE_STORE=auto"), "the app's line always carries Records");
       return line.replace(flow.state.code, "<code>");
     }, { needs: [S("become yourself in the app (the code is spent)")] });
 
@@ -323,7 +322,7 @@ export async function walkUpdate(w) {
     });
     await run.step(S("add a server: the app shows the install line"), async () => {
       flow = mac.addServer();
-      await flow.begin("plain");
+      await flow.begin();
       assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`));
     }, { needs: [S("reserve a name and become yourself in the app")] });
     await run.step(S(`the old release (${update.oldVersion}) installs from the line`), async () => {
