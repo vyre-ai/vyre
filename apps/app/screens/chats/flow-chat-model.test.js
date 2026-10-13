@@ -47,7 +47,7 @@ test("the header says where it came from, whose access, and the run to open", { 
   const h = m.wakeHeader(m.markerOf(rows[0]));
   assert.equal(h.where, "Flow Refund request, run 43, step refunds agent");
   assert.equal(h.access, "Runs with Dana's access");
-  assert.equal(h.openRun, "/u/flows/f1");
+  assert.equal(h.openRun, "/u/flows/f1/runs/run_43");
   assert.equal(m.wakeHeader({ flow: "f", run: "run_1", step: "1" }).access, null);
 });
 
