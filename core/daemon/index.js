@@ -1433,7 +1433,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const v = id && key && caller === "mcp" ? await registry.call("mcpconn.vouch", { id, key }, "module:vyred").catch(() => null) : null;
     if (!(v && v.data && v.data.ok === true)) return send(res, 403, { error: { code: "denied", message: "this connection is not one the person made, or it was revoked: connect again with vyre mcp connect" } });
     mcpConn = id;
-    markViaMcp(via, id);
+    markViaMcp(via, id, v.data.hosted === true);
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.

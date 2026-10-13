@@ -75,7 +75,7 @@ export default {
       const want = Buffer.from(String(r.key_hash)), got = Buffer.from(hash(String(key || "")));
       const ok = want.length === got.length && crypto.timingSafeEqual(want, got);
       if (ok && (r.last_used == null || now() - Number(r.last_used) > 60_000)) db.prepare("UPDATE mcpconn_connections SET last_used = ? WHERE id = ?").run(now(), String(r.id));
-      return ok ? { ok: true, id: String(r.id), name: String(r.client) } : { ok: false };
+      return ok ? { ok: true, id: String(r.id), name: String(r.client), hosted: Number(r.hosted) === 1 } : { ok: false };
     };
 
     ctx.tool("mcpconn.connect", {

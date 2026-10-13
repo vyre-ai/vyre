@@ -607,3 +607,18 @@ export function mcpPersonMay(tool) {
   const why = PERSON_ONLY.get(tool);
   return !(why && NEVER_REASON.test(why));
 }
+
+/**
+ * What a HOSTED key (the public /mcp door) can never use, however the person's own access reads (the lead's ruling, 13 Oct: a leaked hosted key must not be able to run code on the box, add or change
+ * credentials or connections, manage computers or devices, change people, roles or grants, or make keys). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the
+ * person's own computer) keeps mcpPersonMay's reach. Everything not named here the person may do, a hosted key may do, and outward acts stay held at the Gate. One list, one test per category.
+ */
+export const HOSTED_NEVER = Object.freeze({
+  code: ["appmods.", "term.", "hooks.", "runner.", "code.", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute."],
+  credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside."],
+  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink."],
+  people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access."],
+  keys: ["mcpconn.", "pluginagent."],
+});
+/** May a call on a hosted key use this tool? @param {string} tool */
+export const hostedKeyMay = tool => !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p)));

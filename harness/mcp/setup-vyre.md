@@ -41,7 +41,7 @@ If a tool answers "not_in_grant" or "denied", that is a rule, not a fault. Tell 
 ## 4. Bring the sessions in
 
 - Say exactly what will go: how many sessions, how big, from which folders, into which projects. Vyre scrubs secrets on arrival and never sends credential files, but they should still hear it from you.
-- On their yes, call `import_sessions_run` with `{ sessions: [{ id, project }], confirmed: true }`. Each session is filed in its project. Use `import_status` to follow it. A big history takes a while; say so.
+- Call `import_sessions_run` with `{ sessions: [{ id, project }] }`. It is held as a card for the person (count and size), and runs when they approve; tell them to look. Each session is then filed in its project. Use `import_status` to follow it. A big history takes a while; say so.
 - Sessions you left out stay on the computer. The person can bring more later.
 
 ## Rules

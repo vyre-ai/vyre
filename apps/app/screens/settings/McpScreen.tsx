@@ -59,7 +59,7 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
       <Sec title="Make a key">
         <Card className="gap-s2">
           <Field name="Its name" value={name} onChangeText={setName} placeholder="Claude Code on laptop" />
-          <Row dense title="Hosted" sub="A URL and a key for any MCP client, not only this computer." end={<Switch label="Hosted" on={hosted} onChange={setHosted} />} />
+          <Row dense title="Hosted" sub="A URL and a key for any MCP client. Keys can't install apps, add accounts or touch the vault." end={<Switch label="Hosted" on={hosted} onChange={setHosted} />} />
           <View className="self-start"><Button label="Make the key" disabled={!name.trim() || busy === "new"} onPress={() => void act("new", async () => { setMade(await mcp.connect(name.trim(), hosted)); setName(""); })} /></View>
         </Card>
       </Sec>

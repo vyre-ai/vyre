@@ -65,10 +65,11 @@ test("connect once, then the client is the person: setup tools work, the person'
   fs.writeFileSync(path.join(tr, `${sid}.jsonl`), JSON.stringify({ type: "user", cwd: "/home/alex/Work/harlow-site", message: { content: "hello" } }) + "\n");
   const sc = await call("import.sessions.list", { folders: [tr] }, as);
   assert.ok(!sc.error && sc.data.sessions.some((/** @type {any} */ x) => x.id === sid), "the scan sees a session in a folder it is given: " + JSON.stringify(sc).slice(0, 200));
-  const run = await call("import.sessions.run", { sessions: [{ id: sid, project: "Harlow Legal" }], confirmed: true }, as);
-  assert.match(String(run.error && run.error.message), /no paired device|cannot send to a server|not a paired/i, "the relay was allowed (consent ran as the person) and the upload could not start: " + JSON.stringify(run).slice(0, 240));
+  // Over a key the run is held for the person's yes, a card, not a flag the AI sets itself.
+  const held = await call("import.sessions.run", { sessions: [{ id: sid, project: "Harlow Legal" }] }, as);
+  assert.equal(held.error && held.error.code, "held_for_approval", "a key's import waits at the Gate: " + JSON.stringify(held).slice(0, 200));
   const th = await call("projects.threads", { project: "Harlow Legal" }, as);
-  assert.ok(!JSON.stringify(th.data || "").includes(sid), "the pick was taken back: " + JSON.stringify(th).slice(0, 200));
+  assert.ok(!JSON.stringify(th.data || "").includes(sid), "nothing was filed while the run waits for the person: " + JSON.stringify(th).slice(0, 200));
 
   // What stays the person's: connecting and revoking themselves, their keys, pairing, the vault, a face.
   for (const [tool, input] of [["mcpconn.connect", {}], ["mcpconn.revoke", { id }], ["pluginagent.grant", {}], ["vault.provider.set", { provider: "x" }], ["presence.keys", {}]]) {
@@ -96,6 +97,10 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.ok(!fs.existsSync(file), "the file went with it");
   assert.equal((await call("mcpconn.list", {}, opts)).data.find((/** @type {any} */ c) => c.id === id).revoked, true);
 
+  const local2 = await call("mcpconn.connect", { name: "Codex" }, proof);
+  const f2 = JSON.parse(fs.readFileSync(file, "utf8"));
+  const as2 = { root, caller: "mcp", headers: { "x-vyre-mcp-id": f2.id, "x-vyre-mcp-key": f2.key } };
+  assert.ok(!local2.error);
   // Hosted: a second key, named for another agent, over streamable HTTP with a Bearer key. Same tools as `vyre mcp`, run as the person; the name shows in Activity; a revoke is a 401 on the next call.
   const h = await call("mcpconn.connect", { name: "Zapier agent", hosted: true }, proof);
   assert.ok(!h.error, JSON.stringify(h));
@@ -103,7 +108,6 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.match(h.data.url, /^http:\/\/127\.0\.0\.1:\d+\/mcp$/, "on loopback until the public gate carries it");
   assert.match(h.data.snippets.claude, /claude mcp add --transport http vyre-zapier-agent .*\/mcp --header "Authorization: Bearer /);
   assert.ok(JSON.parse(h.data.snippets.json).mcpServers["vyre-zapier-agent"].headers.Authorization.startsWith("Bearer "));
-  assert.ok(!fs.existsSync(file), "a hosted key writes no file on this computer");
   const post = (/** @type {any} */ msg, /** @type {string} */ token) => fetch(h.data.url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(msg) });
   const rpc = async (/** @type {any} */ msg) => { const r = await post(msg, h.data.key); return { status: r.status, body: r.status === 200 ? await r.json() : null }; };
   assert.equal((await post({ jsonrpc: "2.0", id: 1, method: "ping" })).status, 401, "no key, no entry");
@@ -120,11 +124,33 @@ test("connect once, then the client is the person: setup tools work, the person'
   const hostedAct = (await call("mcpconn.activity", {}, opts)).data;
   assert.ok(hostedAct.some((/** @type {any} */ a) => a.name === "Zapier agent" && a.tool === "projects.create" && a.says === "via Zapier agent"), JSON.stringify(hostedAct).slice(0, 300));
   const rows = (await call("mcpconn.list", {}, opts)).data;
-  assert.deepEqual(rows.filter((/** @type {any} */ c) => !c.revoked).map((/** @type {any} */ c) => [c.name, c.where]), [["Zapier agent", "hosted"]]);
+  assert.deepEqual(rows.filter((/** @type {any} */ c) => !c.revoked && c.hosted).map((/** @type {any} */ c) => [c.name, c.where]), [["Zapier agent", "hosted"]]);
   assert.ok(rows.find((/** @type {any} */ c) => c.name === "Zapier agent").lastUsed, "last used is kept");
   // it cannot see beyond its person: the person's own face-and-key tools are out of reach over HTTP too
   const face = await rpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "tools_call", arguments: { tool: "mcpconn.connect", arguments: { name: "me too" } } } });
   assert.ok(face.body.result.isError || JSON.stringify(face.body).includes("denied") || JSON.stringify(face.body).includes("no_such_tool") || JSON.stringify(face.body).includes("not_in"), "a key cannot make keys: " + JSON.stringify(face.body).slice(0, 200));
+  // A hosted key has an invisible deny-list, one test per category: code on the box, credentials and connections, devices, people and roles, keys. A local key keeps its reach.
+  const { HOSTED_NEVER } = await import("../modules/agent-reach.js");
+  const REP = { code: ["appmods.install", "term.open", "hooks.enable", "runner.start"], credentials: ["vault.list", "vault.delete", "google.add", "connectors.connect", "sessions.accounts.key", "github.connect"],
+    devices: ["computers.list", "spaces.devices.remove", "relay.devices.remove", "link.unpair"], people: ["roles.list", "spaces.members.add", "spaces.invites.create", "projects.access.grant"], keys: ["mcpconn.list", "outside.token"] };
+  assert.deepEqual(Object.keys(REP).sort(), Object.keys(HOSTED_NEVER).sort(), "a test for every category");
+  let n = 0;
+  for (const [cat, tools] of Object.entries(REP)) for (const tool of tools) {
+    if (!d.registry.tools.has(tool)) continue;
+    n++;
+    const r = await rpc({ jsonrpc: "2.0", id: 100 + n, method: "tools/call", params: { name: "tools_call", arguments: { tool, arguments: {} } } });
+    assert.ok(r.body.result.isError && /hosted key|that you may use/.test(JSON.stringify(r.body)), `${cat}: ${tool} is refused to a hosted key: ` + JSON.stringify(r.body).slice(0, 200));
+  }
+  // and the registry itself refuses them for a marked hosted key, whatever the server's catalog says
+  const { markViaMcp } = await import("../modules/via-mcp.js");
+  for (const [cat, tools] of Object.entries(REP)) for (const tool of tools) {
+    if (!d.registry.tools.has(tool)) continue;
+    const r = await d.registry.call(tool, {}, "mcp", markViaMcp({}, "mcn_x", true));
+    assert.ok(r.error && /hosted key/.test(r.error.message || ""), `${cat}: ${tool} in the registry: ` + JSON.stringify(r).slice(0, 160));
+  }
+  assert.ok(n >= 15, "most representatives exist: " + n);
+  // the same call on a LOCAL key is not refused for being hosted
+  assert.ok(!JSON.stringify(await call("roles.list", {}, as2)).includes("hosted key"), "a local key keeps its reach");
   // revoke is one call, and the next request is a 401
   assert.ok(!(await call("mcpconn.revoke", { id: h.data.id }, opts)).error);
   assert.equal((await rpc({ jsonrpc: "2.0", id: 5, method: "tools/list" })).status, 401, "the next call after a revoke is a 401");

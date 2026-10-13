@@ -44,7 +44,7 @@ async function world(t) {
     name: "import", config: { name: "Alex MacBook", transcripts: [path.join(root, "claude", "projects")] }, paths: { root },
     store: { db, migrate: steps => migrate(db, "import", steps) }, log: () => {},
     events: { on: () => () => {}, emit: () => {} },
-    call: async (tool, input) => { calls.push({ tool, input }); const f = fake[tool]; return f ? { data: f(input) } : { error: { code: "no_such_tool", message: tool } }; },
+    call: async (tool, input, opts) => { calls.push({ tool, input, opts }); const f = fake[tool]; return f ? { data: f(input) } : { error: { code: "no_such_tool", message: tool } }; },
     tool: (name, def) => tools.set(name, def),
   };
   const h = await mod.start(ctx);
@@ -73,20 +73,18 @@ test("import.sessions.*: the person's own connected client, and nothing else tha
   assert.ok((await call("import.sessions.list", {}, "mcp", CONN)).data, "vouched");
   assert.equal((await call("import.sessions.list", {}, "mcp:agent:kit", { agent: "kit", thread: "t", viaMcp: "mcn_1" })).error.code, "denied", "a Vyre session's agent is not the person's connection");
   assert.equal((await call("import.sessions.list", {}, "tailnet:alex@example.com")).error.code, "denied");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: true }, "mcp")).error.code, "denied");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }]}, "mcp")).error.code, "denied");
   assert.ok((await call("import.sessions.list", {})).data, "the person's own surface needs no connection");
 });
 
 test("import.sessions.run: needs the scan, the person's yes, real ids and projects; then sends and files each session in its project", async t => {
   const { call, calls } = await world(t);
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: true }, "mcp", CONN)).error.code, "bad_input", "scan first");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }]}, "mcp", CONN)).error.code, "bad_input", "scan first");
   await call("import.sessions.list", {}, "mcp", CONN);
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }] }, "mcp", CONN)).error.code, "bad_input", "no yes, no upload");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1) }], confirmed: false }, "mcp", CONN)).error.code, "bad_input");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: "nope" }], confirmed: true }, "mcp", CONN)).error.code, "not_found");
-  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1), project: "ghost" }], confirmed: true }, "mcp", CONN)).error.code, "not_found");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: "nope" }]}, "mcp", CONN)).error.code, "not_found");
+  assert.equal((await call("import.sessions.run", { sessions: [{ id: ID(1), project: "ghost" }]}, "mcp", CONN)).error.code, "not_found");
   assert.equal(calls.filter(c => c.tool === "sync.send").length, 0, "nothing was sent by the refusals");
-  const r = await call("import.sessions.run", { sessions: [{ id: ID(1), project: "Harlow Legal" }, { id: ID(2), project: "harlow" }, { id: ID(4) }], confirmed: true }, "mcp", CONN);
+  const r = await call("import.sessions.run", { sessions: [{ id: ID(1), project: "Harlow Legal" }, { id: ID(2), project: "harlow" }, { id: ID(4) }]}, "mcp", CONN);
   assert.equal(r.data.sessions, 3, JSON.stringify(r));
   assert.deepEqual(r.data.filed, { harlow: 2 });
   for (let i = 0; i < 50 && !calls.some(c => c.tool === "sync.send"); i++) await new Promise(res => setTimeout(res, 20));
@@ -95,4 +93,5 @@ test("import.sessions.run: needs the scan, the person's yes, real ids and projec
   assert.ok(!sent.some(p => /credentials/.test(p)));
   const pick = calls.find(c => c.tool === "projects.add-threads");
   assert.deepEqual(pick.input, { project: "harlow", threads: [ID(1), ID(2)] });
+  assert.deepEqual(pick.opts, { relay: true }, "filed as the person, not as a module");
 });

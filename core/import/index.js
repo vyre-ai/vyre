@@ -268,12 +268,11 @@ export default {
     });
     ctx.tool("import.sessions.run", {
       effect: "write",
-      description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Say plainly to the person what goes (count, size, which folders) and get their yes before calling; confirmed: true says you did (it is your word, so do not set it without that yes).",
-      input: { type: "object", required: ["sessions", "confirmed"], properties: { sessions: { type: "array", maxItems: ROWS, items: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } } }, confirmed: { type: "boolean" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
+      description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }] }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Sending a person's sessions off their computer waits for their yes: when you call it as their AI it is held as a card showing the count and size, and runs when they approve. Say plainly what goes first.",
+      input: { type: "object", required: ["sessions"], properties: { sessions: { type: "array", maxItems: ROWS, items: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } } }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
       callers: PEOPLE,
-      run: async ({ sessions, confirmed, mode = "once", pace = "gentle" }, meta = {}) => {
+      run: async ({ sessions, mode = "once", pace = "gentle" }, meta = {}) => {
         await mayRun(meta);
-        if (confirmed !== true) throw Object.assign(new Error("tell the person what will go and get their yes, then call again with confirmed: true"), { code: "bad_input" });
         if (!last) throw Object.assign(new Error("run import.sessions.list first"), { code: "bad_input" });
         if (!Array.isArray(sessions) || !sessions.length) throw Object.assign(new Error("no sessions chosen"), { code: "bad_input" });
         const ps = await projects().catch(() => []);

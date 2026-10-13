@@ -25,6 +25,10 @@ One yes on your device. The name is what you see afterwards in Activity ("via Cl
 
 In the app, Settings > Your AI keys does the same: name, Hosted switch, copy buttons, the list of keys with where each runs and when it was last used, and Revoke. `vyre mcp list` and `vyre mcp revoke <id>` do it from the terminal.
 
+## What a hosted key cannot do
+
+A hosted key is reachable from the internet, so it never installs apps or runs code on your server, adds or changes accounts and connections, touches the Vault, manages computers or devices, changes people, roles or access, or makes keys. There is no prompt for this; those tools are simply refused. A key for `vyre mcp` on your own computer keeps the full reach described below.
+
 ## Revoke
 
 Revoke is one tap and needs no yes. The key stops working at once: the next call over HTTP is a 401, and `vyre mcp` on the computer is refused.
@@ -42,7 +46,7 @@ In a new Claude Code session, run the prompt `/mcp__vyre__setup-vyre`. In Codex,
 1. Look. It lists the sessions on this computer (`import_sessions_list`: folder, size, date, never what was said) and reads your project folders.
 2. Propose. It writes a plan per client: project, instructions, agents, records, templates, flows. You correct it.
 3. Make. It creates what you agreed to, in order, and tells you what is waiting on your yes.
-4. Bring the sessions in. It tells you how many, how big and from where, and on your yes calls `import_sessions_run` with the sessions and the project each belongs to.
+4. Bring the sessions in. It tells you how many, how big and from where, and calls `import_sessions_run` with the sessions and the project each belongs to; sending them is held as a card for you to approve.
 
 ## Which sessions
 
