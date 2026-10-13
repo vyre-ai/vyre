@@ -4340,6 +4340,104 @@
      "component": "setup-field-errors"
     }
    }
+  },
+  "record-form": {
+   "title": "Records: create form",
+   "screens": {
+    "full": {
+     "component": "record-form"
+    },
+    "compact": {
+     "component": "record-form"
+    },
+    "glance": {
+     "component": "record-form"
+    }
+   }
+  },
+  "record-form-errors": {
+   "title": "Records: create form, errors",
+   "screens": {
+    "full": {
+     "component": "record-form-errors"
+    },
+    "compact": {
+     "component": "record-form-errors"
+    },
+    "glance": {
+     "component": "record-form-errors"
+    }
+   }
+  },
+  "record-page": {
+   "title": "Records: record page",
+   "screens": {
+    "full": {
+     "component": "record-page"
+    },
+    "compact": {
+     "component": "record-page"
+    },
+    "glance": {
+     "component": "record-page"
+    }
+   }
+  },
+  "import-1": {
+   "title": "Records: import, upload",
+   "screens": {
+    "full": {
+     "component": "import-1"
+    },
+    "compact": {
+     "component": "import-1"
+    },
+    "glance": {
+     "component": "import-1"
+    }
+   }
+  },
+  "import-2": {
+   "title": "Records: import, match columns",
+   "screens": {
+    "full": {
+     "component": "import-2"
+    },
+    "compact": {
+     "component": "import-2"
+    },
+    "glance": {
+     "component": "import-2"
+    }
+   }
+  },
+  "import-3": {
+   "title": "Records: import, check",
+   "screens": {
+    "full": {
+     "component": "import-3"
+    },
+    "compact": {
+     "component": "import-3"
+    },
+    "glance": {
+     "component": "import-3"
+    }
+   }
+  },
+  "import-4": {
+   "title": "Records: import, done",
+   "screens": {
+    "full": {
+     "component": "import-4"
+    },
+    "compact": {
+     "component": "import-4"
+    },
+    "glance": {
+     "component": "import-4"
+    }
+   }
   }
  }
 }

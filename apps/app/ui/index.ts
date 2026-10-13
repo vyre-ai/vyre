@@ -103,3 +103,13 @@ export type { Starter } from "./setup/TypeStarter";
 export type { TypeRef, RoleRef, FieldRef } from "./setup/types";
 export { newDraft, nameOf, checkField, toDefinition, fieldSummary } from "./setup/logic.js";
 export type { Draft } from "./setup/logic.js";
+// Records screens built from parts: the create form, the record header, related records, the one timeline, the import wizard.
+export { RecordForm } from "./records/RecordForm";
+export { RecordHeader } from "./records/RecordHeader";
+export { RelatedSection } from "./records/RelatedSection";
+export type { RelatedRow } from "./records/RelatedSection";
+export { ActivityFeed } from "./records/ActivityFeed";
+export type { Activity } from "./records/ActivityFeed";
+export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
+export type { ImportIssue, DupeRule } from "./records/ImportWizard";
+export { formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
