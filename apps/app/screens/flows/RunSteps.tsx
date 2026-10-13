@@ -29,7 +29,7 @@ function Detail({ r, name, thread, open }: { r: StepRow; name: (id: string) => s
   );
 }
 
-const DOT: Record<string, string> = { ok: "bg-ok", warn: "bg-warn", err: "bg-err", accent: "bg-accent", plain: "bg-text-3" };
+const DOT: Record<string, string> = { ok: "bg-ok", warn: "bg-warn", err: "bg-err", accent: "bg-accent", plain: "bg-selected" };
 
 export function RunSteps({ painted, steps, max, fmt, name = (id) => id, rail, threads, openThread }: { threads?: Record<string, string>; openThread?: (thread: string) => void; painted: PaintedNode[]; steps: Record<string, Ledger> | undefined; max?: Record<string, number>; fmt: (ms: number) => string; name?: (id: string) => string; rail?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
