@@ -17,6 +17,7 @@ export function Segmented<T extends string>({ options, value, onChange, label, f
     <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ minHeight: h, padding: 2 }} className={cn("max-w-full flex-row gap-s1 bg-hover", fill ? "self-stretch rounded-full" : "flex-wrap self-start rounded-card")}>
       {options.map(([v, l]) => (
         <Pressable key={v} accessibilityRole="radio" accessibilityLabel={l} accessibilityState={{ selected: v === value }} onPress={() => onChange?.(v)}
+          {...({ onKeyDown: (e: { key: string; preventDefault: () => void }) => { if (e.key === " ") { e.preventDefault(); onChange?.(v); } } } as object)}
           style={[{ height: h - 4 }, v === value ? elevation(resolved.scheme, 1) : null]}
           className={cn("flex-row items-center justify-center gap-s2 rounded-full", iconsOnly ? "px-s3" : fill && options.length > 3 ? "px-s2" : "px-s4", fill && "grow", v === value ? "bg-surface-3" : "bg-transparent")}>
           {icons?.[v] ? <Icon name={icons[v] as IconName} size={16} tone={v === value ? "text" : "text-2"} /> : null}

@@ -45,7 +45,7 @@ export function VaultIntro({ go, back, steps }: ScreenProps) {
     <FlowStep steps={steps} onBack={back} title="Let's set up your vault" lead="Your vault holds your AI accounts, passwords and keys, locked so that only you can open it."
       primary={{ label: "Create my master password", onPress: () => go("master.set") }}>
       <Card flush>
-        <Row dense lead={<IconTile name="lock" />} title="Only you can open it" sub="One master password, typed once on each device." />
+        <Row dense lead={<IconTile name="lock" />} title="Only you can open it" sub="One master password. A new device is approved from another device first." />
         <Divider inset={60} />
         <Row dense lead={<IconTile name="devices" />} title="It lives with you" sub="On your devices, and sealed inside each space you join." />
         <Divider inset={60} />
@@ -106,7 +106,7 @@ export function MasterEnter({ ctx, set, go, back, steps }: ScreenProps) {
     if (r.ok) go("inf.pick"); else setSay(r.say);
   };
   return (
-    <FlowStep steps={steps} onBack={back} title="Open your vault here" lead="Type your master password once on this device. After that, Touch ID, Windows Hello or your phone's lock opens it."
+    <FlowStep steps={steps} onBack={back} title="Open your vault here" lead="This device is approved. Type your master password to open your vault here. After that, Touch ID, Windows Hello or your phone's lock opens it."
       primary={{ label: "Open my vault", disabled: !pw || busy, loading: busy, onPress: () => { void open(); } }}
       secondary={{ label: "I forgot it: use my recovery kit", onPress: () => { set({ reset: true }); go("id.recover"); } }}>
       <PasswordField label="Master password" name="Master password" value={pw} onChangeText={(v) => { setPw(v); setSay(""); }} error={say || undefined} />
