@@ -79,7 +79,10 @@ try {
   });
 
   await step("0b. diagnostics: the server's owner claim, and the same hello checked offline against the live chain with box = pairing.box", async () => {
-    const claimed = await srv.operator("spaces.owner.claimed", {}).catch((/** @type {any} */ e) => ({ error: e.message }));
+    const claimed = await srv.registry.call("spaces.owner.claimed", {}, "module:relay").catch((/** @type {any} */ e) => ({ error: e.message }));
+    const kernelSpace = await srv.registry.call("spaces.list", {}, "module:relay").catch((/** @type {any} */ e) => ({ error: e.message }));
+    const member = await srv.registry.call("spaces.membership", { person: mac.identity.id, space: String((await mac.callTool("spaces.list", {}))[0].id) }, "module:relay").catch((/** @type {any} */ e) => ({ error: e.message }));
+    console.log("DIAG claimed " + JSON.stringify(claimed).slice(0, 300) + " | membership " + JSON.stringify(member).slice(0, 300) + " | spaces " + JSON.stringify(kernelSpace).slice(0, 200));
     const { createChainAdmit } = await import("../core/relay/chain-admit.js");
     const devicePub = crypto.randomBytes(32);
     const h = await chainHello({ sha256, devicePub, box: String(mac.pairing.box), identity: mac.identity.id, entry: mac.identity.key.eid, sign: (m) => mac.identity.key.sign(m) });
