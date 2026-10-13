@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { MOCK } from "../../src/real/box";
 import { useMembers } from "../spaces/state";
-
-/** Whether this role makes templates: the owner and an admin do; a member, a manager and a guest use the live ones. The box refuses anyone else in words; this only keeps the button from showing. */
-export const mayMakeTemplates = (role: string | null | undefined): boolean => role === "owner" || role === "admin";
+import { mayMakeTemplates } from "./use";
 
 /** The session's role in the space showing (the one Settings, People reads), and so whether to show the buttons that make or copy a template. The sample build is an admin. */
 export function useMayMakeTemplates(): boolean {

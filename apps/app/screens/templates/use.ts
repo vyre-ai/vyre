@@ -23,3 +23,6 @@ export const rowState = (r: Row): string => (r.archived ? "Archived" : r.live !=
 
 /** What a project's page calls its kind: the noun of the template it started with, that template's name when it has none, else "Project". */
 export const projectNoun = (data: Record<string, unknown> | null | undefined): string => templateNoun(data) || "Project";
+
+/** Whether this role makes templates: the owner and an admin do; a member, a manager and a guest use the live ones. The box refuses anyone else in words; this only keeps the button from showing. */
+export const mayMakeTemplates = (role: string | null | undefined): boolean => role === "owner" || role === "admin";

@@ -42,6 +42,6 @@ test("a project's page names its kind from the template it started with, else Pr
 });
 
 test("only the owner and an admin are offered the buttons that make or copy a template", async () => {
-  const { mayMakeTemplates } = await import("./role.ts");
+  const { mayMakeTemplates } = await import("./use.ts");
   assert.deepEqual(["owner", "admin", "manager", "member", "temp", "", undefined, null].map(mayMakeTemplates), [true, true, false, false, false, false, false, false]);
 });
