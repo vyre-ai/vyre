@@ -101,6 +101,7 @@ try {
     return `pairing.box starts ${String(p.box).slice(0, 6)} (${typeof p.box}), pairing keys ${Object.keys(p).join(",")}; pairing.box=${String(p.box).length} chars (${/^[A-Za-z0-9_-]+$/.test(String(p.box)) ? "base64url" : "other"}), identity ${mac.identity.id}, chain founder entry ${mac.identity.key.eid}`;
   });
 
+  /** @type {any} */ let memberRef = null, spaceRef = "";
   await step("9. a MEMBER's identity (not the owner) gets a chain device that signs in with the member's role, and cannot do the owner's acts", async () => {
     const mem = createApp({ label: "Member Mac", dir: path.join(out, "member"), directory: ins.names, relay: ins.relay });
     const mres = await mem.reserve("member" + Math.random().toString(36).slice(2, 6));
@@ -125,7 +126,29 @@ try {
     assert.equal(sp.status, 200, `spaces.list ${sp.status} ${sp.text}`);
     assert.ok(/"role":"member"/.test(sp.text), `the row says role member: ${sp.text}`);
     assert.ok(adm.status >= 400, `a member cannot promote themself: ${adm.status} ${adm.text}`);
+    const ren = await call("relay.devices.rename", { id: lastChannel, name: "x" });
+    const vl = await call("vault.list", {});
+    console.log(`DIAG member relay.devices.rename ${ren.status} ${ren.text.slice(0, 140)} | vault.list ${vl.status} ${vl.text.slice(0, 120)}`);
+    assert.ok(ren.status >= 400 && vl.status >= 400, `owner-only acts refused to a member: rename ${ren.status}, vault.list ${vl.status}`);
+    memberRef = mem; spaceRef = space;
     return `admitted, role member in spaces.list, records.list ${rl.status}, self-promotion refused ${adm.status}`;
+  });
+  await step("9b. a person who is NOT a member is refused (bad_proof); a member removed since is refused too", async () => {
+    const out2 = /** @type {string[]} */ ([]);
+    const stranger = createApp({ label: "Stranger", dir: path.join(out, "stranger"), directory: ins.names, relay: ins.relay });
+    const sres = await stranger.reserve("stranger" + Math.random().toString(36).slice(2, 6));
+    await stranger.becomeYourself({ name: sres.name, code: sres.code });
+    await srv.registry.call("spaces.person.learn", { id: stranger.identity.id, name: stranger.identity.name }, "module:vyred").catch(() => null);
+    let said = ""; try { const c = await dial({ key: stranger.identity.key, entry: stranger.identity.key.eid, identity: stranger.identity.id, name: stranger.identity.name }); said = JSON.stringify(await callAs(c, "system.info")); } catch (e) { said = "refused: " + String(/** @type {any} */ (e).message).slice(0, 160); }
+    out2.push("non-member: " + said.slice(0, 120));
+    assert.match(said, /refused|4\d\d/, `a non-member is refused: ${said}`);
+    assert.ok(!/^\{"data"/.test(said), `not served: ${said}`);
+    const rem = await srv.team.dropMember(spaceRef, mac.identity.id, memberRef.identity.id).catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) }));
+    console.log(`DIAG dropMember ${JSON.stringify(rem).slice(0, 200)}`);
+    let said2 = ""; try { const c = await dial({ key: memberRef.identity.key, entry: memberRef.identity.key.eid, identity: memberRef.identity.id, name: memberRef.identity.name }); said2 = JSON.stringify(await callAs(c, "system.info")); } catch (e) { said2 = "refused: " + String(/** @type {any} */ (e).message).slice(0, 160); }
+    out2.push("removed member: " + said2.slice(0, 120));
+    assert.match(said2, /refused/, `a removed member is refused: ${said2}`);
+    return out2.join(" | ");
   });
 } finally {
   if (srv) for (const l of srv.logs.filter((/** @type {string} */ x) => /chain|hello|relay|admit|bad_proof|box/i.test(x)).slice(-25)) console.log("SERVERLOG " + l.slice(0, 260));
