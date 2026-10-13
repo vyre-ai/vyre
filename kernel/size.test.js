@@ -31,7 +31,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9611 (kernel +7 on 9604, per-project seat levels: a viewer on a project reads it and writes nothing in it, refused in words from the one folder guard and the gate; the rule that judges who writes a seat or a task is in gateway/ownership.js, which is not base).
 // 9613 (seats +7 and roles-core +2 together on 9604, merged on the stage 13 Oct 2026).
 // 9615 (invite-seats, 13 Oct 2026, lead ruling: an invite carries its project seats; +2: the shape check and the seats kept beside custom, which invite.used carries to the work module).
-const CAP = 9615;
+// 9633 (records-ux, 13 Oct 2026, [kernel +19: field groups, presentation only] on 9614: `group` on a field and `groups` on a type are checked when the type is defined in gateway/records.js checkShape, rc1-d signed).
+const CAP = 9633;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
