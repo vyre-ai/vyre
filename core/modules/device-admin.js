@@ -7,6 +7,8 @@
 //   DEVICE_OK     has the shape of device administration but a limited device may do it, with the reason beside the name.
 // ADMIN_SHAPE is what the drift test looks for: any tool a device can reach whose name has this shape must be on exactly one of the two lists.
 
+import { deviceIdOf } from "../../lib/caller.js";
+
 export const DEVICE_ADMIN = Object.freeze(new Set([
   // pairing windows and tickets: they make a new device
   "relay.pair.first", "relay.pair.start", "relay.pair.ticket", "relay.pair.window.open", "relay.pair.window.close", "relay.pair.window.confirm", "relay.pair.window.reject", "relay.pair.window.renew", "relay.pair.window.ping",
@@ -45,9 +47,10 @@ const NEXT = "Do this from your first device, or wait until this one has been on
  */
 export function createLimitedGate(o) {
   return async (tool, caller) => {
-    if (!DEVICE_ADMIN.has(tool) || !String(caller).startsWith("device:")) return null;
+    const id = deviceIdOf(String(caller));
+    if (!DEVICE_ADMIN.has(tool) || !id) return null;
     let limited = true;
-    try { limited = await o.isLimited(String(caller).slice(7)); } catch { limited = true; }
+    try { limited = await o.isLimited(id); } catch { limited = true; }
     return limited ? { error: { code: "denied", message: `${tool} is for a device you have set up in person. ${NEXT}` } } : null;
   };
 }
