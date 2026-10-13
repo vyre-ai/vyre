@@ -124,3 +124,9 @@ test("Projects of one playbook: the rows whose template it is", async () => {
   assert.equal(ofPlaybook(items, "tpl_a").length, 1);
   assert.equal(ofPlaybook(items, "").length, 3, "no playbook named: all of them");
 });
+
+test("a stage's pill is neutral and says how far along the pipeline it is", async () => {
+  const { stageProgress } = await import("./board.ts");
+  assert.equal(stageProgress(1, 5), "Stage 2 of 5");
+  assert.equal(stageProgress(0, 1), "Stage 1 of 1");
+});
