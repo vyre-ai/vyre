@@ -72,3 +72,37 @@ test("sharing: what I may do with it, and with how many it is shared when I can 
   assert.deepEqual(sharingOf({ shares: "x" }, "me"), { mine: "", count: 0 });
   assert.equal(agentRow({ name: "A", kind: "agent", shares: [{ person: "me", level: "use" }] }, "me").mine, "Can use");
 });
+
+import { visibleAgents, rowActions, chatHas, COMPUTED_TITLES } from "./home-model.js";
+const ME = "per_me", OTHER = "per_other";
+const R = (o) => agentRow({ name: "x", kind: "agent", thread: "t", status: "idle", ...o }, ME);
+
+test("another person's assistant never appears, and your own is first", () => {
+  const rows = [R({ name: "kit", made_by: ME }), R({ name: "theirs", kind: "assistant", made_by: OTHER }), R({ name: "juno", kind: "assistant", made_by: ME })];
+  assert.deepEqual(visibleAgents(rows, ME).map((r) => r.name), ["juno", "kit"]);
+});
+
+test("the assistant's menu is Open chat and Settings: no share, delete, move or new chat", () => {
+  const a = R({ name: "juno", kind: "assistant", made_by: ME });
+  assert.deepEqual(rowActions(a, { me: ME, staff: true, groups: ["Mine"] }).map((x) => x.key), ["chat", "open"]);
+});
+
+test("an agent's menu: share and delete only for its maker or staff, pause only when it can pause, no move into computed groups", () => {
+  const mine = R({ name: "kit", made_by: ME });
+  assert.deepEqual(rowActions(mine, { me: ME, groups: ["Yours", "Shared with you", "Mine"], placed: "Yours" }).map((x) => x.key), ["open", "new-chat", "pause", "share", "delete", "move"]);
+  const move = rowActions(mine, { me: ME, groups: ["Yours", "Mine"], placed: "Yours" }).find((x) => x.key === "move");
+  assert.equal(move?.to, "Mine");
+  const theirs = R({ name: "rev", made_by: OTHER, thread: null });
+  assert.deepEqual(rowActions(theirs, { me: ME, chats: 2 }).map((x) => x.key), ["open", "new-chat", "chats"]);
+  assert.ok(rowActions(theirs, { me: ME, staff: true }).some((x) => x.key === "delete"), "an owner or admin may delete any agent");
+  assert.ok(!rowActions(R({ name: "engineer", builtin: true, made_by: ME }), { me: ME, staff: true }).some((x) => x.key === "delete" || x.key === "share"), "built-in agents are not shared or deleted");
+  assert.ok(!rowActions(mine, { me: ME, canDelete: false }).some((x) => x.key === "delete"));
+  assert.equal(rowActions(R({ status: "stopped", made_by: ME }), { me: ME }).find((x) => x.key === "pause")?.label, "Resume");
+  assert.deepEqual(COMPUTED_TITLES, ["Yours", "Your team's agents", "Shared with you", "Builders"]);
+});
+
+test("a chat is with an agent when it lists it; the assistant's pinned chat is not", () => {
+  assert.ok(chatHas({ agents: ["kit", "rev"] }, "kit"));
+  assert.ok(!chatHas({ agents: ["kit"] }, "rev"));
+  assert.ok(!chatHas({ agents: ["kit"], pinned: "assistant" }, "kit"));
+});
