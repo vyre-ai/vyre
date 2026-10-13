@@ -168,7 +168,7 @@ export { ListHeader } from "./records/ListHeader";
 export type { ListCtx } from "./records/ListHeader";
 export { listRows, chipWords, chipsToFilters, filterableFields } from "./records/listfilter.js";
 export type { Chip as FilterChip } from "./records/listfilter.js";
-export { parseCsv, importableFields, coerceRow, runImport } from "./records/csv.js";
+export { parseCsv, parseGrid, toCsv, tableToCsv, importableFields, coerceRow, runImport } from "./records/csv.js";
 export { FileViewer } from "./files/FileViewer";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";

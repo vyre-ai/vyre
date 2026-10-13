@@ -67,3 +67,59 @@ export async function runImport(o) {
   }
   return { created, refused, skipped: o.rows.length - todo.length + repeats, failures };
 }
+
+/** One spreadsheet cell as the text a CSV cell would hold: a date is its ISO day, a number or yes/no its plain text, an empty cell nothing. @param {unknown} v */
+const gridText = (v) => {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? "" : v.toISOString().slice(0, 10);
+  return String(v).trim();
+};
+
+/** The first rows of a sheet (arrays of cells, as read-excel-file gives them) as the same { headers, rows } parseCsv returns, so mapping, checks and import do not change. The first row is the column names (a blank one is "Column 3"); blank rows are left out. @param {unknown[][]} grid */
+export function parseGrid(grid) {
+  const lines = (grid ?? []).map((r) => (r ?? []).map(gridText)).filter((r) => r.some((x) => x !== ""));
+  const headers = (lines[0] ?? []).map((h, i) => h || `Column ${i + 1}`);
+  return { headers, rows: lines.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""]))) };
+}
+
+/** One value as a CSV cell: quoted when it holds a comma, a quote or a line break, with quotes doubled. A text that starts with =, +, - or @ (or a tab or carriage return) would run as a formula when a firm opens the file in Excel, so it gets a leading single quote (OWASP); a plain number such as -5 is not text and is left alone. @param {string} s */
+const csvCell = (s) => {
+  const safe = /^[=+\-@\t\r]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s) ? `'${s}` : s;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
+
+/** Rows of text as CSV: CRLF between lines, no trailing break. @param {string[][]} lines */
+export function toCsv(lines) {
+  return lines.map((r) => r.map((c) => csvCell(String(c ?? ""))).join(",")).join("\r\n");
+}
+
+/** A typed table cell (records-table.js) as its CSV text. A sealed cell is only the placeholder the list shows, never a value (there is none in the cell to read). @param {any} cell @param {{ title?: string }} col */
+export function cellText(cell, col) {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell !== "object") return String(cell);
+  if (cell.k === "sealed") return cell.on ? `${col.title} on file, sealed` : "";
+  if (cell.link?.title) return String(cell.link.title);
+  if (cell.who?.name) return String(cell.who.name);
+  const v = cell.v;
+  /** @param {any} x @returns {string} */
+  const text = (x) => {
+    if (x === null || x === undefined) return "";
+    if (x instanceof Date) return x.toISOString();
+    if (typeof x === "boolean") return x ? "Yes" : "No";
+    if (Array.isArray(x)) return x.map(text).filter(Boolean).join("; ");
+    if (typeof x === "object") {
+      if (typeof x.amount === "number") return `${x.amount}${x.currency ? ` ${x.currency}` : ""}`;
+      if (x.name !== undefined) return String(x.name);
+      return Object.values(x).map(text).filter(Boolean).join(", ");
+    }
+    return String(x);
+  };
+  if ((cell.k === "date" || cell.k === "datetime") && typeof v === "number") return new Date(v).toISOString();
+  return text(v);
+}
+
+/** The table block's content as CSV: the columns the list shows (not the ones carried only for sorting or a phone's date), labelled as the list labels them, and the rows it holds in the order it holds them. @param {{ columns: any[], rows: any[] }} content */
+export function tableToCsv(content) {
+  const cols = (content.columns ?? []).filter((c) => c.role !== "endDate" && c.role !== "sortOnly");
+  return toCsv([cols.map((c) => c.title), ...(content.rows ?? []).map((r) => cols.map((c) => cellText(r.cells?.[c.id], c)))]);
+}
