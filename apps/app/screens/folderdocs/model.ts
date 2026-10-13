@@ -4,6 +4,9 @@ import { sizeLine } from "../assistants/config-model.ts";
 export type DocFile = "AGENTS.md" | "CLAUDE.md";
 export type Item = { name: string; kind: "file" | "note" | "link"; size: number; files?: string };
 
+/** What the instructions editor calls: an agent's and a project's docs, the same shape. */
+export type DocsApi = Pick<FolderApi, "id" | "docs" | "saveDoc" | "kept" | "canEdit">;
+
 /** What one folder's editors call. A project's and an agent's are the same shape, over different tools. */
 export type FolderApi = {
   /** Names the folder, so a screen can make the api again on every draw: the editors reload when this changes, not when the object does. */

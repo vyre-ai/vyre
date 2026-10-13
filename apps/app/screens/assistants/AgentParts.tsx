@@ -1,11 +1,12 @@
 // The four parts of an agent's page: its instructions, the context it keeps, the models it runs on, and where it is used. Each reads and writes through config.ts; nothing here holds a credential.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
-import { config } from "./config";
+import { config, agentDocs } from "./config";
+import { DocsEditor } from "../folderdocs/FolderDocs";
 import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, authorLine, accessRow, addable, workRows, NO_WORK, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
@@ -18,34 +19,18 @@ function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): Load<T> {
   return { data, err, reload };
 }
 
-/** 1. Instructions: AGENTS.md and CLAUDE.md, edited in place. */
+/** 1. Instructions: AGENTS.md and CLAUDE.md, in the same Markdown viewer and editor as Files (the shared DocsEditor), under the line that says who made the agent. */
 export function Instructions({ name }: { name: string }) {
   const q = useLoad(() => config.docs(name), [name]);
-  const [file, setFile] = useState<Doc>("AGENTS.md");
-  const [text, setText] = useState<Record<Doc, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
-  const [saved, setSaved] = useState<Record<Doc, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
-  const [busy, setBusy] = useState(false);
   const names = useLoad(() => config.access(name).then((a) => a.people).catch(() => []), [name]);
-  useEffect(() => { if (q.data) { setText(q.data.files); setSaved(q.data.files); } }, [q.data]);
+  const api = useMemo(() => agentDocs(name), [name]);
   const who = (id: string) => (names.data || []).find((p) => p.id === id)?.name || "someone";
   const author = q.data ? authorLine(q.data.madeBy ? { name: who(q.data.madeBy.id), staff: q.data.madeBy.staff } : null, q.data.editedBy ? { name: who(q.data.editedBy) } : null) : "";
-  const dirty = text[file] !== saved[file];
-  const save = () => { setBusy(true); const i = docInput(name, file, text[file]); config.saveDoc(name, file, i.text).then(() => { setSaved((s) => ({ ...s, [file]: i.text })); setText((t) => ({ ...t, [file]: i.text })); showToast("Saved. It applies from the next turn."); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
-  if (q.err) return <Card flush><ErrorState title="Instructions did not load" reason={q.err} retry={q.reload} /></Card>;
-  if (!q.data) return <LoadingState rows={4} />;
   return (
-    <Sec title="Instructions">
-      <Segmented label="Instruction file" value={file} onChange={setFile} options={DOCS.map(([id, label]) => [id, label] as [Doc, string])} />
-      <Card className="gap-s2">
-        <Text size="caption" tone="label">{DOCS.find((d) => d[0] === file)![2]}</Text>
-        {author ? <Text size="caption" tone={q.data?.madeBy && !q.data.madeBy.staff ? "warn" : "label"}>{author}</Text> : null}
-        <Field name={`${name}'s ${file}`} value={text[file]} onChangeText={(v) => setText((t) => ({ ...t, [file]: v }))} multiline lines={12} placeholder={file === "AGENTS.md" ? "What does this agent do, and how should it do it?" : "Anything Claude should know before it starts."} />
-        <View className="flex-row items-center gap-s2">
-          <Button size="sm" label="Save" disabled={busy || !dirty} onPress={save} />
-          {dirty ? <Button size="sm" kind="ghost" label="Revert" onPress={() => setText((t) => ({ ...t, [file]: saved[file] }))} /> : <Text size="caption" tone="label">Saved</Text>}
-        </View>
-      </Card>
-    </Sec>
+    <>
+      {author ? <Text size="caption" tone={q.data?.madeBy && !q.data.madeBy.staff ? "warn" : "label"}>{author}</Text> : null}
+      <DocsEditor api={api} who={name} />
+    </>
   );
 }
 
