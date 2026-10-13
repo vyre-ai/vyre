@@ -404,7 +404,7 @@ export function createFlowsHost(o) {
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { if (/** @type {any} */ (err) && /** @type {any} */ (err).code === "unavailable") return; log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // A task given to an agent (a Flow's agent step, tasks.request) wakes it once: core/daemon/agent-wake.js asks the agents module for the job.
-    if (typeof o.callModule === "function") k.log.subscribe("agent-wake", {}, createAgentWake({ space, gw, chain: flowsChain, callModule: o.callModule, log: m => log(m) }));
+    if (typeof o.callModule === "function") k.log.subscribe("agent-wake", {}, createAgentWake({ space, gw, chain: flowsChain, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) }));
 
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.

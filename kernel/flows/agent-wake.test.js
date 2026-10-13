@@ -15,7 +15,7 @@ async function run(steps) {
   await w.runner.start(id, {}, w.kernel.as(ALEX));
   await settle(w);
   const woke = [];
-  const onEvent = createAgentWake({ space: w.cat.space, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i), edit: (c, i, p) => w.kernel.tasksApi.edit(c, i, p) } }, chain: () => w.kernel.sysChain(),
+  const onEvent = createAgentWake({ space: w.cat.space, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i), edit: (c, i, p) => w.kernel.tasksApi.edit(c, i, p) } }, chain: () => w.kernel.sysChain(), editChain: () => w.kernel.as(ALEX),
     clock: () => w.kernel.clock(), callModule: async (tool, input) => { woke.push(input); return { agent: input.agent, thread: `thr-${input.task}`, already: woke.filter(x => x.task === input.task).length > 1 }; }, log: () => {} });
   const feed = async () => { for (const e of w.kernel.rawLog.read({ type: "task.*" })) await onEvent(e); };
   return { w, woke, feed };

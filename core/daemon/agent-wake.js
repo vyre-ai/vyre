@@ -1,8 +1,8 @@
 // core/daemon/agent-wake: a task given to an agent wakes it. A Flow's agent step (kernel/flows/runner.js #task) and tasks.request both leave a ready task whose doer is an agent, and nothing started
 // the agent's work. This watches the kernel log for such a task and asks the agents module for one job thread (agents.wake, once per task and agent, claimed in its own table so a restart or a repeated
-// event starts nothing twice). The job's thread is written on the task as form.thread, so the task links to the work. The agent starts and submits the task itself: nothing here marks it done.
+// event starts nothing twice). The job's thread is written on the task as form.thread (a kernel edit, which only the task's doer, a person or whoever assigned it may make: `editChain` gives the assigner's), so the task links to the work. The agent starts and submits the task itself: nothing here marks it done.
 //
-//   const onEvent = createAgentWake({ space, gw, chain, callModule, log });
+//   const onEvent = createAgentWake({ space, gw, chain, editChain, callModule, log });
 //   k.log.subscribe("agent-wake", {}, onEvent);
 
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
@@ -10,7 +10,7 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
  * @returns {(e: any) => Promise<void>}
  */
 export function createAgentWake(o) {
@@ -28,7 +28,7 @@ export function createAgentWake(o) {
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
       const r = await o.callModule("agents.wake", { task: t.id, agent: t.doer.id, title: t.title, ...(instructions ? { instructions } : {}), ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}), ...(t.flow ? { flow: t.flow } : {}) }, o.space);
       if (r && typeof r.thread === "string" && !(t.form && t.form.thread === r.thread)) {
-        try { await o.gw.ask.edit(o.chain(), t.id, { form: { ...(t.form || {}), thread: r.thread } }); }
+        try { await o.gw.ask.edit((o.editChain || o.chain)(t), t.id, { form: { ...(t.form || {}), thread: r.thread } }); }
         catch (err) { log(`agent wake ${o.space}: task ${t.id} woke ${t.doer.id} in ${r.thread} but the thread was not written on it (${/** @type {Error} */ (err).message})`); }
       }
     } catch (err) { log(`agent wake ${o.space}: task ${id} did not wake its agent (${/** @type {Error} */ (err).message})`); }
