@@ -26,7 +26,8 @@ export function kindOf(family?: string): AvatarKind {
 }
 
 function Mark({ of, size }: { of: AvatarRef; size: number }) {
-  // A space is its logo or a monogram on a calm tile: never the generated pattern.
+  // A space is its logo or a monogram on a calm tile, and a project a monogram on one: never the generated pattern.
+  if (of.kind === "project") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
   if (of.kind === "space") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
   const ast = useMark(of, size);
   if (!ast) return <View style={{ width: size, height: size }} />;
