@@ -118,6 +118,11 @@ test("requests that are too large, the wrong type or from another site are refus
   assert.equal((await post(e, "[1]")).status, 415);
   assert.equal((await post(e, GOOD, { origin: "https://evil.example" })).status, 403);
   assert.equal((await post(e, GOOD, { "sec-fetch-site": "cross-site", origin: BASE })).status, 403);
+  // a chunked body with no content-length is cut off at the cap, not read in full
+  const big = new TextEncoder().encode(JSON.stringify({ ...GOOD, name: "x".repeat(6000) }));
+  const stream = new ReadableStream({ start(c) { for (let i = 0; i < big.length; i += 1000) c.enqueue(big.slice(i, i + 1000)); c.close(); } });
+  const chunked = new Request(BASE + "/api/updates", { method: "POST", body: stream, duplex: "half", headers: { "content-type": "application/json", origin: BASE } });
+  assert.equal((await worker.fetch(chunked, e)).status, 413);
   assert.equal(rows(e).length, 0);
   assert.equal((await worker.fetch(new Request(BASE + "/api/updates"), e)).status, 405);
   assert.equal((await worker.fetch(new Request(BASE + "/api/other"), e)).status, 404);

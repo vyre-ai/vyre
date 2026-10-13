@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(updates): the signup Worker reads a request body with a running 4 KB cap, so a chunked body with no content-length is never read past it (rev-sec).
 - feat(site): a weekly update signup on vyre.run (/updates/, a band above the home page footer, and updatesForm() for /agenthome): name, email and the promise "One email a week with what changed in Vyre. Never more. Unsubscribe any time."; a new Worker in updates/worker keeps one row per address in Workers KV behind a per-address limit, logs nothing, sends nothing, and removes a row from a signed unsubscribe link; the privacy page says what the list keeps. Not deployed.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).

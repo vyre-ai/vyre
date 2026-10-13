@@ -81,8 +81,20 @@ async function readBody(req) {
   if (type !== "application/json" && type !== "application/x-www-form-urlencoded") return null;
   const len = Number(req.headers.get("content-length") || 0);
   if (len > MAX_BODY) return { tooLarge: true };
-  const text = await req.text();
-  if (text.length > MAX_BODY) return { tooLarge: true };
+  // Read the stream with a running cap, so a chunked body with no content-length is never read past MAX_BODY.
+  let text = "";
+  if (req.body) {
+    const reader = req.body.getReader(), dec = new TextDecoder();
+    let seen = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      seen += value.byteLength;
+      if (seen > MAX_BODY) { try { await reader.cancel(); } catch { /* already closed */ } return { tooLarge: true }; }
+      text += dec.decode(value, { stream: true });
+    }
+    text += dec.decode();
+  }
   try {
     if (type === "application/json") {
       const v = JSON.parse(text);
