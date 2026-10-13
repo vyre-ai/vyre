@@ -194,7 +194,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       const dir = path.join(KITS_DIR, kit, "project-templates");
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir).filter(x => x.endsWith(".json")).sort()) {
-        try { const body = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); out.push({ id: `${kit}/${f.replace(/\.json$/, "")}`, kit, name: body.name, description: body.description || "", stages: (body.stages || []).length, tasks: (body.stages || []).reduce((/** @type {number} */ n, /** @type {any} */ s) => n + (s.tasks || []).length, 0), body }); } catch { /* an unreadable file is not a template */ }
+        try { const body = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); out.push({ id: `${kit}/${f.replace(/\.json$/, "")}`, kit, name: body.name, description: body.description || "", stages: (body.stages || []).length, tasks: (body.stages || []).reduce((/** @type {number} */ n, /** @type {any} */ s) => n + (s.tasks || []).length, 0), outline: (body.stages || []).map((/** @type {any} */ s) => ({ name: String(s.name), tasks: (s.tasks || []).map((/** @type {any} */ k) => String(k.title)) })), body }); } catch { /* an unreadable file is not a template */ }
       }
     }
     return out;

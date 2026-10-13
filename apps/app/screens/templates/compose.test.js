@@ -90,3 +90,21 @@ test("the draft's save state in words", () => {
   assert.equal(saveState({ dirty: true, saving: true, error: "" }), "Draft · saving");
   assert.equal(saveState({ dirty: true, saving: false, error: "no connection" }), "Draft · not saved: no connection");
 });
+
+test("a stage set matches a Kit when the stage names are the same in order, and then brings the Kit's tasks", async () => {
+  const { kitFor, applyStageSet, STAGE_SETS } = await import("./compose.ts");
+  const set = STAGE_SETS[0];
+  const lib = [
+    { id: "k/other", name: "Other", stages: 2, tasks: 1, outline: [{ name: "A", tasks: ["x"] }, { name: "B", tasks: [] }] },
+    { id: "k/match", name: "Matching", stages: 4, tasks: 3, outline: set.stages.map((n, i) => ({ name: n.toLowerCase(), tasks: i === 0 ? ["Collect documents", "Run the check"] : i === 1 ? ["Review it"] : [] })) },
+  ];
+  assert.equal(kitFor(set.id, lib).id, "k/match");
+  assert.equal(kitFor(set.id, [lib[0]]), null);
+  const b = applyStageSet({ name: "X", stages: [{ name: "Stage 1" }, { name: "Done" }] }, set.id, kitFor(set.id, lib));
+  assert.deepEqual(b.stages.map((s) => s.name), set.stages);
+  assert.deepEqual((b.stages[0].tasks || []).map((t) => t.title), ["Collect documents", "Run the check"]);
+  assert.deepEqual((b.stages[1].tasks || []).map((t) => t.title), ["Review it"]);
+  assert.equal(b.stages[2].tasks, undefined);
+  const keep = applyStageSet({ name: "X", stages: [{ name: "Stage 1", tasks: [{ title: "Mine", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] }, set.id, kitFor(set.id, lib));
+  assert.deepEqual((keep.stages[0].tasks || []).map((t) => t.title), ["Mine"], "tasks already written are never replaced by a Kit's");
+});

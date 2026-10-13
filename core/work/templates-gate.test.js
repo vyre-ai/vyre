@@ -72,3 +72,13 @@ test("replace is the owner's or an admin's, like any change to a template", asyn
   const made = await t.define(chain(ADMIN), { body: BODY("Draft two") });
   await assert.rejects(t.define(chain(ANA), { template: made.template, body: BODY("Draft two"), replace: true }), /owner or an admin/);
 });
+
+test("the Kit library lists each template's outline (stage names and task titles) beside its counts, so a screen can start from a Kit's tasks without installing it", () => {
+  const lib = world().library();
+  assert.ok(lib.length > 0, "the shipped Kits have project templates");
+  for (const e of lib) {
+    assert.equal(e.outline.length, e.stages, `${e.id}: one outline entry per stage`);
+    assert.equal(e.outline.reduce((n, s) => n + s.tasks.length, 0), e.tasks, `${e.id}: the task titles add up to its task count`);
+    assert.ok(e.outline.every((s) => typeof s.name === "string" && s.tasks.every((t) => typeof t === "string")));
+  }
+});
