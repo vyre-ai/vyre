@@ -182,3 +182,30 @@ export async function reEscrowSecretKey(): Promise<void> {
   if (MOCK) return;
   try { await githubAccount("refresh"); } catch { /* the next change or Settings tries again */ }
 }
+
+export type GithubDevice = { eid: string; since: number; confirmed: boolean };
+
+/** Devices the relay added after a GitHub sign-in, read from the verified list. They are limited until a device of yours confirms them. */
+export async function githubDevices(): Promise<GithubDevice[]> {
+  if (MOCK) return [{ eid: "mockeid1", since: Date.now() - 3_600_000, confirmed: false }];
+  const { loadIdentity } = await import("../../src/identity/store");
+  const me = await loadIdentity();
+  if (!me) return [];
+  try { return (await directoryList(me.name)).state.entries.filter((e: any) => e.via === "github").map((e: any) => ({ eid: e.eid, since: e.since, confirmed: Boolean(e.confirmed) })); } catch { return []; }
+}
+
+/** Confirm (it becomes an ordinary device) or remove a device that signed in with GitHub: one op signed by this device. */
+export async function changeGithubDevice(action: "confirm" | "remove", eid: string): Promise<Outcome> {
+  if (MOCK) { await sleep(300); return { ok: true }; }
+  const { loadIdentity } = await import("../../src/identity/store");
+  const me = await loadIdentity();
+  if (!me) return { ok: false, say: "This device does not hold a name yet." };
+  try {
+    const list = await directoryList(me.name);
+    const ts = Date.now();
+    const op = await C.makeOp(list.state, { type: action, target: eid }, { by: me.eid, ts, sign: me.key.sign });
+    const r = await fetch(`${DIRECTORY}/v1/ids/append`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: me.name, ops: [op] }) });
+    if (!r.ok) return { ok: false, say: action === "confirm" ? "The list did not take the confirmation. Only a device that is a day old or more can confirm." : "The list did not take that. Nothing changed." };
+    return { ok: true };
+  } catch { return fail("unreachable"); }
+}
