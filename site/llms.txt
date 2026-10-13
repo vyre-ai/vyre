@@ -17,9 +17,19 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Linux server](https://vyre.run/linux/): where Vyre runs
 - [Phone](https://vyre.run/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 
+## Docs
+- [Docs home](https://vyre.run/docs/): every guide, reference page and architecture page, in the same design as this site
+- [docs/llms.txt](https://vyre.run/docs/llms.txt): every docs page as a link to its Markdown; https://vyre.run/docs/llms-full.txt has them all in one file
+- [index.json](https://vyre.run/docs/index.json): every command, tool, event, config key and concept, with the page that explains it
+- [Architecture, the front door](https://vyre.run/docs/project/ARCHITECTURE.md): how Vyre is built, with a table of contents into every architecture page
+- [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md): the method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [Development rules](https://vyre.run/docs/project/DEVELOPMENT-RULES.md): the rules every change follows
+- [Roadmap](https://vyre.run/docs/roadmap.md) and [plans by version](https://vyre.run/docs/roadmap/README.md)
+- Every docs page is also its raw Markdown at the same path with .md, for example https://vyre.run/docs/architecture/overview.md
+
 ## Machine-readable
 - [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full
 - [agents.md](https://vyre.run/agents.md): guidance for AI agents that install or operate Vyre
 - [sitemap.xml](https://vyre.run/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
-- [Map your business onto Vyre](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules

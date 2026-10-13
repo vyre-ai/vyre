@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { docsPaths, llmsDocs } from './site/docs.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -62,7 +63,7 @@ const I = {
 };
 const STAR = `<svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>`;
 const REPO = 'https://github.com/vyre-ai/vyre';
-const MAP_URL = `${REPO}/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md`;
+const MAP_URL = 'https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS';
 
 // ---------- layout ----------
 const NAV = [
@@ -70,6 +71,7 @@ const NAV = [
   ['Devices', '/#devices'],
   ['Architecture', '/architecture/'],
   ['Direction', '/direction/'],
+  ['Docs', '/docs/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
@@ -100,7 +102,7 @@ const FOOT = `<footer class="foot">
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
       <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
-      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
@@ -854,7 +856,7 @@ const ARCH = `
   <div class="wrap">
     <div class="note rv">
       <p class="lbl" id="go-h" style="margin-bottom:8px">Go deeper</p>
-      <p style="margin:0 0 12px">Every claim on this page is explained in the repository, with the code paths. <a href="${REPO}/blob/main/docs/architecture/overview.md">The architecture overview</a> takes ten minutes. <a href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a> lists one page for each feature. An AI agent can follow <a href="${MAP_URL}">Map your business onto Vyre</a> to see how a business would run on it.</p>
+      <p style="margin:0 0 12px">Every claim on this page is explained in the repository, with the code paths. <a href="/docs/architecture/overview">The architecture overview</a> takes ten minutes. <a href="/docs/project/ARCHITECTURE">ARCHITECTURE.md</a> lists one page for each feature. An AI agent can follow <a href="${MAP_URL}">Map your business onto Vyre</a> to see how a business would run on it.</p>
       <p style="margin:0"><a class="btn btn-sm" href="${REPO}/blob/main/docs/architecture/overview.md">Read the overview</a> <a class="btn btn-sm" href="${REPO}/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></p>
     </div>
   </div>
@@ -1052,6 +1054,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 
+${llmsDocs(SITE)}
 ## Machine-readable
 - [llms-full.txt](${SITE}/llms-full.txt): the same content in full
 - [agents.md](${SITE}/agents.md): guidance for AI agents that install or operate Vyre
@@ -1079,8 +1082,9 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
-- Architecture: see ${SITE}/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
+- Architecture: see ${SITE}/architecture/ and ${SITE}/docs/project/ARCHITECTURE.md.
 
+${llmsDocs(SITE)}
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
@@ -1132,7 +1136,7 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Read any page and the machine-readable files: ${SITE}/llms.txt, ${SITE}/llms-full.txt, ${SITE}/sitemap.xml.
 - Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) the architecture (${SITE}/architecture/) and direction (${SITE}/direction/). Direction is not a promise of dates.
-- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
+- Follow ${SITE}/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do
@@ -1189,7 +1193,7 @@ Sitemap: ${SITE}/sitemap.xml
 const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
+${[...SM, ...(await docsPaths(resolve(here, '..'))).map((p) => [p, '0.4'])].map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
 </urlset>
 `);
 

@@ -6,7 +6,7 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Read any page and the machine-readable files: https://vyre.run/llms.txt, https://vyre.run/llms-full.txt, https://vyre.run/sitemap.xml.
 - Tell the user how to install: send them to https://vyre.run/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (https://vyre.run/mac/, https://vyre.run/windows/, https://vyre.run/linux/, https://vyre.run/phone/) the architecture (https://vyre.run/architecture/) and direction (https://vyre.run/direction/). Direction is not a promise of dates.
-- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
+- Follow https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do

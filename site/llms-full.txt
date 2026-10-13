@@ -17,7 +17,17 @@ Release 0.5.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Lice
 - Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
-- Architecture: see https://vyre.run/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
+- Architecture: see https://vyre.run/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.md.
+
+## Docs
+- [Docs home](https://vyre.run/docs/): every guide, reference page and architecture page, in the same design as this site
+- [docs/llms.txt](https://vyre.run/docs/llms.txt): every docs page as a link to its Markdown; https://vyre.run/docs/llms-full.txt has them all in one file
+- [index.json](https://vyre.run/docs/index.json): every command, tool, event, config key and concept, with the page that explains it
+- [Architecture, the front door](https://vyre.run/docs/project/ARCHITECTURE.md): how Vyre is built, with a table of contents into every architecture page
+- [Map your business onto Vyre](https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md): the method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [Development rules](https://vyre.run/docs/project/DEVELOPMENT-RULES.md): the rules every change follows
+- [Roadmap](https://vyre.run/docs/roadmap.md) and [plans by version](https://vyre.run/docs/roadmap/README.md)
+- Every docs page is also its raw Markdown at the same path with .md, for example https://vyre.run/docs/architecture/overview.md
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
