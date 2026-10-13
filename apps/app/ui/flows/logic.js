@@ -210,6 +210,10 @@ export const EVERY_CHOICES = Object.keys(EVERY);
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
 const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t}`);
+/** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
+const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
+/** The text a string literal holds, read the way the engine reads it. @param {string} p */
+const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
 const TOKEN = /\{([a-z0-9_.]+)\}/gi;
 /**
  * A text value the person typed. A whole value like {email} reads that field of what started the Flow. Text with tokens inside, like "Hello {name}, ...", becomes one expression that joins the
@@ -224,8 +228,8 @@ export const val = (t) => {
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(JSON.stringify(s.slice(at, x.index))); parts.push(`text(${tokenExpr(x[1])})`); at = x.index + x[0].length; }
-  if (at < s.length) parts.push(JSON.stringify(s.slice(at)));
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(`text(${tokenExpr(x[1])})`); at = x.index + x[0].length; }
+  if (at < s.length) parts.push(lit(s.slice(at)));
   return { expr: parts.join(" + ") };
 };
 const TEMPLATE_PART = /"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\)/g;
@@ -237,7 +241,7 @@ function templateText(e) {
     if (p.startsWith("text(")) {
       const n = p.slice(5, -1), m = /^trigger\.([a-z0-9_.]+)$/i.exec(n);
       if (m) out += `{${m[1]}}`; else if (/^(?:steps|event|row|item)\./.test(n)) out += `{${n}}`; else return null;
-    } else { try { out += JSON.parse(p); } catch { return null; } }
+    } else out += unlit(p);
   }
   return out;
 }

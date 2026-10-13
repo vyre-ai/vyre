@@ -251,6 +251,7 @@ test("text with tokens becomes one joined expression and reads back as the same 
   assert.deepEqual(val("Hello {after.client}, call {steps.find1.rows}."), { expr: '"Hello " + text(trigger.after.client) + ", call " + text(steps.find1.rows) + "."' });
   assert.equal(val("no tokens"), "no tokens");
   assert.equal(val('say "hi" {name}\nbye').expr, '"say \\"hi\\" " + text(trigger.name) + "\\nbye"');
+  assert.equal(val("a\r\nb {x}\u0001c").expr, '"a\\nb " + text(trigger.x) + "c"', "CRLF becomes one newline and control characters are dropped");
   for (const t of ["Hello {name}, ok", "{name} is here", 'a "quoted" {x} line\nbreak {steps.a.created}']) {
     const def = toDefinition({ name: "T", trigger: { kind: "form", path: "f" }, steps: [{ id: "sms1", kind: "sms", to: "+15550100", body: t }] });
     assert.deepEqual(checkFlow(def), []);
