@@ -223,6 +223,11 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  "publish.preview": "d3e4e365a@3 Oct 2026",
+  "publish.domain.add": "d3e4e365a@3 Oct 2026",
+  "publish.domain.verify": "d3e4e365a@3 Oct 2026",
+  "publish.domain.status": "f207afbde@13 Oct 2026",
+  "publish.holds": "f207afbde@13 Oct 2026",
   "files.linked.list": "dead5a0dd@13 Oct 2026",
   "files.linked.ls": "92063c9dc@13 Oct 2026",
   "files.linked.read": "92063c9dc@13 Oct 2026",
@@ -367,6 +372,11 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "publish.preview": "a draft-only build in the fixed image list, nothing public; the owner decided on 13 Oct 2026 that an agent does every step of putting a site live",
+  "publish.domain.add": "allowed on drafts: the body refuses a non-person on a Production site, the claim needs a DNS proof, and going live stays held for a person's yes",
+  "publish.domain.verify": "allowed on drafts: the body refuses a non-person on a Production site, the claim needs a DNS proof, and going live stays held for a person's yes",
+  "publish.domain.status": "a read of public DNS record data only",
+  "publish.holds": "a read, filtered by deploy.read per site",
   "files.linked.list": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
   "files.linked.ls": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
   "files.linked.read": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can",
