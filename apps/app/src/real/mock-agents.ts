@@ -48,6 +48,7 @@ let projectDoc = "# Harlow Legal\n\nEvery chat here works for the Harlow matters
 let projectRefs: { name: string; kind: string; size: number; files?: string }[] = [{ name: "Fee schedule.md", kind: "note", size: 420 }, { name: "Intake form.link", kind: "link", size: 60, files: "Clients/Harlow/intake.pdf" }, { name: "engagement-letter.docx", kind: "file", size: 52000 }];
 // juno, kit, iris and rev carry their own short sample words, so no page shows the intake agent's.
 const own = (role: string, md: string): State => ({ role, docs: { "AGENTS.md": md, "CLAUDE.md": "Write short sentences.\n" }, files: [], links: [], routes: [{ provider: "claude", account: "acc_login" }], vault: [], instructions: md, lent: [] });
+const ROLES: Record<string, string> = { juno: "Your assistant", kit: "Research agent", iris: "Drafting agent", rev: "Reviewer" };
 const W: Record<string, State> = {
   intake: intake(), refunds: refunds(),
   juno: own("Your assistant", "You are Alex's assistant.\n\nKeep Alex's day in order: read what came in, say what needs a decision, and draft the replies for Alex to approve. Never send anything yourself.\n"),
@@ -61,9 +62,11 @@ const accounts = [
   { id: "acc_key", provider: "claude", label: "Anthropic API token", kind: "api-key", vault_item: "anthropic-api-key" },
   { id: "acc_or", provider: "openrouter", label: "OpenRouter", kind: "api-key", vault_item: "openrouter-key" },
 ];
-const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
+const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, description: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
+const PROJECTS: Record<string, string> = { juniper: "Juniper Studio", passport: "Passport renewal" };
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
+  "work.project.ref": (i) => ({ name: PROJECTS[String(i.project)] ?? String(i.project) }),
   // One list for the Agents screen and the agent page, so every row opens: the sample world's assistants and agents (settings/data.ts), then the two that carry sample pages.
   "agents.list": () => [
     ...loadAssistants().map((a) => ({ uid: `agt_${a.id}`, name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", model: a.model, effort: "medium", projects: ["juniper"], computer: false, status: a.paused ? "stopped" : "idle", thread: "x", autonomy: a.autonomy, id: a.id,
