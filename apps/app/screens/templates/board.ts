@@ -110,3 +110,6 @@ export function seatCalls(project: string, { lead, team = [] }: { lead?: string;
 export function ofPlaybook<T extends { row?: { data?: Record<string, unknown> } }>(items: T[], playbook: string): T[] {
   return playbook ? items.filter((i) => String(i.row?.data?.template ?? "") === playbook) : items;
 }
+
+/** The one neutral pill every stage gets: no colour per stage, only how far along it is ("Stage 2 of 5"). Violet is kept for what needs you. */
+export const stageProgress = (index: number, total: number): string => `Stage ${index + 1} of ${total}`;

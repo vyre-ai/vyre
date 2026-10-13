@@ -57,7 +57,7 @@ export default function TemplatesScreen() {
                 <Text strong numberOfLines={1}>{c.name}</Text>
                 <Text size="caption" tone="label" numberOfLines={1}>{`${c.projects} · ${c.status}`}</Text>
               </View>
-              <View className={`h-2 w-2 rounded-full ${r.live !== null ? "bg-ok" : "bg-edge-strong"}`} accessibilityLabel={r.live !== null ? "Live" : "Draft"} />
+              <View className={`h-2 w-2 rounded-full ${r.live !== null ? "bg-label" : "border border-edge-strong"}`} accessibilityLabel={r.live !== null ? "Live" : "Draft"} />
               {menu}
             </View>
           </Pressable>

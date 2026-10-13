@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, View } from "react-native";
 import { AvatarStack, Button, Card, Chip, Menu, IconButton, Text } from "@vyre/ui";
 import type { Body } from "./model";
 import * as E from "./edit";
-import { boardColumns, type Card as TaskCard, type Person } from "./board";
+import { boardColumns, stageProgress, type Card as TaskCard, type Person } from "./board";
 import { usePhone } from "../places/Page";
 
 type Who = { id: string; name: string };
@@ -79,7 +79,7 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
     <DragBox key={col.index} className="gap-s2" style={phone ? undefined : { width: 288 }} onDrop={editable ? (w) => dropColumn(w, col.index, col.tasks.length) : undefined}>
       <DragBox className="flex-row items-center gap-s2" what={editable && !none ? `stage:${col.index}` : undefined}>
         <View className="min-w-0 flex-1">
-          <Text strong numberOfLines={1}>{`${none ? "" : `${col.index + 1}. `}${col.name}`}</Text>
+          <View className="flex-row flex-wrap items-center gap-s2"><Text strong numberOfLines={1}>{col.name}</Text>{none ? null : <Chip>{stageProgress(col.index, cols.length)}</Chip>}</View>
           {col.rule ? <Text size="caption" tone="label" numberOfLines={2}>{col.rule}</Text> : null}
         </View>
         {editable && !none ? (
