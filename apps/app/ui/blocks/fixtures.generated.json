@@ -4214,6 +4214,258 @@
      "component": "design-changes"
     }
    }
+  },
+  "setup-model": {
+   "title": "Records setup: the model",
+   "screens": {
+    "full": {
+     "component": "setup-model"
+    },
+    "compact": {
+     "component": "setup-model"
+    },
+    "glance": {
+     "component": "setup-model"
+    }
+   }
+  },
+  "setup-starter": {
+   "title": "Records setup: add a type",
+   "screens": {
+    "full": {
+     "component": "setup-starter"
+    },
+    "compact": {
+     "component": "setup-starter"
+    },
+    "glance": {
+     "component": "setup-starter"
+    }
+   }
+  },
+  "setup-type": {
+   "title": "Records setup: a type's fields",
+   "screens": {
+    "full": {
+     "component": "setup-type"
+    },
+    "compact": {
+     "component": "setup-type"
+    },
+    "glance": {
+     "component": "setup-type"
+    }
+   }
+  },
+  "setup-type-editing": {
+   "title": "Records setup: editing a field",
+   "screens": {
+    "full": {
+     "component": "setup-type-editing"
+    },
+    "compact": {
+     "component": "setup-type-editing"
+    },
+    "glance": {
+     "component": "setup-type-editing"
+    }
+   }
+  },
+  "setup-field-new": {
+   "title": "Records setup: a new field",
+   "screens": {
+    "full": {
+     "component": "setup-field-new"
+    },
+    "compact": {
+     "component": "setup-field-new"
+    },
+    "glance": {
+     "component": "setup-field-new"
+    }
+   }
+  },
+  "setup-field-choice": {
+   "title": "Records setup: choices",
+   "screens": {
+    "full": {
+     "component": "setup-field-choice"
+    },
+    "compact": {
+     "component": "setup-field-choice"
+    },
+    "glance": {
+     "component": "setup-field-choice"
+    }
+   }
+  },
+  "setup-field-link": {
+   "title": "Records setup: a relation",
+   "screens": {
+    "full": {
+     "component": "setup-field-link"
+    },
+    "compact": {
+     "component": "setup-field-link"
+    },
+    "glance": {
+     "component": "setup-field-link"
+    }
+   }
+  },
+  "setup-field-access": {
+   "title": "Records setup: who sees it, and rules",
+   "screens": {
+    "full": {
+     "component": "setup-field-access"
+    },
+    "compact": {
+     "component": "setup-field-access"
+    },
+    "glance": {
+     "component": "setup-field-access"
+    }
+   }
+  },
+  "setup-field-errors": {
+   "title": "Records setup: what is wrong",
+   "screens": {
+    "full": {
+     "component": "setup-field-errors"
+    },
+    "compact": {
+     "component": "setup-field-errors"
+    },
+    "glance": {
+     "component": "setup-field-errors"
+    }
+   }
+  },
+  "setup-field-seal": {
+   "title": "Records setup: sealing a field",
+   "screens": {
+    "full": {
+     "component": "setup-field-seal"
+    },
+    "compact": {
+     "component": "setup-field-seal"
+    },
+    "glance": {
+     "component": "setup-field-seal"
+    }
+   }
+  },
+  "grouped-list": {
+   "title": "Grouped list (tasks)",
+   "screens": {
+    "full": {
+     "component": "grouped-list"
+    },
+    "compact": {
+     "component": "grouped-list"
+    },
+    "glance": {
+     "component": "grouped-list"
+    }
+   }
+  },
+  "record-form": {
+   "title": "Records: create form",
+   "screens": {
+    "full": {
+     "component": "record-form"
+    },
+    "compact": {
+     "component": "record-form"
+    },
+    "glance": {
+     "component": "record-form"
+    }
+   }
+  },
+  "record-form-errors": {
+   "title": "Records: create form, errors",
+   "screens": {
+    "full": {
+     "component": "record-form-errors"
+    },
+    "compact": {
+     "component": "record-form-errors"
+    },
+    "glance": {
+     "component": "record-form-errors"
+    }
+   }
+  },
+  "record-page": {
+   "title": "Records: record page",
+   "screens": {
+    "full": {
+     "component": "record-page"
+    },
+    "compact": {
+     "component": "record-page"
+    },
+    "glance": {
+     "component": "record-page"
+    }
+   }
+  },
+  "import-1": {
+   "title": "Records: import, upload",
+   "screens": {
+    "full": {
+     "component": "import-1"
+    },
+    "compact": {
+     "component": "import-1"
+    },
+    "glance": {
+     "component": "import-1"
+    }
+   }
+  },
+  "import-2": {
+   "title": "Records: import, match columns",
+   "screens": {
+    "full": {
+     "component": "import-2"
+    },
+    "compact": {
+     "component": "import-2"
+    },
+    "glance": {
+     "component": "import-2"
+    }
+   }
+  },
+  "import-3": {
+   "title": "Records: import, check",
+   "screens": {
+    "full": {
+     "component": "import-3"
+    },
+    "compact": {
+     "component": "import-3"
+    },
+    "glance": {
+     "component": "import-3"
+    }
+   }
+  },
+  "import-4": {
+   "title": "Records: import, done",
+   "screens": {
+    "full": {
+     "component": "import-4"
+    },
+    "compact": {
+     "component": "import-4"
+    },
+    "glance": {
+     "component": "import-4"
+    }
+   }
   }
  }
 }

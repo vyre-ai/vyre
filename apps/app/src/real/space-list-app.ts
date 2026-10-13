@@ -9,10 +9,23 @@ type Tool = (name: string, input?: Record<string, unknown>) => Promise<any>;
 const SEEN = "vyre.space-list.seen";
 const PENDING = "vyre.space-list.pending";
 
-/** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. Until it lands, a server answers `server_not_ready`. */
+/** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. A server that does not admit it answers `server_not_ready`. */
 type ChainPairer = (e: { relay: string; route: string; box: string; name: string }) => Promise<Pairing>;
 let connecting = 0;
-let chainPairer: ChainPairer = async () => { throw Object.assign(new Error("That server does not admit this device yet. Pair it with a code from that server."), { code: "server_not_ready" }); };
+/** The real pairer: the relay client dials the listed server with a chain hello signed by this device's chain key. An older server closes the connection, and the answer is `server_not_ready`. */
+let chainPairer: ChainPairer = async (e) => {
+  const { makeChainPairer } = await import("./chain-pairer.js");
+  const { connect } = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
+  const { chainHello } = await import("@vyre/relay-client/chainhello.js");
+  const { relayCrypto, relayKeyStore, about, deviceName, presenceKey } = await import("../api/relay");
+  const { loadIdentity } = await import("../identity/store");
+  const mine = await loadIdentity();
+  const crypto = relayCrypto();
+  return makeChainPairer({
+    connect, crypto, keyStore: relayKeyStore(), about, deviceName, presenceKey,
+    chainHelloFor: mine ? (pub, box, presencePublicKey) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, ...(presencePublicKey ? { presencePublicKey } : {}), identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), ...(/^[a-z0-9.-]{3,253}$/.test(String(mine.name || "").toLowerCase()) ? { name: String(mine.name).toLowerCase() } : {}) }) : null,
+  })(e);
+};
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }
 
 /** The tool the vault calls go through. The personal vault is the person's own, not a Space's: it goes to the main server by name, never routed by the Space showing. */
