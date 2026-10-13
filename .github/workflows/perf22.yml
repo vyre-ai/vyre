@@ -21,5 +21,5 @@ jobs:
             rm -f /tmp/perf-trace.txt*
             VYRE_PERF_TRACE=/tmp/perf-trace.txt node scripts/perf-check 2>&1 | grep -E "CPU \(|RSS|heap|FAIL|host load" || true
             echo "-- timeline (every 2.5s)"; awk "NR%5==1" /tmp/perf-trace.txt | head -20
-            echo "-- events"; sort -n /tmp/perf-trace.txt.events 2>/dev/null | head -60 | cut -c1-260
+            echo "-- events"; grep -v seal/client /tmp/perf-trace.txt.events | sort -n | awk "\$1+0>2.5" | head -80 | cut -c1-260
           done
