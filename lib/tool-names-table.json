@@ -14984,37 +14984,48 @@
    "was": "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list f"
   },
   {
-   "old": "pluginagent.setup.begin",
-   "name": "spaces.pluginagent.setup.start",
-   "area": "spaces",
-   "object": "pluginagent.setup",
-   "verb": "start",
+   "old": "mcpconn.connect",
+   "name": "system.mcpconn.create",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "create",
    "effect": "write",
-   "review": false,
-   "description": "Start pluginagent setup (spaces).",
-   "was": "The person lets Claude Code on this computer set their space up for a few hours (projects, agents, record types, flows, templates, roles) an"
+   "review": true,
+   "description": "Create mcpconn (settings).",
+   "was": "The person connects their own Claude Code or Codex on this computer: from then on `vyre mcp` acts as them, with the access they have, and ou"
   },
   {
-   "old": "pluginagent.setup.end",
-   "name": "spaces.pluginagent.setup.stop",
-   "area": "spaces",
-   "object": "pluginagent.setup",
-   "verb": "stop",
+   "old": "mcpconn.guide",
+   "name": "system.mcpconn.update",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "update",
    "effect": "write",
-   "review": false,
-   "description": "Stop pluginagent setup (spaces).",
-   "was": "Ends Set up mode now. Claude Code goes back to reading memory and sessions; what it set up stays."
+   "review": true,
+   "description": "Change mcpconn (settings).",
+   "was": "The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): look, propose per client,"
   },
   {
-   "old": "pluginagent.setup.status",
-   "name": "spaces.pluginagent.setup.get",
-   "area": "spaces",
-   "object": "pluginagent.setup",
-   "verb": "get",
+   "old": "mcpconn.list",
+   "name": "system.mcpconn.list",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "list",
    "effect": "read",
-   "review": false,
-   "description": "Get pluginagent setup (spaces).",
-   "was": "Whether Set up mode is on for Claude Code on this computer, and until when."
+   "review": true,
+   "description": "List mcpconn (settings).",
+   "was": "The connections of the person's own AI: [{ id, client, device, created, lastUsed, revoked }], newest first."
+  },
+  {
+   "old": "mcpconn.revoke",
+   "name": "system.mcpconn.revoke",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "revoke",
+   "effect": "access",
+   "review": true,
+   "description": "Revoke mcpconn (settings). Needs: id. Needs the person.",
+   "was": "The person ends a connection: its key stops working at once. No presence needed, so it is always possible."
   }
  ]
 }
