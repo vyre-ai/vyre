@@ -405,7 +405,14 @@ export function createFlowsHost(o) {
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { if (/** @type {any} */ (err) && /** @type {any} */ (err).code === "unavailable") return; log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // A task given to an agent (a Flow's agent step, tasks.request) wakes it once: core/daemon/agent-wake.js asks the agents module for the job.
-    if (typeof o.callModule === "function") k.log.subscribe("agent-wake", {}, createAgentWake({ space, gw, chain: flowsChain, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) }));
+    // The agent's own flag on a task whose job failed: the chain the kernel takes for the doer (the assigner first, then the agent), built here by the kernel's own builder, for that one act.
+    const agentChain = (/** @type {any} */ t) => k.chains.fromFacts({ kind: "agent_session", agent: String(t.doer.id), session: "agent-wake", thread: "agent-wake", person: t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : ownerOf(), vouched: true });
+    if (typeof o.callModule === "function") {
+      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
+      k.log.subscribe("agent-wake", {}, wakeUp);
+      // A job that ends with its task still open is not left in silence (core/daemon/agent-wake.js).
+      if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });
+    }
 
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.

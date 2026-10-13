@@ -33,7 +33,17 @@ import { agentDir } from "../../lib/files/layout.js";
 import { orientation } from "../../lib/orientation.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
-export const MIGRATIONS = [
+export /** What a woken agent is told about closing its task: the real tools and states (core/tasks-tools), so a task is never left open in silence and the next step of a Flow starts when the agent is done. */
+const HOW_TO_FINISH = [
+  "How to finish this task:",
+  "- Start it: tasks.move { id: \"<id>\", to: \"working\" }.",
+  "- When the work is done, hand it in: tasks.submit { id: \"<id>\", evidence } with a one-line result (for a note, evidence is { note: { text, sources } }; attach the file or record the task asks for). The Flow goes on to its next step by itself.",
+  "- If you are blocked on information or on a person: tasks.move { id: \"<id>\", to: \"stuck\", reason: \"what you need and from whom\", suggested_fix: \"what they should do\" }. It then shows as a card for whoever gave you the task.",
+  "- If it should go to someone else: ask for a task for them with tasks.request, say why in its note, then move this one to stuck with the same reason.",
+  "- Never leave the task open and silent, and never submit it without doing the work.",
+].join("\n");
+
+const MIGRATIONS = [
   `CREATE TABLE agents_agents (
      name TEXT PRIMARY KEY, kind TEXT NOT NULL, projects TEXT NOT NULL, auth TEXT NOT NULL,
      instructions TEXT, skills TEXT NOT NULL DEFAULT '[]', computer INTEGER NOT NULL DEFAULT 0,
@@ -66,6 +76,9 @@ export const MIGRATIONS = [
   `CREATE TABLE agents_person_threads (agent TEXT NOT NULL, person TEXT NOT NULL, thread TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, person))`,
   // A task given to an agent wakes it once: the row is the claim, written before the job starts, so a restart or a repeated event finds it and starts nothing (core/daemon/flows-host.js sends the wake).
   `CREATE TABLE agents_wakes (task TEXT NOT NULL, agent TEXT NOT NULL, thread TEXT, at INTEGER NOT NULL, PRIMARY KEY (task, agent))`,
+  // A wake whose job failed or stopped short: the claim is kept (failed = 1) so a retry may take it again, at most once more.
+  `ALTER TABLE agents_wakes ADD COLUMN tries INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE agents_wakes ADD COLUMN failed INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /**
@@ -818,7 +831,9 @@ export default {
         const a = must(i.agent);
         const task = String(i.task);
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
-        if (!claim.changes) { const row = /** @type {any} */ (db.prepare("SELECT thread FROM agents_wakes WHERE task = ? AND agent = ?").get(task, a.name)); return { agent: a.name, thread: row ? row.thread : null, already: true }; }
+        // a retry: a wake that failed may be claimed again, once
+        const retry = !claim.changes && db.prepare("UPDATE agents_wakes SET failed = 0, thread = NULL WHERE task = ? AND agent = ? AND failed = 1 AND tries < 2").run(task, a.name).changes > 0;
+        if (!claim.changes && !retry) { const row = /** @type {any} */ (db.prepare("SELECT thread FROM agents_wakes WHERE task = ? AND agent = ?").get(task, a.name)); return { agent: a.name, thread: row ? row.thread : null, already: true }; }
         try {
           const org = i.origin && typeof i.origin === "object" ? i.origin : null;
           const prompt = [
@@ -826,13 +841,36 @@ export default {
             `You were given a task: ${String(i.title).slice(0, 200)}`,
             i.instructions ? `Instructions for this task:\n${String(i.instructions).slice(0, 4000)}` : "",
             i.record ? `Record: ${String(i.record)}` : "",
-            `Task id: ${task}. Start it with tasks.start, do the work, then hand in what you made with tasks.submit. If you cannot finish, say why in a note and leave it open.`,
+            `Task id: ${task}.\n\n${HOW_TO_FINISH.replace("<id>", task)}`,
           ].filter(Boolean).join("\n\n");
           const project = i.project && (a.projects === "*" || a.projects.includes(String(i.project))) ? String(i.project) : undefined;
           const t = await launch(a, { prompt, job: true, project, ...(i.approver ? { forPerson: String(i.approver), runAs: String(i.approver) } : {}), ...(org ? { flowOrigin: Object.fromEntries(Object.entries({ ...org, task, ...(i.approver ? { approver: String(i.approver) } : {}) }).filter(([, v]) => typeof v === "string" || typeof v === "number").map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 200) : v])) } : {}) });
           db.prepare("UPDATE agents_wakes SET thread = ? WHERE task = ? AND agent = ?").run(t.id, task, a.name);
           return { agent: a.name, thread: t.id, already: false };
-        } catch (e) { db.prepare("DELETE FROM agents_wakes WHERE task = ? AND agent = ? AND thread IS NULL").run(task, a.name); throw e; }
+        } catch (e) { db.prepare("UPDATE agents_wakes SET failed = 1, tries = tries + 1 WHERE task = ? AND agent = ? AND thread IS NULL").run(task, a.name); throw e; }
+      },
+    });
+
+    // Which task a wake thread is for, and a wake marked failed so one retry may start it again. For the Flows host only.
+    ctx.tool("agents.woken", {
+      description: "The task a wake job thread was started for: { task, agent, state }, or null. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["thread"], properties: { thread: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks which task a job is for"), { code: "denied" });
+        const row = /** @type {any} */ (db.prepare("SELECT task, agent, failed, tries FROM agents_wakes WHERE thread = ?").get(String(i.thread)));
+        return row ? { task: row.task, agent: row.agent, failed: row.failed === 1, tries: row.tries } : null;
+      },
+    });
+    ctx.tool("agents.wake-failed", {
+      description: "Mark a task's wake as failed (its job stopped before the task was handed in): one retry may start it again. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["task", "agent"], properties: { task: { type: "string" }, agent: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host marks a wake failed"), { code: "denied" });
+        db.prepare("UPDATE agents_wakes SET failed = 1, tries = tries + 1 WHERE task = ? AND agent = ? AND failed = 0").run(String(i.task), String(i.agent));
+        const row = /** @type {any} */ (db.prepare("SELECT tries FROM agents_wakes WHERE task = ? AND agent = ?").get(String(i.task), String(i.agent)));
+        return { retry: Boolean(row) && row.tries < 2 };
       },
     });
 

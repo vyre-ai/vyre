@@ -10,13 +10,38 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
- * @returns {(e: any) => Promise<void>}
+ * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @returns {((e: any) => Promise<void>) & { threadEnded: (thread: string, reason?: string) => Promise<void> }}
  */
 export function createAgentWake(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
-  return async function onEvent(e) {
+  /**
+   * A task the agent could not start or did not finish is never left open in silence: it is marked stuck, as the agent itself (the assigner on the chain, the one shape the kernel takes for the doer's own
+   * flag), with what happened in plain words and what to do. It surfaces in Needs you for the assigner and approver, and the run shows it. The wake is marked failed so one retry may start it again.
+   * @param {any} t @param {string} why
+   */
+  async function stick(t, why) {
+    const reason = sayWhy(t.doer.id, why);
+    try {
+      await o.callModule("agents.wake-failed", { task: t.id, agent: t.doer.id }, o.space).catch(() => null);
+      if (typeof o.agentChain !== "function") return;
+      await o.gw.ask.stuck(o.agentChain(t), t.id, reason);
+    } catch (err) { log(`agent wake ${o.space}: task ${t.id} could not be marked stuck (${/** @type {Error} */ (err).message})`); }
+  }
+
+  /** A wake job's thread ended (finished or stopped): a task still open that the agent has not handed in, flagged or moved is stuck. @param {string} thread @param {string} [reason] */
+  async function threadEnded(thread, reason) {
+    try {
+      const w = await o.callModule("agents.woken", { thread }, o.space);
+      if (!w || !w.task) return;
+      const t = await o.gw.ask.get(o.chain(), w.task);
+      if (!t || !["ready", "working"].includes(t.state)) return;
+      await stick(t, reason || "");
+    } catch (err) { log(`agent wake ${o.space}: thread ${thread} ended and its task was not checked (${/** @type {Error} */ (err).message})`); }
+  }
+
+  async function onEvent(e) {
     if (!e || !TYPES.test(String(e.type))) return;
     const id = e.data && e.data.task && typeof e.data.task.id === "string" ? e.data.task.id : null;
     if (!id) return;
@@ -31,8 +56,20 @@ export function createAgentWake(o) {
         try { await o.gw.ask.edit((o.editChain || o.chain)(t), t.id, { form: { ...(t.form || {}), thread: r.thread } }); }
         catch (err) { log(`agent wake ${o.space}: task ${t.id} woke ${t.doer.id} in ${r.thread} but the thread was not written on it (${/** @type {Error} */ (err).message})`); }
       }
-    } catch (err) { log(`agent wake ${o.space}: task ${id} did not wake its agent (${/** @type {Error} */ (err).message})`); }
-  };
+    } catch (err) {
+      log(`agent wake ${o.space}: task ${id} did not wake its agent (${/** @type {Error} */ (err).message})`);
+      try { const t = await o.gw.ask.get(o.chain(), id); if (wakes(t, clock())) await stick(t, /** @type {Error} */ (err).message); } catch { /* the task could not be read: the log line above is all there is */ }
+    }
+  }
+  return Object.assign(onEvent, { threadEnded });
+}
+
+/** The words a person reads when an agent's job failed: what happened, cut short and free of anything that looks like a secret, and the next step. @param {string} agent @param {string} why */
+export function sayWhy(agent, why) {
+  const clean = String(why || "").replace(/[A-Za-z0-9_\-.]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
+  const auth = /oauth|expired|sign.?in|log.?in|auth|credential|401|unauthori[sz]ed|api key/i.test(clean);
+  if (auth) return { reason: `${agent} could not run: its AI account is not signed in or has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
+  return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };
 }
 
 /** Whether a task is one an agent is to start on now: ready, an agent's, made by a Flow or by a request (not a person's own to-do), and not a Flow's note that only tells the agent about someone else's task. */

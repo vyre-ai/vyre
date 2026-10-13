@@ -53,6 +53,18 @@
         "reach": "modules"
       },
       {
+        "name": "agents.woken",
+        "summary": "the task a wake job thread is for (the Flows host only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "agents.wake-failed",
+        "summary": "mark a task's wake failed so one retry may start it (the Flows host only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "agents.wake",
         "summary": "wake an agent for a task it was given (the Flows host only)",
         "reach": "modules",

@@ -100,7 +100,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   ]);
 
   if (has("work")) add("work", 5, [
-    "Work is Tasks inside Flows. A task has one doer and optionally one checker, says what done looks like, and moves through the stages of its Flow. Take a task you are given, do it, submit it for check; to hand off, request a task for the next doer rather than doing their part.",
+    "Work is Tasks inside Flows. A task has one doer and optionally one checker, says what done looks like, and moves through the stages of its Flow. Take a task you are given, do it, submit it for check (tasks.submit); if you are blocked or it belongs to someone else, move it to stuck with what is needed and from whom (tasks.move), and never leave a task open in silence; to hand off, request a task for the next doer rather than doing their part.",
     fam("flows") ? "You can read Flows and propose a new one (tools_call flows.propose); a Flow you write stays a draft until a person approves it." : "",
   ]);
 
