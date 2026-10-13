@@ -409,13 +409,13 @@ export default {
     });
 
     ctx.tool("google.drive.search", {
-      description: "Search Google Drive by words in the name or text, newest first: [{account, id, name, type, modified, url}]. A team member searches their own Drive only.",
+      description: "Search Google Drive by words in the name or text, newest first. A team member searches their own Drive only.",
       input: obj({ q: str, account, limit: int }, ["q"]),
       run: safe(({ q, account: a, limit }) => dr.search(forRead(visible(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
     });
 
     ctx.tool("google.drive.read", {
-      description: "Read one Drive file (id) as text: a Google doc, slide deck or sheet is exported, plain text is read; other files give their name and link. Capped near 20,000 characters.",
+      description: "Read one Drive file (id) as text. Google docs, decks and sheets are exported; other files give their name and link. Capped near 20,000 characters.",
       input: obj({ id: str, account }, ["id"]),
       run: safe(async ({ id, account: a }) => {
         let last;

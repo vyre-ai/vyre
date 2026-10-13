@@ -58,7 +58,7 @@ export function rolesSource(call) {
   return {
     subscribe: (/** @type {() => void} */ _f) => () => {},
     read: async () => {
-      const [list, types, projects, cat] = await Promise.all([ask("roles.list"), ask("records.types.list").catch(() => null), ask("work.projects.list").catch(() => null), ask("roles.catalogue").catch(() => null)]);
+      const [list, types, projects, cat] = await Promise.all([ask("roles.list"), ask("records.types").catch(() => null), ask("projects.list").catch(() => null), ask("roles.catalogue").catch(() => null)]);
       const ts = typesOf(types);
       const useTypes = ts.length ? ts : SAMPLE_TYPES;
       const rows = rolesOf(list);
