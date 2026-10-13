@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf } from "./prompts.js";
+import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf, instructionBlocks } from "./prompts.js";
 
 function fresh() {
   const db = new DatabaseSync(":memory:");
@@ -154,4 +154,17 @@ test("bad scopes are refused", () => {
   const p = fresh();
   assert.throws(() => p.set("agent:", { text: "x" }), /prompt scope/);
   assert.throws(() => p.compose({ agent: "bad name" }), /prompt scope/);
+});
+
+test("compose: the agent's and the project's AGENTS.md are in the prompt, in both modes, before the project context", () => {
+  const p = fresh();
+  const instructions = { agent: { name: "rex", text: "Be exact.\n" }, project: { name: "Harlow", text: "Cite the file number." } };
+  const c = p.compose({ agent: "rex", agentKind: "agent", append: VYRE, context: "PROJECT CONTEXT", instructions });
+  assert.equal(c.text, [VYRE, 'Instructions for you, the agent "rex" (its AGENTS.md):\n\nBe exact.', 'Instructions for the project "Harlow" (its AGENTS.md):\n\nCite the file number.', "PROJECT CONTEXT"].join("\n\n"));
+  p.set("agent:rex", { mode: "replace", text: "REPLACED", by: "per_a" });
+  const r = p.compose({ agent: "rex", agentKind: "agent", append: VYRE, instructions });
+  assert.equal(r.mode, "replace");
+  assert.ok(r.text.includes("Be exact.") && r.text.includes("Cite the file number."), "a replacing prompt still carries the instructions");
+  assert.deepEqual(instructionBlocks({ agent: { name: "x", text: "  " } }), [], "empty instructions add nothing");
+  assert.match(instructionBlocks({ agent: { name: "x", text: "w ".repeat(20000) } })[0], /cut here: the rest is in the file/);
 });

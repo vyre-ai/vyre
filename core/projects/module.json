@@ -152,6 +152,12 @@
         "projectArg": "project"
       },
       {
+        "name": "projects.instructions",
+        "summary": "a project's AGENTS.md text, for a session's system prompt",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "projects.docs.set",
         "reach": "person",
         "effect": "write",

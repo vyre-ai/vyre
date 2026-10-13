@@ -1,5 +1,5 @@
 // @ts-check
-// A project's Instructions and Context: AGENTS.md at its root (CLAUDE.md kept the same) and context/ at its root. A person without a seat cannot read them, a viewer reads and cannot write, a contributor writes;
+// A project's Instructions and Context: AGENTS.md at its root (CLAUDE.md a pointer at it) and context/ at its root. A person without a seat cannot read them, a viewer reads and cannot write, a contributor writes;
 // every chat in the project gets the instructions in its brief. Real daemon, real kernel, temp home.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -26,12 +26,24 @@ async function world(/** @type {any} */ t) {
   return { d, project, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}, /** @type {string} */ as = "cli") => d.registry.call(n, i, as) };
 }
 
-test("instructions and context: the owner and an admin write; AGENTS.md and CLAUDE.md stay the same; a member with no seat reads and writes nothing", { timeout: 120_000 }, async t => {
+test("instructions and context: the owner and an admin write; CLAUDE.md is only a pointer and refuses writes; a member with no seat reads and writes nothing", { timeout: 120_000 }, async t => {
   const { ben, ada, owner, project } = await world(t);
   const w = await owner("projects.docs.set", { project: project.slug, file: "AGENTS.md", text: "Always draft, never send.\n" });
   assert.equal(w.error, undefined, JSON.stringify(w.error));
-  assert.equal(fs.readFileSync(path.join(project.home, "CLAUDE.md"), "utf8"), "Always draft, never send.\n", "CLAUDE.md follows");
-  assert.equal((await ada("projects.docs.get", { project: project.slug })).data.files["AGENTS.md"], "Always draft, never send.\n", "an admin reads it");
+  assert.equal(fs.readFileSync(path.join(project.home, "CLAUDE.md"), "utf8"), "@AGENTS.md\n", "CLAUDE.md is exactly the pointer");
+  const refused = await owner("projects.docs.set", { project: project.slug, file: "CLAUDE.md", text: "mine" });
+  assert.match(refused.error.message, /Instructions live in AGENTS\.md/);
+  assert.equal(fs.readFileSync(path.join(project.home, "AGENTS.md"), "utf8"), "Always draft, never send.\n", "a refused write changed nothing");
+  // notes an older CLAUDE.md kept apart are appended once, under Notes, on the next write
+  fs.writeFileSync(path.join(project.home, "CLAUDE.md"), "@AGENTS.md\n\nAsk before filing.\n");
+  assert.match((await owner("projects.docs.get", { project: project.slug })).data.files["AGENTS.md"], /## Notes\n\nAsk before filing\./, "a person sees the notes before they are folded in");
+  await owner("projects.docs.set", { project: project.slug, file: "AGENTS.md", text: "Always draft, never send.\n" });
+  const merged = fs.readFileSync(path.join(project.home, "AGENTS.md"), "utf8");
+  assert.equal(merged, "Always draft, never send.\n\n## Notes\n\nAsk before filing.\n");
+  assert.equal(fs.readFileSync(path.join(project.home, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+  await owner("projects.docs.set", { project: project.slug, file: "AGENTS.md", text: merged });
+  assert.equal(fs.readFileSync(path.join(project.home, "AGENTS.md"), "utf8"), merged, "the notes are appended once, never twice");
+  assert.equal((await ada("projects.docs.get", { project: project.slug })).data.files["AGENTS.md"], "Always draft, never send.\n\n## Notes\n\nAsk before filing.\n", "an admin reads it");
   assert.equal((await ada("projects.refs.add", { project: project.slug, name: "Style", text: "Plain words." })).error, undefined);
   assert.equal((await ada("projects.refs.add", { project: project.slug, name: "Intake", files: "Clients/Rivera/intake.pdf" })).error, undefined);
   assert.deepEqual((await owner("projects.refs.list", { project: project.slug })).data.items.map((/** @type {any} */ i) => i.kind).sort(), ["link", "note"]);

@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, Field, Icon, IconButton, allowsMock, LoadingState, Row, SectionLabel, SpaceTag, Text, showToast } from "@vyre/ui";
+import { Button, Card, Chip, Divider, DocOverlay, EmptyState, Field, Icon, IconButton, allowsMock, LoadingState, Row, SectionLabel, SpaceTag, Text, showToast } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
+import { driveSource } from "../drive/file-source";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { treeOf, type Body } from "../templates/model";
 import { ChatsList } from "../chats/ChatsList";
@@ -50,12 +51,15 @@ export function FilesPane({ id }: { id: string }) {
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
   // The Files screen's own door (files.drive.space.list); files.list is not a tool any module registers.
   useEffect(() => { void spaceList(undefined, `Projects/${id}/files`).then((r) => setRows(r.entries.filter((e) => e.path && (allowsMock() || String(e.path).startsWith(`Projects/${id}/files/`))))).catch(() => setRows([])); }, [id]);
+  const [open, setOpen] = useState<string | null>(null);
+  const source = useMemo(() => (open ? driveSource(open) : null), [open]);
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
+      {open && source ? <DocOverlay open onClose={() => setOpen(null)} title={open.split("/").pop() || "File"} name={open.split("/").slice(0, -1).join(" / ") || open} fileName={open.split("/").pop() || open} source={source} spacing={30_000} onOpenInFiles={() => { setOpen(null); router.push("/u/files" as never); }} /> : null}
       <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Files" onPress={() => router.push("/u/files" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
-        <Card flush>{rows.slice(0, 5).map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row dense title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}{rows.length > 5 ? <><Divider /><Row dense title={`${rows.length - 5} more in Files`} chevron onPress={() => router.push("/u/files" as never)} /></> : null}</Card>
+        <Card flush>{rows.slice(0, 5).map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row dense title={String(f.name || (f.path || "").split("/").pop() || "file")} onPress={f.path ? () => setOpen(String(f.path)) : undefined} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}{rows.length > 5 ? <><Divider /><Row dense title={`${rows.length - 5} more in Files`} chevron onPress={() => router.push("/u/files" as never)} /></> : null}</Card>
       )}
     </View>
   );

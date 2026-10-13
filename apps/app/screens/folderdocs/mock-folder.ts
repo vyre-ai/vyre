@@ -2,13 +2,13 @@
 import type { DocFile, FolderApi, Item } from "./model.ts";
 
 const kept = new Map<string, { docs: Record<DocFile, string>; items: Item[] }>();
-const of = (id: string) => { let k = kept.get(id); if (!k) { k = { docs: { "AGENTS.md": "", "CLAUDE.md": "" }, items: [{ name: "Trust certificate.pdf", kind: "link", size: 0, files: "Projects/northwind/files/Trust certificate.pdf" }] }; kept.set(id, k); } return k; };
+const of = (id: string) => { let k = kept.get(id); if (!k) { k = { docs: { "AGENTS.md": "" }, items: [{ name: "Trust certificate.pdf", kind: "link", size: 0, files: "Projects/northwind/files/Trust certificate.pdf" }] }; kept.set(id, k); } return k; };
 
 export function mockFolderApi(id: string): FolderApi {
   return {
-    id: `mock:${id}`, kept: true, canEdit: true,
+    id: `mock:${id}`, canEdit: true,
     docs: async () => ({ ...of(id).docs }),
-    saveDoc: async (file, text) => { const k = of(id); k.docs = { "AGENTS.md": text, "CLAUDE.md": text }; void file; },
+    saveDoc: async (file, text) => { const k = of(id); k.docs = { "AGENTS.md": text }; void file; },
     context: async () => [...of(id).items],
     addFile: async (name, base64) => { of(id).items.push({ name, kind: "file", size: Math.round(base64.length * 0.75) }); },
     addNote: async (name, text) => { of(id).items.push({ name, kind: "note", size: text.length }); },

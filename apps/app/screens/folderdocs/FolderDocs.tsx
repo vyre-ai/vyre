@@ -5,7 +5,7 @@ import { Button, Card, Divider, ErrorState, Field, IconButton, LoadingState, Row
 import { PlainDocsEditor } from "./PlainDocs";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
-import { KEPT_NOTE, READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
+import { READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -18,7 +18,7 @@ function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
 }
 
 /**
- * An agent's or a project's AGENTS.md and CLAUDE.md. On the shared Markdown viewer and editor (DocsViewer), loaded lazily so the PDF and Office renderers are not part of the page's start; if the viewer
+ * An agent's or a project's instructions (AGENTS.md). On the shared Markdown viewer and editor (DocsViewer), loaded lazily so the PDF and Office renderers are not part of the page's start; if the viewer
  * cannot load (or is not in this build), the plain editor (PlainDocs) takes its place. The one switch is USE_VIEWER.
  */
 const USE_VIEWER = true;
