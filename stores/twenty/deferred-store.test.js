@@ -215,3 +215,23 @@ test("two calls at once after a store-away refusal run one define, not two", asy
   assert.equal(both.length, 2);
   assert.equal(defines, 1, "one define for two callers");
 });
+
+test("a replayed define that never answers no longer holds the store from joining, and a define queued mid-replay is still applied", async () => {
+  const phases = /** @type {string[]} */ ([]), logs = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "starting", defineTimeoutMs: 50, log: (m) => logs.push(m), onProgress: (n, m) => phases.push(`${n} of ${m}`) });
+  await d.define({ name: "first" });
+  await d.define({ name: "second" });
+  const applied = /** @type {string[]} */ ([]);
+  /** @type {any} */ const real = createMemoryStore();
+  real.define = async (/** @type {any} */ diff) => {
+    if (diff.name === "first") { await new Promise(() => {}); }
+    applied.push(diff.name);
+    if (diff.name === "second") d.define({ name: "queued mid-replay" }).catch(() => {});   // arrives while the replay runs: same queue
+    return { applied: true, changes: [] };
+  };
+  await d.attach(real);   // the kernel is still booting, so a define made during the replay goes onto the same queue
+  assert.equal(d.attached(), true, "the store joined although the first define never answered");
+  assert.deepEqual(applied, ["second", "queued mid-replay"]);
+  assert.deepEqual(phases, ["1 of 2", "2 of 2", "3 of 3"]);
+  assert.ok(logs.some((l) => /took more than/.test(l)));
+});
