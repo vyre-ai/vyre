@@ -405,14 +405,18 @@ test("setup: a second server that used the same code first makes the offer conte
   const inbox = [];
   ws.onmessage = e => inbox.push(JSON.parse(String(e.data)));
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-  await settle(30);
-  ws.send(JSON.stringify({ t: "auth", pub: other.pub.toString("base64url"), sig: wire.signRoute(other.priv, wire.authMessage(route, Buffer.from(inbox[0].n, "base64url"))).toString("base64url") }));
-  await settle(30);
+  // Each step waits for the relay's answer, not for a fixed time: a loaded box can be slower than any sleep, and a frame sent before the box is signed in is dropped without a word.
+  await waitFor(() => inbox.some(m => m.t === "challenge"));
+  const challenge = inbox.find(m => m.t === "challenge");
+  assert.ok(challenge, "the relay sent its challenge");
+  ws.send(JSON.stringify({ t: "auth", pub: other.pub.toString("base64url"), sig: wire.signRoute(other.priv, wire.authMessage(route, Buffer.from(challenge.n, "base64url"))).toString("base64url") }));
+  await waitFor(() => inbox.some(m => m.t === "ready"));
+  assert.ok(inbox.some(m => m.t === "ready"), "the other box is signed in");
   const loc = wire.setupDerive("loc", p.secret).toString("base64url");
   const theirRecord = wire.ticketSeal(p.secret, JSON.stringify({ v: 1, name: "impostor" }));
   ws.send(JSON.stringify({ t: "setup", loc, record: theirRecord, mac: wire.ticketMac(p.secret, theirRecord).toString("base64url"), exp: Date.now() + 3_600_000 }));
-  await settle(30);
-  assert.equal(inbox.at(-1).status, 200, "they got there first");
+  await waitFor(() => inbox.some(m => m.t === "registered" && m.loc === loc));
+  assert.equal(inbox.find(m => m.t === "registered" && m.loc === loc)?.status, 200, "they got there first");
   const status = await p.begin();
   assert.equal(status.state, "contested", "our box hears 409 and says so, for the install script to print");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "contested");
