@@ -17,12 +17,12 @@ import { discover } from "../core/modules/index.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SHIPPED = ["bin", "core", "harness", "local", "web", "modules"];
 
-// A scan reads the files git tracks, not whatever the working tree holds at that moment: another test running in parallel may create and delete a file in the checkout, and a scan that walked the
-// folders then read it later died with ENOENT. Outside a git checkout (a packed tree) it walks the folders, and a read that finds the file gone skips it.
+// A scan reads the files git lists (tracked, and untracked but not ignored, so a secret not yet added is still caught; ignored files stay out): another test running in parallel may create and delete a file in the checkout,
+// and a scan that walked the folders then read it later died with ENOENT. A file gone at read time is skipped. Outside a git checkout (a packed tree) it walks the folders.
 /** @type {string[] | null} */ let trackedCache = null;
 function tracked() {
   if (trackedCache) return trackedCache;
-  const r = spawnSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 });
+  const r = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 });
   trackedCache = r.status === 0 ? r.stdout.split("\0").filter(Boolean).map(f => path.join(ROOT, f)) : [];
   return trackedCache;
 }
