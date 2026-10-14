@@ -379,3 +379,7 @@ Steps, with the exact commands:
 
 - [ADR 0019](adr/0019-docs-site.md), why the docs work this way.
 - [Contributing](contributing/index.md), the rules for code.
+
+## Version numbers
+
+The middle number goes up for features or a considerable change. The last number is fixes only.

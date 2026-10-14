@@ -180,7 +180,7 @@ export function buildIndustries(h) {
       <div class="note"><p class="lbl" style="margin-bottom:8px">Today</p>
         <p><b>A Connection plus a Flow step.</b> A person adds a Connection: a declared host, how the key is sent and a list of operations, each marked by what it does. A Flow’s service step calls an operation, and a send waits at the Gate.</p>
         <p style="margin:0"><b>Or a custom module.</b> A module is a folder with a <code>module.json</code> and an entry file. It registers tools, emits events and declares Flow steps under the same checks as the built-in modules. An agent can write one on your own server.</p></div>
-      <div class="note"><p class="lbl" style="margin-bottom:8px"><span class="chip-next">Coming in 0.5.2</span></p>
+      <div class="note"><p class="lbl" style="margin-bottom:8px"><span class="chip-next">Coming in 0.7</span></p>
         <p><b>Integrations, packaged.</b> An Integration wraps an application’s API and ships its own Flow steps, triggers, Connection and agent tools. You install, verify, configure and remove it from one place. An agent can make one from an API.</p>
         <p style="margin:0">Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned. This is direction, not a date.</p></div>
     </div>
@@ -204,7 +204,7 @@ ${connectsTo([
   ['Records and Playbooks', `${FEAT}/records`, 'Types, fields, stage sets, sealed values and views.'],
   ['Documents and signing', `${FEAT}/documents-and-signing`, 'Fill your Word templates from a record and send them for signature.'],
   ['The Gate', `${FEAT}/gate`, 'Why nothing leaves the Space until a person approves the exact words.'],
-  ['Direction', '/direction/', 'What comes next, including Integrations in 0.5.2.'],
+  ['Direction', '/direction/', 'What comes next, including Integrations in 0.7.'],
   ...others.slice(0, 2).map((o) => [`For ${o.short.toLowerCase()}`, `/for/${o.slug}/`, 'The same journey for another kind of business.']),
 ])}
 `;
@@ -258,7 +258,7 @@ ${connectsTo([
       <div class="piece"><span class="num">05</span><h3>Your documents and signing</h3><p>Your Word templates, filled from records. Signers need no account, and the signed copy files on the record.</p></div>
       <div class="piece"><span class="num">06</span><h3>Your stack, connected</h3><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*</p></div>
     </div>
-    <p class="sm" style="margin-top:14px">*where the vendor provides an API. Today a Connection plus a Flow step, or a custom module. Coming in 0.5.2: packaged Integrations.</p>
+    <p class="sm" style="margin-top:14px">*where the vendor provides an API. Today a Connection plus a Flow step, or a custom module. Coming in 0.7: packaged Integrations.</p>
   </div>
 </section>
 
@@ -299,7 +299,7 @@ ${connectsTo([
     '## Vyre by kind of firm (pages under ' + SITE + '/for/)',
     'Each page follows one client from inquiry to closed work for an invented firm, and names the Vyre pieces behind every step. The firms and the sample data are invented.',
     ...INDUSTRIES.map((d) => `### ${d.short}: ${SITE}/for/${d.slug}/\n${d.journey.map(([t], i) => `${i + 1}. ${t}`).join('\n')}\nTracks (Playbooks): ${d.playbooks.map((p) => p.name).join(', ')}. Agents: ${d.agents.map((a) => a[1]).join(', ')}. Apps named: ${d.stack.map((s) => s[0]).join(', ')}.`),
-    'Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Coming in 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).',
+    'Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Coming in 0.7: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).',
   ].join('\n\n');
   const sitemap = [['/for/', '0.7'], ...INDUSTRIES.map((d) => [`/for/${d.slug}/`, '0.7'])];
   return { llms, full, sitemap };

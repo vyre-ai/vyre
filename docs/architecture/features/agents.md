@@ -58,7 +58,7 @@ An agent is a named, persistent helper that people chat with, assign tasks to an
 
 ## Extend it
 
-In 0.5 provider coverage differs ([Sessions and models](./sessions-and-models.md)). An agent step has no deadline: a session that ends without finishing is marked stuck, and a session that never ends is not timed out. 0.5.1 plans a due time and a failure path on agent steps (roadmap R051-03) and credentials lent to a woken agent for one job (R051-02). The MCP servers a member signs in to inside a session do not carry to the next session.
+In 0.5 provider coverage differs ([Sessions and models](./sessions-and-models.md)). An agent step has no deadline: a session that ends without finishing is marked stuck, and a session that never ends is not timed out. 0.6 plans a due time and a failure path on agent steps (roadmap R051-03) and credentials lent to a woken agent for one job (R051-02). The MCP servers a member signs in to inside a session do not carry to the next session.
 
 A custom module adds what the built-in agents lack. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 

@@ -70,7 +70,7 @@ The Vault screen is in `apps/app/screens/vault/`. The header says "Vault". A sco
 
 ## Extend it
 
-- In 0.5, a member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read the other items in it yet. A woken agent borrows a credential through a task lease, and 0.5.1 plans credentials lent for one job, use only (R051-02).
+- In 0.5, a member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read the other items in it yet. A woken agent borrows a credential through a task lease, and 0.6 plans credentials lent for one job, use only (R051-02).
 - A member signs in to an AI provider with the provider's own sign-in and adds no setup token or API key as their own AI account.
 - The firm Microsoft 365 app reads in 0.5. Member sends are not open.
 - On the web, a member's Secret Key sits in browser storage, where the app's own scripts can read it. It opens nothing without the master password.

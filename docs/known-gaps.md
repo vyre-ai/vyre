@@ -10,15 +10,15 @@ status: draft
 
 These docs describe what the code does today. This page lists where Vyre 0.5 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
 
-## Next, in 0.5.1
+## Next, in 0.6
 
-The 0.5.1 plan is in [roadmap/0.5.1.md](../roadmap/0.5.1.md) and the 0.5.2 plan in [roadmap/0.5.2.md](../roadmap/0.5.2.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
+The 0.6 plan is in [roadmap/0.6.md](../roadmap/0.6.md) and the 0.7 plan in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
 
 ## Known gaps in 0.5
 
 ### Members and custom record types
 
-A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.5.1.
+A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.6.
 
 What to do today: keep sensitive rows in a built-in type, or in a Space the person is not a member of.
 
@@ -33,7 +33,7 @@ Renaming a project changes its short name, which keys the project's folder group
 ### Flows
 
 - A "For each" step handles up to 50 items in the editor, although the engine allows 1000, and a longer list is cut without a note on the run page.
-- An agent step has no deadline yet. A session that ends without finishing is marked stuck, but an agent that never ends is not timed out. Deadlines and failure paths in the editor are planned for 0.5.1.
+- An agent step has no deadline yet. A session that ends without finishing is marked stuck, but an agent that never ends is not timed out. Deadlines and failure paths in the editor are planned for 0.6.
 - A Flow email cannot yet carry CC, BCC or attachments.
 - Members cannot inspect a Flow over MCP (`flows.describe`, `flows.runs` and `flows.connections` are for owners).
 

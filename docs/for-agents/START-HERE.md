@@ -28,7 +28,7 @@ Describe what is built and how it is designed: a small trusted core (the kernel)
 Rules that hold throughout:
 
 - What is planned is called Next, with its version from the roadmap, and you never describe it as shipped.
-- When the business needs something Vyre does not ship today, treat it as something Vyre extends: a custom module written to the module contract on their own server, or an Integration (Next, 0.5.2; today a connection plus a Flow step that calls a connected service, or a custom module, does the same job). Vyre can be extended by integrating the software stack they already use, where the vendor provides an API.
+- When the business needs something Vyre does not ship today, treat it as something Vyre extends: a custom module written to the module contract on their own server, or an Integration (Next, 0.7; today a connection plus a Flow step that calls a connected service, or a custom module, does the same job). Vyre can be extended by integrating the software stack they already use, where the vendor provides an API.
 - Design on paper first. Change nothing in their Space until they say so.
 - Your own words are never an approval. Only the person's yes at the Gate approves an outward act.
 - Never ask the person to paste a Vyre secret, vault value or recovery code into a chat. Two things in Get started are the person's choice to hand you: a throwaway provider token, and the one install line. Neither is ever entered in Vyre. The console path in Step 2 needs neither.
@@ -47,7 +47,7 @@ Read the first two pages before you ask anything. Read the rest as you need them
 
 - One page per feature, each under https://vyre.run/docs/architecture/features/ : records.md, flows.md, agents.md, tasks-and-needs-you.md, documents-and-signing.md, sites-and-publishing.md, vault.md, gate.md, files.md, spaces-and-members.md, sessions-and-models.md, mcp-and-engineer.md
 - Overview of the project: https://raw.githubusercontent.com/vyre-ai/vyre/main/README.md
-- Direction and the plan for each version: https://vyre.run/docs/roadmap/README.md, then 0.5.1.md and 0.5.2.md in the same folder.
+- Direction and the plan for each version: https://vyre.run/docs/roadmap/README.md, then 0.6.md and 0.7.md in the same folder.
 - Install: https://vyre.run/docs/get-started/install.md
 - Giving an AI a key: https://vyre.run/docs/using/set-up-with-your-ai.md
 
@@ -152,7 +152,7 @@ If setup stops, https://vyre.run/docs/get-started/troubleshooting.md has the mes
 
 Labelled Next, so you never describe it as shipped: this entry point is planned to become an MCP server itself, exposing the map and the setup tools, so an agent connects once and can provision a server, install Vyre and build the business end to end. Until then, this page is how you do it.
 
-Other plans, by version, are in https://vyre.run/docs/roadmap/README.md: 0.5.1 makes Flows more reliable and complete, and 0.5.2 brings Integrations, a Skills screen and a Plugins screen.
+Other plans, by version, are in https://vyre.run/docs/roadmap/README.md: 0.6 makes Flows more reliable and complete, and 0.7 brings Integrations, a Skills screen and a Plugins screen.
 
 ## Stay in the loop
 

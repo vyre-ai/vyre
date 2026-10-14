@@ -71,7 +71,7 @@ A "reviewer" or a "planner" is not a named feature. A person assembles one: add 
 
 ## Extend it
 
-- In 0.5 `flows.describe`, `flows.runs` and `flows.connections` over MCP are for owners. A member's own AI account is a provider sign-in, a member's session-level MCP sign-ins last for that session, and a connected AI belongs to the person who owns the Vyre, on their own computer. 0.5.1 work is on the [roadmap](../../roadmap.md).
+- In 0.5 `flows.describe`, `flows.runs` and `flows.connections` over MCP are for owners. A member's own AI account is a provider sign-in, a member's session-level MCP sign-ins last for that session, and a connected AI belongs to the person who owns the Vyre, on their own computer. 0.6 work is on the [roadmap](../../roadmap.md).
 - Publishing apps with their own server depends on the setting `publish.servers`; a folder of ready files and a React page publish today.
 - A custom module adds tools that every MCP client then sees, because the server lists what vyred has. The hosted allowlist places each new tool before a hosted key can call it. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 - Another MCP server joins through the hub (`mcp.add`, by a person), with its credentials in the Vault.

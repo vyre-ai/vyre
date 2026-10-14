@@ -59,7 +59,7 @@ const PAGES = [
       ['Changing a live automation', 'Set by each tool.', 'An edit is a new version. A person approves it, and an earlier version can be restored.'],
       ['Outward actions', 'Set by how each automation is built.', 'Held at the Gate until a person approves the exact words.'],
       ['Credentials', 'Held in each tool’s own connection store.', 'The Vault. Agents get use only and never read the value.'],
-      ['Ready-made app connections', 'A large catalogue.', 'A connection to any service that has an API, used from a Flow’s web step. Coming in 0.5.2: packaged Integrations.'],
+      ['Ready-made app connections', 'A large catalogue.', 'A connection to any service that has an API, used from a Flow’s web step. Coming in 0.7: packaged Integrations.'],
       ['Cost', 'Set by each vendor.', 'Vyre is free and open source (Apache 2.0). You pay your AI providers directly.'],
     ],
     together: [
@@ -67,7 +67,7 @@ const PAGES = [
       'A useful split: let the automation tool carry data between apps, and let Vyre decide what the team does with it and who says yes.',
     ],
     faq: [
-      ['Does Vyre replace Zapier, Make or n8n?', 'Not for connecting many apps. Those tools have large catalogues of ready-made connections. Vyre runs Flows over your records and agents, and it can sit next to them. Packaged Integrations for popular apps are Next, in 0.5.2.'],
+      ['Does Vyre replace Zapier, Make or n8n?', 'Not for connecting many apps. Those tools have large catalogues of ready-made connections. Vyre runs Flows over your records and agents, and it can sit next to them. Packaged Integrations for popular apps are Next, in 0.7.'],
       ['Can a Flow call an outside service today?', 'Yes. A Flow has a web step, and a person can add a connection that declares the host, how the key is sent and which operations are reads, drafts, changes, sends, spends or deletes.'],
     ],
     connects: [['/architecture/', 'The architecture: the door, the kernel and the Gate'], ['FLOWS', 'Flows, in the repository'], ['GATE', 'The Gate, in the repository'], ['VAULT', 'The Vault, in the repository']],
@@ -121,7 +121,7 @@ const PAGES = [
     ],
     faq: [
       ['Can an agent take a task in Vyre?', 'Yes. When a task is given to an agent, by a person, by a Flow or by another agent, the agent starts with the task, its record and where it came from. It finishes the task, hands it on, or marks it stuck with a reason, and a stuck task appears under Needs you.'],
-      ['Does Vyre import from the tools on this page?', 'Excel or CSV imports into any list from the web app. A connection or a custom module can reach a planning tool that has an API. Packaged Integrations are Next, in 0.5.2.'],
+      ['Does Vyre import from the tools on this page?', 'Excel or CSV imports into any list from the web app. A connection or a custom module can reach a planning tool that has an API. Packaged Integrations are Next, in 0.7.'],
     ],
     connects: [['/architecture/', 'The architecture: layers, calls and agent turns'], ['AGENTS', 'Agents, in the repository'], ['TASKS', 'Tasks, Needs you and Playbooks, in the repository'], ['RECORDS', 'Records, in the repository']],
   },
@@ -216,11 +216,11 @@ const PAGES = [
       ['Agents', 'Many include AI features inside the product.', 'Agents are members of the Space and work across its records, tasks and files.'],
       ['Documents', 'Document features vary by product.', 'Your Word templates filled from records, signing with no account for the signer.'],
       ['Outward actions', 'Set by how each product and automation is configured.', 'Held at the Gate until a person approves the exact words.'],
-      ['Connecting to the suite', 'Native to the suite.', 'Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Coming in 0.5.2: packaged Integrations.'],
+      ['Connecting to the suite', 'Native to the suite.', 'Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Coming in 0.7: packaged Integrations.'],
     ],
     together: [
       'Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, and the same goes for Clio, Karbon and HubSpot. The suite stays the system of record. Vyre reads from it, does the preparation, and writes back once a person has said yes.',
-      '*Where the vendor provides an API. Integrations as packaged modules are Next, in 0.5.2. Today a person adds a connection and a Flow uses it from a web step, or a custom module wraps the service.',
+      '*Where the vendor provides an API. Integrations as packaged modules are Next, in 0.7. Today a person adds a connection and a Flow uses it from a web step, or a custom module wraps the service.',
     ],
     faq: [
       ['Do I have to move my data out of Clio, Karbon or HubSpot?', 'No. Keep the system of record where it is. Vyre holds the working records and the agent work around it, and a connection lets a Flow read from the suite where the vendor provides an API.'],
@@ -386,7 +386,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
     const rows = [
       ['What it is', x.what, 'A shared working layer for people and agents: records, tasks, Flows, documents, sites and a Gate.'],
       ['Where it runs', x.host, 'On a server you own.'],
-      ['Connecting to the other', x.api === false ? 'See the vendor’s developer documentation.' : x.apiNote, 'A Connection in the Vault and a Flow web step or custom module. Coming in 0.5.2: a packaged Integration.'],
+      ['Connecting to the other', x.api === false ? 'See the vendor’s developer documentation.' : x.apiNote, 'A Connection in the Vault and a Flow web step or custom module. Coming in 0.7: a packaged Integration.'],
       ['Parts of the job in Vyre', 'Set by the product.', list(nativeTitles(x)) + '.'],
       ['Outward actions', 'Set by how the product is configured.', 'Held at the Gate until a person approves the exact words.'],
     ];
@@ -419,7 +419,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
     </div>
     <div class="cmp-two rv">
       <div class="cmp-col cmp-col-v"><h3>Today</h3><p>${x.api === false ? NOAPI : esc(x.apiNote) + ' ' + TODAY}</p><p>Where the vendor publishes an MCP server, a person can add it for agents to use.</p></div>
-      <div class="cmp-col"><h3><span class="chip-next">Coming in 0.5.2</span></h3><p>${NEXT.replace('Coming in 0.5.2: a', 'A')}</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, ${esc(x.name)} included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
+      <div class="cmp-col"><h3><span class="chip-next">Coming in 0.7</span></h3><p>${NEXT.replace('Coming in 0.7: a', 'A')}</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, ${esc(x.name)} included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
     </div>
   </div>
 </section>
@@ -536,7 +536,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
 <section class="sec" aria-labelledby="fair-h">
   <div class="wrap">
     <h2 id="fair-h" class="lbl" style="margin-bottom:20px">How these pages are written</h2>
-    <div class="note rv"><p style="margin:0 0 10px">The other tools on these pages are good at what they were built for. Each page says what its kind of tool does well before it says where Vyre differs. About another product, a page says only what that product’s own public documentation says. Where we are not sure, the page describes the kind of tool. If a line is out of date, <a href="${REPO}/issues">tell us in the repository</a>.</p><p style="margin:0">Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *Where the vendor provides an API. Packaged Integrations are Next, in 0.5.2.</p></div>
+    <div class="note rv"><p style="margin:0 0 10px">The other tools on these pages are good at what they were built for. Each page says what its kind of tool does well before it says where Vyre differs. About another product, a page says only what that product’s own public documentation says. Where we are not sure, the page describes the kind of tool. If a line is out of date, <a href="${REPO}/issues">tell us in the repository</a>.</p><p style="margin:0">Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *Where the vendor provides an API. Packaged Integrations are Next, in 0.7.</p></div>
   </div>
 </section>
 
@@ -557,6 +557,6 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
   });
   out.llms.unshift(`- [Compare Vyre with other tools](${SITE}/compare/): how Vyre fits next to automation tools, work management tools, AI assistants and practice software`);
   out.llmsBlock = `## Compare\n${out.llms.join('\n')}\n`;
-  out.fullBlock = `## How Vyre compares\nEach page below describes approaches. About another product it says only what that product’s own public documentation says, and otherwise it describes the kind of tool. Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *Where the vendor provides an API. Packaged Integrations are Next, in 0.5.2.\n\n${out.full.join('\n\n')}\n`;
+  out.fullBlock = `## How Vyre compares\nEach page below describes approaches. About another product it says only what that product’s own public documentation says, and otherwise it describes the kind of tool. Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *Where the vendor provides an API. Packaged Integrations are Next, in 0.7.\n\n${out.full.join('\n\n')}\n`;
   return out;
 }

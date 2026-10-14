@@ -131,6 +131,8 @@ Groups: [Architecture](#architecture), [Security](#security), [UI and design](#u
 
 ## Releases
 
+- **Version numbers.** The middle number goes up for features or a considerable change. The last number is fixes only.
+
 1. **Sign each release with the key in the `release` environment** and check the pinned public key and the lineage. An update must come from us. Before approving the environment, read the diff of any signing file. Check: `test/release-key.test.js`, `test/sign-manifest.test.js`, `test/release-lineage.test.js`, `test/release-verify-workflow.test.js`, `test/release-workflow.test.js`, `.github/workflows/release.yml`, `release-verify.yml`.
 2. **Build the release from what the tests proved.** Check the dist and the served files. The package holds what the box and the image need, including the golden dump. Check: `test/check-release-dist.test.js`, `test/check-served.test.js`, `test/package-files.test.js`, `test/golden-pack.test.js`, `test/box-pack-covers-dockerfile.test.js`.
 3. **Use the bump script and the release counter.** Do not hand-edit versions. Check: `test/release-counter.test.js`, `test/bump-version.test.js`, `test/patch-release.test.js`.

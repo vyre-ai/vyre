@@ -8,7 +8,7 @@ status: stable
 
 # Roadmap
 
-This is direction, not a promise of dates. Each line has an ID; a line is ticked when it ships in a release. What is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](known-gaps.md).
+This is direction, not a promise of dates. Item ids such as R051-01 are stable names: they do not change when an item moves to another release. Each line has an ID; a line is ticked when it ships in a release. What is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](known-gaps.md).
 
 
 ## 0.5.0
@@ -26,7 +26,10 @@ This is direction, not a promise of dates. Each line has an ID; a line is ticked
 - [x] R050-12 Sign in by name replaces the pairing code; updates need the owner's yes.
 
 ## 0.5.1
-Plan and acceptance tests: [roadmap/0.5.1.md](../roadmap/0.5.1.md).
+A fix-only release: the onboarding order fix plus the stability fixes merged since 0.5.0. No new features.
+
+## 0.6
+Plan and acceptance tests: [roadmap/0.6.md](../roadmap/0.6.md).
 - [ ] R051-01 One chat per Flow, with a divider per run.
 - [ ] R051-02 Credentials lent to a woken agent for one job, use only.
 - [ ] R051-03 Agent step deadlines that stop the agent, with a timeout path.
@@ -46,8 +49,8 @@ Plan and acceptance tests: [roadmap/0.5.1.md](../roadmap/0.5.1.md).
 - [ ] R051-17 Mentions follow-ups.
 - [ ] R051-18 Docs re-check of known gaps.
 
-## 0.5.2
-Plan and acceptance tests: [roadmap/0.5.2.md](../roadmap/0.5.2.md).
+## 0.7
+Plan and acceptance tests: [roadmap/0.7.md](../roadmap/0.7.md).
 - [ ] R052-01 Integration contract: what an Integration may declare.
 - [ ] R052-02 Integrations section: install, verify, configure, uninstall.
 - [ ] R052-03 Make an Integration from an API.

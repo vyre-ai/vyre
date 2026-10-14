@@ -60,7 +60,7 @@ export const INDUSTRIES = [
       ['Vault', 'The e-filing login, the bar portal and the court calendar sit in the Vault. An agent uses a credential without seeing it, and each attorney has a private vault the firm cannot read.'],
       ['Sites', 'An agent builds the firm’s consultation page and intake form from its records and brand, previews it at a private address and puts it live on one yes. Every version stays in the history.'],
     ],
-    stack: [['Clio', 'Coming in 0.5.2', 'A planned packaged Integration. Today, a Connection and a Flow step, or a custom module.'], ['Lawmatics', 'Coming in 0.5.2', 'A planned packaged Integration. Today, a Connection and a Flow step.'], ['Practice tools', 'Connection', 'Document, calendar and e-filing tools with an API connect the same way.'], ZOHO, RING, GOOGLE, M365, DROPBOX, DOCUSIGN],
+    stack: [['Clio', 'Coming in 0.7', 'A planned packaged Integration. Today, a Connection and a Flow step, or a custom module.'], ['Lawmatics', 'Coming in 0.7', 'A planned packaged Integration. Today, a Connection and a Flow step.'], ['Practice tools', 'Connection', 'Document, calendar and e-filing tools with an API connect the same way.'], ZOHO, RING, GOOGLE, M365, DROPBOX, DOCUSIGN],
     faq: null,
   },
 
