@@ -474,6 +474,9 @@ export class Curator {
     const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null, apart, lessonAt };
     const bySlug = new Map();
     for (const [s, rs] of member) for (const r of rs) { if (!bySlug.has(r)) bySlug.set(r, new Set()); bySlug.get(r).add(s); }
+    // Each room is written as soon as it is computed, and what is kept of it for the main graph is only its kept set and its works_at votes. A room's aggregates are the
+    // largest thing derive builds, and holding every room's until the end (and the main graph's on top) was most of the heap this pass grew by.
+    let changed = 0;
     /** @type {Result[]} */
     const results = [];
     for (const room of [...rooms, { slug: UNFILED, name: "", folders: [], threads: [] }]) {
@@ -482,14 +485,19 @@ export class Curator {
       const mine = lessons.filter(l => room.slug === UNFILED ? !l.project : !l.project || l.project.some(c => deepest(c, rooms) === room));
       if (!sessions.size && !mine.some(l => l.project)) continue;
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
-      results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
-        said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
+      const res = await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
+        said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common);
+      changed += this.tx(() => this.writeScope(res, now));
+      results.push(/** @type {Result} */ (/** @type {unknown} */ ({ room: res.room, kept: res.kept, worksAt: res.worksAt })));
       await yieldAndTidy();
     }
-    results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
-      said: facts.filter(c => c.scope === "*") }, common));
-    conflicts(results);
-    return await this.write(results, now);
+    const star = await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
+      said: facts.filter(c => c.scope === "*") }, common);
+    conflicts([...results, star]);
+    changed += this.tx(() => this.writeScope(star, now));
+    changed += this.prune([...results, star].map(r => r.room));
+    if (changed) { this.version++; this.bump(); }
+    return changed;
   }
 
   /**
@@ -1219,20 +1227,14 @@ export class Curator {
   }
 
   /**
-   * Write every scope's derived graph as a difference against what is stored: one transaction
-   * per scope, with a yield between, so the event loop is never held for more than one scope's
-   * rows. Each room is consistent on its own; the cursor moves once, at the end.
-   * @param {Result[]} results
+   * What the last derive leaves behind: rooms that are gone keep nothing. Each scope is written by derive itself, one transaction per scope, as soon as it is computed.
+   * @param {string[]} keep the rooms derive just wrote
+   * @returns {number} rows changed
    */
-  async write(results, now) {
+  prune(keep) {
     let changed = 0;
-    for (const r of results) {
-      changed += this.tx(() => this.writeScope(r, now));
-      await yieldAndTidy();
-    }
     // Rooms that are gone keep nothing.
     changed += this.tx(() => {
-      const keep = results.map(r => r.room);
       const marks = keep.map(() => "?").join(",");
       const db = this.db;
       let n = 0;
@@ -1244,7 +1246,6 @@ export class Curator {
       n += db.prepare(`DELETE FROM memory_aliases WHERE room NOT IN (${marks})`).run(...keep).changes;
       return Number(n);
     });
-    if (changed) { this.version++; this.bump(); }
     return changed;
   }
 
