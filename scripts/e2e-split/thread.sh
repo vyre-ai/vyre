@@ -33,7 +33,7 @@ i=0; until docker exec "$C" test -S /home/vyre/.vyre/vyred.sock 2>/dev/null || [
 # The CLI runner on the stand-in claude, with the box's defaults otherwise (spawner on for a box).
 docker exec -u vyre "$C" sh -c 'echo "{\"sessions\":{\"driver\":\"cli\"}}" > /home/vyre/.vyre/config.json'
 # The loop brings vyred back with the new config.
-docker exec "$C" pkill -TERM -f 'node /opt/vyre/core/daemon/main.js' >/dev/null 2>&1; sleep 4
+docker exec "$C" pkill -TERM -f '/opt/vyre/core/daemon/main.js' >/dev/null 2>&1; sleep 4
 i=0; until docker exec "$C" vyre status 2>/dev/null | grep -qi running || [ $i -ge 60 ]; do i=$((i+1)); sleep 1; done
 sleep 3
 ST=$(docker exec -u vyre "$C" vyre call threads.start '{"cwd":"/work/kit","prompt":"hello","surface":"deck"}' 2>&1)

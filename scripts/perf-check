@@ -55,6 +55,13 @@ const STARTUP_TIMEOUT_MS = 60_000;
 const SETTLE_MS = 3000;
 // Idle starts once vyred has sat under QUIET_PCT of a core for QUIET_SAMPLES samples in a row, at most QUIET_MAX_SECONDS after settling.
 const QUIET_PCT = 0.3, QUIET_SAMPLES = 3, QUIET_MAX_SECONDS = 45;
+// Then idle waits for V8's memory reducer. After a startup that grew the heap, V8 runs two compacting collections ("Mark-Compact (reduce)") 20 to 40 s after the last
+// allocation, shrinking the committed heap, and they cost about 0.2 s of CPU in one burst. That is the tail of startup, not steady idle, and where it lands (just before
+// or just inside the window) moves with how fast the host started, so a window opened before it measured the host and not vyred. The window opens once the reducer has run
+// (read from --trace-gc on the daemon), at most REDUCER_MAX_SECONDS after the quiet; a daemon whose heap never needed shrinking never runs it and costs the cap, not a failure.
+// Node 24 does not run it at all (three runs, 60 s each, none logged), and waiting there only moved the window onto later one-off work, so the wait is for Node 22 and older, the box's Node.
+// No budget changes with this.
+const REDUCER_MAX_SECONDS = 40, REDUCER_RUNS = "Mark-Compact (reduce)";
 
 // cpuPct/rssMB gate the steady state (p95 of the samples — one noisy `ps` tick, or a GC pause,
 // shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
@@ -117,6 +124,7 @@ async function main() {
     // time it lands moves with what else starts (30 Sep: a new module shifted it into the idle window on
     // Node 22 and failed the check every time). Idle starts once vyred has been quiet for a few samples.
     if (!(await waitQuiet(child.pid))) log(`vyred was still busy ${QUIET_MAX_SECONDS}s after indexing; sampling anyway, and the budget says what it costs`);
+    if (Number(process.versions.node.split(".")[0]) < 24 && !(await waitReducer(child))) log(`V8's memory reducer did not run within ${REDUCER_MAX_SECONDS}s of the quiet; sampling anyway`);
     const idleStart = Date.now();
     log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
 
@@ -173,7 +181,7 @@ function spawnDaemon(home, timersFile, gcFile) {
   const entry = path.join(REPO, "core", "daemon", "main.js");
   const hook = path.join(HERE, "lib", "timer-hook.mjs");
   const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
-  const child = spawn(process.execPath, ["--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
+  const child = spawn(process.execPath, ["--expose-gc", "--trace-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
     env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
     stdio: ["ignore", "pipe", "pipe"],
@@ -297,6 +305,17 @@ async function waitQuiet(pid) {
   while (Date.now() - t0 < QUIET_MAX_SECONDS * 1000) {
     const [s] = await sampleIdle(pid, SAMPLE_MS / 1000, SAMPLE_MS);
     if (s && s.cpuPct < QUIET_PCT) { if (++run >= QUIET_SAMPLES) return true; } else run = 0;
+  }
+  return false;
+}
+
+/** Wait for the memory reducer's collections to have run, or the cap. True when it ran. @param {import("node:child_process").ChildProcess & { __output?: () => string }} child */
+async function waitReducer(child) {
+  const t0 = Date.now();
+  const ran = () => (child.__output ? child.__output().split(REDUCER_RUNS).length - 1 : 0);
+  while (Date.now() - t0 < REDUCER_MAX_SECONDS * 1000) {
+    if (ran() >= 1) { await sleep(2500); return true; }
+    await sleep(500);
   }
   return false;
 }
