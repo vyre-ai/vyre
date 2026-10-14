@@ -4,15 +4,16 @@
 
 import { Platform } from "react-native";
 import { MOCK, tool } from "../../src/real/box";
-import { masterStatus } from "./flow-model.js";
+import { masterStatus, unreachableSay } from "./flow-model.js";
 import { personalUnlockRefusal } from "../vault/real-model";
 import type { Outcome } from "./real-identity";
+import { hasServer } from "./has-server";
 
 type Failure = { code?: string; message?: string; detail?: { retry_after_s?: number } };
 const fail = (e: unknown): Failure => (e && typeof e === "object" ? (e as Failure) : {});
 const slow = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const noBox = "Vyre cannot reach your vault yet, so nothing was saved. Check your connection, then try again.";
+const noBox = async (): Promise<string> => unreachableSay(await hasServer());
 const unreachable = (c: string | undefined) => !c || ["offline", "unreachable", "bad_response", "error", "timeout"].includes(c);
 
 /** The vault is open: read the person's space list once and connect the servers this device lacks. Never blocks or fails the sign-in; a list that cannot be read is simply not applied. */
@@ -49,7 +50,7 @@ export async function createVault(password: string, reset = false): Promise<Outc
     if (c === "presence_required" || c === "needs_presence") return { ok: false, say: "That needs you. Approve on this device, then try again." };
     // There is no tool that changes an account's password yet, so a vault that already has one cannot take a new one here.
     if (/already has an account/i.test(fail(e).message ?? "")) return { ok: false, say: reset ? "Nothing was changed. Try your recovery kit again." : "This vault already has a master password. Go back and type it to open the vault." };
-    if (unreachable(c)) return { ok: false, say: noBox };
+    if (unreachable(c)) return { ok: false, say: await noBox() };
     return { ok: false, say: "Your vault was not created and nothing was saved. Try again." };
   }
 }
@@ -69,7 +70,7 @@ export async function openVault(password: string, expected?: string): Promise<Ou
     if (f.code === "wrong_password") return { ok: false, say: "That is not your master password. Try again, or use your recovery kit to set a new one." };
     // The box needs the account's Secret Key on this device. It is not part of the recovery kit in this flow, so say what is true and where the person stands.
     if (f.code === "no_secret_key") return { ok: false, say: "This device cannot open your vault with the password alone yet. Open Vyre on a device that already has your vault and add this one from there." };
-    if (unreachable(f.code)) return { ok: false, say: noBox };
+    if (unreachable(f.code)) return { ok: false, say: await noBox() };
     return { ok: false, say: personalUnlockRefusal(f.code, f.detail) };
   }
 }

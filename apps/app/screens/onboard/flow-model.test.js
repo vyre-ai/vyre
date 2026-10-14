@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEMO, SCREENS, addressOf, afterSpace, apiKeyStatus, inviteStatus, knownName, masterStatus, nameStatus, reach, recoveryStatus, spaceCodeStatus, stepLabels, wordsMatch } from "./flow-model.js";
+import { DEMO, SCREENS, addressOf, afterSpace, apiKeyStatus, inviteStatus, knownName, masterStatus, nameStatus, reach, recoveryStatus, route, spaceCodeStatus, stepLabels, unreachableSay, NO_SERVER_SAY, NO_BOX_SAY, wordsMatch } from "./flow-model.js";
 
 test("every screen is reachable from the start and every target exists", () => {
   const seen = reach("start");
@@ -60,4 +60,45 @@ test("Continue with GitHub: a linked id goes to the master password, a new one p
   assert.equal(nameFromLogin("12345"), "");
   assert.equal(nameFromLogin("ab"), "");
   assert.equal(nameFromLogin("x".repeat(40)).length, 20);
+});
+
+/** Drive route() the way OnboardFlow does: each move goes through it and its patch joins the context. Returns the screens shown. */
+function drive(ctx, moves) {
+  const shown = [];
+  let c = { ...ctx };
+  for (const want of moves) { const r = route(c, want); c = { ...c, ...r.patch }; shown.push(r.to); }
+  return shown;
+}
+
+test("a device with a server keeps the order Identity, Vault, Inference, Space, and is never redirected", () => {
+  for (const paired of [true, undefined]) {
+    const ctx = { device: "computer", allowed: true, paired };
+    assert.deepEqual(stepLabels(ctx), ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"]);
+    assert.deepEqual(drive(ctx, ["vault.intro", "master.set", "inf.pick", "space.choice", "create.setup", "compute", "ready"]), ["vault.intro", "master.set", "inf.pick", "space.choice", "create.setup", "compute", "ready"]);
+  }
+});
+
+test("a device with no server goes Identity, Space, Vault, Inference, then on; the labels say so", () => {
+  const ctx = { device: "computer", allowed: true, paired: false };
+  assert.deepEqual(stepLabels(ctx), ["Identity", "Space", "Vault", "Inference", "Compute", "Ready"]);
+  assert.deepEqual(stepLabels({ ...ctx, device: "phone" }), ["Identity", "Space", "Vault", "Inference", "Ready"]);
+  assert.deepEqual(stepLabels({ ...ctx, allowed: false }), ["Identity", "Space", "Vault", "Inference", "Ready"], "Compute stays asked only where it applies");
+  // a new person: the identity kit leads to the Vault, which is held; the Space step comes first, then the held Vault screen, then Inference, then Compute
+  assert.deepEqual(drive(ctx, ["vault.intro", "create.name", "create.setup", "compute"]), ["space.choice", "create.name", "create.setup", "vault.intro"]);
+  assert.deepEqual(drive(ctx, ["vault.intro", "create.setup", "compute", "master.set", "inf.pick", "space.choice"]), ["space.choice", "create.setup", "vault.intro", "master.set", "inf.pick", "compute"], "after Inference it goes on to Compute, not back to the Space step");
+  // a returning person (master.enter) and a recovery (master.set) are held the same way
+  assert.deepEqual(drive(ctx, ["master.enter", "join.sealing", "ready"]), ["space.choice", "join.sealing", "master.enter"]);
+  assert.deepEqual(drive(ctx, ["master.set", "join.sealing", "ready"]), ["space.choice", "join.sealing", "master.set"]);
+  // phone: Ready after Inference
+  assert.deepEqual(drive({ ...ctx, device: "phone" }, ["vault.intro", "join.sealing", "ready", "inf.pick", "space.choice"]), ["space.choice", "join.sealing", "vault.intro", "inf.pick", "ready"]);
+  // adding a space later is never rerouted
+  assert.deepEqual(drive({ ...ctx, later: true }, ["compute", "ready"]), ["compute", "ready"]);
+});
+
+test("the Vault step tells a device with no server so, and keeps check your connection for one that has a server", () => {
+  assert.equal(unreachableSay(false), NO_SERVER_SAY);
+  assert.equal(unreachableSay(true), NO_BOX_SAY);
+  assert.match(NO_SERVER_SAY, /Add a server first/);
+  assert.doesNotMatch(NO_SERVER_SAY, /connection/);
+  assert.match(NO_BOX_SAY, /Check your connection/);
 });

@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Card, Divider, FlowStep, Row, Segmented, Switch } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { shellKind } from "../../src/shell/shell";
-import { SCREENS, stepLabels } from "./flow-model.js";
+import { SCREENS, route, stepLabels } from "./flow-model.js";
+import { hasServer } from "./has-server";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
 import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
@@ -48,11 +49,15 @@ export function OnboardFlow() {
   const [stack, setStack] = useState<string[]>(entry === "join" ? ["space.choice", "join.code"] : entry === "create" ? ["space.choice", "create.name"] : MOCK ? ["start"] : ["id.choice"]);
   const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: MOCK || shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
-  const go = useCallback((id: string) => {
+  // A new device with no server goes Identity, Space, Vault (the personal vault lives on a server): read once whether it has one, and flow-model.js route() orders the steps from that.
+  useEffect(() => { if (!MOCK) void hasServer().then((has) => setCtx((c) => ({ ...c, paired: has }))); }, []);
+  const go = useCallback((want: string) => {
     // "start" is the mock's setup screen; in a real run it is the end of the flow, and the app opens.
-    if (id === "start") { if (MOCK) { setStack(["start"]); setCtx(FRESH); } else router.replace("/u/now" as never); return; }
+    if (want === "start") { if (MOCK) { setStack(["start"]); setCtx(FRESH); } else router.replace("/u/now" as never); return; }
+    const { to: id, patch } = route(ctx, want);
+    if (Object.keys(patch).length) setCtx((c) => ({ ...c, ...patch }));
     setStack((s) => (VIEWS[id] ? [...s, id] : s));
-  }, [router]);
+  }, [router, ctx]);
   const back = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
   const id = stack[stack.length - 1];
   const View = VIEWS[id];
