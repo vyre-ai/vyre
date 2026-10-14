@@ -992,6 +992,7 @@ function nodesToText(nodes) {
  */
 export function htmlToText(html) {
   return decodeEntities(html
+    .replace(/<!--\/?email_off-->/g, "")
     .replace(/<a class="anchor"[^>]*>#<\/a>/g, "")
     .replace(/<\/?(?:a|code|em|strong|del|span|kbd|mark|b|i)(?:\s[^>]*)?>/g, "")
     .replace(/<[^>]+>/g, " "))
