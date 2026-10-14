@@ -32,7 +32,8 @@ function rig(t, opts = {}) {
     ...opts,
   });
   t.after(() => { w.idle(); fs.rmSync(dir, { recursive: true, force: true }); });
-  const send = s => fs.writeFileSync(f.state.trigger, s);
+  // written whole and moved into place, so the fake watcher never sees a file that is created but not yet filled
+  const send = s => { const tmp = f.state.trigger + ".tmp"; fs.writeFileSync(tmp, s); fs.renameSync(tmp, f.state.trigger); };
   const tick = ms => { clock.t += ms; for (const fn of ticks) fn(); };
   return { w, heard, send, tick, ticks };
 }

@@ -5,6 +5,7 @@ import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present, kernelCaller } from "./helpers.js";
@@ -15,6 +16,14 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
+/** End every child process of this test process still running (a fake session the daemon started and did not wait for) and return their pids: a leftover child is a finding, not noise. */
+function reapChildren() {
+  /** @type {number[]} */ let pids = [];
+  try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { return []; }
+  for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+  return pids;
+}
+
 async function rig(/** @type {any} */ t) {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
@@ -24,7 +33,16 @@ async function rig(/** @type {any} */ t) {
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on", max_live: 60 } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
-  t.after(() => d.stop());
+  // A failing test must not hold the file open: stop the daemon within a bound, then end what it started that is still ours (a session's child). The test still fails when the daemon would not stop or left a
+  // child behind, so this only keeps the file from hanging, it hides nothing.
+  t.after(async () => {
+    /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
+    try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
+    catch (e) { failure = e; }
+    finally { clearTimeout(timer); left = reapChildren(); }
+    if (failure) throw failure;
+    if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
+  });
   const mk = (/** @type {string} */ n) => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, `vyre-${n}-`))); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
   const work = mk("work"), p1 = mk("p1"), p2 = mk("p2");
   const ok = (/** @type {any} */ r) => { assert.ok(!r.error, JSON.stringify(r)); return r.data; };

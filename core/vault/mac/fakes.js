@@ -31,8 +31,10 @@ const fs = require("node:fs");
 const trigger = process.argv[2];
 process.stdout.write(JSON.stringify({ ready: true }) + "\\n");
 setInterval(() => {
-  let s; try { s = fs.readFileSync(trigger, "utf8").trim(); fs.rmSync(trigger); } catch { return; }
-  if (s) process.stdout.write(JSON.stringify({ signal: s }) + "\\n");
+  // A test that writes the file with writeFileSync makes it empty first and fills it a moment later; reading it in between and deleting it lost the signal (the writer then wrote into an unlinked file).
+  // So an empty file is left for the next tick, and only a file that held a signal is removed.
+  let s; try { s = fs.readFileSync(trigger, "utf8").trim(); if (!s) return; fs.rmSync(trigger); } catch { return; }
+  process.stdout.write(JSON.stringify({ signal: s }) + "\\n");
 }, 20);
 process.stdin.on("end", () => process.exit(0));
 process.stdin.resume();
