@@ -1,7 +1,7 @@
 // @ts-check
 // Flows reliability, wave 1 (f1 timeouts and retry, f2 failure paths and VERIFY, f4 resume / skip / cancel). A runner on the fake world with a hanging, failing or flaky port, and a clock the test moves.
 import "../../scripts/mac-test-guard.mjs";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle } from "./testing/world.js";
 import { sourceHash, checkFlow } from "./schema.js";
@@ -12,6 +12,10 @@ const src = "return { n: 1 };";
 const fn = (/** @type {string} */ id, extra = {}) => ({ id, kind: "fn", language: "js", source: src, hash: sourceHash(src), inputs: {}, outputs: ["n"], ...extra });
 const lastRun = async (/** @type {any} */ w) => (await w.runner.listRuns())[0];
 const fire = async (/** @type {any} */ w) => { w.kernel.inbound("payment.received", { n: 1 }); await settle(w); return lastRun(w); };
+// A hung port settles only through the runner's step timeout, whose timer is unref'd on purpose (a pending timeout must not hold a process open). With nothing else alive the loop empties under the hung step and node:test
+// cancels the whole file ("event loop has already resolved"), on Node 22 about one run in five. This file hangs ports deliberately, so it holds the loop open itself, until its last test is done.
+const keepAlive = setInterval(() => {}, 1000);
+after(() => clearInterval(keepAlive));
 const hang = () => new Promise(() => {});
 const coded = (/** @type {string} */ code) => Object.assign(new Error(`port said ${code}`), { code });
 
