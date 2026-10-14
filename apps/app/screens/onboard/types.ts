@@ -10,6 +10,12 @@ export type Ctx = {
   /** Adding a space later: Space, Compute, Ready. */
   later: boolean;
   name: string;
+  /** This device has a server (a pairing). False puts the Space step before Vault; unset counts as true. */
+  paired?: boolean;
+  /** Unpaired order: the Vault screen held until a server is set up, and what is already done. */
+  vaultEntry?: string;
+  vaultDone?: boolean;
+  spaceDone?: boolean;
   /** Who GitHub said this is, after Continue with GitHub. It proves who the person is; it never opens the vault. */
   github?: GithubUser;
   /** The one-use GitHub ticket and its verifier, kept in memory only until the name is linked or the flow ends. */

@@ -17,15 +17,15 @@ export const SCREENS = {
   start: { step: null, to: ["id.choice", "space.choice"] },
   "id.choice": { step: "Identity", to: ["id.signin", "id.new", "master.enter"] },
   "id.signin": { step: "Identity", to: ["id.approve"] },
-  "id.approve": { step: "Identity", to: ["master.enter", "id.recover"] },
-  "id.recover": { step: "Identity", to: ["master.enter", "master.set", "id.approve"] },
+  "id.approve": { step: "Identity", to: ["master.enter", "id.recover", "space.choice"] },
+  "id.recover": { step: "Identity", to: ["master.enter", "master.set", "id.approve", "space.choice"] },
   "id.new": { step: "Identity", to: ["id.kit"] },
-  "id.kit": { step: "Identity", to: ["vault.intro"] },
+  "id.kit": { step: "Identity", to: ["vault.intro", "space.choice"] },
   "vault.intro": { step: "Vault", to: ["master.set"] },
   "master.set": { step: "Vault", to: ["master.confirm"] },
   "master.confirm": { step: "Vault", to: ["inf.pick"] },
   "master.enter": { step: "Vault", to: ["inf.pick", "id.recover"] },
-  "inf.pick": { step: "Inference", to: ["inf.key", "space.choice"] },
+  "inf.pick": { step: "Inference", to: ["inf.key", "space.choice", "compute", "ready"] },
   "inf.key": { step: "Inference", to: ["inf.pick"] },
   "space.choice": { step: "Space", to: ["create.name", "join.code"] },
   "create.name": { step: "Space", to: ["create.members"] },
@@ -34,10 +34,10 @@ export const SCREENS = {
   "create.run": { step: "Space", to: ["create.code"] },
   "create.code": { step: "Space", to: ["create.confirm"] },
   "create.confirm": { step: "Space", to: ["create.setup", "create.code"] },
-  "create.setup": { step: "Space", to: ["compute", "ready"] },
+  "create.setup": { step: "Space", to: ["compute", "ready", "vault.intro", "master.enter", "master.set"] },
   "join.code": { step: "Space", to: ["join.review"] },
   "join.review": { step: "Space", to: ["join.sealing"] },
-  "join.sealing": { step: "Space", to: ["compute", "ready"] },
+  "join.sealing": { step: "Space", to: ["compute", "ready", "vault.intro", "master.enter", "master.set"] },
   compute: { step: "Compute", to: ["ready"] },
   ready: { step: "Ready", to: ["invite.who", "start"] },
   "invite.who": { step: null, to: ["invite.link"] },
@@ -60,11 +60,47 @@ export const afterGithub = (user) => (user && user.linkedName ? "master.enter" :
 export const asksCompute = (ctx) => ctx.device === "computer" && ctx.allowed;
 /** The screen after the Space step. */
 export const afterSpace = (ctx) => (asksCompute(ctx) ? "compute" : "ready");
-/** The steps of the flow this person is in: all six on a new device, three when adding a space later, Compute only where it is asked. */
+/**
+ * A new device with no server yet (no pairing). The personal vault lives on a server, so Vault cannot come before one exists: such a device goes Identity, Space, Vault, Inference, and then on. A device that
+ * already has a pairing (`paired` true or not said) keeps the order Identity, Vault, Inference, Space. Adding a space later is always paired.
+ */
+export const isUnpaired = (ctx) => ctx.paired === false && !ctx.later;
+const VAULT_ENTRIES = ["vault.intro", "master.enter", "master.set"];
+/**
+ * Where a move to `to` really goes, and what to remember. Pure: OnboardFlow calls it for every move. Paired devices are never redirected. On an unpaired one: the first move into the Vault is held (the screen is
+ * remembered in `vaultEntry`) and the person is taken to the Space step; leaving the Space step for Compute or Ready goes to the held Vault screen instead; reaching Inference marks the Vault done; and leaving
+ * Inference (which leads back to the Space step in the paired order) goes on to Compute or Ready.
+ * @param {{ paired?: boolean, later?: boolean, vaultEntry?: string, vaultDone?: boolean, spaceDone?: boolean, device?: string, allowed?: boolean }} ctx
+ * @param {string} to @returns {{ to: string, patch: Record<string, unknown> }}
+ */
+export function route(ctx, to) {
+  if (!isUnpaired(ctx)) return { to, patch: {} };
+  if (VAULT_ENTRIES.includes(to) && !ctx.spaceDone && !ctx.vaultEntry) return { to: "space.choice", patch: { vaultEntry: to } };
+  if ((to === "compute" || to === "ready") && ctx.vaultEntry && !ctx.vaultDone) return { to: ctx.vaultEntry, patch: { spaceDone: true } };
+  if (to === "inf.pick" && !ctx.vaultDone) return { to, patch: { vaultDone: true } };
+  if (to === "space.choice" && ctx.spaceDone && ctx.vaultDone) return { to: afterSpace(ctx), patch: {} };
+  return { to, patch: {} };
+}
+/**
+ * Opening setup again on a device that already holds an identity but has no server (the person stopped at the Vault): there is nothing left to do in Identity and the vault cannot be made without a server, so
+ * setup opens on the Space step, with the Vault held for after it. `null` when this does not apply (a server exists, no identity is kept, or a join or create link chose the entry itself).
+ * @param {{ hasServer: boolean, identityName: string, entry?: string }} o @returns {{ stack: string[], patch: Record<string, unknown> } | null}
+ */
+export function resumeAt({ hasServer, identityName, entry }) {
+  if (hasServer || !identityName || entry) return null;
+  return { stack: ["space.choice"], patch: { paired: false, name: identityName, vaultEntry: "vault.intro" } };
+}
+/** The steps of the flow this person is in: all six on a new device, three when adding a space later, Compute only where it is asked. A device with no server puts Space before Vault. */
 export function stepLabels(ctx) {
-  const all = ctx.later ? ["Space", "Compute", "Ready"] : ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"];
+  const all = ctx.later ? ["Space", "Compute", "Ready"] : isUnpaired(ctx) ? ["Identity", "Space", "Vault", "Inference", "Compute", "Ready"] : ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"];
   return asksCompute(ctx) ? all : all.filter((s) => s !== "Compute");
 }
+
+/** What the Vault step says when the box cannot be reached: a device with no server has none to reach, which is not a connection problem. */
+export const NO_SERVER_SAY = "Vyre keeps your vault on a server, and this device has none yet. Add a server first.";
+export const NO_BOX_SAY = "Vyre cannot reach your vault yet, so nothing was saved. Check your connection, then try again.";
+/** @param {boolean} paired */
+export const unreachableSay = (paired) => (paired ? NO_BOX_SAY : NO_SERVER_SAY);
 
 // Pretend answers. Each returns the word the screen turns into a sentence.
 export const nameStatus = (n) => { const s = String(n ?? "").trim().toLowerCase(); return !s ? "empty" : !/^[a-z][a-z0-9-]{2,19}$/.test(s) ? "invalid" : TAKEN.includes(s) ? "taken" : "free"; };
