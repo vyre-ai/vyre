@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const yml = fs.readFileSync(path.join(REPO, ".github/workflows/site-deploy.yml"), "utf8");
@@ -54,4 +55,13 @@ test("install-box and the box wrapper follow a redirect when they fetch vyre.tgz
     assert.match(src, /wget -qO "/, `${f}: wget follows redirects by default`);
     assert.doesNotMatch(src, /--max-redirect[= ]0|--no-location/, `${f}: nothing turns redirects off`);
   }
+});
+
+test("assemble-site --check: only our own email_off comments are removed from the assembled page before the comparison", () => {
+  assert.match(assemble, /\*\.html\) sed -f "\$here\/scripts\/strip-email-off\.sed" "\$want"/, "an HTML page is compared with the stripped assembled copy");
+  const sedFile = path.join(REPO, "scripts/strip-email-off.sed");
+  const run = (/** @type {string} */ input) => spawnSync("sed", ["-f", sedFile], { input, encoding: "utf8" }).stdout;
+  assert.equal(run('<p><!--email_off--><code>alex@192.0.2.10</code><!--/email_off--> and <!--email_off--><a href="mailto:a@b.example">a@b.example</a><!--/email_off--></p>\n'), '<p><code>alex@192.0.2.10</code> and <a href="mailto:a@b.example">a@b.example</a></p>\n');
+  const other = "<!-- a different comment --><!--email_off ---><p>x</p>\n";
+  assert.equal(run(other), other, "any other comment is left alone, so a real difference still shows");
 });
