@@ -61,7 +61,7 @@ test("site docs: links in the published Markdown work from where the file is ser
   assert.ok(!/\]\(docs\//.test(arch), "no link is left relative to the repo root");
   const map = read(b, "for-agents/MAP-YOUR-BUSINESS.md");
   assert.match(map, /\]\(https:\/\/vyre\.run\/docs\/project\/ARCHITECTURE\.md/, "a docs page that links to a root file");
-  assert.match(map, /\]\(\.\.\/architecture\/features\/agents\.md\)/, "docs to docs stays relative, it works as served");
+  assert.match(map, /\]\(https:\/\/vyre\.run\/docs\/architecture\/features\/agents\.md\)/, "the method page uses absolute links, so an agent reading the raw text can resolve them");
   const html = read(b, "for-agents/MAP-YOUR-BUSINESS.html");
   assert.match(html, /href="\/docs\/project\/ARCHITECTURE(#[^"]*)?"/);
   assert.match(html, /<html lang="en" data-base="\/docs">/);

@@ -2,7 +2,7 @@
 
 Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.
 
-Release 0.5.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.5.0. Updated 2026-10-14. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - People and agents in the same chats. @ a teammate or an agent, # a record, a file or a project. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
