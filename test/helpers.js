@@ -128,7 +128,7 @@ export async function stopDaemon(dir) {
 
 /**
  * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child of this test process still running (a fake session the
- * daemon started and did not wait for). It hides nothing: a daemon that would not stop, or a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
+ * daemon started and did not wait for). It assumes the test file starts no child of its own that must outlive the daemon test: every child of this process is ended and counted as a leftover. It hides nothing: a daemon that would not stop, or a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
  * @param {any} t @param {{ stop: () => Promise<any> }} d
  */
 export function stopDaemonBounded(t, d) {
