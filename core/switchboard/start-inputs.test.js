@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present, asOwner } from "../../test/helpers.js";
+import { tempHome, present, asOwner, stopDaemonBounded } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { FAKE } from "../sessions/testing/boot.js";
 
@@ -24,7 +24,7 @@ test("HD-2: a session's threads.start cannot resume another live thread, fork it
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
-  t.after(() => d.stop());
+  stopDaemonBounded(t, d); // a failing test must not hold the file open, and a daemon that will not stop or a child it leaves fails the test
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const events = async (/** @type {string} */ id) => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;

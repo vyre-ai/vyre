@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { SCRATCH, HOMES } from "./scratch.mjs";
 import { setPeerHosting } from "../core/daemon/peer.js";
@@ -123,6 +124,28 @@ export async function stopDaemon(dir) {
   }
   console.error(`test helpers: vyred pid ${pid} still alive 1s after SIGKILL; the home will not be removed`);
   throw new Error(`vyred pid ${pid} would not die; not removing its home`);
+}
+
+/**
+ * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child of this test process still running (a fake session the
+ * daemon started and did not wait for). It hides nothing: a daemon that would not stop, or a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
+ * @param {any} t @param {{ stop: () => Promise<any> }} d
+ */
+export function stopDaemonBounded(t, d) {
+  t.after(async () => {
+    /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
+    try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
+    catch (e) { failure = e; }
+    finally {
+      clearTimeout(timer);
+      /** @type {number[]} */ let pids = [];
+      try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { /* none, or no pgrep */ }
+      for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+      left = pids;
+    }
+    if (failure) throw failure;
+    if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
+  });
 }
 
 /** Write a module folder under root with the given manifest and entry source. */
