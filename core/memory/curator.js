@@ -494,6 +494,9 @@ export class Curator {
     const star = await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
       said: facts.filter(c => c.scope === "*") }, common);
     conflicts([...results, star]);
+    // Everything read for the scopes is dead weight now: writing the main graph needs only its own aggregates, and it builds sets of its own rows.
+    obsBy.clear(); cuesBy.clear(); turnTs.clear(); common.saidBy.clear();
+    collectIfHeavy();
     changed += this.tx(() => this.writeScope(star, now));
     changed += this.prune([...results, star].map(r => r.room));
     if (changed) { this.version++; this.bump(); }
