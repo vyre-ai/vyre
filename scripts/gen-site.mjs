@@ -1046,7 +1046,7 @@ ${part('13', 'delete', 'Delete everything', `${ul([
   '<b>What stays with the project:</b> nothing of your work, because it never arrived. Relay records expire within an hour, held frames go when delivered or when the device leaves, and address counters go within about two days. A name that was ever live stays reserved, as described above. To have even that looked at, write to the contact below.',
 ])}`)}
 ${part('14', 'updates', UPDATES_PRIVACY.heading, `<p>${UPDATES_PRIVACY.intro}</p>${UPDATES_PRIVACY.items.length ? ul(UPDATES_PRIVACY.items) : ''}`)}
-${part('15', 'contact', 'Contact', `<p>Questions about this page, or a request about a name: ${CONTACT_EMAIL ? `email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, or ` : ''}open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>
+${part('15', 'contact', 'Contact', `<p>Questions about this page, or a request about a name: ${CONTACT_EMAIL ? `email <!--email_off--><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a><!--/email_off-->, or ` : ''}open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>
 <p>Vyre is open source (Apache 2.0). Every claim on this page can be checked in the code, and changes to this page are in its history on GitHub.</p>`)}
 </div></section>`;
 page({
