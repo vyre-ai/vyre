@@ -56,7 +56,7 @@ export const UPDATES_PAGE = {
       <li>Nothing is sent yet. When sending starts, the first email asks you to confirm, and only confirmed addresses get the weekly email.</li>
       <li>One email a week at most, with all of that week's updates in it. Never a second one.</li>
       <li>The same changes that appear in the <a href="https://github.com/vyre-ai/vyre/releases">releases</a> and the <a href="https://github.com/vyre-ai/vyre/blob/main/CHANGELOG.md">changelog</a>, gathered in one place.</li>
-      <li>A link in every email that removes you in one click. Until then, write to <a href="mailto:privacy@vyre.run">privacy@vyre.run</a> to be removed.</li>
+      <li>A link in every email that removes you in one click. Until then, write to <!--email_off--><a href="mailto:privacy@vyre.run">privacy@vyre.run</a><!--/email_off--> to be removed.</li>
     </ul>
     <h2 class="upd-h">What the list keeps</h2>
     <ul class="plain">
@@ -87,7 +87,7 @@ export const UPDATES_PRIVACY = UPDATES_LIVE ? {
     '<b>Where:</b> in a key-value store on the project\'s Cloudflare account. The record is filed under a keyed hash of your address, not the address, and the Worker that saves it writes no log of it. Cloudflare\'s request logs are turned off for that Worker.',
     '<b>Your address while you sign up:</b> the Worker counts requests per address in a 60 second window, so one client cannot flood the form. It does not store the address or write it to a log.',
     '<b>Nothing is sent yet:</b> when sending starts, the first email asks you to confirm. Only confirmed addresses get the weekly email, at most one a week, and each email carries a one-click link to leave. The promise next to the checkbox is "' + CONSENT_TEXT + '"',
-    '<b>How to leave now:</b> write to <a href="mailto:privacy@vyre.run">privacy@vyre.run</a> and ask to be removed, and the record is deleted. Once emails start, every one carries an unsubscribe link: opening it shows a button, and pressing the button deletes your record for good.',
+    '<b>How to leave now:</b> write to <!--email_off--><a href="mailto:privacy@vyre.run">privacy@vyre.run</a><!--/email_off--> and ask to be removed, and the record is deleted. Once emails start, every one carries an unsubscribe link: opening it shows a button, and pressing the button deletes your record for good.',
     '<b>The sending service:</b> no service is chosen yet. This section will name it before the first email goes out.',
   ],
 } : {

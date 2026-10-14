@@ -94,3 +94,16 @@ test("site docs: the assembler builds it, and the site's sitemap, llms.txt and l
   const yml = fs.readFileSync(path.join(REPO, ".github/workflows/site-deploy.yml"), "utf8");
   assert.match(yml, /scripts\/assemble-site\.sh/, "the deploy goes through the assembler");
 });
+
+test("docs: code, prose addresses and mailto links carry Cloudflare's email_off markers, and check-email-off finds an unmarked address", async () => {
+  const { renderMarkdown } = await import("../scripts/lib/docs/markdown.js");
+  const { exposed } = await import("../scripts/check-email-off.mjs");
+  const r = /** @type {any} */ (renderMarkdown("Run `vyre box add alex@192.0.2.10`, or write privacy@vyre.run, or <hi@vyre.run>.\n\n```sh\nvyre box add alex@192.0.2.10\n```\n"));
+  const html = typeof r === "string" ? r : r.html;
+  assert.match(html, /<!--email_off--><code>vyre box add alex@192\.0\.2\.10<\/code><!--\/email_off-->/);
+  assert.match(html, /<!--email_off--><pre>/);
+  assert.deepEqual(exposed(html), [], "nothing is left for the edge to rewrite");
+  assert.deepEqual(exposed("<p>mail a@b.example</p>"), ["a@b.example"], "an unmarked address is found");
+  const plain = /** @type {any} */ (renderMarkdown("Run `vyre up`.\n\n```sh\nvyre up\n```\n"));
+  assert.doesNotMatch(typeof plain === "string" ? plain : plain.html, /email_off/, "a block without an address stays byte-identical");
+});

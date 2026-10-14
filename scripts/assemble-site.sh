@@ -10,6 +10,7 @@
 #                 Everything else comes from the tag's own source, the way scripts/build-site.sh copies it.
 #   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte. box/vyre.tgz, when it was
 #                 left out for its size and redirected to the release, is fetched through the redirect and compared with the release's copy.
+#                 /docs/index.html is fetched through the 308 to /docs/. Cloudflare rewrites email-looking text in HTML, so the build marks it <!--email_off--> and the checks below refuse a page that lets any through.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
@@ -25,7 +26,7 @@ while [ $# -gt 0 ]; do
     --out) out=$2; shift ;;
     --tag) tag=$2; shift ;;
     --check) check=$2; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "assemble-site: unknown option $1" >&2; exit 1 ;;
   esac
   shift
@@ -113,6 +114,7 @@ fi
 cmp -s "$out/install.sh" "$out/box/install-box.sh" || { echo "assemble-site: install.sh is not install-box.sh" >&2; exit 1; }
 [ "$(cat "$out/box/VERSION")" = "${tag#v}" ] || echo "assemble-site: note: box/VERSION is $(cat "$out/box/VERSION"), the tag is $tag" >&2
 for f in site/setup/index.html site/setup/page.js site/setup/reserve.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
+node scripts/check-email-off.mjs "$out" || { echo "assemble-site: a page has email-looking text Cloudflare would rewrite; wrap it in <!--email_off-->" >&2; exit 1; }
 [ -f "$out/docs/index.html" ] && [ -f "$out/docs/project/ARCHITECTURE.md" ] && [ -f "$out/docs/for-agents/MAP-YOUR-BUSINESS.md" ] || { echo "assemble-site: the docs build is missing pages" >&2; exit 1; }
 echo "ok: $(find "$out" -type f | wc -l | tr -d ' ') files in $out; box version $(cat "$out/box/VERSION")"
 

@@ -293,7 +293,7 @@ test("links, images, references, autolinks", () => {
   assert.equal(md(`[the spec](spec.md "Spec") ![mark](mark.svg)`), `<p><a href="spec.md" title="Spec">the spec</a> <img src="mark.svg" alt="mark" loading="lazy"></p>\n`);
   assert.equal(md("[a [b] c](x) [**bold**](<has space.md>)"), `<p><a href="x">a [b] c</a> <a href="has space.md"><strong>bold</strong></a></p>\n`);
   assert.equal(md("[docs][d] and [D]\n\n[d]: https://docs.vyre.run 'Docs'"), `<p><a href="https://docs.vyre.run" title="Docs">docs</a> and <a href="https://docs.vyre.run" title="Docs">D</a></p>\n`);
-  assert.equal(md("<https://vyre.run/a?b=1&c=2> <alex@harlowlegal.example>"), `<p><a href="https://vyre.run/a?b=1&amp;c=2">https://vyre.run/a?b=1&amp;c=2</a> <a href="mailto:alex@harlowlegal.example">alex@harlowlegal.example</a></p>\n`);
+  assert.equal(md("<https://vyre.run/a?b=1&c=2> <alex@harlowlegal.example>"), `<p><a href="https://vyre.run/a?b=1&amp;c=2">https://vyre.run/a?b=1&amp;c=2</a> <!--email_off--><a href="mailto:alex@harlowlegal.example">alex@harlowlegal.example</a><!--/email_off--></p>\n`);
   assert.equal(md("[not a link] and [x](javascript:alert(1))"), `<p>[not a link] and <a href="#">x</a></p>\n`);
   assert.equal(md("[a](b(c)d)"), `<p><a href="b(c)d">a</a></p>\n`);
 });
@@ -348,7 +348,7 @@ test("every Markdown file in docs/ and CHANGELOG.md renders", () => {
   for (const f of files) {
     const { body } = parseFrontMatter(fs.readFileSync(f, "utf8"));
     const r = renderMarkdown(body);
-    const prose = r.html.replace(/<pre>[\s\S]*?<\/pre>/g, "").replace(/<code>[\s\S]*?<\/code>/g, "");
+    const prose = r.html.replace(/<!--\/?email_off-->/g, "").replace(/<pre>[\s\S]*?<\/pre>/g, "").replace(/<code>[\s\S]*?<\/code>/g, "");
     assert.doesNotMatch(prose, /\*\*|<(?!\/?(?:p|h[1-6]|a|em|strong|del|code|pre|ul|ol|li|blockquote|hr|br|img|table|thead|tbody|tr|th|td|div|input|figure|figcaption|details|summary|section|span)\b)/, path.relative(REPO, f));
   }
 });
