@@ -9,6 +9,8 @@
 # its code. Five exits inside a minute ends the loop too, so Docker's restart policy takes over
 # a vyred that cannot start. VYRE_DAEMON and VYRE_LOOP_PAUSE (seconds) override the command and the pause, for tests.
 
+# glibc gives every thread its own malloc arena and keeps what a thread freed; two arenas hold vyred's resident size about 4 MB lower once it settles (measured on the perf-check corpus).
+export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
 cmd=${VYRE_DAEMON:-"node --expose-gc --max-semi-space-size=5 /opt/vyre/core/daemon/main.js"}
 stopping=0
 pid=
