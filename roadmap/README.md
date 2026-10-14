@@ -12,4 +12,6 @@ The line-by-line list of what each release contains is in [docs/roadmap.md](../d
 
 Version numbers: the middle number goes up for features or a considerable change, and the last number is fixes only. 0.5.1 is a patch: the onboarding order fix plus the stability fixes merged since 0.5.0. It has no plan document. Planned feature work is 0.6 and 0.7.
 
+Item ids such as R051-01 are stable names: they do not change when an item moves to another release.
+
 Plans: [0.6](0.6.md), [0.7](0.7.md).

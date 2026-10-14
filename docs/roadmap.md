@@ -8,7 +8,7 @@ status: stable
 
 # Roadmap
 
-This is direction, not a promise of dates. Each line has an ID; a line is ticked when it ships in a release. What is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](known-gaps.md).
+This is direction, not a promise of dates. Item ids such as R051-01 are stable names: they do not change when an item moves to another release. Each line has an ID; a line is ticked when it ships in a release. What is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](known-gaps.md).
 
 
 ## 0.5.0
