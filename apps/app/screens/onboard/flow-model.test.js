@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEMO, SCREENS, addressOf, afterSpace, apiKeyStatus, inviteStatus, knownName, masterStatus, nameStatus, reach, recoveryStatus, route, spaceCodeStatus, stepLabels, unreachableSay, NO_SERVER_SAY, NO_BOX_SAY, wordsMatch } from "./flow-model.js";
+import { DEMO, SCREENS, addressOf, afterSpace, apiKeyStatus, inviteStatus, knownName, masterStatus, nameStatus, reach, recoveryStatus, resumeAt, route, spaceCodeStatus, stepLabels, unreachableSay, NO_SERVER_SAY, NO_BOX_SAY, wordsMatch } from "./flow-model.js";
 
 test("every screen is reachable from the start and every target exists", () => {
   const seen = reach("start");
@@ -101,4 +101,19 @@ test("the Vault step tells a device with no server so, and keeps check your conn
   assert.match(NO_SERVER_SAY, /Add a server first/);
   assert.doesNotMatch(NO_SERVER_SAY, /connection/);
   assert.match(NO_BOX_SAY, /Check your connection/);
+});
+
+test("setup reopened on a device that keeps a name but has no server opens on the Space step, with the Vault held for after it", () => {
+  const r = resumeAt({ hasServer: false, identityName: "harper" });
+  assert.deepEqual(r && r.stack, ["space.choice"]);
+  assert.deepEqual(r && r.patch, { paired: false, name: "harper", vaultEntry: "vault.intro" });
+  // from there the flow runs Space, then the held Vault screen, then Inference, then on
+  const ctx = { device: "computer", allowed: true, ...(r ? r.patch : {}) };
+  assert.deepEqual(drive(ctx, ["create.setup", "compute"]), ["create.setup", "vault.intro"]);
+  assert.deepEqual(drive(ctx, ["join.sealing", "compute", "master.set", "inf.pick", "space.choice"]), ["join.sealing", "vault.intro", "master.set", "inf.pick", "compute"]);
+  assert.deepEqual(stepLabels(ctx), ["Identity", "Space", "Vault", "Inference", "Compute", "Ready"]);
+  // not resumed: a server exists, no name is kept (a first run opens on Identity), or a join or create link chose the entry
+  assert.equal(resumeAt({ hasServer: true, identityName: "harper" }), null);
+  assert.equal(resumeAt({ hasServer: false, identityName: "" }), null);
+  assert.equal(resumeAt({ hasServer: false, identityName: "harper", entry: "join" }), null);
 });

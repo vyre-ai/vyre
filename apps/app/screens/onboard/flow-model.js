@@ -81,6 +81,15 @@ export function route(ctx, to) {
   if (to === "space.choice" && ctx.spaceDone && ctx.vaultDone) return { to: afterSpace(ctx), patch: {} };
   return { to, patch: {} };
 }
+/**
+ * Opening setup again on a device that already holds an identity but has no server (the person stopped at the Vault): there is nothing left to do in Identity and the vault cannot be made without a server, so
+ * setup opens on the Space step, with the Vault held for after it. `null` when this does not apply (a server exists, no identity is kept, or a join or create link chose the entry itself).
+ * @param {{ hasServer: boolean, identityName: string, entry?: string }} o @returns {{ stack: string[], patch: Record<string, unknown> } | null}
+ */
+export function resumeAt({ hasServer, identityName, entry }) {
+  if (hasServer || !identityName || entry) return null;
+  return { stack: ["space.choice"], patch: { paired: false, name: identityName, vaultEntry: "vault.intro" } };
+}
 /** The steps of the flow this person is in: all six on a new device, three when adding a space later, Compute only where it is asked. A device with no server puts Space before Vault. */
 export function stepLabels(ctx) {
   const all = ctx.later ? ["Space", "Compute", "Ready"] : isUnpaired(ctx) ? ["Identity", "Space", "Vault", "Inference", "Compute", "Ready"] : ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"];

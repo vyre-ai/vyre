@@ -3,8 +3,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Card, Divider, FlowStep, Row, Segmented, Switch } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { shellKind } from "../../src/shell/shell";
-import { SCREENS, route, stepLabels } from "./flow-model.js";
-import { hasServer } from "./has-server";
+import { SCREENS, resumeAt, route, stepLabels } from "./flow-model.js";
+import { hasServer, keptName } from "./has-server";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
 import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
@@ -50,7 +50,15 @@ export function OnboardFlow() {
   const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: MOCK || shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
   // A new device with no server goes Identity, Space, Vault (the personal vault lives on a server): read once whether it has one, and flow-model.js route() orders the steps from that.
-  useEffect(() => { if (!MOCK) void hasServer().then((has) => setCtx((c) => ({ ...c, paired: has }))); }, []);
+  useEffect(() => {
+    if (MOCK) return;
+    // Reopened with a name kept but no server (stopped at the Vault): open on the Space step, with the Vault held for after it.
+    void Promise.all([hasServer(), keptName()]).then(([has, identityName]) => {
+      setCtx((c) => ({ ...c, paired: has }));
+      const resume = resumeAt({ hasServer: has, identityName, entry });
+      if (resume) { setCtx((c) => ({ ...c, ...resume.patch })); setStack((s) => (s.length === 1 && s[0] === "id.choice" ? resume.stack : s)); }
+    });
+  }, [entry]);
   const go = useCallback((want: string) => {
     // "start" is the mock's setup screen; in a real run it is the end of the flow, and the app opens.
     if (want === "start") { if (MOCK) { setStack(["start"]); setCtx(FRESH); } else router.replace("/u/now" as never); return; }

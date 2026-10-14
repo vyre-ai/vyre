@@ -11,3 +11,8 @@ export async function hasServer(): Promise<boolean> {
     return !!(await loadPairing()) || (Platform.OS !== "web" && !!boxOrigin());
   } catch { return true; } // unreadable: assume there is one, so nothing is rerouted on a guess
 }
+
+/** The name of the identity this device already keeps, or "" when it keeps none (or the store cannot be read). */
+export async function keptName(): Promise<string> {
+  try { const { loadIdentity } = await import("../../src/identity/store"); return (await loadIdentity())?.name ?? ""; } catch { return ""; }
+}
