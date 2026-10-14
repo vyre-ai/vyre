@@ -28,7 +28,9 @@ async function setup(t) {
 }
 
 const collect = stream => new Promise(resolve => { let out = ""; stream.setEncoding("utf8"); stream.on("data", d => (out += d)); stream.on("end", () => resolve(out)); });
-const exited = p => new Promise(resolve => p.once("exit", (code, signal) => resolve({ code, signal })));
+// The client emits "exit" the moment the control connection reports it, whatever is listening, and that connection is not the one stdout rides. A test that reads stdout first and then asks for the exit can
+// be late for it, so a child that already ended answers at once.
+const exited = p => new Promise(resolve => { if (p.exitCode !== null || p.signalCode !== null) resolve({ code: p.exitCode, signal: p.signalCode }); else p.once("exit", (code, signal) => resolve({ code, signal })); });
 
 test("spawner: a session child's stdin, stdout, stderr and exit ride the connections", async t => {
   const { socket, work } = await setup(t);
