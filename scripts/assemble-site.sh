@@ -10,7 +10,7 @@
 #                 Everything else comes from the tag's own source, the way scripts/build-site.sh copies it.
 #   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte. box/vyre.tgz, when it was
 #                 left out for its size and redirected to the release, is fetched through the redirect and compared with the release's copy.
-#                 An HTML page is compared after undoing Cloudflare's email obfuscation (scripts/cf-unmangle.mjs); /docs/index.html is fetched through the 308 to /docs/.
+#                 /docs/index.html is fetched through the 308 to /docs/. Cloudflare rewrites email-looking text in HTML, so the build marks it <!--email_off--> and the checks below refuse a page that lets any through.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
@@ -114,6 +114,7 @@ fi
 cmp -s "$out/install.sh" "$out/box/install-box.sh" || { echo "assemble-site: install.sh is not install-box.sh" >&2; exit 1; }
 [ "$(cat "$out/box/VERSION")" = "${tag#v}" ] || echo "assemble-site: note: box/VERSION is $(cat "$out/box/VERSION"), the tag is $tag" >&2
 for f in site/setup/index.html site/setup/page.js site/setup/reserve.js; do cmp -s "$f" "$out/${f#site/}" || { echo "assemble-site: $f changed on the way" >&2; exit 1; }; done
+node scripts/check-email-off.mjs "$out" || { echo "assemble-site: a page has email-looking text Cloudflare would rewrite; wrap it in <!--email_off-->" >&2; exit 1; }
 [ -f "$out/docs/index.html" ] && [ -f "$out/docs/project/ARCHITECTURE.md" ] && [ -f "$out/docs/for-agents/MAP-YOUR-BUSINESS.md" ] || { echo "assemble-site: the docs build is missing pages" >&2; exit 1; }
 echo "ok: $(find "$out" -type f | wc -l | tr -d ' ') files in $out; box version $(cat "$out/box/VERSION")"
 
@@ -122,8 +123,6 @@ if [ -n "$check" ]; then
   bad=0
   for p in install.sh w box/VERSION box/SHA256SUMS box/SHA256SUMS.sig box/manifest.json box/release.json box/vyre box/vyre.tgz box/compose.yml box/install-box.sh box/install-mac-server.sh setup/tokens.css docs/index.html docs/llms.txt docs/project/ARCHITECTURE.md docs/for-agents/MAP-YOUR-BUSINESS.md; do
     f=$(mktemp); curl -fsSL "$check/$p" -o "$f" || { echo "MISSING $p"; bad=1; rm -f "$f"; continue; }
-    # Cloudflare rewrites email-looking text in an HTML page and adds a decode script; put those two edits back so everything else is still compared byte for byte (scripts/cf-unmangle.mjs).
-    case "$p" in *.html) node "$here/scripts/cf-unmangle.mjs" <"$f" >"$f.u" && mv "$f.u" "$f" ;; esac
     want="$out/$p"; [ "$p" = box/vyre.tgz ] && [ -n "$tgz_redirect" ] && want="$big/vyre.tgz"
     if cmp -s "$f" "$want"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
   done
