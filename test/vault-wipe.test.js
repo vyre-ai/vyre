@@ -8,7 +8,7 @@ import path from "node:path";
 import { open, migrate } from "../core/store/index.js";
 import { Vault, MIGRATIONS } from "../core/vault/vault.js";
 import { acquire } from "../core/daemon/lock.js";
-import { wipeHome, vaultHolds, homeKeystore } from "../lib/vault-wipe.js";
+import { wipeHome, vaultHolds, homeKeystore, sealDirOf } from "../lib/vault-wipe.js";
 import { spawnSync } from "node:child_process";
 import { startSealer } from "../kernel/seal/client.js";
 import { SCRATCH } from "./scratch.mjs";
@@ -161,4 +161,15 @@ test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no
   assert.ok(fs.readFileSync(path.join(ROOT, "scripts", "admin-wipe.mjs"), "utf8").includes("wipeHome"), "the host CLI script is the one importer outside");
   const tools = JSON.parse(fs.readFileSync(path.join(ROOT, "core/vault/module.json"), "utf8")).does.tools.map(t => (typeof t === "string" ? t : t.name));
   assert.deepEqual(tools.filter(n => /wipe|destroy/i.test(n)), []);
+});
+
+test("sealDirOf: a process that is still starting is retried, one that exited is not running, one that stays unreadable still counts", () => {
+  const eacces = () => Object.assign(new Error("denied"), { code: "EACCES" });
+  let n = 0; const slept = [];
+  const flaky = () => { if (++n < 4) throw eacces(); return "PATH=/bin\0VYRE_SEAL_DIR=/other/seal\0"; };
+  assert.deepEqual(sealDirOf("1", { read: flaky, sleep: ms => slept.push(ms) }), { dir: "/other/seal" }, "transient EACCES then readable");
+  assert.equal(slept.length, 3);
+  assert.deepEqual(sealDirOf("2", { read: () => { throw Object.assign(new Error("gone"), { code: "ENOENT" }); }, sleep: () => {} }), { gone: true });
+  assert.deepEqual(sealDirOf("3", { read: () => { throw eacces(); }, sleep: () => {}, tries: 5 }), { unreadable: true }, "never readable: the caller refuses");
+  assert.deepEqual(sealDirOf("4", { read: () => "PATH=/bin\0", sleep: () => {} }), { dir: null }, "no folder named: the caller refuses");
 });
