@@ -19,6 +19,7 @@
 // Measured on the prototype: the graph is precise for identity and routing, and did NOT make
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
+import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { sourceOf } from "./iq/fix.js";
 import { extract } from "./extract.js";
 import { lesson, within, ENDS } from "./teach.js";
@@ -55,7 +56,13 @@ export const T = {
 /** Rows read per page before yielding to the event loop. */
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
+const EMPTY = new Map();
+// The turns behind one (node, session) pair. Most pairs have one, so a lone turn is a bare number and a list only exists from the second: a list per pair was the largest part of what derive holds.
+const addTurn = (/** @type {{ t: number | number[] | null }} */ b, /** @type {number} */ seq) => { if (b.t === null) b.t = seq; else if (typeof b.t === "number") b.t = [b.t, seq]; else b.t.push(seq); };
+const turnList = (/** @type {{ t: number | number[] | null } | undefined} */ b) => (!b || b.t === null ? [] : typeof b.t === "number" ? [b.t] : b.t);
+const packTurns = (/** @type {number[]} */ l) => (l.length === 0 ? null : l.length === 1 ? l[0] : l);
 const yieldNow = () => new Promise(r => setImmediate(r));
+const yieldAndTidy = () => new Promise(r => setImmediate(() => { collectIfHeavy(); r(undefined); }));
 
 export class Curator {
   /**
@@ -209,7 +216,7 @@ export class Curator {
           done.run(session, recall.get(session), this.now());
         });
         since += list.length;
-        if (since >= batch) { since = 0; await yieldNow(); }
+        if (since >= batch) { since = 0; await yieldAndTidy(); }
       }
       // Sessions Recall counts but whose turns we found none of still move their cursor, or
       // they would be asked for again on every pass.
@@ -220,6 +227,7 @@ export class Curator {
     const never = !db.prepare("SELECT 1 FROM memory_runs LIMIT 1").get();
     if (!(turns || full || force || this.dirty || never)) return { recall: true, sessions: need.size, turns, ...this.counts(), changed: 0, ms: Date.now() - t0 };
     this.dirty = false;
+    collectIfHeavy();
     const changed = await this.derive();
     const counts = this.counts();
     const ms = Date.now() - t0;
@@ -412,14 +420,16 @@ export class Curator {
       const rows = obsPage.all(at[0], at[1], at[2], PAGE);
       for (const r of rows) {
         const s = String(r.session);
-        turnTs.set(s + "\u0000" + r.seq, Number(r.ts));
+        let ts = turnTs.get(s);
+        if (!ts) turnTs.set(s, ts = new Map());
+        ts.set(Number(r.seq), Number(r.ts));
         if (!obsBy.has(s)) obsBy.set(s, []);
         obsBy.get(s).push({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
       }
       if (rows.length < PAGE) break;
       const l = rows[rows.length - 1];
       at = [String(l.session), Number(l.seq), String(l.node)];
-      await yieldNow();
+      await yieldAndTidy();
     }
     /** @type {Map<string, { session: string, seq: number, rel: string, a: string, b: string, ts: number }[]>} */
     const cuesBy = new Map();
@@ -474,7 +484,7 @@ export class Curator {
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
       results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
         said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
-      await yieldNow();
+      await yieldAndTidy();
     }
     results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
       said: facts.filter(c => c.scope === "*") }, common));
@@ -486,7 +496,7 @@ export class Curator {
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, Map<number, number>>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -507,9 +517,9 @@ export class Curator {
         agg.set(id, a);
       }
       let b = a.by.get(session);
-      if (!b) { b = { n: 0, turns: [], last: 0 }; a.by.set(session, b); }
+      if (!b) { b = { n: 0, t: null, last: 0 }; a.by.set(session, b); }
       b.n += n;
-      b.turns.push({ seq, ts });
+      addTurn(b, seq);
       if (ts > b.last) b.last = ts;
       a.parents.add(parentOf(session, sess));
       a.mentions += n;
@@ -556,7 +566,7 @@ export class Curator {
       cues.push(c);
     }
     cues.sort((x, y) => (x.session < y.session ? -1 : x.session > y.session ? 1 : x.seq - y.seq));
-    await yieldNow();
+    await yieldAndTidy();
 
     // Taught facts: their things are nodes whatever the thresholds say, since a module asserted
     // them, and each claim remembers which lessons made it.
@@ -626,6 +636,7 @@ export class Curator {
     const domainSessions = d => sessionsOf([d, ...(viaEmail.get(d) || [])]);
 
     // ---- what each thing is
+    collectIfHeavy();
     const kind = new Map(), role = new Map();
     const domainRole = key => this.me.domains.has(key) ? "own" : FREE_MAIL.has(key) ? "mail" : TOOL_WORDS.has(stemOf(key)) ? "tool" : null;
     for (const a of agg.values()) {
@@ -685,9 +696,9 @@ export class Curator {
         const a = /** @type {Agg} */ (agg.get(from)), b = /** @type {Agg} */ (agg.get(to));
         for (const [s, x] of a.by) {
           const y = b.by.get(s);
-          if (!y) { b.by.set(s, { n: x.n, turns: [...x.turns], last: x.last }); continue; }
+          if (!y) { b.by.set(s, { n: x.n, t: Array.isArray(x.t) ? [...x.t] : x.t, last: x.last }); continue; }
           y.n += x.n;
-          y.turns = [...y.turns, ...x.turns.filter(t => !y.turns.some(u => u.seq === t.seq))].sort((p, q) => p.seq - q.seq);
+          { const mine = turnList(y); y.t = packTurns([...mine, ...turnList(x).filter(t => !mine.includes(t))].sort((p, q) => p - q)); }
           y.last = Math.max(y.last, x.last);
         }
         for (const p of a.parents) b.parents.add(p);
@@ -799,19 +810,20 @@ export class Curator {
       else if (n >= T.nameSessions && a.mid) kept.add(a.id);
     }
 
-    await yieldNow();
+    await yieldAndTidy();
     // ---- edges
+    collectIfHeavy();
     /** @type {Want[]} */
     const want = [];
-    const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t.seq]));
-    const tsOf = (session, seq) => turnTs.get(session + "\u0000" + seq) || 0;
+    const turnsIn = (id, session, max = T.turnsPerMention) => turnList(agg.get(id)?.by.get(session)).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
+    const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();
       const put = (s, q) => { const k = s + "\u0000" + q; if (!seen.has(k) && out.length < T.evidencePerEdge) { seen.add(k); out.push(/** @type {[string, number]} */ ([s, q])); } };
       const xt = new Map(), yt = new Map();
-      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) xt.set(s + "\u0000" + t.seq, [s, t.seq]);
-      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) yt.set(s + "\u0000" + t.seq, [s, t.seq]);
+      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of turnList(b)) xt.set(s + "\u0000" + t, [s, t]);
+      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of turnList(b)) yt.set(s + "\u0000" + t, [s, t]);
       for (const [k, v] of xt) if (yt.has(k)) put(v[0], v[1]);
       const ys2 = new Set([...yt.values()].map(v => v[0]));
       for (const v of xt.values()) if (ys2.has(v[0])) put(v[0], v[1]);
@@ -884,6 +896,7 @@ export class Curator {
     }
 
     // ---- short forms, measured
+    collectIfHeavy();
     const cluster = id => {
       const out = [id];
       const d = orgDomain.get(id);
@@ -897,6 +910,7 @@ export class Curator {
     const forms = !recall ? [] : await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess, identity, inScope, common.saidBy);
 
     // ---- who works where, by vote
+    collectIfHeavy();
     // Only outside organisations vote, and a session votes by focus: its share of the org
     // mentions in that session, so a planning session naming every client gives each a
     // fraction while a session about one client gives it a whole vote. Raw counts rewarded
@@ -975,6 +989,7 @@ export class Curator {
     }
 
     // ---- more relations: titles, clients, repos for an org, deadlines, and (when switched on)
+    collectIfHeavy();
     // preferences and decisions. All are this scope's own, from its own turns.
     /** A value at the far end of a relation (a title, a date, a preference): a node of its own. */
     const value = (id, ts = 0) => {
@@ -1145,7 +1160,7 @@ export class Curator {
         for (const r of rows) this.rowSession.set(Number(r.rowid), String(r.session));
         if (rows.length < PAGE) break;
         after = Number(rows[rows.length - 1].rowid);
-        await yieldNow();
+        await yieldAndTidy();
       }
     }
     const sessionOf = rowid => {
@@ -1174,7 +1189,7 @@ export class Curator {
       if (!all) {
         try { all = [...new Set(q.all(`"${form.replace(/"/g, "")}"`).map(r => sessionOf(Number(r.rowid))).filter(Boolean))]; } catch { all = []; }
         saidBy.set(form, all);
-        if (++asked % 50 === 0) await yieldNow();
+        if (++asked % 50 === 0) await yieldAndTidy();
       }
       const said = all.filter(inScope);
       if (!said.length) continue;
@@ -1213,7 +1228,7 @@ export class Curator {
     let changed = 0;
     for (const r of results) {
       changed += this.tx(() => this.writeScope(r, now));
-      await yieldNow();
+      await yieldAndTidy();
     }
     // Rooms that are gone keep nothing.
     changed += this.tx(() => {
@@ -1502,7 +1517,7 @@ function orgStems(label) {
 }
 
 /**
- * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, turns: { seq: number, ts: number }[], last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
+ * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, t: number | number[] | null, last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
  * @typedef {{ module: string, kind: string, key: string, at: number, factAt: number, text: string|null, claims: import("./teach.js").Claim[], project: string[]|null }} Lesson
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work

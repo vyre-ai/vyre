@@ -56,7 +56,7 @@ Environment=VYRE_SUPERVISOR=systemd
 Environment=VYRE_HOME=${home}/.vyre
 EnvironmentFile=-${home}/.vyre/env
 WorkingDirectory=${home}
-ExecStart=${node} ${pkg}/core/daemon/main.js
+ExecStart=${node} --expose-gc ${pkg}/core/daemon/main.js
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes
