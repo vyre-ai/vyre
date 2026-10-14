@@ -9,7 +9,7 @@
 # its code. Five exits inside a minute ends the loop too, so Docker's restart policy takes over
 # a vyred that cannot start. VYRE_DAEMON and VYRE_LOOP_PAUSE (seconds) override the command and the pause, for tests.
 
-cmd=${VYRE_DAEMON:-"node --expose-gc /opt/vyre/core/daemon/main.js"}
+cmd=${VYRE_DAEMON:-"node --expose-gc --max-semi-space-size=5 /opt/vyre/core/daemon/main.js"}
 stopping=0
 pid=
 trap 'stopping=1; [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null' TERM INT

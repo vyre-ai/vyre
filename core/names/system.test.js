@@ -23,7 +23,7 @@ test("system: the unit file carries the decided lines, and there is no socket un
   for (const l of ["Description=Vyre", "After=network-online.target", "Wants=network-online.target",
     "Type=simple", "User=alex", "Group=alex", "Environment=VYRE_SUPERVISOR=systemd", "Environment=VYRE_HOME=/home/alex/.vyre",
     "EnvironmentFile=-/home/alex/.vyre/env", "WorkingDirectory=/home/alex",
-    "ExecStart=/usr/bin/node --expose-gc /usr/lib/node_modules/vyre/core/daemon/main.js", "Restart=always", "RestartSec=2",
+    "ExecStart=/usr/bin/node --expose-gc --max-semi-space-size=5 /usr/lib/node_modules/vyre/core/daemon/main.js", "Restart=always", "RestartSec=2",
     "NoNewPrivileges=yes", "LimitNOFILE=65536", "WantedBy=multi-user.target"]) {
     assert.ok(u["vyre.service"].split("\n").includes(l), `service: ${l}`);
   }
