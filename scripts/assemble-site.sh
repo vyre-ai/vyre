@@ -10,7 +10,7 @@
 #                 Everything else comes from the tag's own source, the way scripts/build-site.sh copies it.
 #   --check URL   afterwards, fetch DIR's installer paths from URL (a deployed copy) and compare byte for byte. box/vyre.tgz, when it was
 #                 left out for its size and redirected to the release, is fetched through the redirect and compared with the release's copy.
-#                 /docs/index.html is fetched through the 308 to /docs/. Cloudflare rewrites email-looking text in HTML, so the build marks it <!--email_off--> and the checks below refuse a page that lets any through.
+#                 /docs/index.html is fetched through the 308 to /docs/. An HTML page is compared with the assembled copy minus our <!--email_off--> comments, which Cloudflare removes when it serves the page (scripts/strip-email-off.sed). Cloudflare rewrites email-looking text in HTML, so the build marks it <!--email_off--> and the checks below refuse a page that lets any through.
 #
 # What it writes beside site/ (all of it generated, none of it committed; site/ itself is never changed):
 #   install.sh, i, i.sh, box, w    the install line (/i is i.sh: install, then a pairing code), /box, and the Windows installer script (_redirects and copies)
@@ -124,7 +124,9 @@ if [ -n "$check" ]; then
   for p in install.sh w box/VERSION box/SHA256SUMS box/SHA256SUMS.sig box/manifest.json box/release.json box/vyre box/vyre.tgz box/compose.yml box/install-box.sh box/install-mac-server.sh setup/tokens.css docs/index.html docs/llms.txt docs/project/ARCHITECTURE.md docs/for-agents/MAP-YOUR-BUSINESS.md; do
     f=$(mktemp); curl -fsSL "$check/$p" -o "$f" || { echo "MISSING $p"; bad=1; rm -f "$f"; continue; }
     want="$out/$p"; [ "$p" = box/vyre.tgz ] && [ -n "$tgz_redirect" ] && want="$big/vyre.tgz"
-    if cmp -s "$f" "$want"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f"
+    # Cloudflare drops our <!--email_off--> comments from the page it serves (after honouring them), so an HTML page is compared with its assembled copy minus exactly those two comments; the served bytes are not touched.
+    case "$p" in *.html) sed -f "$here/scripts/strip-email-off.sed" "$want" >"$f.want"; want="$f.want" ;; esac
+    if cmp -s "$f" "$want"; then echo "same    $p"; else echo "DIFFERS $p"; bad=1; fi; rm -f "$f" "$f.want"
   done
   for p in i box; do
     want="$out/install.sh"; [ "$p" = i ] && [ -f "$out/i.sh" ] && want="$out/i.sh"
