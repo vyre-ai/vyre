@@ -16,11 +16,12 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
-/** End every child process of this test process still running (a fake session the daemon started and did not wait for). */
+/** End every child process of this test process still running (a fake session the daemon started and did not wait for) and return their pids: a leftover child is a finding, not noise. */
 function reapChildren() {
-  let pids = [];
-  try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { return; }
+  /** @type {number[]} */ let pids = [];
+  try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { return []; }
   for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+  return pids;
 }
 
 async function rig(/** @type {any} */ t) {
@@ -32,12 +33,15 @@ async function rig(/** @type {any} */ t) {
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on", max_live: 60 } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
-  // A failing test must not hold the file open: stop the daemon within a bound, then end what it started that is still ours (a session's child), so no pipe, process or timer outlives the test.
+  // A failing test must not hold the file open: stop the daemon within a bound, then end what it started that is still ours (a session's child). The test still fails when the daemon would not stop or left a
+  // child behind, so this only keeps the file from hanging, it hides nothing.
   t.after(async () => {
-    let timer;
+    /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
     try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
-    catch (e) { console.error(`reach rig: ${/** @type {any} */ (e).message}`); }
-    finally { clearTimeout(timer); reapChildren(); }
+    catch (e) { failure = e; }
+    finally { clearTimeout(timer); left = reapChildren(); }
+    if (failure) throw failure;
+    if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
   });
   const mk = (/** @type {string} */ n) => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, `vyre-${n}-`))); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
   const work = mk("work"), p1 = mk("p1"), p2 = mk("p2");
