@@ -28,12 +28,13 @@ const site = resolve(here, '..', 'site');
 const SITE = 'https://vyre.run';
 // The release the site speaks for. scripts/assemble-site.sh --tag vX.Y.Z passes it as VYRE_SITE_VERSION, so a release updates every page by itself;
 // the default is the newest release this file knows the notes for (RELEASE_NOTES below).
-const VERSION = process.env.VYRE_SITE_VERSION && /^\d+\.\d+\.\d+$/.test(process.env.VYRE_SITE_VERSION) ? process.env.VYRE_SITE_VERSION : '0.5.0';
+const VERSION = process.env.VYRE_SITE_VERSION && /^\d+\.\d+\.\d+$/.test(process.env.VYRE_SITE_VERSION) ? process.env.VYRE_SITE_VERSION : '0.5.1';
 // What each release fixed, in the words the home page and llms-full.txt use. A version with no entry here shows no "out now" line.
 const RELEASE_NOTES = {
   '0.2.1': 'Claude sign-in accepts the pasted code, and the phone app installs properly from the home screen.',
   '0.2.9': 'the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.',
   '0.5.0': 'people and agents in the same chats, Flows, Playbooks, Records, a Vault for people and agents, Sites, Documents and Signing.',
+  '0.5.1': 'first-time setup adds a server before the vault, Vyre uses less memory, and the docs show code examples correctly.',
   '0.2.2': 'Your own phone, Deck and Mac stop locking each other out of a conversation, a session on a server always gets Vyre\u2019s tools, a provider\u2019s only account is its default, and a message you send shows Sending until the server answers.',
 };
 const RELEASE_LINE = RELEASE_NOTES[VERSION] ? `${VERSION} (out now): ${RELEASE_NOTES[VERSION]}` : '';
