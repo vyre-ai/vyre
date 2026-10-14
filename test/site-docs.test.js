@@ -104,4 +104,6 @@ test("docs: code, prose addresses and mailto links carry Cloudflare's email_off 
   assert.match(html, /<!--email_off--><pre>/);
   assert.deepEqual(exposed(html), [], "nothing is left for the edge to rewrite");
   assert.deepEqual(exposed("<p>mail a@b.example</p>"), ["a@b.example"], "an unmarked address is found");
+  const plain = /** @type {any} */ (renderMarkdown("Run `vyre up`.\n\n```sh\nvyre up\n```\n"));
+  assert.doesNotMatch(typeof plain === "string" ? plain : plain.html, /email_off/, "a block without an address stays byte-identical");
 });

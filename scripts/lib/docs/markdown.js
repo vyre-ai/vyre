@@ -83,8 +83,11 @@ export const DEMOS = ["capsule", "onboarding"];
 /** Code block languages whose `$ ` prompts are not copied. */
 /** Cloudflare's edge rewrites anything that looks like an email address in an HTML page ("alex@192.0.2.10" in a command becomes "[email protected]" for a reader without JavaScript or an agent). These markers tell it to leave the text alone. */
 export const noEdgeRewrite = html => `<!--email_off-->${html}<!--/email_off-->`;
+/** The same, only when the plain text holds an email-looking address, so a block without one stays byte-identical. */
+const guardEmail = (html, plain) => (EMAIL_ONE.test(plain) ? noEdgeRewrite(html) : html);
 /** Email-looking text in running prose (privacy@vyre.run) stays as written too. */
 const EMAIL_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+const EMAIL_ONE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/;
 const SHELLS = new Set(["sh", "console", "shell", "bash", "zsh"]);
 
 /**
@@ -521,7 +524,7 @@ function renderBlocks(blocks, ctx, tight) {
       case "code": {
         const lang = /^[\w+#.-]+$/.test(b.lang) ? b.lang : "";
         const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-        const pre = noEdgeRewrite(`<pre><code${cls}>${SHELLS.has(lang) ? shellHtml(b.text, lang) : escapeHtml(b.text) + (b.text ? "\n" : "")}</code></pre>`);
+        const pre = guardEmail(`<pre><code${cls}>${SHELLS.has(lang) ? shellHtml(b.text, lang) : escapeHtml(b.text) + (b.text ? "\n" : "")}</code></pre>`, b.text);
         out.push(lang === "output" ? `<div class="output">\n<p class="output-label">You should see</p>\n${pre}\n</div>` : pre);
         break;
       }
@@ -942,7 +945,7 @@ function nodesToHtml(nodes, ctx) {
   for (const nd of nodes) {
     switch (nd.t) {
       case "text": out += escapeHtml(nd.v).replace(EMAIL_TEXT, noEdgeRewrite); break;
-      case "code": out += noEdgeRewrite(`<code>${escapeHtml(nd.v)}</code>`); break;
+      case "code": out += guardEmail(`<code>${escapeHtml(nd.v)}</code>`, nd.v); break;
       case "br": out += "<br>\n"; break;
       case "entity": out += nd.v; break;
       case "delim": out += escapeHtml(nd.ch.repeat(nd.n)); break;
