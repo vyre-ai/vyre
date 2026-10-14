@@ -17,6 +17,7 @@ function Start({ ctx, set, go }: ScreenProps) {
     <FlowStep hero mark="intro" title="Try the new setup" lead="A click-through of how a person gets into Vyre. Nothing is saved and no server is called. Choose what to look at, then start."
       primary={{ label: "Start", onPress: () => go(ctx.later ? "space.choice" : "id.choice") }}>
       <Segmented label="Which path" fill options={[["first", "First time on a device"], ["later", "Add a space later"]]} value={ctx.later ? "later" : "first"} onChange={(v) => set({ later: v === "later" })} />
+      <Segmented label="Does this device have a server?" fill options={[["yes", "Yes, it is paired"], ["no", "No server yet"]]} value={ctx.paired === false ? "no" : "yes"} onChange={(v) => set({ paired: v !== "no" })} />
       <Segmented label="This device" fill options={[["computer", "Computer"], ["phone", "Phone or browser"]]} value={ctx.device} onChange={(v) => set({ device: v })} />
       <Card flush>
         <Row dense title="The space you join lets people use their own computers" sub="Turn it off to see the flow without the Compute step." end={<Switch label="The space you join lets people use their own computers" on={ctx.allowed} onChange={(v) => set({ allowed: v })} />} />
@@ -51,7 +52,8 @@ export function OnboardFlow() {
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
   // A new device with no server goes Identity, Space, Vault (the personal vault lives on a server): read once whether it has one, and flow-model.js route() orders the steps from that.
   useEffect(() => {
-    if (MOCK) return;
+    // The sample build opens the reopen case from /onboard?path=resume (a kept name, no server); the real build reads the device.
+    if (MOCK) { if (entry === "resume") { const r = resumeAt({ hasServer: false, identityName: "harper", entry: undefined }); if (r) { setCtx((c) => ({ ...c, ...r.patch })); setStack(r.stack); } } return; }
     // Reopened with a name kept but no server (stopped at the Vault): open on the Space step, with the Vault held for after it.
     void Promise.all([hasServer(), keptName()]).then(([has, identityName]) => {
       setCtx((c) => ({ ...c, paired: has }));
