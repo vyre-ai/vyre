@@ -59,7 +59,7 @@ The Publish module (`core/publish`) puts a folder of ready files, a built site, 
 - `publish.quick` with a `preview` id is refused unless a person pressed Publish on the card; a model never names a server folder itself.
 - See outward acts (agent doc "outward-acts") and [Gate](./gate.md).
 
-## Extend it
+## Limits and extension points
 
 - In 0.5 a build from a Drive folder is not available, and a scheduled job has no network. Apps with their own server publish only where the setting `publish.servers` is on (see docs/using/publish.md).
 - Until the public door is on, `publish.quick` answers "Public once the public door is on", and the address works on the person's own devices.

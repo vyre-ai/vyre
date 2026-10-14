@@ -48,7 +48,7 @@ When the signer finishes, the app's webhook becomes the event `documents.signed`
 ## How agents use it
 An agent lists templates with `documents.template.list` and `documents.template.get`, makes a file with `documents.generate`, and asks for `documents.send`, `documents.send-signed` and `documents.signing.remind`. The person decides on those three. `documents.signing.waiting` reads what is unsigned. Flows use the same names as steps. An agent never retypes a firm document. When a value is missing, it fixes the record or passes `values`, then calls again. See agent doc "outward-acts" and [docs/using/documents.md](../../using/documents.md).
 
-## Extend it
+## Limits and extension points
 - In 0.5 a document comes from one Word template filled from records. A business that needs a bundle of documents per matter, another signing provider or a document fed by an outside system adds a custom module.
 - [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 

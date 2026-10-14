@@ -62,7 +62,7 @@ A person is a permanent identity id plus a signed, chained list of the keys that
 - Every write above is person only and needs the person's presence: recovery, pairing, device removal and sign-in answers. No model can approve a sign-in or add a key.
 - See [presence](../../concepts/presence.md) and authority (agent doc "authority").
 
-## Extend it
+## Limits and extension points
 
 In 0.5 Face ID pairing and the removed-phone wipe have run in tests and have not been walked on a real iPhone or Android phone. Windows Hello has passed its tests with a stand-in authenticator and has not run on a PC with Hello set up. A Windows PC without Hello keeps a key marked as reachable by a page script. That key cannot change who speaks for your name, so list changes come from a phone or the recovery code. A direct path through a home router has not been tried, and the relay carries the connection until one exists.
 
