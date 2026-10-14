@@ -375,8 +375,8 @@ ${agentBand()}
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div class="piece"><span class="num">Now &middot; 0.5</span><h3>Agents and people, one place</h3><p>Records, Flows, Playbooks, one group chat across providers, a Vault, Sites, Documents and Signing.</p></div>
-      <div class="piece"><span class="num"><span class="chip-next">Coming in 0.5.1</span></span><h3>Flows you can trust</h3><p>One chat per Flow, deadlines on agent steps, a failure panel on every step, and per-record privacy for custom record types.</p></div>
-      <div class="piece"><span class="num">After that &middot; 0.5.2</span><h3>Integrations and skills</h3><p>An Integration wraps an outside app. Clio, Lawmatics, GoHighLevel and DecisionVault are planned, with screens for skills and plugins.</p></div>
+      <div class="piece"><span class="num"><span class="chip-next">Coming in 0.6</span></span><h3>Flows you can trust</h3><p>One chat per Flow, deadlines on agent steps, a failure panel on every step, and per-record privacy for custom record types.</p></div>
+      <div class="piece"><span class="num">After that &middot; 0.7</span><h3>Integrations and skills</h3><p>An Integration wraps an outside app. Clio, Lawmatics, GoHighLevel and DecisionVault are planned, with screens for skills and plugins.</p></div>
       <div class="piece"><span class="num">Later</span><h3>Screen Share and more</h3><p>Watch and take over your agents' computers, the iPhone App Store app, and a hosted option.</p></div>
     </div>
     <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
@@ -664,8 +664,8 @@ const DIR = `
   <div class="wrap">
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">Where Vyre is going</h2>
     <div class="road">
-      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.5.1</span></p><h3>Flows you can trust</h3><ul><li><b>One chat per Flow</b>A divider for each run.</li><li><b>Deadlines on agent steps</b>An agent step that runs too long is stopped and takes a timeout path.</li><li><b>A failure panel</b>On every step in the Flows editor.</li><li><b>Per-record privacy</b>For custom record types.</li><li><b>Flow email</b>With CC, BCC and attachments.</li><li><b>An audit screen</b>For admins: who changed what on a record.</li></ul></div>
-      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.5.2</span></p><h3>Integrations and skills</h3><ul><li><b>Integrations</b>An Integration wraps an outside app\'s API and ships its own Flow steps, triggers, connection and agent tools. Clio, Lawmatics, GoHighLevel and DecisionVault are planned.</li><li><b>Make an Integration from an API</b>An agent can build one for your business on your own server.</li><li><b>Skills and Plugins</b>Browse, write, version and roll back skills. Install and enable plugins per agent and project.</li></ul></div>
+      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.6</span></p><h3>Flows you can trust</h3><ul><li><b>One chat per Flow</b>A divider for each run.</li><li><b>Deadlines on agent steps</b>An agent step that runs too long is stopped and takes a timeout path.</li><li><b>A failure panel</b>On every step in the Flows editor.</li><li><b>Per-record privacy</b>For custom record types.</li><li><b>Flow email</b>With CC, BCC and attachments.</li><li><b>An audit screen</b>For admins: who changed what on a record.</li></ul></div>
+      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.7</span></p><h3>Integrations and skills</h3><ul><li><b>Integrations</b>An Integration wraps an outside app\'s API and ships its own Flow steps, triggers, connection and agent tools. Clio, Lawmatics, GoHighLevel and DecisionVault are planned.</li><li><b>Make an Integration from an API</b>An agent can build one for your business on your own server.</li><li><b>Skills and Plugins</b>Browse, write, version and roll back skills. Install and enable plugins per agent and project.</li></ul></div>
       <div class="stop rv"><p class="ver">Later</p><h3>And beyond</h3><ul><li><b>Screen Share</b>Watch and take over your agents\' computers and browsers from any device.</li><li><b>iPhone App Store</b>The iPhone app from the App Store, with notifications.</li><li><b>A hosted option</b>A Vyre-hosted home for people without a server.</li></ul></div>
     </div>
   </div>
@@ -1161,8 +1161,8 @@ ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 ${COMPARE.fullBlock}
 ## Direction (not a promise of dates)
 - Now, 0.5: the features above.
-- Next, 0.5.1: one chat per Flow, deadlines on agent steps, a failure panel on every step, per-record privacy for custom record types, Flow email with CC, BCC and attachments, an audit screen for admins.
-- After that, 0.5.2: Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are planned), a Skills screen and a Plugins screen.
+- Next, 0.6: one chat per Flow, deadlines on agent steps, a failure panel on every step, per-record privacy for custom record types, Flow email with CC, BCC and attachments, an audit screen for admins.
+- After that, 0.7: Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are planned), a Skills screen and a Plugins screen.
 - Later: Screen Share (watch and take over your agents' computers and Chrome, on every device).
 - Later: a Vyre-hosted home for people without a server.
 

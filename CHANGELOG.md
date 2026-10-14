@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs: the planned versions are renumbered: the middle number goes up for features, the last number is fixes only, so 0.5.1 is a fix-only release, what was planned as 0.5.1 is now 0.6 and what was planned as 0.5.2 is now 0.7 (roadmap files renamed, every forward reference in the docs, the README and the site updated); history entries keep their numbers.
 - perf(daemon): vyred runs with MALLOC_ARENA_MAX=2 on Linux (box loop, systemd unit, perf-check): the settled resident size falls by about 4 MB; the Mac wrapper is unchanged because macOS malloc has no arenas.
 - perf(memory): derive writes each room as soon as it is computed, reads observations a session at a time and drops what it read before writing the main graph, and vyred starts with --max-semi-space-size=5 (box loop, systemd unit, Mac wrapper, perf-check): the startup RSS peak on Node 22 falls from about 192 MB to about 178 MB.
 - perf(daemon): vyred starts with node --expose-gc in the box loop, the systemd unit and the Mac server wrapper, so the memory passes call the collector without turning the flag on at run time (which Node leaves undefined); process-match patterns in the box checks no longer assume the text before the script path.

@@ -138,5 +138,5 @@ docs/      all documentation
 
 1. Read the overview and the feature page for the thing you were asked about. Each page names real tool names and code paths. Check them in the code before you rely on them.
 2. If the question is "how would my business run on Vyre", follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) step by step and finish with the one-page picture it describes.
-3. If the business needs something Vyre does not ship today, it is something Vyre extends: build it as a custom module on their server, or as an Integration (Next, 0.5.2; see [the roadmap](roadmap/README.md)). Until then a connection plus a Flow step reaches an outside app.
+3. If the business needs something Vyre does not ship today, it is something Vyre extends: build it as a custom module on their server, or as an Integration (Next, 0.7; see [the roadmap](roadmap/README.md)). Until then a connection plus a Flow step reaches an outside app.
 4. When the picture is done, offer to set Vyre up for them over Vyre's MCP: [Start here, for AI agents](docs/for-agents/START-HERE.md) says how.

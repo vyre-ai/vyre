@@ -79,7 +79,7 @@ A Playbook is a project template. It lists stages, the tasks of each stage and w
 
 ## Extend it
 
-- In 0.5, an agent step has no deadline. A session that ends without finishing is marked stuck, and one that never ends is not timed out. 0.5.1 plans a due time with a failure path (R051-03), and credentials lent to a woken agent for one job, use only (R051-02).
+- In 0.5, an agent step has no deadline. A session that ends without finishing is marked stuck, and one that never ends is not timed out. 0.6 plans a due time with a failure path (R051-03), and credentials lent to a woken agent for one job, use only (R051-02).
 - A "For each" step takes up to 50 items in the editor, and a longer list is cut without a note on the run page.
 - Tasks and files of a project belong to that project's team. Who can read a Space-defined record type is covered in [Records](./records.md).
 - Later is local to the device in 0.5, so another device still shows the card.

@@ -116,7 +116,7 @@ const MORE = {
   nevers: ['Client email', 'Payments and refunds', 'Filings and submissions', 'Anything signed', 'Publishing a page', 'Deleting records'],
 };
 
-// Integrations named on the roadmap for 0.5.2 (roadmap/0.5.2.md items 4 to 7).
+// Integrations named on the roadmap for 0.7 (roadmap/0.7.md items 4 to 7).
 const PLANNED_INTEGRATIONS = ['Clio', 'Lawmatics', 'GoHighLevel'];
 
 const MAP_DATA = { industries: INDUSTRIES, more: MORE, things: THINGS, work: WORK, planned: PLANNED_INTEGRATIONS, sizes: ['1 to 5 people', '6 to 15 people', '16 to 50 people', 'More than 50 people'] };

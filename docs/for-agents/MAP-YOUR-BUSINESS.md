@@ -184,20 +184,20 @@ Some parts of a business will not match what Vyre ships. Treat those as work to 
 
 **Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](https://vyre.run/docs/build/module-contract.md), [writing a module](https://vyre.run/docs/build/writing-a-module.md) and [the module list](https://vyre.run/docs/MODULES.md). `vyre module new` starts one.
 
-**Integrations.** Integrations with popular applications are Next, in 0.5.2 ([plan](https://vyre.run/docs/roadmap/0.5.2.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
+**Integrations.** Integrations with popular applications are Next, in 0.7 ([plan](https://vyre.run/docs/roadmap/0.7.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
 **You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can write it for the business's own server. Installing a module on the server is the owner's act, so offer to write one and do not install it without the owner's yes. If the owner needs something Vyre does not do, offer to build it. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
 
-**Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.5.2. The table below pairs what works today with what is planned next, by version. Plan with the owner around it, and name the version each planned item arrives in. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
+**Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.7. The table below pairs what works today with what is planned next, by version. Plan with the owner around it, and name the version each planned item arrives in. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
 
 | Area | Today | Next |
 | --- | --- | --- |
-| Custom record types | Built-in types, and a project's matters, tasks and files, follow the project team. A member reads the rows of a type the Space defined itself. | 0.5.1: per-record privacy for custom types. |
-| "For each" step | The editor handles 50 items. The engine allows 1000. | 0.5.1: the author sets the limit. |
-| Agent steps | A session that ends early is marked stuck, with a plain reason. | 0.5.1: deadlines that stop the agent, and failure paths in the editor. |
-| Flow email | The body carries links. | 0.5.1: CC, BCC and attachments. |
-| Flows over MCP | Owners inspect Flows. | 0.5.1: members, after a per-Flow access check. |
-| Integrations | A connection plus a Flow step, or a custom module. | 0.5.2: Clio, Lawmatics, GoHighLevel and DecisionVault as packaged Integrations, and an agent can write one from an API's docs. |
+| Custom record types | Built-in types, and a project's matters, tasks and files, follow the project team. A member reads the rows of a type the Space defined itself. | 0.6: per-record privacy for custom types. |
+| "For each" step | The editor handles 50 items. The engine allows 1000. | 0.6: the author sets the limit. |
+| Agent steps | A session that ends early is marked stuck, with a plain reason. | 0.6: deadlines that stop the agent, and failure paths in the editor. |
+| Flow email | The body carries links. | 0.6: CC, BCC and attachments. |
+| Flows over MCP | Owners inspect Flows. | 0.6: members, after a per-Flow access check. |
+| Integrations | A connection plus a Flow step, or a custom module. | 0.7: Clio, Lawmatics, GoHighLevel and DecisionVault as packaged Integrations, and an agent can write one from an API's docs. |
 
 Two facts for the picture: Claude is the model proven most on real accounts, and Codex, Grok and OpenRouter answer in the same chat. A home runs on a Linux server or a Mac that stays on; the Mac, Windows and phone apps connect to it. CSV export is in the web app.
 
