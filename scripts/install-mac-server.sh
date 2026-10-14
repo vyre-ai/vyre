@@ -742,7 +742,7 @@ export VYRE_HOME="$VHOME"
 $GH_LINE
 # the system LaunchDaemon sets no output paths: vyred's output goes where "vyred did not start" points
 mkdir -p "$VHOME/logs" && exec >>"$VHOME/logs/vyred.out" 2>&1
-exec "$CAFF" -ims "$WNODE" --expose-gc "$APP/core/daemon/main.js"
+exec "$CAFF" -ims "$WNODE" --expose-gc --max-semi-space-size=5 "$APP/core/daemon/main.js"
 EOF
   cat >"$BIN/vyre" <<EOF
 #!/bin/sh

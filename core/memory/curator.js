@@ -56,7 +56,6 @@ export const T = {
 /** Rows read per page before yielding to the event loop. */
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
-const EMPTY = new Map();
 // The turns behind one (node, session) pair. Most pairs have one, so a lone turn is a bare number and a list only exists from the second: a list per pair was the largest part of what derive holds.
 const addTurn = (/** @type {{ t: number | number[] | null }} */ b, /** @type {number} */ seq) => { if (b.t === null) b.t = seq; else if (typeof b.t === "number") b.t = [b.t, seq]; else b.t.push(seq); };
 const turnList = (/** @type {{ t: number | number[] | null } | undefined} */ b) => (!b || b.t === null ? [] : typeof b.t === "number" ? [b.t] : b.t);
@@ -410,27 +409,16 @@ export class Curator {
     const member = this.membership();
     const rooms = this.rooms();
 
-    // Observations, grouped by session, paged in key order with a yield between pages.
-    /** @type {Map<string, { seq: number, node: string, n: number, initial: number, ts: number }[]>} */
-    const obsBy = new Map();
-    const turnTs = new Map();
-    const obsPage = db.prepare(`SELECT session, seq, node, n, initial, ts FROM memory_obs
-      WHERE (session, seq, node) > (?, ?, ?) ORDER BY session, seq, node LIMIT ?`);
-    for (let at = ["", -1, ""]; ;) {
-      const rows = obsPage.all(at[0], at[1], at[2], PAGE);
-      for (const r of rows) {
-        const s = String(r.session);
-        let ts = turnTs.get(s);
-        if (!ts) turnTs.set(s, ts = new Map());
-        ts.set(Number(r.seq), Number(r.ts));
-        if (!obsBy.has(s)) obsBy.set(s, []);
-        obsBy.get(s).push({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
-      }
-      if (rows.length < PAGE) break;
-      const l = rows[rows.length - 1];
-      at = [String(l.session), Number(l.seq), String(l.node)];
-      await yieldAndTidy();
-    }
+    // Observations are read a session at a time, when a scope asks for that session, not all at once: holding every observation of every session as objects was the biggest
+    // thing derive kept alive, and a scope only ever walks them session by session.
+    const obsSessions = db.prepare("SELECT DISTINCT session FROM memory_obs ORDER BY session").all().map(r => String(r.session));
+    const obsOf = db.prepare("SELECT seq, node, n, initial, ts FROM memory_obs WHERE session = ? ORDER BY seq, node");
+    const tsAt = db.prepare("SELECT ts FROM memory_obs WHERE session = ? AND seq = ? LIMIT 1");
+    const obsBy = {
+      keys: () => obsSessions,
+      get: (/** @type {string} */ s) => obsOf.all(s).map(r => ({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) })),
+    };
+    const turnTs = (/** @type {string} */ session, /** @type {number} */ seq) => Number(tsAt.get(session, Number(seq))?.ts) || 0;
     /** @type {Map<string, { session: string, seq: number, rel: string, a: string, b: string, ts: number }[]>} */
     const cuesBy = new Map();
     for (const r of db.prepare("SELECT session, seq, rel, a, b, ts FROM memory_cues ORDER BY session, seq").all()) {
@@ -474,6 +462,9 @@ export class Curator {
     const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null, apart, lessonAt };
     const bySlug = new Map();
     for (const [s, rs] of member) for (const r of rs) { if (!bySlug.has(r)) bySlug.set(r, new Set()); bySlug.get(r).add(s); }
+    // Each room is written as soon as it is computed, and what is kept of it for the main graph is only its kept set and its works_at votes. A room's aggregates are the
+    // largest thing derive builds, and holding every room's until the end (and the main graph's on top) was most of the heap this pass grew by.
+    let changed = 0;
     /** @type {Result[]} */
     const results = [];
     for (const room of [...rooms, { slug: UNFILED, name: "", folders: [], threads: [] }]) {
@@ -482,21 +473,29 @@ export class Curator {
       const mine = lessons.filter(l => room.slug === UNFILED ? !l.project : !l.project || l.project.some(c => deepest(c, rooms) === room));
       if (!sessions.size && !mine.some(l => l.project)) continue;
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
-      results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
-        said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
+      const res = await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
+        said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common);
+      changed += this.tx(() => this.writeScope(res, now));
+      results.push(/** @type {Result} */ (/** @type {unknown} */ ({ room: res.room, kept: res.kept, worksAt: res.worksAt })));
       await yieldAndTidy();
     }
-    results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
-      said: facts.filter(c => c.scope === "*") }, common));
-    conflicts(results);
-    return await this.write(results, now);
+    const star = await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
+      said: facts.filter(c => c.scope === "*") }, common);
+    conflicts([...results, star]);
+    // Everything read for the scopes is dead weight now: writing the main graph needs only its own aggregates, and it builds sets of its own rows.
+    cuesBy.clear(); common.saidBy.clear();
+    collectIfHeavy();
+    changed += this.tx(() => this.writeScope(star, now));
+    changed += this.prune([...results, star].map(r => r.room));
+    if (changed) { this.version++; this.bump(); }
+    return changed;
   }
 
   /**
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, Map<number, number>>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: { keys: () => string[], get: (s: string) => any[] }, cuesBy: Map<string, any[]>, turnTs: (session: string, seq: number) => number, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -816,7 +815,7 @@ export class Curator {
     /** @type {Want[]} */
     const want = [];
     const turnsIn = (id, session, max = T.turnsPerMention) => turnList(agg.get(id)?.by.get(session)).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
-    const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
+    const tsOf = turnTs;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();
@@ -1219,20 +1218,14 @@ export class Curator {
   }
 
   /**
-   * Write every scope's derived graph as a difference against what is stored: one transaction
-   * per scope, with a yield between, so the event loop is never held for more than one scope's
-   * rows. Each room is consistent on its own; the cursor moves once, at the end.
-   * @param {Result[]} results
+   * What the last derive leaves behind: rooms that are gone keep nothing. Each scope is written by derive itself, one transaction per scope, as soon as it is computed.
+   * @param {string[]} keep the rooms derive just wrote
+   * @returns {number} rows changed
    */
-  async write(results, now) {
+  prune(keep) {
     let changed = 0;
-    for (const r of results) {
-      changed += this.tx(() => this.writeScope(r, now));
-      await yieldAndTidy();
-    }
     // Rooms that are gone keep nothing.
     changed += this.tx(() => {
-      const keep = results.map(r => r.room);
       const marks = keep.map(() => "?").join(",");
       const db = this.db;
       let n = 0;
@@ -1244,7 +1237,6 @@ export class Curator {
       n += db.prepare(`DELETE FROM memory_aliases WHERE room NOT IN (${marks})`).run(...keep).changes;
       return Number(n);
     });
-    if (changed) { this.version++; this.bump(); }
     return changed;
   }
 

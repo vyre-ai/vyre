@@ -54,9 +54,10 @@ User=${user}
 Group=${group}
 Environment=VYRE_SUPERVISOR=systemd
 Environment=VYRE_HOME=${home}/.vyre
+Environment=MALLOC_ARENA_MAX=2
 EnvironmentFile=-${home}/.vyre/env
 WorkingDirectory=${home}
-ExecStart=${node} --expose-gc ${pkg}/core/daemon/main.js
+ExecStart=${node} --expose-gc --max-semi-space-size=5 ${pkg}/core/daemon/main.js
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes
