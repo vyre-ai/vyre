@@ -1319,9 +1319,8 @@ export class FlowRunner {
   /** @template T @param {number} ms @param {() => Promise<T>} fn @param {any} s @returns {Promise<T>} */
   #withTimeout(ms, fn, s) {
     if (!ms) return fn();
-    // The timer is NOT unref'd: while a step hangs, this timer is what keeps the process alive until the timeout fires. An unref'd one let the event loop empty with the step still pending (node:test then cancelled the whole file with "event loop has already resolved"), and in a short-lived process would have lost the timeout. It is cleared as soon as the step settles.
     /** @type {any} */ let timer;
-    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); })]).finally(() => clearTimeout(timer));
+    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); if (timer.unref) timer.unref(); })]).finally(() => clearTimeout(timer));
   }
 
   /**
