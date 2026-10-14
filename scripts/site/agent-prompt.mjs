@@ -6,7 +6,7 @@ const SITE = 'https://vyre.run';
 
 export const START_HERE_URL = `${SITE}/agenthome.md`;
 
-export const PROMPT = `Read ${START_HERE_URL} and follow it to show me how my business would run on Vyre, the agentic command center for AI-native teams. Ask me what you need.`;
+export const PROMPT = `Read ${START_HERE_URL} and follow it to show me how my business would run on Vyre. Ask me what you need.`;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
