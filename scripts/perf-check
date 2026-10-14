@@ -59,8 +59,9 @@ const QUIET_PCT = 0.3, QUIET_SAMPLES = 3, QUIET_MAX_SECONDS = 45;
 // allocation, shrinking the committed heap, and they cost about 0.2 s of CPU in one burst. That is the tail of startup, not steady idle, and where it lands (just before
 // or just inside the window) moves with how fast the host started, so a window opened before it measured the host and not vyred. The window opens once the reducer has run
 // (read from --trace-gc on the daemon), at most REDUCER_MAX_SECONDS after the quiet; a daemon whose heap never needed shrinking never runs it and costs the cap, not a failure.
+// Node 24 does not run it at all (three runs, 60 s each, none logged), and waiting there only moved the window onto later one-off work, so the wait is for Node 22 and older, the box's Node.
 // No budget changes with this.
-const REDUCER_MAX_SECONDS = 60, REDUCER_RUNS = "Mark-Compact (reduce)";
+const REDUCER_MAX_SECONDS = 40, REDUCER_RUNS = "Mark-Compact (reduce)";
 
 // cpuPct/rssMB gate the steady state (p95 of the samples — one noisy `ps` tick, or a GC pause,
 // shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
@@ -123,7 +124,7 @@ async function main() {
     // time it lands moves with what else starts (30 Sep: a new module shifted it into the idle window on
     // Node 22 and failed the check every time). Idle starts once vyred has been quiet for a few samples.
     if (!(await waitQuiet(child.pid))) log(`vyred was still busy ${QUIET_MAX_SECONDS}s after indexing; sampling anyway, and the budget says what it costs`);
-    if (!(await waitReducer(child))) log(`V8's memory reducer did not run within ${REDUCER_MAX_SECONDS}s of the quiet; sampling anyway`);
+    if (Number(process.versions.node.split(".")[0]) < 24 && !(await waitReducer(child))) log(`V8's memory reducer did not run within ${REDUCER_MAX_SECONDS}s of the quiet; sampling anyway`);
     const idleStart = Date.now();
     log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
 
