@@ -1,7 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
-- fix(perf-check): the idle window opens after V8's memory reducer has run once (read from --trace-gc, capped at 60 s), so it measures steady idle and not the tail of startup GC; no budget changes.
+- fix(perf-check): the idle window opens after V8's memory reducer has run once (read from --trace-gc, capped at 40 s, on Node 22 and older; Node 24 does not run it), so it measures steady idle and not the tail of startup GC; no budget changes.
 - fix(ci): main goes green again: the feature docs name the built-in network instead of another VPN product, and the reads-are-reads test ignores memory_runs, the Memory curator's log of its own background passes.
 - fix(app-out): the hosted app's manifest and Worker also accept + in a file path (the web export's `+not-found-<hash>.js`); a full export uses no other characters beyond [ ] and +.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
