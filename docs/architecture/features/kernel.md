@@ -67,7 +67,7 @@ The kernel has no screen. A person meets its results:
 - A model call goes through the door, and a sealed value reaches a model only as a placeholder.
 - See authority (agent doc "authority"), tools (agent doc "tools") and sealed and secrets (agent doc "sealed-and-secrets").
 
-## Extend it
+## Limits and extension points
 
 The kernel stays small, and growth happens in modules around it. In 0.5 the Gate recognises a send made through a Vyre tool. A message sent some other way, such as `curl` to a mail API, is not recognised as a send, and files a shell command changes are not recorded. Sessions Vyre runs on a Docker box run as a separate user. A Claude Code started by hand in the box's container does not, so Vyre's checks on its tool calls cover it. `kernel/door/sinks.json` lists four files under `retrofit_pending` that still reach model providers directly and are due to move behind the door. Who can read a custom record type is covered in [Records](./records.md).
 

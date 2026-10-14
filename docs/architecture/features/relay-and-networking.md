@@ -54,7 +54,7 @@ A server dials out to the relay, and a device meets it there over an end-to-end 
 - Person-only: `relay.enable`, `relay.disable`, `relay.devices.list`, `relay.devices.remove`, `relay.devices.trust`, `network.wink.join`, `network.wink.leave`, `names.serve`, `names.unserve`, and nearly every `wink.*` act, which needs presence. Module-only tools (`relay.ticket.mint`, `relay.devices.all`, `relay.route.sign`) are not reachable by a model.
 - An agent adds, removes and pairs no device. The person approves on a device. See authority (agent doc "authority") and tools (agent doc "tools").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5 the relay carries every connection. Direct paths (IPv6, UPnP, NAT-PMP) were tried on servers with public addresses, not behind a home router, so a connection may stay on the relay. `vyre doctor` shows whether the path is direct.
 - Pairing runs by signing in with the person's name and approving on a device already signed in. Continue with GitHub needs the relay Worker and the escrow Worker deployed, and every server updated first.

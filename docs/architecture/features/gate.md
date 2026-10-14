@@ -61,7 +61,7 @@ Three rules sit behind it: the one-yes permission layer (`lib/one-yes.js`), the 
 
 An agent calls `gate.request` and gets back a held result with an id. It sends no other way and does not retry the same draft. Open to models: `gate.request` and `gate.senders`. `gate.get` and `gate.held` list the caller kinds `cli`, `local`, `module`, `deck`, `capsule`, `tailnet`, `device`, `space` and `agent`, not MCP. `gate.said.list` is for the person's surfaces and modules. Person-only or held: `gate.approve`, `gate.revise`, `gate.reject`, `gate.settle`, `gate.said.add`. `gate.said.revoke` belongs to the person, or to the assistant only on the person's own words in the thread. Inside an agent thread a direct sending MCP tool is denied and the agent is pointed at the Gate (`gate.route`). A model cannot file a draft under another session's thread. See outward acts (agent doc "outward-acts") and authority (agent doc "authority").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5, the Gate holds what Vyre recognises as a send, a payment, a delete or a computer-use act. A message sent from a shell, such as `curl` to a mail API, is not recognised as a send, and files a shell command changes are not recorded. An agent works through `gate.request` and the senders for that reason.
 - An interactive artifact made by a session that read outside content and touched private data opens without a hold. Vyre shows "Runs its own code and can reach the internet" on the frame and logs a second load. Open such an artifact when you trust what the session read.
