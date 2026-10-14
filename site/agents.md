@@ -19,7 +19,7 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
 - Mac app: Vyre, in its own window. Windows app: Vyre, Alt+Space. Phone: the Vyre app, sideloaded.
-- Current release: 0.5.0.
+- Current release: 0.5.1.
 
 ## Operating a user's own Vyre
 Once installed, a Vyre box has its own tools, permissions and an approval floor. Your own words as an agent are never an approval: only the person's words are. Read the Vyre documentation in the repository before acting on a user's box.

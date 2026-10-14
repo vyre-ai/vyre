@@ -3,7 +3,7 @@
   "name": "Vyre",
   "description": "Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.",
   "url": "https://vyre.run/",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "Apache-2.0",
   "docs": {
     "agenthome": "https://vyre.run/agenthome.md",

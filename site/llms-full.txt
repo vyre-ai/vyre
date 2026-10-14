@@ -2,7 +2,7 @@
 
 Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.
 
-Release 0.5.0. Updated 2026-10-14. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.5.1. Updated 2026-10-14. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - People and agents in the same chats. @ a teammate or an agent, # a record, a file or a project. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
@@ -121,7 +121,7 @@ Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, Op
 Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Releases
-- 0.5.0 (out now): people and agents in the same chats, Flows, Playbooks, Records, a Vault for people and agents, Sites, Documents and Signing.
+- 0.5.1 (out now): first-time setup adds a server before the vault, Vyre uses less memory, and the docs show code examples correctly.
 
 ## How Vyre compares
 Each page below describes approaches. About another product it says only what that product’s own public documentation says, and otherwise it describes the kind of tool. Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *Where the vendor provides an API. Packaged Integrations are Next, in 0.7.
@@ -493,4 +493,4 @@ Anything that leaves your server, such as an email, a payment, a deletion or a p
 Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. Point your AI agent at the repo and it can show how your business would run on Vyre.
 
 ### Is it ready?
-It is 0.5.0, and what this page shows works today. What comes next is labelled with its version on the direction page and in the roadmap.
+It is 0.5.1, and what this page shows works today. What comes next is labelled with its version on the direction page and in the roadmap.
