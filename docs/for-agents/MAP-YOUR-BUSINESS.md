@@ -112,7 +112,7 @@ Anything that needs a signature goes through signing inside a Flow:
 
 ## Step 7. Pages customers see become Sites
 
-For each page or site customers use, name its job, its owner and its domain. An agent builds it from the business's records and brand, previews it at a private address, and shows you the plan. Going live waits for one yes. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md).
+For each page or site customers use, name its job, its owner and its domain. An agent builds it from the business's records and brand, previews it at an unguessable address that is not linked anywhere (it has no login), and shows you the plan. Going live waits for one yes. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md).
 
 ## Step 8. Judgment work becomes agents
 
@@ -186,7 +186,7 @@ Some parts of a business will not match what Vyre ships. Treat those as work to 
 
 **Integrations.** Integrations with popular applications are Next, in 0.5.2 ([plan](https://vyre.run/docs/roadmap/0.5.2.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
-**You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can do it on the business's own server. If the owner needs something Vyre does not do, offer to build it. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
+**You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can write it for the business's own server. Installing a module on the server is the owner's act, so offer to write one and do not install it without the owner's yes. If the owner needs something Vyre does not do, offer to build it. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
 
 **Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.5.2. The table below pairs what works today with what is planned next, by version. Plan with the owner around it, and name the version each planned item arrives in. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
 
