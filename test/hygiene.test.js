@@ -17,26 +17,44 @@ import { discover } from "../core/modules/index.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SHIPPED = ["bin", "core", "harness", "local", "web", "modules"];
 
-function files(dir) {
+// A scan reads the files git lists (tracked, and untracked but not ignored, so a secret not yet added is still caught; ignored files stay out): another test running in parallel may create and delete a file in the checkout,
+// and a scan that walked the folders then read it later died with ENOENT. A file gone at read time is skipped. Outside a git checkout (a packed tree) it walks the folders.
+/** @type {string[] | null} */ let trackedCache = null;
+function tracked() {
+  if (trackedCache) return trackedCache;
+  const r = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 });
+  trackedCache = r.status === 0 ? r.stdout.split("\0").filter(Boolean).map(f => path.join(ROOT, f)) : [];
+  return trackedCache;
+}
+/** @param {string} f @returns {string} */
+function read(f) { try { return fs.readFileSync(f, "utf8"); } catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return ""; throw e; } }
+/** @param {string} dir @param {(name: string) => boolean} skip @param {RegExp} want @returns {string[]} */
+function listing(dir, skip, want) {
+  const t = tracked();
+  if (t.length) return t.filter(f => (f === dir || f.startsWith(dir + path.sep)) && want.test(path.basename(f)) && !path.relative(dir, f).split(path.sep).some(skip));
   const out = [];
   let entries = [];
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
-    // dist/ and bin/ hold build output (a packaged app, compiled helpers), not source.
-    if (e.name === "node_modules" || e.name === "dist" || e.name === "bin" || e.name.startsWith(".git")) continue;
+    if (skip(e.name)) continue;
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...files(p));
-    else if (/\.(js|json|md|mjs|cjs|sh|html|css|swift)$|^vyre$/.test(e.name)) out.push(p);
+    if (e.isDirectory()) out.push(...listing(p, skip, want));
+    else if (want.test(e.name)) out.push(p);
   }
   return out;
+}
+
+function files(dir) {
+  // dist/ and bin/ hold build output (a packaged app, compiled helpers), not source.
+  return listing(dir, n => n === "node_modules" || n === "dist" || n === "bin" || n.startsWith(".git"), /\.(js|json|md|mjs|cjs|sh|html|css|swift)$|^vyre$/);
 }
 
 test("hygiene: shipped code names no one and carries no secrets", () => {
   const hits = [];
   for (const dir of SHIPPED) for (const f of files(path.join(ROOT, dir))) {
-    const text = fs.readFileSync(f, "utf8").toLowerCase();
+    const text = read(f).toLowerCase();
     for (const w of FORBIDDEN) if (text.includes(w)) hits.push(`${path.relative(ROOT, f)}: personal name`);
-    if (SECRET.test(fs.readFileSync(f, "utf8"))) hits.push(`${path.relative(ROOT, f)}: looks like a secret`);
+    if (SECRET.test(read(f))) hits.push(`${path.relative(ROOT, f)}: looks like a secret`);
   }
   assert.deepEqual(hits, []);
 });
@@ -46,21 +64,12 @@ test("hygiene: shipped code names no one and carries no secrets", () => {
 const CORAL = /#(ff7a59|e5532f|c2411f)\b|rgba?\(\s*(255\s*,\s*122\s*,\s*89|229\s*,\s*83\s*,\s*47|194\s*,\s*65\s*,\s*31)\b/i;
 
 function everyFile(dir) {
-  const out = [];
-  let entries = [];
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
-  for (const e of entries) {
-    if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".git")) continue;
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...everyFile(p));
-    else if (/\.(js|mjs|cjs|ts|tsx|json|md|html|css|svg|swift|kt|kts|xml|plist|sh)$/.test(e.name)) out.push(p);
-  }
-  return out;
+  return listing(dir, n => n === "node_modules" || n === "dist" || n.startsWith(".git"), /\.(js|mjs|cjs|ts|tsx|json|md|html|css|svg|swift|kt|kts|xml|plist|sh)$/);
 }
 
 test("hygiene: the retired coral appears nowhere in the repo", () => {
   const self = fileURLToPath(import.meta.url);
-  const hits = everyFile(ROOT).filter(f => f !== self && CORAL.test(fs.readFileSync(f, "utf8")))
+  const hits = everyFile(ROOT).filter(f => f !== self && CORAL.test(read(f)))
     .map(f => path.relative(ROOT, f));
   assert.deepEqual(hits, []);
 });
