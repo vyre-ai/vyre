@@ -3,7 +3,7 @@ title: Map your business onto Vyre
 summary: A step-by-step method for an AI agent, or a person, to turn any business into Vyre members, records, Playbooks, Flows, agents, documents, sites and Gate rules, with two worked examples.
 audience: agents, users
 owner: docs
-status: draft
+status: stable
 ---
 
 # Map your business onto Vyre
@@ -12,11 +12,11 @@ A business owner pointed you at this repository and asked how the business would
 
 Take every noun from the owner. Do not assume an industry, and do not invent people, record types or systems. If you do not know, ask.
 
-If the owner gave you [the prompt](PROMPT.md), you were sent through [Start here](START-HERE.md), and this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
+If the owner gave you [the prompt](https://vyre.run/docs/for-agents/PROMPT.md), you were sent through [Start here](https://vyre.run/docs/for-agents/START-HERE.md), and this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
 
-## What to tell the owner Vyre is good at
+## What to tell the owner Vyre does
 
-Say this early, in the owner's terms. [What makes Vyre strong](../../ARCHITECTURE.md#what-makes-vyre-strong) has the full statement. Each point below names the step where you use it.
+Say this early, in the owner's terms, and name the page each point comes from. [What makes Vyre strong](https://vyre.run/docs/project/ARCHITECTURE.md#what-makes-vyre-strong) has the full statement. Each point below names the step where you use it.
 
 - **Records you shape** (step 3): as many objects as the business has, linked in any web, with views and sealed fields.
 - **Playbooks and Flows** (steps 4 and 5): each kind of work runs as its own Playbook and Flows, side by side, over shared records.
@@ -51,7 +51,7 @@ Ask these questions and write the answers in the owner's words.
 | "The bookkeeper sees invoices but not salaries" | A custom role: what it can do, where, which data, which tools |
 | "Anna leads the Smith job, Ben only watches" | A project seat: Lead, Contributor or Viewer |
 
-Write one line per person: name, role, projects, what they must not see. Details: [Spaces and members](../architecture/features/spaces-and-members.md).
+Write one line per person: name, role, projects, what they must not see. Details: [Spaces and members](https://vyre.run/docs/architecture/features/spaces-and-members.md).
 
 ## Step 3. Things they track become record types, fields and links
 
@@ -66,7 +66,7 @@ For each type, list:
 5. **Who sees what.** `hidden_from` hides a field from named roles. In 0.5 a member reads every row of a type the Space defined itself, so keep sensitive rows in a built-in type or out of the member's reach.
 6. **Tags and import.** Tags group records loosely. Excel or CSV imports into any list from the web app.
 
-Every field shows a template token in the app. Flows and Word templates use those tokens, so name fields with care. See [Records](../architecture/features/records.md).
+Every field shows a template token in the app. Flows and Word templates use those tokens, so name fields with care. See [Records](https://vyre.run/docs/architecture/features/records.md).
 
 ## Step 4. Each track becomes a Playbook
 
@@ -77,7 +77,7 @@ If the business runs more than one kind of work (services, case types, client ti
 3. If the tracks differ mainly in their stages, give the record type a stage set per track. A stage set applies while an expression holds for the record, such as `service == "web"`. The first set that matches wins.
 4. Start the right Playbook from a Flow. The Flow reads the field, branches, and runs the Flow step "Start a project from a template" with that track's Playbook. In 0.5 the caller names the template. No rule picks one from a field by itself, so the Flow does it.
 
-A Playbook goes live when its owner or an admin approves it. `work.template.test` runs it on a sample first. See [Tasks, Needs you and Playbooks](../architecture/features/tasks-and-needs-you.md).
+A Playbook goes live when its owner or an admin approves it. `work.template.test` runs it on a sample first. See [Tasks, Needs you and Playbooks](https://vyre.run/docs/architecture/features/tasks-and-needs-you.md).
 
 ## Step 5. Repeated work becomes Flows
 
@@ -95,7 +95,7 @@ For each repeated piece of work, write one sentence: "When X happens, do A, then
 | Do this for each item | Step repeat |
 | If it fails | A failure path on the step or the Flow |
 
-A Flow is written once, a person approves it, and it runs the same way each time. A run has its own page with a step timeline. Text in a step fills in values from the record and the records linked to it, and `{today}` and `{now}` give dates. Use a Playbook for the stages and tasks of a job and a Flow for the actions between them. Read [Flows](../architecture/features/flows.md) and the Flows cheat sheet (agent doc "flows-cheatsheet") for exact keys.
+A Flow is written once, a person approves it, and it runs the same way each time. A run has its own page with a step timeline. Text in a step fills in values from the record and the records linked to it, and `{today}` and `{now}` give dates. Use a Playbook for the stages and tasks of a job and a Flow for the actions between them. Read [Flows](https://vyre.run/docs/architecture/features/flows.md) and the Flows cheat sheet (agent doc "flows-cheatsheet") for exact keys.
 
 ## Step 6. Paperwork and signatures
 
@@ -108,11 +108,11 @@ Anything that needs a signature goes through signing inside a Flow:
 3. The signer opens a link and signs. The signer needs no account.
 4. The signed copy files on the record, and the event `documents.signed` starts the next Flow. A decline fires `documents.declined`.
 
-`documents.signing.flow` returns a ready Flow for this pattern. See [Documents and signing](../architecture/features/documents-and-signing.md).
+`documents.signing.flow` returns a ready Flow for this pattern. See [Documents and signing](https://vyre.run/docs/architecture/features/documents-and-signing.md).
 
 ## Step 7. Pages customers see become Sites
 
-For each page or site customers use, name its job, its owner and its domain. An agent builds it from the business's records and brand, previews it at a private address, and shows you the plan. Going live waits for one yes. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](../architecture/features/sites-and-publishing.md).
+For each page or site customers use, name its job, its owner and its domain. An agent builds it from the business's records and brand, previews it at an unguessable address that is not linked anywhere (it has no login), and shows you the plan. Going live waits for one yes. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md).
 
 ## Step 8. Judgment work becomes agents
 
@@ -126,7 +126,7 @@ For each judgment task from question 7, define an agent:
 
 Keep agents narrow. A drafting agent and a booking agent are two agents.
 
-To work as a team, add agents to a project with a role and a brief (`team.add`) and send work to one by name with `team.ask`, which can name the model. A reviewer is an agent whose AGENTS.md says what to check, plus a standing duty on an event such as `thread.finished`. A planner is an agent whose AGENTS.md says to break work into tasks and assign them. Vyre has no feature called reviewer or planner. You assemble them from these pieces. See [Agents](../architecture/features/agents.md), [MCP and the Engineer](../architecture/features/mcp-and-engineer.md) and [Sessions and models](../architecture/features/sessions-and-models.md).
+To work as a team, add agents to a project with a role and a brief (`team.add`) and send work to one by name with `team.ask`, which can name the model. A reviewer is an agent whose AGENTS.md says what to check, plus a standing duty on an event such as `thread.finished`. A planner is an agent whose AGENTS.md says to break work into tasks and assign them. Vyre has no feature called reviewer or planner. You assemble them from these pieces. See [Agents](https://vyre.run/docs/architecture/features/agents.md), [MCP and the Engineer](https://vyre.run/docs/architecture/features/mcp-and-engineer.md) and [Sessions and models](https://vyre.run/docs/architecture/features/sessions-and-models.md).
 
 ## Step 9. Outside systems and logins
 
@@ -138,17 +138,19 @@ List each outside system and the logins the team shares.
 - **A connection** to any other service: a declared host, how the key is sent, and a list of operations, each marked read, draft, change, send, spend or delete. A person adds it.
 - **MCP servers** a person adds.
 
-Put every login in the Vault: [Vault](../architecture/features/vault.md). Share an item with a person as Can use or Can edit, or give an agent use of it without the value. Each member also has a vault of their own that the owner cannot read.
+Put every login in the Vault: [Vault](https://vyre.run/docs/architecture/features/vault.md). Share an item with a person as Can use or Can edit, or give an agent use of it without the value. Each member also has a vault of their own that the owner cannot read.
 
 If a system has no connection yet, see "Extend it" below.
 
 ## Step 10. What must never go out without a yes becomes the Gate
 
-List every act that leaves the Space: emails to customers, payments, deletions, posts, publishing, sharing. Each is held at [the Gate](../architecture/features/gate.md) until a person approves the exact words on their own device. An agent can ask but cannot approve. Tell the owner three things:
+List every act that leaves the Space: emails to customers, payments, deletions, posts, publishing, sharing. Each is held at [the Gate](https://vyre.run/docs/architecture/features/gate.md) until a person approves the exact words on their own device. An agent can ask but cannot approve. Tell the owner three things:
 
 - An act held by default is anything a tool marks outward.
 - An approved Flow version can carry one yes for named destinations and limits. A step marked to approve, a recipient taken from outside content, or a hit limit still stops for a person.
 - A person can save a standing permission for a safe act that repeats.
+
+**Regulated work.** Some work ends in a filing, a portal entry or a submission to a court, an agency or another authority. Treat it like any outward act. Agents prepare the material: they gather the records, fill the forms and draft the text. A person reviews the exact submission and makes it, or approves it at the Gate. Name each such submission in the owner's list of acts that leave the Space, and keep who may make it on the person, not the agent.
 
 ## Step 11. Give the owner a one-page picture
 
@@ -180,13 +182,13 @@ flowchart LR
 
 Some parts of a business will not match what Vyre ships. Treat those as work to do, not as dead ends.
 
-**Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](../build/module-contract.md), [writing a module](../build/writing-a-module.md) and [the module list](../MODULES.md). `vyre module new` starts one.
+**Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](https://vyre.run/docs/build/module-contract.md), [writing a module](https://vyre.run/docs/build/writing-a-module.md) and [the module list](https://vyre.run/docs/MODULES.md). `vyre module new` starts one.
 
-**Integrations.** Integrations with popular applications are Next, in 0.5.2 ([plan](../../roadmap/0.5.2.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
+**Integrations.** Integrations with popular applications are Next, in 0.5.2 ([plan](https://vyre.run/docs/roadmap/0.5.2.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
-**You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can do it on the business's own server. If the owner needs something Vyre does not do, offer to build it. [The agent brief](../build/AGENT-BRIEF.md) is where you start.
+**You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can write it for the business's own server. Installing a module on the server is the owner's act, so offer to write one and do not install it without the owner's yes. If the owner needs something Vyre does not do, offer to build it. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
 
-**Where each part is going.** All of the above works today. Plan with the owner around the items below, and name the version each one arrives in. The plans are in [the roadmap](../../roadmap/README.md).
+**Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.5.2. The table below pairs what works today with what is planned next, by version. Plan with the owner around it, and name the version each planned item arrives in. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
 
 | Area | Today | Next |
 | --- | --- | --- |
@@ -266,6 +268,6 @@ The owner says: "We fix and install things in people's homes. Customers call or 
 
 ## Related
 
-- [Architecture overview](../architecture/overview.md) and [the Vyre map](../architecture/map.md).
-- [The roadmap](../roadmap.md) and the plan for each version in [roadmap/](../../roadmap/README.md).
-- [The prompt that starts this conversation](PROMPT.md).
+- [Architecture overview](https://vyre.run/docs/architecture/overview.md) and [the Vyre map](https://vyre.run/docs/architecture/map.md).
+- [The roadmap](https://vyre.run/docs/roadmap.md) and the plan for each version in [roadmap/](https://vyre.run/docs/roadmap/README.md).
+- [The prompt that starts this conversation](https://vyre.run/docs/for-agents/PROMPT.md).

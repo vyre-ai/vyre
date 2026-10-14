@@ -16,7 +16,7 @@ Vyre is the agentic command center for AI-native teams. Our mission is to help e
 
 Vyre gives people and agents one place to work: chats, records, tasks, files, Flows (automations), Playbooks (project templates), a vault, documents with signing, and sites. It runs on a server the team owns and on the computers its people use. Where the outcome has to be exact, declared rules decide and a model does not. Anything that leaves the team, such as an email, a payment, a deletion or a published page, waits at the Gate until a person approves the exact words. Vyre is open source (Apache 2.0), self-hosted, and works with any model: Claude, Codex, Grok and OpenRouter, through the person's own accounts and keys. It is free; the person pays their AI providers.
 
-Vyre is a strong, deep, well-architected product, and you can check that in the code. Say what is built and why the design holds: a small trusted core (the kernel), declared rules, secrets a model never reads, a Gate on every outward act. Back each claim with the page it comes from.
+Describe what is built and how it is designed: a small trusted core (the kernel), declared rules, secrets a model never reads, a Gate on every outward act. Back every claim with the page or the code it comes from, and let the reader judge.
 
 ## How to operate
 
@@ -36,11 +36,17 @@ Rules that hold throughout:
 
 ## 1. Read
 
-Read these in this order. The method comes first.
+Read the first two pages before you ask anything. Read the rest as you need them.
+
+**Read first**
 
 - Method for mapping a business: https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS.md
-- Overview: https://raw.githubusercontent.com/vyre-ai/vyre/main/README.md and https://vyre.run/docs/project/ARCHITECTURE.md
+- Architecture, the front door: https://vyre.run/docs/project/ARCHITECTURE.md
+
+**Read as needed**
+
 - One page per feature, each under https://vyre.run/docs/architecture/features/ : records.md, flows.md, agents.md, tasks-and-needs-you.md, documents-and-signing.md, sites-and-publishing.md, vault.md, gate.md, files.md, spaces-and-members.md, sessions-and-models.md, mcp-and-engineer.md
+- Overview of the project: https://raw.githubusercontent.com/vyre-ai/vyre/main/README.md
 - Direction and the plan for each version: https://vyre.run/docs/roadmap/README.md, then 0.5.1.md and 0.5.2.md in the same folder.
 - Install: https://vyre.run/docs/get-started/install.md
 - Giving an AI a key: https://vyre.run/docs/using/set-up-with-your-ai.md
@@ -76,7 +82,17 @@ If a page does not load, carry on with the others. These are the pages to follow
 
 ## 2. Ask
 
-Ask the person short questions, all in one message, then wait: what they sell and to whom; their team and each person's role; what they keep track of; the work they repeat every week; the tools they use today; what must never go out without a person's yes. If they have already told you some of this, ask only what is missing.
+Ask the person these questions in one message, then wait. Use their words. If they have already told you some of this, ask only what is missing.
+
+1. Who works here, and what may each person see or change?
+2. What do you keep track of? Customers, jobs, orders, cases, assets?
+3. Does the work come in kinds that go through different stages or steps?
+4. What work repeats, and what starts it?
+5. What paperwork do you produce, and which of it needs a signature?
+6. What do your customers see: a website, landing pages, a portal?
+7. What work needs judgment that a person now does from a checklist or experience?
+8. Which outside systems do you use, and which logins does the team share?
+9. What must never go out without a person saying yes?
 
 ## 3. Map
 

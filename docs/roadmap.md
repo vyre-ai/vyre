@@ -3,7 +3,7 @@ title: Roadmap
 summary: Where Vyre is going, line by line, with what each release contains.
 audience: users, builders, operators, agents
 owner: docs
-status: draft
+status: stable
 ---
 
 # Roadmap
