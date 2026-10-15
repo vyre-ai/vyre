@@ -165,18 +165,25 @@ export function isTrustedChain(chain, roleOf) {
   return roleAtLeast(String(role), "admin") && (hops.length === 1 || hops[hops.length - 1].actor.kind === "service");
 }
 
-/** The owner and the people on a project's team, read straight from the record store (no gate: the rule's own question). @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn @param {(urn: string) => any} [attrsOf] */
-export const projectTeamOf = (store, urn, attrsOf = undefined) => async (/** @type {string} */ ref) => {
+/**
+ * The owner and the people on the team of a record that holds work, read straight from the record store (no gate: the rule's own question). `type` is the record's type: the core Project (the
+ * default) or a Kit's own type that holds work (a matter), whose seats are team-member rows that point at it and whose owner is the person who made it.
+ * @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn @param {(urn: string) => any} [attrsOf]
+ */
+export const workTeamOf = (store, urn, attrsOf = undefined) => async (/** @type {string} */ ref, /** @type {string} */ type = "project") => {
   const pid = String(ref).split("/").pop() || "";
-  const pr = await store.get("project", pid).catch(() => null);
+  const pr = await store.get(type, pid).catch(() => null);
   if (!pr) return null;
-  const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn("project", pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
-  // the owner is the project's owner field; a project with none belongs to the kernel's record of who owns it, then who made it
-  const at = typeof attrsOf === "function" ? attrsOf(urn("project", pid)) || {} : {};
+  const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn(type, pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
+  // the owner is the record's owner field; a record with none belongs to the kernel's record of who owns it, then who made it
+  const at = typeof attrsOf === "function" ? attrsOf(urn(type, pid)) || {} : {};
   const made = String(at.created_for || at.created_by || ""), madeBy = made.startsWith("person:") ? made.slice(7) : null;
   return { owner: idOf(pr.data.owner) || (at.owner ? String(idOf(at.owner) || at.owner) : null) || madeBy, team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean),
     levels: Object.fromEntries(rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person" && idOf(r.data.actor)).map((/** @type {any} */ r) => [idOf(r.data.actor), levelOfSeat(r.data)])) };
 };
+
+/** The owner and the people on a project's team. @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn @param {(urn: string) => any} [attrsOf] */
+export const projectTeamOf = (store, urn, attrsOf = undefined) => { const team = workTeamOf(store, urn, attrsOf); return async (/** @type {string} */ ref) => team(ref, "project"); };
 
 /**
  * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner, set its sensitivity or file a record under a

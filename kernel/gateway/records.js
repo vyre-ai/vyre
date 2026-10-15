@@ -4,7 +4,7 @@
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
 import { onTypesChanged } from "../store/types-signal.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
-import { mayWrite, mayAttrs, mayReadTask, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
+import { mayWrite, mayAttrs, mayReadTask, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf, workTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -238,7 +238,7 @@ export function createRecords(cfg) {
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec) => {
-    const rule = PRIVATE_READS[type];
+    const rule = PRIVATE_READS[type] || await projectLinkRule(type);
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
@@ -251,9 +251,11 @@ export function createRecords(cfg) {
     } catch { return false; }
   };
   /** @type {Set<string> | null} */ let protectedTypes = null;
+  /** @type {Map<string, { name: string, to: string }[]> | null} the links to a project of every type that has one: a link field to the core Project, or to a type that holds work (a Kit's matter) */
+  let projectLinkMap = null;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
   let typesGen = 0;
-  const typesChanged = () => { protectedTypes = null; typesGen++; };
+  const typesChanged = () => { protectedTypes = null; projectLinkMap = null; typesGen++; };
   onTypesChanged(store, typesChanged);
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
@@ -265,6 +267,55 @@ export function createRecords(cfg) {
     }
     return protectedTypes.has(type);
   };
+  /**
+   * The link fields of a type that point at a project (the core Project, or a type that says `kind: "project"`), for a type with no rule of its own. A row that fills one is read only by that project's
+   * team (per-record privacy for custom types); a type with none reads as ever. While the definitions cannot be read the answer is an error, never "none".
+   * @param {string} type @returns {Promise<{ name: string, to: string }[]>}
+   */
+  const projectLinksOf = async (type) => {
+    if (PRIVATE_READS[type]) return [];
+    if (!projectLinkMap) {
+      if (typeof store.types !== "function") return [];
+      const gen = typesGen;
+      let defs; try { defs = await store.types(); } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
+      const holdsWork = new Set(["project", ...defs.filter((/** @type {any} */ t) => t.kind === "project").map((/** @type {any} */ t) => t.name)]);
+      const built = new Map();
+      for (const t of defs) {
+        if (PRIVATE_READS[t.name]) continue;
+        const links = (t.fields || []).filter((/** @type {any} */ f) => f.kind === "link" && typeof f.to === "string" && holdsWork.has(f.to)).map((/** @type {any} */ f) => ({ name: String(f.name), to: String(f.to) }));
+        if (links.length) built.set(t.name, links);
+      }
+      if (gen !== typesGen) return built.get(type) || [];
+      projectLinkMap = built;
+    }
+    return projectLinkMap.get(type) || [];
+  };
+  const seatOfWork = workTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u));
+  /** The people allowed a row of a custom type: nobody in particular when it links to no project, else the team of any project it links to. Read from the STORED row: what a caller is shown has had fields cut. */
+  const projectLinkRule = async (/** @type {string} */ type) => {
+    const links = await projectLinksOf(type);
+    if (!links.length) return null;
+    return async (/** @type {string} */ me, /** @type {any} */ rec) => {
+      const raw = await store.get(type, rec.id).catch(() => null);
+      if (!raw || !raw.data) return false;
+      let linked = false;
+      for (const l of links) {
+        const v = raw.data[l.name];
+        for (const one of Array.isArray(v) ? v : [v]) {
+          const ref = one && (typeof one === "string" ? one : one.urn);
+          if (!ref) continue;
+          linked = true;
+          const t = await seatOfWork(String(ref), l.to);
+          if (t && (t.owner === me || t.team.includes(me))) return true;
+        }
+      }
+      return !linked;
+    };
+  };
+  /** Does this type's rows read by a rule of their own (a built-in rule, or a link to a project). */
+  const privateType = async (/** @type {string} */ type) => Boolean(PRIVATE_READS[type]) || (await projectLinksOf(type)).length > 0;
+  /** For a total over a type that reads by a rule of its own: the check each row must pass to be counted for this chain (undefined when every row reads the same, or the caller is staff or a service). */
+  const rowsMayView = async (/** @type {any} */ chain, /** @type {string} */ type) => (!(await privateType(type)) || serviceOnly(chain) || staffOfChain(chain) ? undefined : (/** @type {any} */ rec) => mayView(chain, type, rec));
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
   const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
@@ -535,7 +586,7 @@ export function createRecords(cfg) {
         try {
           const measure = o.fn === "count" && !o.field ? { fn: "count" } : { fn: o.fn, field: o.field };
           const where = { field: o.via, op: "in", value: urns.map(u => ({ urn: u })) };
-          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] });
+          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] }, await rowsMayView(chain, o.type));
         } catch { continue; }
         const key = o.fn === "count" && !o.field ? "count" : `${o.fn}:${o.field}`;
         const by = new Map(rows.map((/** @type {any} */ r) => [r.group[o.via] && r.group[o.via].urn, r.values[key]]));
@@ -677,6 +728,15 @@ export function createRecords(cfg) {
   const roleFor = (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined);
   /** The kernel attributes a create carries (owner, project, sensitivity), judged for every type and by every route that creates (kernel/gateway/ownership.js). A gateway with no membership at all, as a store test rig is, cannot tell who is a member; the Space's own kernel always has it. @param {any} chain @param {any} attrs */
   const attrsGate = async (chain, attrs) => { if (members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted: isTrustedChain(chain, roleFor), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)) }); };
+  /** The writer is on the team of EVERY project any of these row datas links to, and is not a Viewer there (a chain with no person, or a trusted one, passes). */
+  async function projectLinkGate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any[]} */ ...datas) {
+    if (!(members && typeof members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"))) return;
+    for (const l of await projectLinksOf(type)) {
+      const refs = new Set();
+      for (const d of datas) for (const one of Array.isArray(d && d[l.name]) ? d[l.name] : [d && d[l.name]]) { const ref = one && (typeof one === "string" ? one : one.urn); if (ref) refs.add(String(ref)); }
+      for (const ref of refs) await mayAttrs(chain, { project: ref }, { trusted: isTrustedChain(chain, roleFor), project: (/** @type {string} */ r) => seatOfWork(r, l.to) });
+    }
+  }
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
@@ -716,7 +776,10 @@ export function createRecords(cfg) {
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if (op === "create" && attrs) await attrsGate(chain, attrs);
     // a row of a type read by a rule of its own is changed only by someone who may read it (a project, a team row and a task have the ownership rule below, which says who may)
-    if ((op === "update" || op === "remove") && before && PRIVATE_READS[type] && !OWNED_TYPES.includes(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    if ((op === "update" || op === "remove" || op === "restore") && before && !OWNED_TYPES.includes(type) && await privateType(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    // a row of a custom type is filed, edited, moved and unfiled only by someone on the team of EVERY project it links to, before and after the write, and not as a Viewer there: so a link can never be
+    // changed or cleared by someone outside the row's own team, and a row can be moved out of privacy only by its team (the same words as a record's `project` attribute)
+    await projectLinkGate(chain, type, before && before.data, (op === "create" || op === "update") ? input : undefined);
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
       // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
@@ -986,7 +1049,7 @@ export function createRecords(cfg) {
       return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
     },
 
-    async aggregate(chain, type, spec) {
+    async aggregate(chain, type, spec, rowOk) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       if (!spec || typeof spec !== "object" || !Array.isArray(spec.measures) || (spec.group_by !== undefined && !Array.isArray(spec.group_by))) throw new KernelError("bad_input", "an aggregate needs measures, and group_by as a list");
@@ -996,7 +1059,7 @@ export function createRecords(cfg) {
       const typeDec = await countRead(chain, type);
       // The store totals the rows itself (one GROUP BY) only when every row of the type gets this chain's answer: no room, grants that cover the whole type with no row predicate, no
       // rule on reading, no privileged record in the type, and every field it groups or measures is one the chain may see. Anything else is totalled below, row by row.
-      if (typeDec && !vs && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+      if (typeDec && !vs && !rowOk && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
         const lim = await limitsOf(chain, type, typeDec);
         const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
         if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
@@ -1004,7 +1067,7 @@ export function createRecords(cfg) {
         }
       }
       // A restricted caller whose access is attribute equalities: the store counts natively under the same predicate (a store that cannot, says `unsupported` and the rows are totalled below).
-      if (typeDec && !vs && typeof store.aggregate === "function") {
+      if (typeDec && !vs && !rowOk && typeof store.aggregate === "function") {
         const af = await attrFilterFor(chain, type);
         if (af) {
           const lim = await limitsOf(chain, type, typeDec);
@@ -1031,6 +1094,7 @@ export function createRecords(cfg) {
           if (r.type !== type) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
+          if (rowOk && !(await rowOk({ ...r, urn: urn(r.type, r.id) }))) continue;
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
           if (room === null) continue;
           const al = allowList(dec);
@@ -1395,7 +1459,8 @@ export function createRecords(cfg) {
           for (let pages = 0; pages < 20 && !truncated; pages++) {
             const p = await api.query(chain, t.name, { filter: linkFilter(lf, target), page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
             const inv = (inverses.get(parts[3]) || []).find((/** @type {any} */ i) => i.from_type === t.name && i.from_field === lf.name);
-            for (const r of p.rows) { if (PRIVATE_READS[t.name] && !(await mayView(chain, t.name, r))) continue; if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
+            const priv = await privateType(t.name);
+            for (const r of p.rows) { if (priv && !(await mayView(chain, t.name, r))) continue; if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
             if (!p.next_cursor) break;
             cursor = p.next_cursor;
           }
@@ -1409,6 +1474,17 @@ export function createRecords(cfg) {
   // Frozen: nobody who holds the gateway can replace a method. (kernel/index.js hands a module a Proxy over a COPY of this object, so the Proxy's own answers are not bound by this freeze.)
   // A task is a record of the Space's store that the kernel's tasks own the authority of (DESIGN-tasks-records): making one through here makes the person's own plain to-do through `tasks.request`, a change to
   // its words, due time, parent or project goes through `tasks.edit` (so the same who-may rules and checks apply), its status is the kernel's, and it is skipped, never removed.
+  const mergeGuard = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string[]} */ ids) => {
+    if (!isChain(chain) || serviceOnly(chain) || staffOfChain(chain)) return;
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    if (def && (def.kind === "project" || type === "project")) throw new KernelError("not_allowed", `Only an owner or an admin joins ${def.label || type} records: the records that link to them would follow. Ask one of them.`);
+    if (!(await privateType(type))) return;
+    const datas = [];
+    for (const id of ids) { const raw = await store.get(type, id, { include_deleted: true }).catch(() => null); if (!raw || !(await mayView(chain, type, { ...raw, urn: urn(type, id) }))) throw new KernelError("not_found", "no such record"); datas.push(raw.data); }
+    // the merge removes one row and puts its links on the other: she must be on the team of every project either row links to, as for a plain change or removal
+    await projectLinkGate(chain, type, ...datas);
+  };
   const TASK_MAP = new Set(["title", "note", "due", "parent", "project"]);
   /** A link arrives as { urn } (the contract) or, from a module, as plain text: a task keeps its parent as an id and its project as a urn. */
   const refOf = (/** @type {any} */ v, /** @type {boolean} */ id) => {
@@ -1455,32 +1531,78 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
+    /** Joining two records moves their links and removes one: a row a caller may not read is neither joined nor undone, and a type that holds work (its rows are projects) is joined only by an owner or admin, since its children would follow. */
+    async merge(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ keepId, /** @type {string} */ dropId) {
+      await mergeGuard(chain, type, [keepId, dropId]);
+      return api.merge(chain, type, keepId, dropId);
+    },
+    async unmerge(/** @type {any} */ chain, /** @type {string} */ mergeId) {
+      const ev = isChain(chain) ? log.read({ type: "records.merged" }).find((/** @type {any} */ e) => e.id === mergeId) : null;
+      if (ev) await mergeGuard(chain, ev.data.type, [ev.data.keep, ev.data.drop]);
+      return api.unmerge(chain, mergeId);
+    },
     mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type), staffOfChain,
     /** Whether this chain may see events about one record of a listed type (the record gone: staff and services only). */
-    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
-    async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if (PRIVATE_READS[type] && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
+    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!(await privateType(type))) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
+    async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if ((await privateType(type)) && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
       const r = await api.get(chain, type, id);
-      return r && PRIVATE_READS[type] && !(await mayView(chain, type, r)) ? null : r;
+      return r && (await privateType(type)) && !(await mayView(chain, type, r)) ? null : r;
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
-      const r = await api.query(chain, type, spec);
-      if (!PRIVATE_READS[type]) return r;
-      const rows = []; for (const x of r.rows) if (await mayView(chain, type, x)) rows.push(x);
-      return { ...r, rows };
+      if (!(await privateType(type))) return api.query(chain, type, spec);
+      spec = checkPage(spec);
+      // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
+      let cursor = spec.page.cursor, rows = [], next;
+      for (let pages = 0; pages < 10; pages++) {
+        const p = await api.query(chain, type, { ...spec, page: { ...spec.page, ...(cursor ? { cursor } : {}) } });
+        rows = []; for (const x of p.rows) if (await mayView(chain, type, x)) rows.push(x);
+        next = p.next_cursor;
+        if (rows.length || !next) break;
+        cursor = next;
+      }
+      let more = false;
+      for (let ahead = 0; next && !more && ahead < 10; ahead++) {
+        const p = await api.query(chain, type, { ...spec, page: { ...spec.page, cursor: next } });
+        for (const x of p.rows) if (await mayView(chain, type, x)) { more = true; break; }
+        if (!more) next = p.next_cursor;
+      }
+      return { rows, ...(more ? { next_cursor: next } : {}) };
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
       if (PRIVATE_READS[type] && !serviceOnly(chain) && !staffOfChain(chain)) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
-      return api.aggregate(chain, type, spec);
+      return api.aggregate(chain, type, spec, await rowsMayView(chain, type));
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
-      const r = await api.search(chain, spec);
-      const keep = [];
-      for (const h of r.rows) keep.push((!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!PRIVATE_READS[h.type] || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null))));
-      return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
+      const hitOk = async (/** @type {any} */ h) => (!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!(await privateType(h.type)) || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null)));
+      await projectLinksOf("");
+      const named = Array.isArray(spec && spec.types) && spec.types.length ? spec.types : null;
+      const wide = named ? (await Promise.all(named.map((/** @type {string} */ t) => privateType(t)))).some(Boolean) : true;
+      if (!wide) {
+        const r = await api.search(chain, spec);
+        const keep = []; for (const h of r.rows) keep.push(await hitOk(h));
+        return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
+      }
+      // a search that can reach rows private by their project: pages are cut to the hits she may read, and a cursor is given only when a hit she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
+      spec = checkPage(spec);
+      let cursor = spec.page.cursor, rows = [], next;
+      for (let pages = 0; pages < 10; pages++) {
+        const r = await api.search(chain, { ...spec, page: { ...spec.page, ...(cursor ? { cursor } : {}) } });
+        rows = []; for (const h of r.rows) if (await hitOk(h)) rows.push(h);
+        next = r.next_cursor;
+        if (rows.length || !next) break;
+        cursor = next;
+      }
+      let more = false;
+      for (let ahead = 0; next && !more && ahead < 10; ahead++) {
+        const r = await api.search(chain, { ...spec, page: { ...spec.page, cursor: next } });
+        for (const h of r.rows) if (await hitOk(h)) { more = true; break; }
+        if (!more) next = r.next_cursor;
+      }
+      return { rows, ...(more ? { next_cursor: next } : {}) };
     },
   });
 }
