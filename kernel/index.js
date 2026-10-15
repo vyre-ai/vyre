@@ -121,11 +121,15 @@ export async function createKernel(cfg) {
    * @param {string} person @param {string} via @param {string} [connection]
    */
   const mayUseVia = async (person, via, connection = undefined) => {
-    // the connection a sender goes through: `mail:<id>` and `google:<id>` name theirs; any other sender (an MCP server, a made connector, a Slack workspace) names its vault connection in `connection`, which the Gate
-    // resolves from the vault's list.     const id = typeof connection === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(connection) ? connection : (/^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via)) || [])[1];
+    // the connection a sender goes through: `mail:<id>` and `google:<id>` name theirs; any other sender (an MCP server, a made connector, a Slack workspace) names its vault connection in `connection`, which the
+    // Gate resolves from the vault's list
+    const id = typeof connection === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(connection) ? connection : (/^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via)) || [])[1];
     if (!grantsStore) return true;
+    const role = grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space });
     // a sender with no connection of its own is a shared one (comms:service, a configured sender): a member cannot send through those directly (their tools are the owner's and an admin's), so an agent working for a member cannot either
-    if (!id) { const role = grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }); return role === "owner" || role === "admin"; }
+    if (!id) return role === "owner" || role === "admin";
+    // the vault is the owner's: no role bundle carries vault.call (a connection is used by what the owner shared), so the owner holds every connection of it
+    if (role === "owner") return true;
     try {
       const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${id}`;
       return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
@@ -414,6 +418,8 @@ export async function createKernel(cfg) {
         // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
         personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
           if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !["vault.call", "vault.read", "vault.fill"].includes(action)) throw new KernelError("bad_input", "name one person and a credential action");
+          // the vault is the owner's: the owner holds every credential of it (no role bundle carries vault.call; what others hold is a grant)
+          if (grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner") return true;
           try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
         } }) } : {}),
       /**
