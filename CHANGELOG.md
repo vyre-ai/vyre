@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.5.2
+
+- fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.
+- fix(app): a server pairing that does not finish says why (the server's own refusal, or "Your server stopped answering before the pairing finished") instead of "Something went wrong."; the typed-code error now carries its code (screens/devices/typed-model.js serverPairError).
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

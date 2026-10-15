@@ -244,6 +244,34 @@ test("typed code -> adopt: a wrong ack finishes nothing and the server stays uno
   assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.some(d => d.id === "self"), false, "the server is not owned");
 });
 
+test("typed code -> ack -> adopt from the Mac app, whose key store never gives the key back (WKWebView's IndexedDB): the adopt dials with the key the pairing enrolled, the server is owned, and nothing is refused", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  // what the Mac app's store did on the owner's Mac: every write is taken, every read answers nothing
+  let writes = 0;
+  const forgets = { async get() { return null; }, async set() { writes++; } };
+  const web = webCrypto();
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Vyre on this phone", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, finishTimeoutMs: 20_000, waitMs: 20_000,
+    pairOptions: { crypto: web, keyStore: forgets, about: { kind: "app" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: web, keyStore: forgets } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, `the pairing finished: ${JSON.stringify(r)}`);
+  assert.ok(r.done.owner, "the adopt returned the owner");
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.some(d => d.id === "self"), true, "the server is owned");
+  assert.equal(writes, 1, "one key was made for the run");
+  assert.deepEqual(w.logs.filter(l => /not a paired device/.test(l)), [], "no dial of this app was refused");
+  // the app's later calls, on the same store, are the paired device
+  const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Vyre on this phone", crypto: web, keyStore: forgets });
+  t.after(() => c.close());
+  await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  assert.ok(c.reply && c.reply.device === r.paired.device, `the reconnect is the paired device: ${JSON.stringify(c.reply)}`);
+});
+
 test("--pair-to server: the long code finishes at once with the identity's proof, and a wrong identity is refused", async t => {
   const { ident, w } = await setup(t);
   const made = (await w.call("wink.server.code", { qr: true, pairTo: ident.id }, "cli", PROOF)).data;
