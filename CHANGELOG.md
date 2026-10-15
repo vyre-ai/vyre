@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- fix(vault): a vault wipe finds a sealing process from the folder's own record, not from a listing of processes: the process that spawns the sealer writes `<seal dir>/sealer.pid` at once and removes it when the sealer exits, and the wipe refuses while that pid is a live sealing process (a record whose process is gone is ignored). A sealer that has not appeared in `ps` yet can no longer slip past it. [kernel +4]
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
