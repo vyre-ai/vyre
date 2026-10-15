@@ -40,60 +40,59 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   const rota = Buffer.from("%PDF-ROTA-WEEK-1");
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(rota) });
 
-  // the Flow: a real Documents step, then the email, whose files are a path in Files and the path the Documents step made
-  const flow = { format: 1, name: "engagement_letter", label: "Engagement letter", authorship: "human", trigger: { on: "manual" }, steps: [
-    { id: "letter", kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: "Letter", name: "Engagement letter", values: { client: { name: "Dana Harlow" } } } },
-    { id: "mail", kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: "dana@northwind-bakery.example", cc: ["ops@harlow.example"], bcc: ["alex@harlow.example", "files@harlow.example"],
-      subject: "Your engagement letter and the rota", text: "Both are attached.", attachments: [{ path: "Rota/week1.pdf", name: "Rota week 1.pdf" }, { path: { expr: "steps.letter.path" } }] } },
-  ] };
-  const def = await ok("flows.define", { flow });
-  assert.ok(def.ok, JSON.stringify(def.errors || def));
+  // the Flow, turned on: a real Documents step, then the email, whose files are a path in Files and the path the Documents step made. The person's one yes is given here, when the Flow is approved
+  // (its steps, its destinations and its limits); runs then ask nothing.
+  const baseInput = { to: "dana@northwind-bakery.example", cc: ["ops@harlow.example"], bcc: ["alex@harlow.example"], subject: "Your engagement letter and the rota", text: "Both are attached.",
+    attachments: [{ path: "Rota/week1.pdf", name: "Rota week 1.pdf" }, { path: { expr: "steps.letter.path" } }] };
+  const step = (/** @type {any} */ extra = {}) => ({ id: "mail", kind: "call", action: "comms.email", resource: "vyre://space/comms", input: baseInput, ...extra });
+  const letter = { id: "letter", kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: "Letter", name: "Engagement letter", values: { client: { name: "Dana Harlow" } } } };
   const host = () => /** @type {any} */ (d.registry.deps).flowsHost.get(K.id.space);
-  await host().flows.tools["flows.approve"](host().personChain(), { id: def.id, version: def.version, hash: def.hash });
-  const admin = ownerChain;
-  /** The Flow's own question for the email (an outward step is asked before it runs), answered yes as the person with the presence proof. */
-  const sayYes = async (/** @type {any} */ task) => {
-    yes.add(task.id);
-    const row = await K.gateway.ask.get(admin, task.id);
-    await K.gateway.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
+  const turnOn = async (/** @type {string} */ name, /** @type {any} */ mail) => {
+    const def = await ok("flows.define", { flow: { format: 1, name, label: name, authorship: "human", trigger: { on: "manual" }, steps: [letter, mail] } });
+    assert.ok(def.ok, JSON.stringify(def.errors || def));
+    await host().flows.tools["flows.approve"](host().personChain(), { id: def.id, version: def.version, hash: def.hash });
+    return def;
   };
-  const yes = new Set();
-  /** The Flow's question for the email, once it is waiting: the card the person reads. */
-  const question = async () => until(async () => (await K.gateway.ask.list(admin, { state: ["needs_check"] })).find((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.form.action === "comms.email" && !yes.has(x.id)), "the Flow's question for the email");
-  const startRun = async () => { const r = await ok("flows.start", { id: def.id }); return String(r.id || (r.run && r.run.id) || r.run); };
+  const admin = ownerChain;
+  const questions = async () => (await K.gateway.ask.list(admin, { state: ["needs_check"] })).filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act");
+  const startRun = async (/** @type {any} */ def) => { const r = await ok("flows.start", { id: def.id }); return String(r.id || (r.run && r.run.id) || r.run); };
+  const finalState = async (/** @type {string} */ run) => until(async () => { const r = (await ok("flows.run", { run })).run; return ["done", "failed"].includes(r.state) ? r : null; }, "the run to finish");
 
-  // run one: the Flow asks the person ONCE, and the card shows the files by name, size and hash
-  const run1 = await startRun();
-  const card = await question();
-  const shown = card.form.input;
-  assert.deepEqual([shown.cc, shown.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC are on the card");
-  assert.equal(shown.attachments.length, 2, "both files are on the card");
-  const [fromFiles, fromDocs] = shown.attachments;
-  assert.deepEqual([fromFiles.name, fromFiles.path, fromFiles.size, fromFiles.sha256, fromFiles.by], ["Rota week 1.pdf", "Rota/week1.pdf", rota.length, crypto.createHash("sha256").update(rota).digest("hex"), OWNER]);
-  assert.match(fromDocs.path, /^Documents\/general\/engagement-letter-[0-9a-f]{8}\.docx$/, "the file the Documents step made");
-  const docBytes = Buffer.from(await K.gateway.drive.get(ownerChain, fromDocs.path));
-  assert.equal(fromDocs.sha256, crypto.createHash("sha256").update(docBytes).digest("hex"), "its hash is of the filed bytes");
-  assert.ok(!JSON.stringify(shown).includes(b64(rota)) && !JSON.stringify(shown).includes("%PDF-ROTA"), "no file bytes on the card");
-  assert.equal(posted.length, 0, "nothing is sent before the person says yes");
-
-  // the person says yes once: that is the approval the send goes out on, with no second hold at the Gate
-  await sayYes(card);
-  await until(() => posted.length === 1, "the email to reach the provider");
-  assert.deepEqual(await ok("gate.held"), [], "the Gate holds nothing: the one yes was the approval");
+  // run one, a turned-on Flow: it sends with no question at all, to the destinations the person turned it on with
+  const on = await turnOn("engagement_letter", step());
+  const run1 = await startRun(on);
+  const done = await finalState(run1);
+  assert.equal(done.state, "done", JSON.stringify(done.error || done));
+  assert.deepEqual(await questions(), [], "a turned-on Flow's outward step asks nobody");
+  assert.equal(posted.length, 1, "the email went out");
+  assert.deepEqual(await ok("gate.held"), [], "and nothing waits at the Gate");
   const body = posted[0].body;
-  assert.deepEqual([body.cc, body.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC go out");
-  assert.deepEqual(body.attachments, [{ filename: "Rota week 1.pdf", content: b64(rota) }, { filename: fromDocs.name, content: b64(docBytes) }], "both files go out, byte for byte");
+  assert.deepEqual([body.cc, body.bcc], [["ops@harlow.example"], ["alex@harlow.example"]], "CC and BCC go out");
+  const docPath = String(done.steps.letter.output.path);
+  assert.match(docPath, /^Documents\/general\/engagement-letter-[0-9a-f]{8}\.docx$/, "the file the Documents step made");
+  const docBytes = Buffer.from(await K.gateway.drive.get(ownerChain, docPath));
+  assert.deepEqual(body.attachments, [{ filename: "Rota week 1.pdf", content: b64(rota) }, { filename: docPath.split("/").pop(), content: b64(docBytes) }], "both files go out, byte for byte");
   const logged = d.registry.deps.events.since(0, { limit: 5000 }).find((/** @type {any} */ e) => e.type === "comms.sent");
-  assert.ok(logged && logged.payload.cc === 1 && logged.payload.bcc === 2 && logged.payload.files.length === 2, "the log shows them: " + JSON.stringify(logged));
-  assert.equal((await ok("flows.run", { run: run1 })).run.state !== "failed", true);
+  assert.deepEqual(logged.payload.files.map((/** @type {any} */ f) => [f.name, f.size, f.sha256]), [["Rota week 1.pdf", rota.length, crypto.createHash("sha256").update(rota).digest("hex")], [docPath.split("/").pop(), docBytes.length, crypto.createHash("sha256").update(docBytes).digest("hex")]], "the log shows names, sizes and hashes of what was sent");
 
-  // run two: a file that changed after the person was asked, before the yes, stops the send, and says so
-  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2")), base: 1 });
-  const run2 = await startRun();
-  const card2 = await question();
-  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2-EDITED")), base: 2 });
-  await sayYes(card2);
-  const failed = await until(async () => { const r = (await ok("flows.run", { run: run2 })).run; return r.state === "failed" ? r : null; }, "the run to stop");
+  // a recipient the person did not turn the Flow on for asks, even in a turned-on Flow: CC counts as a destination
+  const sneaky = await turnOn("sneaky_cc", step({ input: { to: "dana@northwind-bakery.example", cc: { expr: "trigger.cc" }, subject: "s", text: "t" } }));
+  await startRun(sneaky);
+  await until(async () => (await questions()).length === 1, "the question for a CC that is not on the allow list");
+  assert.equal(posted.length, 1, "nothing went out for it");
+
+  // a step the author marked as needing approval asks once, with the files on the card, and a file that changed before the yes stops the send
+  const marked = await turnOn("approve_each", step({ approve: true }));
+  const run3 = await startRun(marked);
+  const card = await until(async () => (await questions()).find((/** @type {any} */ x) => x.form.step === "mail" && x.form.run === run3), "the author's own question");
+  const shown = card.form.input;
+  assert.deepEqual(shown.attachments.map((/** @type {any} */ a) => [a.name, a.size]), [["Rota week 1.pdf", rota.length], [docPath.split("/").pop(), docBytes.length]], "the card names the files and their sizes");
+  assert.ok(shown.attachments.every((/** @type {any} */ a) => /^[0-9a-f]{64}$/.test(a.sha256)), "and carries their hashes");
+  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2-EDITED")), base: 1 });
+  const row = await K.gateway.ask.get(admin, card.id);
+  await K.gateway.ask.decide(admin, card.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: card.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
+  const failed = await finalState(run3);
+  assert.equal(failed.state, "failed");
   assert.match(JSON.stringify(failed), /Rota week 1\.pdf changed after you approved this message, so nothing was sent\. Approve it again\./);
   assert.equal(posted.length, 1, "nothing more went out");
 });

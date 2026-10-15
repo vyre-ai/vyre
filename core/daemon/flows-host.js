@@ -146,12 +146,14 @@ export function createFlowsHost(o) {
     const ports = {
       // The facts a person should see before they say yes to a call, filled in here so the one yes is a yes to exactly them: the files on an email get their name, size and content hash, read as the approver
       // (an unreadable file stops the step here, in words, before anyone is asked). The same facts ride into the call, which holds the files to those hashes (lib/connectors/attachments.js).
-      preview: async (/** @type {any} */ chain, /** @type {string} */ _action, /** @type {any} */ input) => {
+      preview: async (/** @type {any} */ chain, /** @type {string} */ _action, /** @type {any} */ input, /** @type {string | null} */ by) => {
         if (!input || typeof input !== "object" || !Array.isArray(input.attachments) || !input.attachments.length) return input;
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) return input;
         const c = personChain(String(person.actor.id));
         const facts = await holdFiles({ kernel: { chain: async () => c, drive: gw.drive } }, {}, input.attachments);
+        // the person who started the run (or whose change fired it) must be able to read each file too: the lesser of the two chains, as for a linked record
+        if (by && by !== String(person.actor.id)) { const theirs = personChain(by); await holdFiles({ kernel: { chain: async () => theirs, drive: gw.drive } }, {}, input.attachments.map((/** @type {any} */ a) => ({ path: a && a.path }))); }
         return { ...input, attachments: facts };
       },
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this

@@ -58,7 +58,8 @@ test("a Flow sends CC, BCC, a file from Files and a file a Documents step made; 
   assert.deepEqual([body.cc, body.bcc], [step.cc, step.bcc], "CC and BCC go out");
   assert.deepEqual(body.attachments, [{ filename: "Rota week 1.pdf", content: Buffer.from("PDF-ROTA-1").toString("base64") }, { filename: "engagement-letter-ab12cd34.docx", content: Buffer.from("DOCX-LETTER-1").toString("base64") }], "both files go out");
   const logged = r.events.find(e => e[0] === "comms.sent")[1];
-  assert.deepEqual([logged.cc, logged.bcc, logged.files], [1, 2, ["Rota week 1.pdf", "engagement-letter-ab12cd34.docx"]], "the log shows them");
+  assert.deepEqual([logged.cc, logged.bcc], [1, 2]);
+  assert.deepEqual(logged.files.map((/** @type {any} */ f) => [f.name, f.size, f.sha256]), [["Rota week 1.pdf", 10, crypto.createHash("sha256").update(r.files[ROTA]).digest("hex")], ["engagement-letter-ab12cd34.docx", 13, crypto.createHash("sha256").update(r.files[LETTER]).digest("hex")]], "the log shows names, sizes and hashes of what was sent");
 });
 
 test("the send stops when a file changed after approval, and when the asker can no longer read it", async () => {

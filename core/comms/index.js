@@ -205,7 +205,7 @@ export function registerComms(ctx, o = {}) {
         const c = content && typeof content === "object" ? content : {};
         const attachments = await releaseFiles(ctx, c.attachments).catch((/** @type {any} */ e) => { throw fail(e.message, e.code || "failed"); });
         const r = await sendThrough(conn, { to, cc: c.cc, bcc: c.bcc, ...(attachments.length ? { attachments } : {}), subject: c.subject, text: c.text, html: c.html, from: c.from, replyTo: c.replyTo }, { http, idem: String(id) });
-        ctx.events.emit("comms.sent", { id, via: "service", provider: r.provider, sent: to.length, ...(c.cc ? { cc: c.cc.length } : {}), ...(c.bcc ? { bcc: c.bcc.length } : {}), ...(attachments.length ? { files: attachments.map(a => a.filename) } : {}) });
+        ctx.events.emit("comms.sent", { id, via: "service", provider: r.provider, sent: to.length, ...(c.cc ? { cc: c.cc.length } : {}), ...(c.bcc ? { bcc: c.bcc.length } : {}), ...(attachments.length ? { files: attachments.map(a => ({ name: a.filename, size: a.size, sha256: a.sha256 })) } : {}) });
         return { sent: [{ to, id: r.id }], via: r.provider };
       }
       if (it.via !== SENDER) throw fail(`${id} is not a held text`, "denied");
