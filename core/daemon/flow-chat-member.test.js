@@ -58,6 +58,21 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
   assert.equal(row?.flow_origin?.flow, open, "the thread joins that Flow's chat");
 
+  // inside the job: the agent (the fake claude, scripted by the member's own words) reads through the job's own session. An ordinary read answers, so the path is live; the owner's private skill,
+  // which a member never reads, is refused or empty, and none of its words come back.
+  const skillBody = "---\nname: owner-secret\ndescription: Use this when the person asks about owner-secret, which is OWNER-PRIVATE-TEXT\n---\nOWNER-PRIVATE-TEXT\n";
+  const dr = await asOwner("skills.draft", { name: "owner-secret", level: "personal", body: skillBody });
+  assert.ok(!dr.error, JSON.stringify(dr.error));
+  assert.ok(!(await asOwner("skills.approve", { name: "owner-secret", level: "personal", version: dr.data.version })).error);
+  const kept = (await K.gateway.records.query(K.gateway.serviceChain("skills"), "skill", { page: { limit: 50 } })).rows;
+  const secret = kept.find((/** @type {any} */ x) => x.data.name === "owner-secret");
+  assert.ok(secret, "the owner's skill exists");
+  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
+  assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
+  const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer");
+  assert.ok(said.includes("rows"), "an ordinary read in the job answers");
+  assert.ok(!said.includes("OWNER-PRIVATE-TEXT"), "the owner's private skill never reaches the member's job");
+
   // the Flow Ben may not read stays refused even now that he has used another
   assert.ok((await asBen("agents.flow-say", { agent: "juno", flow: hidden, text: "and this one" })).error);
   assert.equal(seen.filter(q => q.runas !== BEN).length, 0, "no job ran as anyone else");
