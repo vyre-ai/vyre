@@ -40,6 +40,8 @@ export function agentSource(call: Call) {
     restart: (agent: string) => ask("computers.restart", { agent }),
     /** What the agent may do by itself (gate.standing.*): the list, a new one built by standing-model's addCall, and revoke. */
     standing: async (agent: string): Promise<Permission[]> => (await ask<{ permissions?: Permission[] }>("gate.standing.list", { agent }))?.permissions || [],
+    /** Every way out the Gate holds (gate.senders): the name an act goes out under, and what it takes. */
+    senders: async (): Promise<{ name: string; kinds: string[] }[]> => { const d = await ask<any>("gate.senders"); return (Array.isArray(d) ? d : d?.senders || []).filter((x: any) => x && typeof x.name === "string").map((x: any) => ({ name: x.name, kinds: Array.isArray(x.kinds) ? x.kinds : [] })); },
     addStanding: (input: Record<string, unknown>) => ask<Record<string, any>>("gate.standing.add", input),
     revokeStanding: (id: string) => ask("gate.standing.revoke", { id }),
     rename: (agent: string, name: string) => ask("computers.rename", { computer: agent, name }),

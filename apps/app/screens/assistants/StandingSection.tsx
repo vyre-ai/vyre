@@ -16,7 +16,13 @@ export function Standing({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
   const load = useCallback(() => { setErr(""); agent.standing(name).then(setRows).catch((e) => setErr(say(e))); }, [name]);
   useEffect(load, [load]);
-  useEffect(() => { connections.connections().then((l) => setConns(l.filter((c) => c.ready && viaOf(c)).map((c) => ({ via: viaOf(c), label: c.label || c.word })))).catch(() => setConns([])); }, []);
+  useEffect(() => {
+    // every way out the Gate holds, named as the person knows it where a connection has a label
+    Promise.all([agent.senders().catch(() => []), connections.connections().catch(() => [])]).then(([senders, list]) => {
+      const label = (via: string) => list.find((c) => viaOf(c) === via)?.label;
+      setConns(senders.filter((s) => s.kinds.some((k) => k === "send" || k === "post" || k === "spend")).map((s) => ({ via: s.name, label: label(s.name) || s.name })));
+    });
+  }, []);
   const nameOf = (via: string) => conns.find((c) => c.via === via)?.label || via;
   if (name === "assistant") return null;
   if (err) return <Sec title="Acts by itself"><Card flush><ErrorState title="Permissions did not load" reason={err} retry={load} /></Card></Sec>;

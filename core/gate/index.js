@@ -123,6 +123,21 @@ export default {
      * A plain ask is used up by the match (consume). A sender that cannot name its destinations never matches.
      */
     /** The kernel's answer to "may this verified agent do this by itself": { grant } or null. A person's own call, a model slot and the default assistant never match. */
+    /**
+     * The vault connection a sender goes through, for the kernel's "may this person use it" check: a mail login's and a Google account's are named by the sender (`mail:<id>`, `google:<id>`); any other sender
+     * (an MCP server, a made connector, a workspace) is found in the vault's own list by the name it sends as. A sender with no connection answers "", and the kernel has none to check.
+     */
+    const connectionOf = async (via) => {
+      const v = String(via || "");
+      const m = /^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(v);
+      if (m) return m[1];
+      try {
+        const r = await ctx.call("vault.connections.list", {});
+        const rows = r && !r.error && r.data ? (Array.isArray(r.data) ? r.data : r.data.connections) : null;
+        const hit = (Array.isArray(rows) ? rows : []).find((/** @type {any} */ c) => c && (c.id === v.split(":").slice(1).join(":") || c.ref === v || `${c.source}:${c.ref}` === v));
+        return hit && typeof hit.id === "string" ? hit.id : "";
+      } catch { return ""; }
+    };
     const standingCover = async (input, meta, agentName) => {
       try {
         if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
@@ -132,7 +147,8 @@ export default {
         const currency = input.kind === "spend" && input.content && typeof input.content === "object" && typeof input.content.currency === "string" ? input.content.currency : undefined;
         const maker = agentName ? await ctx.call("agents.maker", { agent: String(agentName) }).catch(() => null) : null;
         const agentOwner = maker && !maker.error && maker.data && typeof maker.data.made_by === "string" ? maker.data.made_by : null;
-        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
+        const connection = await connectionOf(input.via);
+        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), ...(connection ? { connection } : {}), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
       } catch { return null; }
     };
     const said = async (input, thread, agent) => {
@@ -354,7 +370,8 @@ export default {
         if (i.expires !== undefined) { if (!(Number(i.expires) > Date.now())) throw Object.assign(new Error("an expiry is in the future"), { code: "bad_input" }); conditions.when = { expires: Number(i.expires) }; }
         // nobody grants a connection they do not have themselves
         const via = i.via ? String(i.via) : "";
-        if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
+        if (via) { try { gate.sender(via); } catch { throw Object.assign(new Error(`${via.slice(0, 60)} is not a way out this Space has: gate.senders lists them`), { code: "bad_input" }); } }
+        if (via && !(await K.mayUseConnection(person, via, (await connectionOf(via)) || undefined))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
         if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });

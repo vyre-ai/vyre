@@ -97,10 +97,12 @@ test("a payment is held over its limit for one payment, over its day, and in ano
   t.after(() => new Promise(r => server.close(() => r(undefined))));
   const host = `127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   const w = await world(t, { senders: { pay: { type: "http", vault: "pay-token", hosts: [host] } } });
-  const { OWNER, ok, agentCall } = w;
+  const { OWNER, ok, as, agentCall } = w;
   await ok("vault.put", { name: "pay-token", kind: "api-key", fields: { value: `fixture-token-${crypto.randomBytes(6).toString("hex")}` } });
   await ok("vault.grant", { name: "pay-token", module: "gate" });
   await ok("agents.create", { name: "juno", kind: "agent" });
+  const bad = await as(OWNER, "gate.standing.add", { agent: "juno", kind: "spend", via: "no-such-sender", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
+  assert.equal(bad.error && bad.error.code, "bad_input", "a permission names a way out the Space has");
   await ok("gate.standing.add", { agent: "juno", kind: "spend", via: "pay", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
   const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example") => {
     const r = await agentCall("juno", OWNER, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
