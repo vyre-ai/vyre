@@ -29,6 +29,8 @@ export { Banner } from "./components/Banner";
 export { Field } from "./components/Field";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
+export { FormFields } from "./components/FormFields";
+export { blank as blankForm, missing as missingForm, submission as formSubmission, isQuestions } from "./components/form-fields-model.js";
 export { Segmented } from "./components/Segmented";
 export { RolePicker } from "./components/RolePicker";
 export type { RoleChoice } from "./components/RolePicker";

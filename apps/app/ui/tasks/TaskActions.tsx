@@ -7,6 +7,7 @@ import { handEvidence } from "../../src/store-core/tasks.js";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
+import { isQuestions } from "../components/form-fields-model.js";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { Banner } from "../components/Banner";
@@ -22,7 +23,7 @@ import { cardFor, nameOf, recordTitle, STATE_LABEL, taskFacts, draftOf, stateTon
 
 type Task = any;
 type Open =
-  | { kind: "proof"; task: Task; id: "send" | "approve" | "yes" }
+  | { kind: "proof"; task: Task; id: "send" | "approve" | "yes"; values?: Record<string, string | boolean> }
   | { kind: "edit"; task: Task }
   | { kind: "fix"; task: Task }
   | { kind: "reassign"; task: Task }
@@ -47,7 +48,8 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
     const rec = world.records.get(task.record);
     try {
       if (id === "open") { setOpen({ kind: "task", task }); return; }
-      if (id === "send" || id === "approve" || id === "yes") { setOpen({ kind: "proof", task, id }); return; }
+      if (id === "yes" && isQuestions(task.form) && !extra) { showToast("Answer its questions on the card first."); return; }
+      if (id === "send" || id === "approve" || id === "yes") { setOpen({ kind: "proof", task, id, ...(id === "yes" && extra && typeof extra === "object" ? { values: extra as Record<string, string | boolean> } : {}) }); return; }
       if (id === "edit") { setOpen({ kind: "edit", task }); return; }
       if (id === "open-chat") { const t = openTarget(task); if (t) go(t.route); else showToast("This one did not come from a chat."); return; }
       if (id === "fix") {
@@ -85,13 +87,14 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
     showToast(`Added ${name}. ${task.title} is done.`);
   };
 
-  const confirmProof = async (task: Task, id: "send" | "approve" | "yes") => {
+  const confirmProof = async (task: Task, id: "send" | "approve" | "yes", values?: Record<string, string | boolean>) => {
     if (!world) return;
     const proof = simulatedProof({ decision: id === "yes" ? "approve" : id, payload_hash: `task:${task.id}`, now: world.now });
     const before = world.records.get(task.record)?.data?.stage;
     try {
       if (id === "yes") {
-        await store.submit(task.id, { decision: { answer: "yes", reason: "Approved with Face ID." } }, world.me);
+        // The answers to the question's form ride with the yes; the engine checks them against the form again before the Flow goes on.
+        await store.submit(task.id, { decision: { answer: "yes", reason: "Approved with Face ID." }, ...(values ? { values } : {}) } as never, world.me);
         haptic.approve();
         showToast(`Approved: ${task.title}.`);
       } else {
@@ -111,7 +114,7 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
   return { run, sheets };
 }
 
-function Sheets({ world, open, close, confirmProof, run, go }: { world: World; open: Open; close: () => void; confirmProof: (t: Task, id: "send" | "approve" | "yes") => void; run: (t: Task, id: string, i?: string, x?: unknown) => void; go: (p: string) => void }) {
+function Sheets({ world, open, close, confirmProof, run, go }: { world: World; open: Open; close: () => void; confirmProof: (t: Task, id: "send" | "approve" | "yes", values?: Record<string, string | boolean>) => void; run: (t: Task, id: string, i?: string, x?: unknown) => void; go: (p: string) => void }) {
   const store = useStore();
   const task = open?.task;
   const rec = task ? world.records.get(task.record) : undefined;
@@ -124,7 +127,7 @@ function Sheets({ world, open, close, confirmProof, run, go }: { world: World; o
             <Text size="caption" tone="label">Face ID confirms it is you. In this preview a button stands in for it, and nothing is sent.</Text>
             <View className="flex-row flex-wrap justify-end gap-s2 pt-s2">
               <Button kind="ghost" label="Cancel" onPress={close} />
-              <Button kind="primary" icon="faceid" label="Confirm with Face ID" onPress={() => confirmProof(task, open.id)} />
+              <Button kind="primary" icon="faceid" label="Confirm with Face ID" onPress={() => confirmProof(task, open.id, open.values)} />
             </View>
           </>
         ) : null}
