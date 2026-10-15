@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(vault,flows): credentials carried to a woken agent. A task woken for an agent with an approver lends the Connections its approved Kit names (`vault.connections.lend`, source `vault:lease:<task>`, use only) and ends them with the task; `leaseTask` refuses a Connection the approver does not hold, asked through a new read-only `personMay` on the vault's own kernel handle (allow or deny, no other module has it); a wake with no approver lends nothing and the agent runs on its own access, and the agent step says so. kernel/index.js, kernel/grants/index.js (the lease grant records its approver), core/vault/access.js, core/daemon/flows-host.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

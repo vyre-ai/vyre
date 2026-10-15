@@ -114,6 +114,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                     help="They go into the prompt that wakes the agent for this task, after its own instructions (who to escalate to, which email alias to use outside)." />
                   <Select label="The record to hand over" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
+                  <Text size="caption" tone="label">{`Runs as ${s.agent ? named(options.agents, s.agent) : "the agent"}, with its own access. A Connection the approved Kit names for the task is lent for that task only, and only from someone who holds it.`}</Text>
                 </>
               ) : null}
               {s.kind === "assign" ? (
