@@ -82,9 +82,9 @@ test("0.6: a patch reaches a step's failure path and the Flow's own failure step
   f = applyPatch(f, [{ op: "move", step: "n2", by: -1 }, { op: "remove", step: "n1" }]);
   assert.deepEqual(f.on_failure.map((/** @type {any} */ s) => s.id), ["n2"]);
   // sends and returns are Flow settings
-  f = applyPatch(base, [{ op: "meta", key: "sends", value: { allow: ["mail"], max: 5 } }, { op: "meta", key: "returns", value: ["matter"] }]);
+  f = applyPatch(base, [{ op: "meta", key: "sends", value: { allow: ["mail"], max: 5 } }, { op: "meta", key: "returns", value: { matter: "steps.a.record.id" } }]);
   assert.deepEqual(f.sends, { allow: ["mail"], max: 5 });
-  assert.deepEqual(f.returns, ["matter"]);
+  assert.deepEqual(f.returns, { matter: "steps.a.record.id" });
   const bad = (/** @type {any[]} */ ops, /** @type {RegExp} */ re) => assert.throws(() => applyPatch(base, ops), re);
   bad([{ op: "insert", lane: "steps", first: true, step: m("x") }], /lane is on_failure/);
   bad([{ op: "insert", lane: "on_failure", step: m("x") }], /say where in the failure steps/);
