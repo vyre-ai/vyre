@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { isCredentialFile } from "../sessions/drivers/credfiles.js";
+import { isCredentialFile } from "../../lib/credfiles/index.js";
 
 const NOFOLLOW = fs.constants.O_NOFOLLOW || 0, NONBLOCK = fs.constants.O_NONBLOCK || 0;
 const cwd = process.cwd();   // the sandbox starts it in <work>/files; the workspace root is its parent

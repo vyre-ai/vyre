@@ -8,8 +8,8 @@ import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 import { killTree } from "./proctree.js";
 
 const READER = path.join(path.dirname(fileURLToPath(import.meta.url)), "reader.js");
-// reader.js imports the credential file names, so the folder that holds them is readable in the sandbox too (it is code, nothing in it is a secret).
-const CREDFILES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "sessions", "drivers");
+// reader.js imports the credential file names, so the folder that holds only them (lib/credfiles) is readable in the sandbox too: nothing else of lib or the sessions drivers is mounted (it is code, nothing in it is a secret).
+const CREDFILES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "lib", "credfiles");
 
 export const LIMITS = { maxBytes: 100 * 1024 * 1024, maxFiles: 20000, maxTotal: 512 * 1024 * 1024, deadlineMs: 120_000 };
 
