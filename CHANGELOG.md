@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): a person writing in a Flow's chat wakes the Flow's agent for them, as them, with the Flow and its recent runs as context (new tool `agents.flow-say`); the wake joins the chat as one more divider, and "Reply to this run" narrows it to that run. The three wakes of one Flow are one chat with three dividers.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
