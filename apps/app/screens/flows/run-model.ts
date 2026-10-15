@@ -82,7 +82,7 @@ export function stepRows(painted: PaintedNode[], steps: Record<string, Ledger> |
       let status = "Running", tone: Tone = "plain", wakes = "";
       const w = e.wait;
       switch (e.status) {
-        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; break;
+        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; if ((e.output as any)?.cut) { status = `Done, cut at ${(e.output as any).count} of ${(e.output as any).total}`; tone = "warn"; } break;
         case "failed_handled": status = "Failed, handled"; tone = "warn"; break;
         case "skipped": status = e.substitute ? `Skipped, value given by ${e.skipped_by || "a person"}` : "Skipped"; break;
         case "failed": status = ask ? "Refused" : "Failed"; tone = "err"; break;
