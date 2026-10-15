@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(agents): agent wake hardening (roadmap 15, part 1). One agent runs at most five jobs at once and starts at most forty in an hour (`agents.wake_max_concurrent`, `agents.wake_max_hourly` in the Space's config change them); an extra wake is refused with words and the task is marked stuck with them so a person can retry it (`agents.wake` code `busy`, new `agents.wake-done` called by the Flows host when the task ends). A stuck reason hides a key of any shape (slashes, plus and equals signs included). A test pins that the agent chain stays inside the Flows host. core/agents/index.js, core/daemon/agent-wake.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

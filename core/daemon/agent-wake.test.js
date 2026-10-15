@@ -138,3 +138,23 @@ test("a job that stopped with a bare reason but whose thread says the sign-in ex
   assert.match(stuck[0].reason, /^juno's AI sign-in has expired\./);
   assert.equal(stuck[0].suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
 });
+
+test("a stuck reason hides a key of any shape: letters, digits, dashes, dots, slashes, plus and equals", async () => {
+  const { sayWhy } = await import("./agent-wake.js");
+  for (const key of ["QWxhZGRpbjpvcGVuIHNlc2FtZQ+/AbCdEfGh==", "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", "AbCdEfGhIjKl/MnOpQrStUvWxYz0123", "abc+def+ghi+jkl+mno+pqr+stu"]) {
+    const r = sayWhy("juno", `the model said ${key} was refused`);
+    assert.ok(!r.reason.includes(key.slice(4, 18)), `${key} is not in the reason: ${r.reason}`);
+    assert.match(r.reason, /\[removed\]/);
+  }
+  assert.match(sayWhy("juno", "plain words about a stop").reason, /plain words about a stop/, "ordinary words stay");
+});
+
+test("the agent chain stays inside the Flows host: it is built in one place, handed to the wake and nowhere else", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./flows-host.js", import.meta.url), "utf8");
+  const uses = src.split("\n").filter(l => /\bagentChain\b/.test(l));
+  assert.ok(uses.length <= 2, `agentChain is built once and handed to createAgentWake once: ${uses.length} lines`);
+  assert.ok(uses.some(l => /const agentChain = /.test(l)), "built here");
+  assert.ok(uses.some(l => /createAgentWake\(/.test(l)), "handed to the wake");
+  assert.ok(!/\bagentChain\b\s*[,:}]/.test(src.slice(src.indexOf("return {", src.indexOf("createAgentWake(")))), "it is not part of anything the host returns");
+});

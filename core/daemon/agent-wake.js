@@ -49,6 +49,7 @@ export function createAgentWake(o) {
   async function onEvent(e) {
     if (e && ENDS.test(String(e.type)) && typeof o.reclaim === "function" && e.data && e.data.task && typeof e.data.task.id === "string") {
       // the task is over: the use of it lent to the agent ends with it
+      await o.callModule("agents.wake-done", { task: e.data.task.id }, o.space).catch(() => null);
       try { await o.reclaim(e.data.task.id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${e.data.task.id} was not ended (${/** @type {Error} */ (err).message})`); }
       return;
     }
@@ -78,7 +79,7 @@ export function createAgentWake(o) {
 
 /** The words a person reads when an agent's job failed: what happened, cut short and free of anything that looks like a secret, and the next step. @param {string} agent @param {string} why */
 export function sayWhy(agent, why) {
-  const clean = String(why || "").replace(/[A-Za-z0-9_\-.]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
+  const clean = String(why || "").replace(/[A-Za-z0-9_\-./+=]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
   const auth = AUTH.test(clean);
   if (auth) return { reason: `${agent}'s AI sign-in has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
   return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };

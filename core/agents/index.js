@@ -79,7 +79,11 @@ const MIGRATIONS = [
   // A wake whose job failed or stopped short: the claim is kept (failed = 1) so a retry may take it again, at most once more.
   `ALTER TABLE agents_wakes ADD COLUMN tries INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE agents_wakes ADD COLUMN failed INTEGER NOT NULL DEFAULT 0`,
+  // When the task a wake was for ended: the caps on one agent's jobs count the ones still open (done_at empty) and the ones started in the last hour.
+  `ALTER TABLE agents_wakes ADD COLUMN done_at INTEGER`,
 ];
+/** The most jobs one agent runs at once and starts in an hour (agents.wake_max_concurrent and agents.wake_max_hourly settle it per Space): a runaway Flow cannot start an agent without end. */
+export const WAKE_CAPS = Object.freeze({ concurrent: 5, hourly: 40 });
 
 /**
  * The Engineer: a built-in assistant that helps an admin change the shape of their Space. It only PROPOSES. Its model session reaches these tools and no others (the registry holds it to
@@ -822,6 +826,7 @@ export default {
 
     // A task given to an agent: wake it with the task as the prompt. Once per (task, agent); the claim is written first. The job is for the approver (the asker gate judges them, so it is never wider than
     // they may use) and sits in the task's project only when the agent reaches it. It is not marked done here: the agent starts and submits the task itself.
+    const wakeCfg = () => (ctx.config && ctx.config.agents) || {};
     ctx.tool("agents.wake", {
       description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host.",
       internal: true, callers: ["module"],
@@ -833,6 +838,16 @@ export default {
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
         // a retry: a wake that failed may be claimed again, once
         const retry = !claim.changes && db.prepare("UPDATE agents_wakes SET failed = 0, thread = NULL WHERE task = ? AND agent = ? AND failed = 1 AND tries < 2").run(task, a.name).changes > 0;
+        // a new wake counts against the agent's caps: a repeat of an event, or a retry of a failed one, does not
+        if (claim.changes) {
+          const caps = { concurrent: Number(wakeCfg().wake_max_concurrent) > 0 ? Number(wakeCfg().wake_max_concurrent) : WAKE_CAPS.concurrent, hourly: Number(wakeCfg().wake_max_hourly) > 0 ? Number(wakeCfg().wake_max_hourly) : WAKE_CAPS.hourly };
+          const open = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM agents_wakes WHERE agent = ? AND task != ? AND done_at IS NULL AND failed = 0 AND at > ?").get(a.name, task, Date.now() - 24 * 3600_000)).n;
+          const hour = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM agents_wakes WHERE agent = ? AND task != ? AND at > ?").get(a.name, task, Date.now() - 3600_000)).n;
+          if (open >= caps.concurrent || hour >= caps.hourly) {
+            db.prepare("DELETE FROM agents_wakes WHERE task = ? AND agent = ?").run(task, a.name);
+            throw Object.assign(new Error(open >= caps.concurrent ? `${a.name} already has ${open} jobs running, the most it takes at once. This task waits: retry it when one finishes.` : `${a.name} has started ${hour} jobs in the last hour, the most it takes. This task waits: retry it in a while.`), { code: "busy" });
+          }
+        }
         if (!claim.changes && !retry) { const row = /** @type {any} */ (db.prepare("SELECT thread FROM agents_wakes WHERE task = ? AND agent = ?").get(task, a.name)); return { agent: a.name, thread: row ? row.thread : null, already: true }; }
         try {
           const org = i.origin && typeof i.origin === "object" ? i.origin : null;
@@ -860,6 +875,15 @@ export default {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks which task a job is for"), { code: "denied" }); // internal-word: the caller label, not shown text
         const row = /** @type {any} */ (db.prepare("SELECT task, agent, failed, tries FROM agents_wakes WHERE thread = ?").get(String(i.thread)));
         return row ? { task: row.task, agent: row.agent, failed: row.failed === 1, tries: row.tries } : null;
+      },
+    });
+    ctx.tool("agents.wake-done", {
+      description: "Mark the wake for a task as over (the task ended): it no longer counts as one of the agent's running jobs. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["task"], properties: { task: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host marks a wake over"), { code: "denied" }); // internal-word: the caller label, not shown text
+        return { ended: db.prepare("UPDATE agents_wakes SET done_at = ? WHERE task = ? AND done_at IS NULL").run(Date.now(), String(i.task)).changes };
       },
     });
     ctx.tool("agents.wake-failed", {
