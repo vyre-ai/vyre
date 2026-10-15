@@ -332,6 +332,7 @@ export const PERSON_ONLY = new Map([
   ["publish.retire", "would let an assistant widen its own authority: publishing decisions"],
   ["relay.devices.ask-trust", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.devices.remove", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
+  ["relay.devices.leave", "the person's own device taking itself off the home: relay pairing, devices and who may reach the home; an assistant never unpairs the person's device"],
   ["relay.devices.trust", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.devices.mark", "needs the person's Face ID or presence: it decides which paired apps are the owner's own"],
   ["relay.disable", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],

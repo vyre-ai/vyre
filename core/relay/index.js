@@ -1277,6 +1277,20 @@ export default {
       },
     });
 
+    // A device lets go of itself (forgetting this Mac's identity, apps/app/src/identity/forget-mac.ts): its own row only, the one its channel proves, never an id from the input. Its connections close and a
+    // reconnect is refused, the same as a removal by the owner.
+    ctx.tool("relay.devices.leave", {
+      description: "A paired device takes itself off this box: its own row is removed, its presence key with it, and its connections close. Only the calling device, over its own channel; it names no other device.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta.caller, meta, "a device leaving");
+        const id = deviceIdOf(String(meta.caller || ""));
+        if (id === null) throw fail("denied", "only a paired device, over its own channel, can take itself off this box");
+        if (!forget(id, "left")) throw fail("not_found", "this device is not paired here");
+        return { left: id };
+      },
+    });
+
     ctx.tool("relay.devices.clear-leftover", {
       description: "On a server nobody owns: let go of every paired device row left by a pairing that never completed ownership, so a new owner's pairing is not refused by them. Only the Wink module asks, and only while the server is unowned. Answers { cleared }.",
       input: obj(),

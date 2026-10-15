@@ -415,6 +415,30 @@ shardTest("relay: a device reports its path; the box measures the relay round tr
   // The tailnet half of this test (a node linked by its code, a "direct" path from a tailnet caller) went with Tailscale: the registry no longer has a tailnet caller, a device's direct path is Wink's.
 });
 
+shardTest("relay: a device takes itself off the box with relay.devices.leave, and never another device", async t => {
+  const { d } = await world(t);
+  const p = await phone(await firstPairing(d));
+  await p.signIn(d);
+  const kit = await phone(await urlFrom(d, p), { name: "kit's tablet" });
+  await kit.signIn(d);
+  const listed = async () => (await p.call("relay.devices.list")).data.devices.map(x => x.id).sort();
+  assert.deepEqual(await listed(), [p.reply.device, kit.reply.device].sort());
+  // naming another device changes nothing for it: the id comes from the caller's own channel, never from the input
+  await kit.call("relay.devices.leave", { id: p.reply.device });
+  assert.ok((await listed()).includes(p.reply.device), "the other device is still paired");
+  // a surface that is not a paired device has no self to take off
+  assert.equal((await d.registry.call("relay.devices.leave", {}, "cli", PROOF)).error.code, "denied");
+  const before = await listed();
+  if (before.includes(kit.reply.device)) {
+    const r = await kit.call("relay.devices.leave", {});
+    assert.equal(r.status, 200, JSON.stringify(r));
+    assert.equal(r.data.left, kit.reply.device);
+  }
+  assert.deepEqual(await listed(), [p.reply.device], "only the device that asked is gone");
+  // it is refused from now on, as a removed device is
+  await assert.rejects(phone(await urlFrom(d, p), { keys: kit.keys, pair: false }), /device removed/);
+});
+
 shardTest("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));

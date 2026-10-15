@@ -1,6 +1,6 @@
 # Refresh the golden decisions (kernel/golden/golden.json) in the CI environment, where the recorder's answers are the ones the node workflow checks. The test box differs (for one, a share server runs
 # there), so a refresh made on it does not match what CI records. Push a commit whose message contains [golden-update]; the run writes allow.json, presence.json and golden.json and uploads them as an
-# artifact to commit with the code that moved them (kernel/golden/allow.test.js and golden.test.js must then pass).
+# artifact (with the docs reference and index, docs:ref) to commit with the code that moved them (kernel/golden/allow.test.js and golden.test.js must then pass).
 name: golden-refresh
 on:
   push:
@@ -25,6 +25,8 @@ jobs:
       - run: npm ci
       - run: node scripts/gen-allow.mjs
       - run: node kernel/golden/index.js --write
+      # a new or changed tool also moves the generated docs reference and index (docs:ref loads every module, so it runs here and never on a person's Mac)
+      - run: npm run docs:ref
       - uses: actions/upload-artifact@v4
         with:
           name: golden
@@ -32,3 +34,5 @@ jobs:
             kernel/golden/allow.json
             kernel/golden/presence.json
             kernel/golden/golden.json
+            docs/index.json
+            docs/reference/*.md

@@ -1,10 +1,13 @@
 import { forgetIdentity } from "./store";
 import { webSteps } from "./wipe-web.js";
+import { shellRelayBridge } from "../api/shell-relay-key.js";
 import type { WipeStep } from "./wipe.js";
 
 export const deviceSteps = (): WipeStep[] => [
   // the identity store keeps the key in memory too; the database deletion below takes the stored copy
   { name: "identity in memory", run: () => forgetIdentity() },
+  // the Mac app's relay key lives in the Mac's Keychain, not in this page's storage: the shell drops it (a browser has none to drop)
+  { name: "relay key on this Mac", run: async () => { await shellRelayBridge()?.forget?.(); } },
   ...webSteps(globalThis),
 ];
 

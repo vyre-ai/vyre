@@ -11,7 +11,8 @@ export type MacShell = {
     public(create?: boolean): Promise<string>;
     sign(message: string): Promise<string>;
     has(): Promise<boolean>;
-    forget(): Promise<void>;
+    /** Forget this Mac's identity key after the shell's own alert, which names `servers` (the ones this Mac stops reaching); the shell drops its relay key too. Rejects when the person says no. */
+    forget(servers?: string[], opts?: { keepRelay?: boolean }): Promise<void>;
     /** Windows only: the page says setup has finished (a server paired or a team joined), so the app starts hidden in the tray from now on. */
     setupDone?(): Promise<void>;
     /** Settings' "Make this Mac a server": the Mac app runs its own setup (an explicit choice, never automatic). */

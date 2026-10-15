@@ -16,6 +16,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "agents.vault.assign", "agents.vault.list", "agents.vault.unassign",
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
+  // A device taking itself off the home: the handler takes only the calling device's own row (its channel proves the id), so a member's device leaves as the owner's does.
+  "relay.devices.leave",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",

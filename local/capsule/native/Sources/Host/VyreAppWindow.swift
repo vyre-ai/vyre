@@ -35,10 +35,11 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     /// Whether a local vyred answers right now; set by the Capsule at launch.
     var vyredUp: () -> Bool = { false }
     /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
-    var confirmForget: () -> Bool = {
+    /// It names the servers this Mac stops reaching (ForgetMac.swift).
+    var confirmForget: ([String]) -> Bool = { servers in
         let a = NSAlert()
-        a.messageText = "Forget this Mac's key?"
-        a.informativeText = "This Mac will no longer be able to sign in to your name. You can get back in with your recovery code or another device."
+        a.messageText = ForgetMac.title
+        a.informativeText = ForgetMac.words(servers: servers)
         a.addButton(withTitle: "Forget it")
         a.addButton(withTitle: "Keep it")
         return a.runModal() == .alertFirstButtonReturn
@@ -226,8 +227,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
                 reply(id, ["signature": MacIdentity.b64url(sig)])
             case "identity.has": reply(id, ["has": id0.has])
             default:
-                guard confirmForget() else { return reply(id, ["error": "Not forgotten. Your key is still on this Mac."]) }
-                id0.forget(); reply(id, ["ok": true])
+                guard confirmForget(ForgetMac.serverNames(args["servers"])) else { return reply(id, ["error": "Not forgotten. Your key is still on this Mac."]) }
+                // `keepRelay`: the page still has its servers to leave over the relay key, and drops it itself after (relayKey.forget)
+                ForgetMac.forget(identity: id0, relayKey: args["keepRelay"] as? Bool == true ? nil : relayKey); reply(id, ["ok": true])
             }
         case "agree.public":
             guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
@@ -238,6 +240,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         case "relay.public":
             guard let pub = relayKey?.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep the key it reaches your servers with." : "There is no relay key on this Mac."]) }
             reply(id, ["publicKey": MacIdentity.b64url(pub)])
+        case "relay.forget":
+            // a removed device's wipe (apps/app/src/identity/device-wipe.web.ts): the key its pairings used goes with them; the next pairing makes a new one
+            relayKey?.forget(); reply(id, ["ok": true])
         case "relay.dh":
             guard let peer = (args["peer"] as? String).flatMap(MacIdentity.unb64url), let shared = relayKey?.dh(peer: peer) else { return reply(id, ["error": "This Mac could not open a channel to your server with its key."]) }
             reply(id, ["shared": MacIdentity.b64url(shared)])
@@ -408,7 +413,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         version: window.__vyreVersion || "",
         relayKey: {
           public: function (create) { return call("relay.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
-          dh: function (peer) { return call("relay.dh", { peer: peer }).then(function (r) { return r.shared; }); }
+          dh: function (peer) { return call("relay.dh", { peer: peer }).then(function (r) { return r.shared; }); },
+          forget: function () { return call("relay.forget").then(function () {}); }
         },
         presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
@@ -417,7 +423,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
           has: function () { return call("identity.has").then(function (r) { return r.has; }); },
-          forget: function () { return call("identity.forget").then(function () {}); },
+          forget: function (servers, opts) { return call("identity.forget", { servers: Array.isArray(servers) ? servers.map(String) : [], keepRelay: !!(opts && opts.keepRelay) }).then(function () {}); },
           agreePublic: function (create) { return call("agree.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           agree: function (epk) { return call("agree.agree", { epk: epk }).then(function (r) { return r.secret; }); },
           makeServer: function () { return call("setup.server").then(function () {}); },
