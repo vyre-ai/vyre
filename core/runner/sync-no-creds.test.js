@@ -109,3 +109,10 @@ test("the work folder's agent config files (which carry MCP headers and env valu
   assert.ok(!stored.includes(SECRET), "no agent config reached the space");
   assert.ok(stored.includes("readme.md") && stored.includes(".gitignore"), "ordinary files, dotfiles included, still sync");
 });
+
+test("more agent config files are held back: .cursor, .vscode and .claude mcp.json and .gemini/.env (and a project's plain .env uploads by design)", async () => {
+  const { isAgentConfig } = await import("../../lib/drivers/credfiles.js");
+  for (const f of [".cursor/mcp.json", "app/.vscode/mcp.json", ".claude/mcp.json", ".gemini/.env"]) assert.equal(isAgentConfig(f), true, f);
+  assert.equal(isAgentConfig(".env"), false);
+  assert.equal(isAgentConfig("src/mcp.json"), false);
+});
