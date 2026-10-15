@@ -33,6 +33,8 @@ export const DEVICE_OK = Object.freeze(new Set([
   "wink.card", "wink.code.status", "wink.pair.status", "wink.pair.targets", "wink.phone.wait", "wink.server.probe", "wink.server.status",
   // this device's own session: sign in, a fresh challenge, renew its own secret (never another device's)
   "presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.rotate",
+  // this device taking itself off the box (its own row only, never another device's)
+  "relay.devices.leave",
 ]));
 
 /** The shape of device administration, for the drift test. */

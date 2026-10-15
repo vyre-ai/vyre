@@ -228,7 +228,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case "identity.has": reply(id, ["has": id0.has])
             default:
                 guard confirmForget(ForgetMac.serverNames(args["servers"])) else { return reply(id, ["error": "Not forgotten. Your key is still on this Mac."]) }
-                ForgetMac.forget(identity: id0, relayKey: relayKey); reply(id, ["ok": true])
+                // `keepRelay`: the page still has its servers to leave over the relay key, and drops it itself after (relayKey.forget)
+                ForgetMac.forget(identity: id0, relayKey: args["keepRelay"] as? Bool == true ? nil : relayKey); reply(id, ["ok": true])
             }
         case "agree.public":
             guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
@@ -422,7 +423,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
           has: function () { return call("identity.has").then(function (r) { return r.has; }); },
-          forget: function (servers) { return call("identity.forget", { servers: Array.isArray(servers) ? servers.map(String) : [] }).then(function () {}); },
+          forget: function (servers, opts) { return call("identity.forget", { servers: Array.isArray(servers) ? servers.map(String) : [], keepRelay: !!(opts && opts.keepRelay) }).then(function () {}); },
           agreePublic: function (create) { return call("agree.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           agree: function (epk) { return call("agree.agree", { epk: epk }).then(function (r) { return r.secret; }); },
           makeServer: function () { return call("setup.server").then(function () {}); },

@@ -28,9 +28,19 @@ let forgetMacSuite = Suite("forget mac") { t in
         t.eq(relay.publicKey(create: false), nil)
     }
 
+    t.test("a page that still has servers to leave keeps the relay key for now (keepRelay): only the identity key goes") {
+        let id = MacIdentity(store: MemorySeedStore())
+        let relay = MacRelayKey(store: MemoryEnclaveStore())
+        _ = id.publicKey(create: true)
+        let pub = relay.publicKey(create: true)
+        ForgetMac.forget(identity: id, relayKey: nil)
+        t.ok(!id.has)
+        t.eq(relay.publicKey(create: false), pub)
+    }
+
     t.test("the page's bridge passes the servers to the forget and carries the relay key's own forget") {
         MainActor.assumeIsolated {
-            for piece in ["call(\"identity.forget\", { servers:", "relay.forget"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
+            for piece in ["call(\"identity.forget\", { servers:", "keepRelay:", "relay.forget"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
         }
     }
 }

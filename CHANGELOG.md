@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6
 
 - feat(mac): forgetting this Mac's identity lets go of every server it reaches, together. The shell's own alert names those servers first ("This Mac will no longer reach testbox."), and after the yes the shell drops the identity key and the relay key every pairing used (Host/ForgetMac.swift), and the page forgets its pairings and the rest as a removed device does, then shows the pair-again screen (apps/app/src/identity/forget-mac.ts). A no changes nothing. A removed device's wipe in the Mac app also drops the shell's relay key (bridge relayKey.forget).
+- feat(relay): relay.devices.leave: a paired device takes itself off a box, its own row only (the id is the caller's own channel, never the input), its presence key with it, and it is refused from then on as a removed device is. Forgetting this Mac leaves every server over it before the relay key goes, so no server keeps a stale row; a server that could not be reached keeps its row for its owner, and the answer names it. The shell's identity.forget takes keepRelay for that order. golden-refresh also regenerates the docs reference and index (docs:ref).
 - feat(settings): a Forget this Mac row in Settings, under Devices in the Mac app only (screens/settings/ForgetThisMac.tsx); the Mac's own alert is the confirmation.
 
 ## 0.5.2

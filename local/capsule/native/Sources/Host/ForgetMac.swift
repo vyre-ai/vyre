@@ -24,7 +24,7 @@ enum ForgetMac {
         return "This Mac will no longer reach \(shown). " + after
     }
 
-    /// The forgetting itself, after the yes: the identity key, then the relay key every pairing used.
+    /// The forgetting itself, after the yes: the identity key, then the relay key every pairing used (nil when the page still has servers to leave over it, and drops it itself after).
     static func forget(identity: MacIdentity, relayKey: MacRelayKey?) {
         identity.forget()
         relayKey?.forget()
