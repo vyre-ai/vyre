@@ -299,6 +299,12 @@ export function createFlows(o) {
       return o.access.set(id, i.subject, level);
     },
     "flows.cheatsheet": async () => ({ text: cheatsheet() }),
+    // The actions a call step can name: the tools the running modules offer as Flow steps (`flow.steps` in a manifest), with what each takes and gives. A picker draws this; whether the person
+    // may use one is checked when the Flow is approved, as for any step.
+    "flows.actions": async () => {
+      const c = await cat();
+      return { actions: Object.entries(c.actions || {}).filter(([, a]) => /** @type {any} */ (a).tool === true).map(([action, a]) => ({ action, label: /** @type {any} */ (a).label || action, risk: /** @type {any} */ (a).risk, inputs: /** @type {any} */ (a).inputs || {}, outputs: /** @type {any} */ (a).outputs || {} })).sort((x, y) => (x.action < y.action ? -1 : 1)) };
+    },
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),
     "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat(), i.format),
     "flows.graph": async (chain, i) => graph((await view(i.id, [i.version])).flow, await cat()),
