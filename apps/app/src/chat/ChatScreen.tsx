@@ -125,7 +125,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
-  const placed = usePlacement(p.sessionId, !allowsMock());
+  const placed = usePlacement(here.thread ?? p.sessionId, !allowsMock());
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
@@ -161,7 +161,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
   const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
-  const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
+  const runsOn = placed.placement?.where === "mac" ? "mac" : placed.placement?.where === "server" ? "server" : (p.about?.runsOn ?? "server");
   const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
   // Tapping a quote goes to the original and lights it up for a moment.
   const [jump, setJump] = useState<{ key: string; n: number } | null>(null);
@@ -331,7 +331,7 @@ export function ChatScreen(p: ChatScreenProps) {
     <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
-        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
+        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
@@ -471,8 +471,8 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={answerSlots}
           peopleOnly={peopleChat}
           onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
-          runsOn={runsOn}
-          onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
+          runsOn={placed.placement ? runsOn : undefined}
+          onRunsOn={placed.placement ? () => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); } : undefined}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}

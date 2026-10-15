@@ -22,6 +22,7 @@ import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
 import { replyInput } from "./reply.js";
 import { viewerZone } from "../time/show.js";
+import { routeComposerLine } from "../../../lib/thread-composer-route.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
@@ -150,12 +151,26 @@ export function boxStream(session: string): BoxStream {
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
-    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
+    sendText: async (text, o) => {
+      const route = routeComposerLine(text);
+      const chips = o?.mentions?.slice(0, 8).map((m) => ({ kind: m.kind, id: m.id, name: m.name }));
+      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+        const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(chips?.length ? { mentions: chips } : {}) });
+        return r.error ? reason(r.error) : null;
+      }
+      return note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(chips?.length ? { chips } : {}) });
+    },
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
+      const route = routeComposerLine(text);
+      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+        const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(opts.mode ? { mode: opts.mode } : {}) });
+        if (r.error) return { ok: false, reason: reason(r.error) };
+        return { ok: true, message, answers: [] };
+      }
       const r = await writeVia("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.account ? { account: opts.account } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };

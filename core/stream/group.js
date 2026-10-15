@@ -60,6 +60,7 @@ const MIGRATIONS = [`
 `ALTER TABLE stream_groups_outbox ADD COLUMN images TEXT;`,
 // The AI account the sender chose for this one message ("provider" or "provider:account"): it runs on THEIR account, not the thread's (0.3.3 G04).
 `ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`,
+`ALTER TABLE stream_groups_outbox ADD COLUMN chips TEXT;`,
 // The Space a chat belongs to when it is a TEAM Space's (0.3.3 J9): the chat's record and people are that Space's kernel's, so every kernel question about it (who is in it, may this viewer receive a reply, which
 // session answers) is asked there. A chat of the home's own Space has no row.
 `CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
@@ -146,7 +147,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
       ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
-    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz, images, account) VALUES (?,?,?,?,?,?,?,?,?,?,?)"),
+    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz, images, account, chips) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
     outOpen: db.prepare("SELECT * FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid"),
     mark: db.prepare("INSERT INTO stream_groups_marks (person, session, upto) VALUES (?,?,?) ON CONFLICT(person, session) DO UPDATE SET upto = excluded.upto"),
@@ -805,7 +806,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...(row.images ? { images: JSON.parse(String(row.images)) } : {}), ...(row.account ? { mentions: [{ kind: "account", id: String(row.account) }] } : {}), ...turn }));
+      const chipList = (() => { try { const raw = row.chips ? JSON.parse(String(row.chips)) : []; return Array.isArray(raw) ? raw.filter((/** @type {any} */ c) => c && c.kind && c.id) : []; } catch { return []; } })();
+      const mentions = [...chipList, ...(row.account ? [{ kind: "account", id: String(row.account) }] : [])];
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...(row.images ? { images: JSON.parse(String(row.images)) } : {}), ...(mentions.length ? { mentions } : {}), ...turn }));
       let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
@@ -1014,9 +1017,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       // The sender's own choice of AI for this message (the composer's account chip): provider or provider:account.
       const account = typeof i.account === "string" && /^[a-z][a-z0-9-]{0,30}(:[A-Za-z0-9._-]{1,64})?$/.test(i.account) ? i.account : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : "") + (carried.noteOf(a.who) ? `\n\n${carried.noteOf(a.who)}` : ""), asker: author, answer: a.message, surface, mode, tz, account, images: carried.imagesOf(a.who).length ? JSON.stringify(carried.imagesOf(a.who)) : null };
+        const chipsJson = Array.isArray(i.chips) && i.chips.length ? JSON.stringify(i.chips.filter((/** @type {any} */ c) => c && c.kind && c.id).slice(0, 8)) : null;
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : "") + (carried.noteOf(a.who) ? `\n\n${carried.noteOf(a.who)}` : ""), asker: author, answer: a.message, surface, mode, tz, account, images: carried.imagesOf(a.who).length ? JSON.stringify(carried.imagesOf(a.who)) : null, chips: chipsJson };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
-        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz, row.images, row.account);
+        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz, row.images, row.account, row.chips);
         return row;
       });
       for (const r of rows) void schedule(r);

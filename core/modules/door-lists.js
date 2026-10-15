@@ -50,7 +50,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "stream.send", "stream.typing",
   "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
   "team.ask", "team.notes",
-  "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
+  "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.slash", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
   "threads.interrupt", "threads.items", "threads.kill-task", "threads.list", "threads.model", "threads.queue", "threads.rename", "threads.retry", "threads.rewind",
   "threads.send", "threads.send-now", "threads.stop", "threads.switch", "threads.tasks", "threads.thinking", "threads.unarchive", "threads.unqueue", "threads.unwatch",
   "threads.watch",
