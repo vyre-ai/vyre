@@ -2009,7 +2009,7 @@ export default {
       const s = await gate(row.id, undefined, meta);
       const gone = await personRef(i.person);
       const r = out(await (await members(row.id, meta)).removeMember({ actor: s.id, person: gone }));
-      clearLends(row.id, { person: gone }); // LD-1: the removed person's consent goes with them
+      clearLends(row.id, { person: gone }); await import("../../kernel/identity/space-vault.js").then(m => m.rotateIfPresent(path.join(ctx.paths.root, "identity", "space-vaults", row.id), gone)).catch(() => {}); // LD-1: consent goes; the space vault key rotates
       await syncOwners(row, undefined, meta);
       return r;
     });
@@ -2019,7 +2019,7 @@ export default {
         const s = await gate(row.id, undefined, meta);
         return out(await (await members(row.id, meta)).extendTemp({ actor: s.id, person: await personRef(i.person), newExpires: i.expires, presence: meta.presence }));
       }, { presence: { summary: (/** @type {any} */ i) => `Extend ${i && i.person}'s access to ${i && i.space}` } });
-    tool("spaces.members.transfer", "Hand a space to another member. The old owner becomes an admin (or the role you name). Needs the person's approval on their device.",
+    for (const _tn of ["spaces.members.transfer", "spaces.owner.transfer"]) tool(_tn, "Hand a space to another member. The old owner becomes an admin (or the role you name). Needs the person's approval on their device.",
       obj({ space: str, to: str, demoteTo: { type: "string", enum: [...ROLE_DEMOTE_TO] } }, ["space", "to"]), async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
