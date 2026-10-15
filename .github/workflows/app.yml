@@ -99,6 +99,8 @@ jobs:
           cache-dependency-path: apps/app/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npx expo export -p web --output-dir dist
+      - name: Every file name is one the release manifest accepts
+        run: node scripts/check-export-names.mjs dist
       - name: Playwright (outside the repo), for the render check
         run: |
           echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"

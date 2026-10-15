@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- ci(app): the app's CI checks every file of the web export against the release manifest's own path rule (relay/app/manifest.js `PATH`, now exported) with apps/app/scripts/check-export-names.mjs, so a chunk named with a character the signed manifest refuses fails the app's check, not the release's last step.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
