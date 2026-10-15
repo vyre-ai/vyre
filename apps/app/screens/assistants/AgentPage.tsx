@@ -7,6 +7,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Fi
 import AgentWork from "./AgentWork";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { AgentMemory } from "./AgentMemory";
+import { Standing } from "./StandingSection";
 import { Page, Sec } from "../places/Frame";
 import { agent } from "./agent";
 import { useChats } from "../../src/state/chats";
@@ -41,7 +42,7 @@ export default function AgentPage() {
           {tab === "context" ? <Context name={a.name} /> : null}
           {tab === "models" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
           {tab === "memory" ? <AgentMemory name={a.name} /> : null}
-          {tab === "used" ? <><Used name={a.name} /><Sharing name={a.name} /></> : null}
+          {tab === "used" ? <><Used name={a.name} /><Sharing name={a.name} /><Standing name={a.name} /></> : null}
           {tab === "activity" ? <><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /><ComputerCard a={a} onChange={load} /></> : null}
         </>
       ) : null}

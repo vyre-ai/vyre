@@ -196,6 +196,7 @@
       "design/system/components/chip.md",
       "design/system/components/choice-list.md",
       "design/system/components/access-list.md",
+      "design/system/components/standing-permissions.md",
       "design/system/components/code-display.md",
       "design/system/components/file-viewer.md",
       "design/system/components/field-editor.md",

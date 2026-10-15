@@ -102,6 +102,8 @@ export type { Group } from "./components/GroupedList";
 export { SecretField, SECRET_REVEAL_MS, SECRET_CLIPBOARD_MS } from "./components/SecretField";
 export { AccessList, LEVEL_WORDS } from "./components/AccessList";
 export type { Level } from "./components/AccessList";
+export { StandingPermissions } from "./components/StandingPermissions";
+export type { StandingRow } from "./components/StandingPermissions";
 export { Ring } from "./components/Ring";
 export { FlowCanvas } from "./canvas/FlowCanvas";
 export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
