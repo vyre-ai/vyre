@@ -39,7 +39,7 @@ import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, agent_due_ms: 86_400_000, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /**
  * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
  * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
@@ -426,6 +426,7 @@ export class FlowRunner {
     set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
     set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
     { const keep = await pick("flows.runs_keep_days", 86_400_000, 1, 3650); if (keep !== undefined) this.keepMs = keep; }
+    set("agent_due_ms", await pick("flows.agent_due_hours", 3_600_000, 1, 8760));
     const cap = await pick("flows.retry_attempts", 1, 1, 8);
     if (cap !== undefined) this.retryCap = cap;
     try { this.holidays = holidaysFrom(await /** @type {any} */ (this.settingsFn)("flows.holidays")); } catch { /* keep the list it had */ }
@@ -1277,7 +1278,7 @@ export class FlowRunner {
         led = this.#led(ctx, key);
         const tries = ((led && led.tries) || 0) + 1;
         const log = [...((led && led.attempts_log) || []), { at: this.now(), code: f.code }].slice(-8);
-        if (f.code !== "verify_failed" && pol.retryOn.has(f.code) && tries < pol.attempts) {
+        if (f.code !== "verify_failed" && !(f.code === "timeout" && ["ask", "assign", "agent"].includes(s.kind)) && pol.retryOn.has(f.code) && tries < pol.attempts) {
           await this.#mark(ctx, key, { status: "started", tries, last_error: f, attempts_log: log });
           const wait = pol.backoff_ms.length ? pol.backoff_ms[Math.min(tries - 1, pol.backoff_ms.length - 1)] : 0;
           await this.#sleepOnce(ctx, `${key}?retry${tries}`, wait);   // suspends the run until the wake; the replay then tries again
@@ -1756,7 +1757,12 @@ export class FlowRunner {
     if (led && led.status === "waiting") {
       const res = led.wait && led.wait.result;
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
-      if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
+      if (res.timeout) {
+        // The due time passed: the task is withdrawn so nobody can hand it in late (the agent's session ends and its use of the task is taken back where the kernel ends the task), then the step fails.
+        await this.#withdraw(ctx, led.task, `step ${s.id} was not finished in time`);
+        this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
+        throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
+      }
       const t = res.task || {};
       return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
@@ -1812,10 +1818,23 @@ export class FlowRunner {
       }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
-      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });
-      this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow-run/${run.id}`);
-      throw this.#suspendOn(ctx, key, { kind: "task", task: task.id });
+      // A due time: the step's own `timeout_ms`, or for an agent the Space's default. It is written on the ledger once, so a replay keeps it; past it the step fails with `timeout` (see below).
+      const dueMs = s.timeout_ms ?? (doer.kind === "agent" && s.kind !== "ask" ? this.limits.agent_due_ms : 0);
+      const wait = { kind: "task", task: task.id, ...(dueMs ? { deadline: this.now() + Math.min(dueMs, this.limits.wait_max_ms) } : {}) };
+      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait });
+      this.#emit("step.waiting", { run: run.id, step: key, task: task.id, ...(wait.deadline ? { until: wait.deadline } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      throw this.#suspendOn(ctx, key, wait);
     }, { input: s.kind === "agent" ? val(s.instructions) : val(s.title) });
+  }
+
+  /**
+   * Withdraw a task whose due time passed: the kernel ends it (no later start, hand-in or move by anyone), and with it the use of it lent to an agent. A kernel without `ask.withdraw` leaves the task as it is.
+   * Safe to repeat: a task that has already ended refuses, and that is all the answer needed.
+   * @param {any} ctx @param {string} task @param {string} reason
+   */
+  async #withdraw(ctx, task, reason) {
+    if (!task || !this.k.ask || typeof this.k.ask.withdraw !== "function") return;
+    try { await this.k.ask.withdraw(this.#chain(ctx), task, { reason }); } catch { /* it had already ended, or is not this Flow's to end */ }
   }
 
   /**
