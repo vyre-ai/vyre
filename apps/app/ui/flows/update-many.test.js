@@ -6,7 +6,7 @@ import { fromDefinition, toDefinition, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "status", label: "Status", kind: "text" }, { name: "note", label: "Note", kind: "text" }, { name: "owner", label: "Owner", kind: "text" }] }] };
-const stored = { format: 1, name: "u", label: "U", authorship: "builder", trigger: { on: "record", event: "created", type: "contact" }, steps: [{ id: "u1", kind: "update", type: "contact", record: { expr: "event.subject" }, set: { status: "Open", note: "Hi {after.name}", owner: "alex" } }] };
+const stored = { format: 1, name: "u", label: "U", authorship: "builder", trigger: { on: "event", event: "contact.created" }, steps: [{ id: "u1", kind: "update", type: "contact", record: { expr: "event.subject" }, set: { status: "Open", note: "Hi {after.name}", owner: "alex" } }] };
 
 test("an Update step with several fields opens as that step and saves back the same", () => {
   const d = fromDefinition(stored, options);
