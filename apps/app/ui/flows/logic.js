@@ -433,6 +433,10 @@ function triggerBase(t) {
 
 /** The reference a record urn expression stands for: what started the Flow, or a record an earlier step made; null for anything else. @param {any} v @returns {string | null} */
 const urnRef = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.urn$/i.exec(e); return m ? m[1] : null; };
+/** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
+const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
+/** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
+const skillsFrom = (v) => (v === undefined ? "" : Array.isArray(v) && v.every((x) => typeof x === "string" && x && !x.includes(",")) ? v.join(", ") : null);
 /** The placeholder rows of a document step that name one. @param {any[] | undefined} rows */
 const placeholderRows = (rows) => (rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim());
 /** The urn of a record: what started the Flow (the event's subject), or one an earlier step made. A document is filled from records named by their address. @param {string | undefined} ref */
@@ -459,7 +463,7 @@ function kindDefinition(s, d) {
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
-    case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20 };
+    case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20, ...((s.sortField || "").trim() ? { sort: [{ field: s.sortField.trim(), dir: s.sortDir === "desc" ? "desc" : "asc" }] } : {}) };
     case "pick": return { id: s.id, kind: "pick", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}) };
     case "filter": return { id: s.id, kind: "filter", from: s.from, where: (s.where || "").trim() };
     case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields), ...(s.updateFields ? { update: pairs(s.updateFields) } : {}) };
@@ -472,7 +476,7 @@ function kindDefinition(s, d) {
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
-    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text" })) };
+    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
     case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: repeatLimit(s.max), steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
@@ -480,8 +484,8 @@ function kindDefinition(s, d) {
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
     case "document": return { id: s.id, kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: s.template, ...(s.format === "pdf" ? { format: "pdf" } : {}), ...(placeholderRows(s.fields).length ? { values: Object.fromEntries(placeholderRows(s.fields).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])) } : {}), ...((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).length ? { records: Object.fromEntries((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).map((/** @type {any} */ r) => [r.alias, recUrn(r.ref)])) } : {}) } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
-    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
-    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
+    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
+    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
@@ -675,7 +679,10 @@ function stepFromKind(s) {
   switch (s.kind) {
     case "pick": return keys(s, ["id", "kind", "type", "where", "label"]) ? { id: s.id, kind: "pick", type: s.type, where: s.where || "" } : adv;
     case "filter": return keys(s, ["id", "kind", "from", "where", "label"]) && typeof s.from === "string" && typeof s.where === "string" ? { id: s.id, kind: "filter", from: s.from, where: s.where } : adv;
-    case "find": return keys(s, ["id", "kind", "type", "where", "limit", "label"]) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20 } : adv;
+    case "find": {
+      const one = Array.isArray(s.sort) && s.sort.length === 1 && s.sort[0] && typeof s.sort[0].field === "string" && (s.sort[0].dir === "asc" || s.sort[0].dir === "desc") && Object.keys(s.sort[0]).length === 2 ? s.sort[0] : null;
+      return keys(s, ["id", "kind", "type", "where", "limit", "sort", "label"]) && (s.sort === undefined || one) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20, ...(one ? { sortField: one.field, sortDir: one.dir } : {}) } : adv;
+    }
     case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "update", "label"]) && rowsOf(s.match) && rowsOf(s.set) && (s.update === undefined || rowsOf(s.update)) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set), ...(s.update === undefined ? {} : { updateFields: s.update && Object.keys(s.update).length ? rowsOf(s.update) : [] }) } : adv;
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
@@ -690,7 +697,7 @@ function stepFromKind(s) {
     }
     case "service": return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body) } : adv;
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
-    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text" })) } : adv;
+    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
     case "fn": return s.source === FORMULA_SOURCE && exprOf(s.inputs && s.inputs.value) !== null && keys(s, ["id", "kind", "language", "source", "hash", "inputs", "outputs", "label"]) ? { id: s.id, kind: "formula", formula: exprOf(s.inputs.value) } : adv;
     case "decide": {
@@ -724,10 +731,10 @@ function stepFromKind(s) {
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "label", "checker", "followers", "notes"])
-        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...ppl } : adv;
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
+        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "brief", "checker", "followers", "notes"]) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "brief", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
@@ -812,6 +819,8 @@ export function valueSources(d, stepId, o) {
       out.push([`{steps.${s.id}.record.id}`, `The record looked up by ${s.id}`], [`{steps.${s.id}.found}`, `Whether ${s.id} found one (true or false)`]);
       for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record looked up by ${s.id}`]);
     }
+    if (s.kind === "classify") out.push([`{steps.${s.id}.label}`, `The group ${s.id} picked`]);
+    if (s.kind === "extract") for (const f of s.fields || []) if ((f.name || "").trim()) out.push([`{steps.${s.id}.fields.${slug(f.name)}}`, `${f.name.trim()}, pulled out by ${s.id}`]);
     if (s.kind === "document") out.push([`{steps.${s.id}.path}`, `Where the document made by ${s.id} is filed`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }

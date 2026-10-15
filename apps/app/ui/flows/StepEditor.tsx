@@ -116,6 +116,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     help="They go into the prompt that wakes the agent for this task, after its own instructions (who to escalate to, which email alias to use outside)." />
                   <Select label="The record to hand over" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
+                  <Switch label="The Flow waits for the agent to finish" on={s.await !== false} onChange={(on) => setStep(s.id, { await: on ? undefined : false })} />
+                  <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
                 </>
               ) : null}
               {s.kind === "assign" ? (
@@ -123,6 +125,9 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Select label="Who gets the task (a person, a team or role, or an agent)" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
                   <ContextBox label="Brief for them" value={s.brief ?? ""} onChange={(brief) => setStep(s.id, { brief })} options={options} placeholder="What they need to know" />
+                  <Select label="The record to attach (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
+                  <Switch label="The Flow waits until the task is done" on={s.await === true} onChange={(on) => setStep(s.id, { await: on ? true : undefined })} />
+                  <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
                   <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
                 </>
               ) : null}
@@ -191,6 +196,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
           <FormulaBox label="Only records where (optional, a formula)" value={s.where ?? ""} onChange={(where) => set({ where })} placeholder="For example record.email == trigger.email" />
           <Field label="At most" value={String(s.limit ?? 20)} onChangeText={(limit) => set({ limit: Number(limit) || 20 })} kind="number" />
+          <Field label="Sort by (optional)" value={s.sortField ?? ""} onChangeText={(sortField) => set({ sortField })} placeholder="For example created_at" />
+          {s.sortField ? <Select label="Order" value={s.sortDir ?? "asc"} options={[["asc", "Smallest or oldest first"], ["desc", "Largest or newest first"]]} onChange={(sortDir) => set({ sortDir })} /> : null}
           <Text size="caption" tone="label">Later steps read the records as the list steps.{s.id}.rows.</Text>
         </>
       ) : null}
@@ -281,11 +288,14 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       {s.kind === "extract" ? (
         <>
           <ValueField label="The text to read" value={s.input ?? ""} onChange={(input) => set({ input })} placeholder="For example {message}" draft={draft} stepId={s.id} options={options} />
-          {(s.fields ?? []).map((f: { name: string; kind: string }, i: number) => (
-            <View key={i} className="flex-row items-end gap-s2">
+          {(s.fields ?? []).map((f: { name: string; kind: string; description?: string }, i: number) => (
+            <View key={i} className="gap-s2">
+            <View className="flex-row items-end gap-s2">
               <View className="min-w-0 flex-1"><Field label={i ? undefined : "Fact to pull out"} name="Fact" value={f.name} onChangeText={(name) => set({ fields: s.fields.map((x: any, k: number) => (k === i ? { ...x, name } : x)) })} placeholder="For example Amount" /></View>
               <View className="w-32"><Select value={f.kind ?? "text"} options={[["text", "Text"], ["number", "Number"], ["date", "Date"], ["boolean", "Yes or no"]]} onChange={(kind) => set({ fields: s.fields.map((x: any, k: number) => (k === i ? { ...x, kind } : x)) })} /></View>
               <Button kind="ghost" size="sm" icon="x" label="Remove fact" onPress={() => set({ fields: s.fields.filter((_: any, k: number) => k !== i) })} />
+            </View>
+            <Field label={undefined} name="What to look for" value={f.description ?? ""} onChangeText={(description) => set({ fields: s.fields.map((x: any, k: number) => (k === i ? { ...x, description } : x)) })} placeholder="What to look for (optional), for example the total in dollars" />
             </View>
           ))}
           <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a fact" onPress={() => set({ fields: [...(s.fields ?? []), { name: "", kind: "text" }] })} /></View>

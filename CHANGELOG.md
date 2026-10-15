@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(flows): the editor shows the step options the engine already had: an agent step's wait switch and skills, an assign step's record, wait switch and skills, a sort on Find records, a description per pulled-out fact, and the group or facts of an earlier AI step in the value list. Fix: an agent step saved with the wait switched off no longer turns it back on when the Flow is saved again.
 - feat(flows): Make a document, a step that fills a Word template from Documents: choose the template, and the panel lists what it asks for (documents.template.get): a value for each plain placeholder (typed or from the Flow) and the record each dotted placeholder reads. It stores as the documents.generate call, opens as the same step, and a later step can read where the document was filed.
 - feat(flows): Create, Update and Move to a stage pick the field or the stage from the object's own list (a typo no longer makes a bad field), the stage trigger picks from the object's stages, and some words follow the 13 Oct audit: "A record moves to a stage", "I press Run", "At a set time", "Look up records", "Run another Flow".
 - feat(flows): "Something else happens" lists every event the running modules announce (the event catalog) after the plain-worded ones, and a record, event or watcher trigger can carry an optional condition (`where`, a formula over what started it), which a stored Flow keeps and opens as the same editable trigger.
