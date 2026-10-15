@@ -1759,7 +1759,7 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) {
         // The due time passed: the task is withdrawn so nobody can hand it in late (the agent's session ends and its use of the task is taken back where the kernel ends the task), then the step fails.
-        await this.#withdraw(ctx, led.task, `step ${s.id} was not finished in time`);
+        await this.#withdraw(ctx, led.task, `step ${s.id} was not finished in time`, s.id);
         this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
         throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
       }
@@ -1828,15 +1828,19 @@ export class FlowRunner {
   }
 
   /**
-   * Withdraw a task whose due time passed: the kernel ends it (no later start, hand-in or move by anyone), and with it the use of it lent to an agent. A kernel without `ask.withdraw` leaves the task as it is.
-   * Safe to repeat: a task that has already ended refuses, and that is all the answer needed.
-   * @param {any} ctx @param {string} task @param {string} reason
+   * Withdraw a task whose due time passed: the kernel ends it (no later start, hand-in or move by anyone), and with it the use of it lent to an agent. Not optional: if the kernel cannot withdraw it the step fails with
+   * `withdraw_failed` (never a clean timeout while the task may still be open). Safe to repeat: a task that has already ended refuses with bad_state, and that is all the answer needed.
+   * @param {any} ctx @param {string} task @param {string} reason @param {string} stepId
    */
-  async #withdraw(ctx, task, reason) {
-    if (!task || !this.k.ask || typeof this.k.ask.withdraw !== "function" || !this.chains.forDoer) return;
-    // under the Flows service's own chain: the kernel refuses a withdrawal from anything else
+  async #withdraw(ctx, task, reason, stepId) {
     const run = ctx.run;
-    try { await this.k.ask.withdraw(this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); } catch { /* it had already ended, or is not this Flow's to end */ }
+    // under the Flows service's own chain: the kernel refuses a withdrawal from anything else
+    try { await this.k.ask.withdraw(this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); }
+    catch (e) {
+      // a task that already ended (answered in the last moment, or withdrawn before a crash) is as withdrawn as it will get; anything else means it may still be open, and the step must not report a clean timeout
+      if (e && /** @type {any} */ (e).code === "bad_state") return;
+      throw new StepFail("withdraw_failed", `the task for step ${stepId} could not be withdrawn, so the step is not marked timed out: ${/** @type {Error} */ (e).message}`);
+    }
   }
 
   /**
