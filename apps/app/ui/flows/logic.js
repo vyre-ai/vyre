@@ -12,7 +12,8 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ action: string, label: string, risk: string, inputs: Record<string, string> }} ActionOpt */
+/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
@@ -93,7 +94,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -733,6 +734,16 @@ function triggerFromKind(t) {
 }
 
 /** Stored field values back to editable rows, or null when one is something the rows cannot say. @param {Record<string, any>} o */
+/** The actions to pick from, filtered by what was typed in the search box (the action's name or its label), by name. @param {Options} o @param {string} q @returns {[string, string][]} */
+export const actionChoices = (o, q) => {
+  const w = String(q || "").trim().toLowerCase();
+  return (o.actions || []).filter((a) => !w || a.action.toLowerCase().includes(w) || a.label.toLowerCase().includes(w)).map((a) => /** @type {[string, string]} */ ([a.action, `${a.label} (${a.action})${a.risk === "read" ? "" : ", held for a yes"}`]));
+};
+/** What picking an action fills in: where it acts and a row for each input that is a plain value (text, number, yes or no). @param {Options} o @param {string} action */
+export const actionPick = (o, action) => {
+  const a = (o.actions || []).find((x) => x.action === action);
+  return { action, resource: `vyre://space/${action.split(".")[0]}`, fields: a ? Object.entries(a.inputs).filter(([, ty]) => ty === "string" || ty === "number" || ty === "boolean").map(([field]) => ({ field, value: "" })) : [{ field: "", value: "" }] };
+};
 /** The shape of an action and of the address it acts on, as the engine checks them; the actions the editor has a step of its own for stay those steps. */
 const ACTION_WORDS = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 const RESOURCE_WORDS = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
