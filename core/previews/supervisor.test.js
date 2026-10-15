@@ -8,7 +8,7 @@ import { createSupervisor, LIMITS } from "./supervisor.js";
 test("the command is started through the limits, unchanged after them", () => {
   /** @type {any[]} */ const started = [];
   const spawn = /** @type {any} */ ((cmd, args, opts) => { started.push({ cmd, args, opts }); const h = { stdout: null, stderr: null, on() {}, kill() {}, pid: 1 }; return h; });
-  const sup = createSupervisor({ spawn, log: () => {}, now: () => 0, pollMs: 1_000_000, giveUpMs: 1_000_000 });
+  const sup = createSupervisor({ spawn, wall: () => null, log: () => {}, now: () => 0, pollMs: 1_000_000, giveUpMs: 1_000_000 });
   sup.start("p1", { command: "cd app && npm run dev", cwd: "/tmp", port: 4100, env: { MODE: "x" } });
   assert.equal(started.length, 1);
   assert.equal(started[0].cmd, "/bin/sh");

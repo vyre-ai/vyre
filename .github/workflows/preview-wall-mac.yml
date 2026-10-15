@@ -1,0 +1,22 @@
+# A preview's process on macOS gets its own loopback port and no other address (lib/sandbox/preview-wall.js): a real child under sandbox-exec,
+# on a hosted macOS runner. The parent reaches the port, the child reaches itself, and another loopback listener and a unix socket are out of reach.
+name: preview-wall-mac
+on:
+  pull_request:
+    paths: ["lib/sandbox/preview-wall*", "core/previews/supervisor*", ".github/workflows/preview-wall-mac.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: preview-wall-mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  wall:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test lib/sandbox/preview-wall.test.js core/previews/supervisor.test.js

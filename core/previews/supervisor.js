@@ -4,13 +4,15 @@
 // it started itself: it holds that process's pid, nothing is found by name. The environment is a short list (a path, a home, a locale) plus what the caller gives; the person's own shell environment, with its keys,
 // never goes in. Pure of Vyre: spawn and the clock are injected so tests can run a real tiny server.
 import { spawn as realSpawn } from "node:child_process";
+import fs from "node:fs";
 import net from "node:net";
+import { previewWall } from "../../lib/sandbox/preview-wall.js";
 
 export const LOG_BYTES = 200 * 1024;
 /**
  * What a preview's own command may use, as shell limits set before it runs (an agent wrote it, or the code it builds): no core files, no file larger than 1 GiB, at most 1,024 processes of the Vyre user and
- * 4,096 open files. A limit the shell cannot set is skipped and the command still runs. Network egress is not limited here: a dev server must serve on its loopback port, which the wall in lib/sandbox
- * does not allow (it denies all network), so a wall that lets only that port through is the next step.
+ * 4,096 open files. A limit the shell cannot set is skipped and the command still runs. The network is limited by lib/sandbox/preview-wall.js: the one loopback port the preview serves on, nothing else
+ * (macOS; a Linux box has no such wall yet and the log says so).
  */
 export const LIMITS = "ulimit -c 0 2>/dev/null; ulimit -f 2097152 2>/dev/null; ulimit -u 1024 2>/dev/null; ulimit -n 4096 2>/dev/null; ";
 const SAFE_ENV = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "SHELL", "TERM", "TMPDIR"];
@@ -33,8 +35,41 @@ export const free = port => new Promise(resolve => {
 });
 
 /**
+ * The leased port on this machine, relayed to the unix socket a walled preview offers (lib/sandbox/preview-wall.js, Linux): the preview itself has no network, so Vyre listens on its port here, once the
+ * socket exists (the forwarder makes it only after the dev server answers, so "something answers on the port" still means the page is up), and hands each connection to the socket.
+ * @param {number} port @param {{ socket?: string, dir?: string }} wrap
+ */
+function startRelay(port, wrap) {
+  const sock = String(wrap.socket);
+  /** @type {net.Server | null} */ let server = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */ let timer = null;
+  let stopped = false;
+  const poll = () => {
+    if (stopped) return;
+    if (!fs.existsSync(sock)) { timer = setTimeout(poll, 200); return; }
+    server = net.createServer(c => {
+      const u = net.connect(sock);
+      c.pipe(u); u.pipe(c);
+      const end = () => { c.destroy(); u.destroy(); };
+      c.on("error", end); u.on("error", end); c.on("close", end); u.on("close", end);
+    });
+    server.on("error", () => { /* the port was taken: the preview then does not answer, and says so */ });
+    server.listen(port, "127.0.0.1");
+  };
+  timer = setTimeout(poll, 100);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      try { server?.close(); } catch { /* closed */ }
+      if (wrap.dir) { try { fs.rmSync(wrap.dir, { recursive: true, force: true }); } catch { /* gone */ } }
+    },
+  };
+}
+
+/**
  * @typedef {"starting"|"live"|"crashed"|"stopped"} State
- * @param {{ spawn?: typeof realSpawn, log?: (m: string) => void, onState?: (id: string, state: State, info: { error?: string }) => void, now?: () => number, pollMs?: number, giveUpMs?: number }} [o]
+ * @param {{ spawn?: typeof realSpawn, log?: (m: string) => void, onState?: (id: string, state: State, info: { error?: string }) => void, now?: () => number, pollMs?: number, giveUpMs?: number, wall?: typeof previewWall }} [o]
  */
 export function createSupervisor(o = {}) {
   const spawn = o.spawn || realSpawn;
@@ -42,6 +77,7 @@ export function createSupervisor(o = {}) {
   const now = o.now || Date.now;
   const pollMs = o.pollMs ?? 300;
   const giveUpMs = o.giveUpMs ?? 90_000;
+  const wall = o.wall || previewWall;
   /** @type {Map<string, { id: string, opts: { command: string, cwd: string, port: number, env: Record<string, string> }, child: import("node:child_process").ChildProcess | null, state: State, wanted: boolean, out: string, restarts: number[], timer: ReturnType<typeof setTimeout> | null, since: number }>} */
   const entries = new Map();
 
@@ -70,13 +106,19 @@ export function createSupervisor(o = {}) {
     /** @type {Record<string, string>} */ const env = {};
     for (const k of SAFE_ENV) if (process.env[k]) env[k] = /** @type {string} */ (process.env[k]);
     Object.assign(env, e.opts.env, { PORT: String(e.opts.port), HOST: "127.0.0.1", HOSTNAME: "127.0.0.1" });
-    const child = spawn("/bin/sh", ["-c", `${LIMITS}${e.opts.command}`], { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    // the process gets its own loopback port and no other address (lib/sandbox/preview-wall.js); where this machine has no wall it runs with the limits only, and the log says so
+    const wrap = wall(e.opts.port);
+    if (!wrap) append(e, "[no network wall on this machine: this preview runs with limits only]\n");
+    const run = wrap ? wrap(`${LIMITS}${e.opts.command}`) : { cmd: "/bin/sh", args: ["-c", `${LIMITS}${e.opts.command}`] };
+    const relay = wrap && wrap.socket ? startRelay(e.opts.port, wrap) : null;
+    const child = spawn(run.cmd, run.args, { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    if (relay) child.on("exit", () => relay.stop());
     e.child = child;
     e.since = now();
     set(e, "starting");
     child.stdout?.on("data", d => append(e, d));
     child.stderr?.on("data", d => append(e, d));
-    child.on("error", err => { append(e, `\n[could not start: ${err.message}]\n`); });
+    child.on("error", err => { relay?.stop(); append(e, `\n[could not start: ${err.message}]\n`); });
     child.on("exit", (code, sig) => {
       if (e.child !== child) return;
       e.child = null;
