@@ -13,5 +13,7 @@ export function pair(
   o?: { name?: string; presenceKey?: { public_key: string; alg?: number; storage?: "hardware" | "software" }; about?: About; keyStore?: KeyStore; crypto?: CryptoProvider; WebSocket?: unknown; timeout?: number },
 ): Promise<{ relay: string; route: string; box: string; name: string; device: string | null; presence: { enrolled: boolean; reason?: string } | null }>;
 export type { KeyPair };
+/** Let go of the device key held for this store in this run, after the store itself forgot it. */
+export function forgetDeviceKey(keyStore: object): void;
 export function openChannel(o: unknown): Promise<{ channel: unknown }>;
 export function request(ch: unknown, head: unknown, body: Uint8Array, signal?: AbortSignal): Promise<{ ok: boolean; status: number; text(): Promise<string> }>;

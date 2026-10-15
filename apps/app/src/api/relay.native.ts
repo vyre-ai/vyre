@@ -35,9 +35,12 @@ if (!g.crypto?.getRandomValues) {
 let provider: ReturnType<typeof nobleCrypto> | null = null;
 export const relayCrypto = () => (provider ??= nobleCrypto({ x25519, sha256, hmac, gcm, randomBytes }));
 
+// One store object for the app's life, as on the web: relay/client keeps the key it made per store (deviceKey), so two dials at once on a fresh phone share one key instead of each making its own.
+let keys: { get(): Promise<any>; set(k: { privateKey: Uint8Array }): Promise<void> } | null = null;
 export function relayKeyStore() {
+  if (keys) return keys;
   const crypto = relayCrypto();
-  return {
+  return keys = {
     async get() {
       const raw = await SecureStore.getItemAsync(KEY, ONLY_HERE);
       return raw ? crypto.importKeyPair(fromBase64url(raw)) : null;
@@ -51,6 +54,7 @@ export function relayKeyStore() {
 /** Forget this phone's relay key (a removed device). */
 export async function forgetRelayKey(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY, ONLY_HERE);
+  if (keys) (await import("@vyre/relay-client/client.js")).forgetDeviceKey(keys);
 }
 
 export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software"; signer?: "secure_enclave" | "strongbox" } | undefined> {

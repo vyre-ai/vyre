@@ -82,6 +82,9 @@ export async function deviceKey({ keyStore, crypto }) {
   return made;
 }
 
+/** Let go of the key held for this store in this run, after the store itself forgot it (a removed device): the next dial makes a new key. @param {object} keyStore */
+export function forgetDeviceKey(keyStore) { heldKeys.delete(keyStore); }
+
 const defaults = o => ({
   crypto: o.crypto || webCrypto(),
   keyStore: o.keyStore || indexedDbKeyStore(),
