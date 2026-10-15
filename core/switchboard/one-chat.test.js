@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { asOwner, tempHome, present, kernelCaller } from "../../test/helpers.js";
+import { asOwner, tempHome, present, kernelCaller, startDaemonBounded } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 import { createRing, addHolders } from "../../lib/chat-keys.js";
@@ -29,9 +29,8 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -96,9 +95,8 @@ test("the person's own assistant is never a listed participant: its chat is the 
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -124,9 +122,8 @@ test("a terminal session's SessionStart leaves a chat of the person's, remembere
   const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -151,9 +148,8 @@ test("a person's call on a run needs the person to be in its chat: a member outs
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -196,9 +192,8 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -269,9 +264,8 @@ test("a chat started outside the stream continues in it: the existing run is ado
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = kernelCaller(d, root);
@@ -306,9 +300,8 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const made = await owner("work.chat.create", { title: "Fresh", ...(({ id, ring }) => ({ id, ring }))(sealed()) });
   assert.ok(made.data, JSON.stringify(made.error));
@@ -342,9 +335,8 @@ test("a message sent in the chat while its run works joins the running turn (ste
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const chat = (await owner("work.chat.create", { title: "Busy", ...(({ id, ring }) => ({ id, ring }))(sealed()) })).data.chat;
   // presence: what the slot is doing, and who is typing, are ephemeral frames on the chat's log
@@ -396,9 +388,8 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const chat = (await owner("work.chat.create", { title: "Quotes", ...(({ id, ring }) => ({ id, ring }))(sealed()) })).data.chat;
   const logs = d.registry.modules.get("stream").handle.logs;
@@ -445,9 +436,8 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
-  t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;
@@ -517,9 +507,8 @@ test("a chat's history leaves one device and comes back on another: its logged f
     Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
     fs.mkdirSync(transcripts);
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-    const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+    const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
     asOwner(d, root);
-    t.after(() => d.stop());
     return { d, root };
   }
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
@@ -595,8 +584,7 @@ test("a chat's history leaves one device and comes back on another: its logged f
 
 test("moving chats to another Space and putting a history back are the person's own act: an assistant's or a model's session is refused, the person's own device or session is not", { timeout: 90_000 }, async t => {
   const root = tempHome(t);
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
-  t.after(() => d.stop());
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   const owner = d.kernel.id.owner;
   const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
   const chat = (await d.kernel.gateway.grants.chats.create(chain, {})).id;

@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { start } from "../daemon/index.js";
-import { asOwner, tempHome, present } from "../../test/helpers.js";
+import { asOwner, tempHome, present, startDaemonBounded } from "../../test/helpers.js";
 import { until, FAKE } from "../sessions/testing/boot.js";
 
 test("a transcript is placed only in the chat of the person it is for", { timeout: 90_000 }, async t => {
@@ -17,7 +17,7 @@ test("a transcript is placed only in the chat of the person it is for", { timeou
   Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts, VYRE_SESSION_SANDBOX_OFF: "1" });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root); t.after(() => d.stop());
   const ownerId = String(d.kernel.id.owner);
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
