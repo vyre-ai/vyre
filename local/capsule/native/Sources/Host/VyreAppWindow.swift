@@ -30,6 +30,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var enclave: MacEnclave?
     /// This Mac's agreement key (MacAgree.swift): ECDH for opening a wrapped chat key, no prompt per use.
     var agreement: MacAgree?
+    /// The relay device key (MacRelayKey.swift): the page's dials to its servers use it, and it never reaches the page.
+    var relayKey: MacRelayKey?
     /// Whether a local vyred answers right now; set by the Capsule at launch.
     var vyredUp: () -> Bool = { false }
     /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
@@ -233,6 +235,12 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         case "agree.agree":
             guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
             reply(id, ["secret": MacIdentity.b64url(secret)])
+        case "relay.public":
+            guard let pub = relayKey?.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep the key it reaches your servers with." : "There is no relay key on this Mac."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pub)])
+        case "relay.dh":
+            guard let peer = (args["peer"] as? String).flatMap(MacIdentity.unb64url), let shared = relayKey?.dh(peer: peer) else { return reply(id, ["error": "This Mac could not open a channel to your server with its key."]) }
+            reply(id, ["shared": MacIdentity.b64url(shared)])
         case "setup.server":
             reply(id, ["error": "To use this Mac as a server, run the install line in Terminal."])
         case "enclave.public":
@@ -433,6 +441,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
+        relayKey: {
+          public: function (create) { return call("relay.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          dh: function (peer) { return call("relay.dh", { peer: peer }).then(function (r) { return r.shared; }); }
+        },
         presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },

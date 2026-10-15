@@ -36,6 +36,7 @@ let keyBundleSuite = Suite("key bundle") { t in
         t.ok(first.set(.enclave, handle))
         t.ok(first.set(.agree, handle))
         t.ok(first.set(.presence, handle))
+        t.ok(first.set(.relay, handle))
         let before = backing.reads
         let next = KeyBundle(backing: backing)
         for slot in KeyBundle.Slot.allCases { t.ok(next.get(slot) != nil, slot.rawValue) }
