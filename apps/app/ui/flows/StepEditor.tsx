@@ -276,9 +276,11 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       {s.kind === "web" ? (
         <>
           <Select label="Send with (a connection)" value={s.connector ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connector) => set({ connector })} />
-          <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
+          <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["HEAD", "Check it is there (HEAD)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
           <ValueField label="Path" value={s.path ?? "/"} onChange={(path) => set({ path })} placeholder="For example /v1/customers" draft={draft} stepId={s.id} options={options} />
-          {(s.method ?? "GET") !== "GET" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <Rows rows={s.query ?? []} onChange={(query) => set({ query })} draft={draft} stepId={s.id} options={options} fieldLabel="Name" title="Query (optional)" help="Added to the address as ?name=value." />
+          <Rows rows={s.headers ?? []} onChange={(headers) => set({ headers })} draft={draft} stepId={s.id} options={options} fieldLabel="Header" title="Headers (optional)" help="The key stays in the Vault: a header such as Authorization is never set here." />
+          {(s.method ?? "GET") !== "GET" && (s.method ?? "GET") !== "HEAD" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
           <NewConnection options={options} onAdded={(connector) => set({ connector })} />
           <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>

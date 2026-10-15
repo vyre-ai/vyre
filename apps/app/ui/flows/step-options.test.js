@@ -121,3 +121,17 @@ test("a Repeat step goes through any list the engine can read, not only Find res
   assert.deepEqual([out.steps[0].kind, out.steps[0].over, out.steps[0].max], ["repeat", "trigger.after.items", 10]);
   assert.equal(stepProblem(fromDefinition(d, options).steps[0], options), null);
 });
+
+test("a web call keeps its query and headers and can check with HEAD", () => {
+  const d = flow([{ id: "w1", kind: "service", connector: "crm", method: "HEAD", path: "/v1/ping", query: { page: "2", q: "{after.name}" }, headers: { "x-trace": "run" } }]);
+  const draft = fromDefinition(d, options);
+  assert.equal(draft.steps[0].kind, "web");
+  assert.deepEqual(draft.steps[0].query.map((x) => x.field), ["page", "q"]);
+  const out = toDefinition(draft, options);
+  assert.equal(out.steps[0].method, "HEAD");
+  assert.deepEqual(Object.keys(out.steps[0].query), ["page", "q"]);
+  assert.deepEqual(out.steps[0].headers, { "x-trace": "run" });
+  assert.equal(out.steps[0].body, undefined, "a check carries no body");
+  const guarded = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "GET", path: "/", drive: { saveTo: "files/x" } }]), options);
+  assert.equal(guarded.steps[0].kind, "advanced", "a drive hand-off stays as it was");
+});

@@ -438,6 +438,10 @@ function triggerBase(t) {
 const urnRef = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.urn$/i.exec(e); return m ? m[1] : null; };
 /** How the person doing an assigned task is helped with the work (the engine's `how`). */
 export const HOWS = /** @type {[string, string][]} */ ([["template", "Fill in a template"], ["tailor", "Tailor a template to the case"], ["assistant", "An assistant does it for them to check"], ["person", "They do it themselves"]]);
+/** Named values the way a step stores them (the query and the headers of a web call): the rows with a name, as an object, or null when there is none. @param {any} rows */
+const namedRows = (rows) => { const o = Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return Object.keys(o).length ? o : null; };
+/** The stored object as rows to edit; null when a value is not one the rows can show. @param {any} o */
+const namedRowsFrom = (o) => { if (!o || typeof o !== "object" || Array.isArray(o)) return null; const rows = Object.entries(o).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? rows : null; };
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
 /** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
@@ -477,7 +481,7 @@ function kindDefinition(s, d) {
     case "wait":
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
-    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
+    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
@@ -707,7 +711,11 @@ function stepFromKind(s) {
       const u = Object.entries(UNITS).reverse().find(([, ms]) => s.for_ms % ms === 0);
       return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
     }
-    case "service": return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body) } : adv;
+    case "service": {
+      const q = s.query === undefined ? [] : namedRowsFrom(s.query), h = s.headers === undefined ? [] : namedRowsFrom(s.headers);
+      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null
+        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}) } : adv;
+    }
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
     case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
