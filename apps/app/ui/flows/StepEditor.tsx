@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -171,6 +171,21 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Select label="Who is asked" value={s.to ?? ""} options={askChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The question" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Approve this refund" />
                   <Select label="The record to show them (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
+                  <View className="gap-s2">
+                    <Text size="caption" strong tone="label">Questions to fill in (optional)</Text>
+                    {(s.form ?? []).map((f: { name?: string; label: string; kind: string; required: boolean; choices: string }, i: number) => (
+                      <View key={i} className="gap-s2">
+                        <View className="flex-row items-end gap-s2">
+                          <View className="min-w-0 flex-1"><Field label={i ? undefined : "Question"} name="Question" value={f.label} onChangeText={(label) => setStep(s.id, { form: s.form.map((x: any, k: number) => (k === i ? { ...x, label } : x)) })} placeholder="For example Refund amount" /></View>
+                          <View className="w-36"><Select value={f.kind ?? "text"} options={FORM_KINDS} onChange={(kind) => setStep(s.id, { form: s.form.map((x: any, k: number) => (k === i ? { ...x, kind } : x)) })} /></View>
+                          <Button kind="ghost" size="sm" icon="x" label="Remove question" onPress={() => setStep(s.id, { form: s.form.filter((_: any, k: number) => k !== i) })} />
+                        </View>
+                        {f.kind === "choice" ? <Field label="The choices, separated by commas" value={f.choices ?? ""} onChangeText={(choices) => setStep(s.id, { form: s.form.map((x: any, k: number) => (k === i ? { ...x, choices } : x)) })} placeholder="For example Card, Cash" /> : null}
+                        <Switch label="They must answer this" on={f.required === true} onChange={(required) => setStep(s.id, { form: s.form.map((x: any, k: number) => (k === i ? { ...x, required } : x)) })} />
+                      </View>
+                    ))}
+                    <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a question" onPress={() => setStep(s.id, { form: [...(s.form ?? []), { label: "", kind: "text", required: false, choices: "" }] })} /></View>
+                  </View>
                   <Text size="caption" tone="label">The Flow stops here until they answer.</Text>
                 </>
               ) : null}
