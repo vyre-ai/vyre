@@ -16,6 +16,7 @@ const MATTER = { name: "matter", label: "Matter", kind: "project", fields: [{ na
   { name: "assets_total", kind: "number", label: "Assets total", computed: { over: { type: "asset", via: "matter", fn: "sum", field: "value" } } }] };
 const ASSET = { name: "asset", label: "Asset", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "value", kind: "number", label: "Value" },
   { name: "matter", kind: "link", to: "matter", label: "Matter" }, { name: "project", kind: "link", to: "project", label: "Project" }] };
+const DEAL = { name: "deal", label: "Deal", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "projects", kind: "link", to: "project", many: true, label: "Projects" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "text", kind: "text", label: "Text" }] };
 
 async function rig() {
@@ -23,7 +24,7 @@ async function rig() {
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const g = k.gateway.grants;
   for (const [p, role] of [[ADMIN, "admin"], [BOB, "member"], [DAN, "member"], [EVE, "member"]]) { const r = { person: p, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
-  await k.gateway.records.define(owner, { add_types: [PROJECT, TEAM_MEMBER, MATTER, ASSET, NOTE].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })) });
+  await k.gateway.records.define(owner, { add_types: [PROJECT, TEAM_MEMBER, MATTER, ASSET, DEAL, NOTE].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })) });
   const R = k.gateway.records;
   const person = id => ({ actor: { kind: "person", id, space: SPACE } });
   const rivera = await R.create(owner, "project", { name: "Rivera", slug: "rivera", owner: person(BOB) });
@@ -104,4 +105,56 @@ test("a member cannot change or remove a row she may not read, and files a row o
   assert.equal(await code(R.create(dev(EVE), "asset", { name: "Mine" })), null, "a row linked to nothing is hers to make");
   assert.equal(await code(R.create(dev(BOB), "asset", { name: "Pier", project: { urn: rivera.urn } })), null, "the project's owner files under it");
   assert.equal(await code(R.update(dev(BOB), "asset", onMatter.id, { value: 301 }, onMatter.version)), null, "the matter's seat changes its row");
+});
+
+test("restore, merge and unmerge never reach a row the caller may not read, and a work record is joined only by staff", async () => {
+  const { R, owner, dev, onProject, loose, bob } = await rig();
+  const gone = await R.remove(owner, "asset", onProject.id, onProject.version);
+  assert.ok(gone !== undefined);
+  assert.equal(await code(R.restore(dev(EVE), "asset", onProject.id)), "not_found", "restore of a private row she may not read");
+  await R.restore(owner, "asset", onProject.id);
+  assert.equal(await code(R.merge(dev(EVE), "asset", loose.id, onProject.id)), "not_found", "merge a hidden row into one she may read");
+  assert.equal(await code(R.merge(dev(EVE), "asset", onProject.id, loose.id)), "not_found", "or the other way");
+  const m1 = await R.create(bob(BOB), "matter", { title: "One" }), m2 = await R.create(bob(BOB), "matter", { title: "Two" });
+  assert.equal(await code(R.merge(bob(BOB), "matter", m1.id, m2.id)), "not_allowed", "a member does not join work records");
+  const joined = await R.merge(owner, "matter", m1.id, m2.id);
+  assert.ok(joined, "an owner does");
+});
+
+test("a link is changed, cleared or edited only by the team of every project it links to, and not by a Viewer", async () => {
+  const { R, owner, dev, rivera, other, onProject, person } = await rig();
+  const move = p => code(R.update(dev(BOB), "asset", onProject.id, { project: p }, onProject.version));
+  assert.equal(await move({ urn: other.urn }), "not_allowed", "BOB is not on the other project: he cannot file the row there");
+  assert.equal(await code(R.update(dev(DAN), "asset", onProject.id, { project: null }, onProject.version)), "not_found", "DAN cannot read it, so he cannot clear its link");
+  assert.equal(await code(R.update(dev(EVE), "asset", onProject.id, { project: null }, onProject.version)), "not_found", "nor EVE");
+  // EVE is a Viewer on Rivera: she reads the row and changes nothing
+  await R.create(owner, "team-member", { name: "eve", actor: person(EVE), kind: "person", level: "viewer", project: { urn: rivera.urn } });
+  assert.equal((await R.get(dev(EVE), "asset", onProject.id)).data.name, "Boat");
+  assert.equal(await code(R.update(dev(EVE), "asset", onProject.id, { value: 2 }, onProject.version)), "not_allowed", "a Viewer edits nothing");
+  assert.equal(await code(R.update(dev(EVE), "asset", onProject.id, { project: null }, onProject.version)), "not_allowed", "or unfiles it");
+  assert.equal(await code(R.update(dev(BOB), "asset", onProject.id, { project: null }, onProject.version)), null, "the team unfiles it");
+});
+
+test("a row on two projects is read by either team and changed only by someone on both; list links are judged on the whole list", async () => {
+  const { R, owner, dev, rivera, other } = await rig();
+  const deal = await R.create(owner, "deal", { name: "Joint", projects: [{ urn: rivera.urn }, { urn: other.urn }] });
+  assert.equal((await R.get(dev(BOB), "deal", deal.id)).data.name, "Joint", "Rivera's team reads it");
+  assert.equal((await R.get(dev(DAN), "deal", deal.id)).data.name, "Joint", "Other's team reads it");
+  assert.equal(await R.get(dev(EVE), "deal", deal.id), null);
+  assert.equal(await code(R.update(dev(BOB), "deal", deal.id, { name: "Edited" }, deal.version)), "not_allowed", "BOB is not on Other");
+  assert.equal(await code(R.update(dev(BOB), "deal", deal.id, { projects: { remove: [{ urn: other.urn }] } }, deal.version)), "not_allowed", "he cannot drop Other from the list either");
+  const mine = await R.create(dev(BOB), "deal", { name: "Mine", projects: [{ urn: rivera.urn }] });
+  assert.equal(await code(R.update(dev(BOB), "deal", mine.id, { projects: { add: [{ urn: other.urn }] } }, mine.version)), "not_allowed", "or add a project he is not on");
+  assert.equal(await code(R.update(owner, "deal", deal.id, { projects: { remove: [{ urn: other.urn }] } }, deal.version)), null, "an owner may");
+});
+
+test("search never shows or counts a hit the reader may not see, and a query with no page says so", async () => {
+  const { R, dev, rivera, asset } = await rig();
+  for (let i = 0; i < 6; i++) await asset(`Zebra ${i}`, 1, { project: { urn: rivera.urn } });
+  const page = await R.search(dev(EVE), { text: "Zebra", types: ["asset"], page: { limit: 1 } });
+  assert.equal(page.rows.length, 0);
+  assert.equal(page.next_cursor, undefined, "no cursor to count the hidden hits by");
+  const wide = await R.search(dev(EVE), { text: "Zebra", page: { limit: 1 } });
+  assert.equal(wide.rows.length, 0); assert.equal(wide.next_cursor, undefined, "a search over every type too");
+  assert.equal(await code(R.query(dev(EVE), "asset", {})), "bad_input", "a query with no page is a bad request, not a crash");
 });

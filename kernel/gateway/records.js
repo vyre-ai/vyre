@@ -767,12 +767,15 @@ export function createRecords(cfg) {
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if (op === "create" && attrs) await attrsGate(chain, attrs);
     // a row of a type read by a rule of its own is changed only by someone who may read it (a project, a team row and a task have the ownership rule below, which says who may)
-    if ((op === "update" || op === "remove") && before && !OWNED_TYPES.includes(type) && await privateType(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
-    // a row of a custom type goes under a project only if its writer is on that project's team and is not a viewer there (the same words as a record's `project` attribute)
-    if ((op === "create" || op === "update") && input && members && typeof members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person")) {
+    if ((op === "update" || op === "remove" || op === "restore") && before && !OWNED_TYPES.includes(type) && await privateType(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    // a row of a custom type is filed, edited, moved and unfiled only by someone on the team of EVERY project it links to, before and after the write, and not as a Viewer there: so a link can never be
+    // changed or cleared by someone outside the row's own team, and a row can be moved out of privacy only by its team (the same words as a record's `project` attribute)
+    if (members && typeof members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person")) {
       for (const l of await projectLinksOf(type)) {
-        const v = input[l.name];
-        for (const one of Array.isArray(v) ? v : [v]) if (one) await mayAttrs(chain, { project: one }, { trusted: isTrustedChain(chain, roleFor), project: (/** @type {string} */ ref) => seatOfWork(ref, l.to) });
+        const refs = new Set();
+        for (const side of [before && before.data ? before.data[l.name] : undefined, (op === "create" || op === "update") && input ? input[l.name] : undefined])
+          for (const one of Array.isArray(side) ? side : [side]) { const ref = one && (typeof one === "string" ? one : one.urn); if (ref) refs.add(String(ref)); }
+        for (const ref of refs) await mayAttrs(chain, { project: ref }, { trusted: isTrustedChain(chain, roleFor), project: (/** @type {string} */ r) => seatOfWork(r, l.to) });
       }
     }
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
@@ -1469,6 +1472,14 @@ export function createRecords(cfg) {
   // Frozen: nobody who holds the gateway can replace a method. (kernel/index.js hands a module a Proxy over a COPY of this object, so the Proxy's own answers are not bound by this freeze.)
   // A task is a record of the Space's store that the kernel's tasks own the authority of (DESIGN-tasks-records): making one through here makes the person's own plain to-do through `tasks.request`, a change to
   // its words, due time, parent or project goes through `tasks.edit` (so the same who-may rules and checks apply), its status is the kernel's, and it is skipped, never removed.
+  const mergeGuard = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string[]} */ ids) => {
+    if (!isChain(chain) || serviceOnly(chain) || staffOfChain(chain)) return;
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    if (def && (def.kind === "project" || type === "project")) throw new KernelError("not_allowed", `Only an owner or an admin joins ${def.label || type} records: the records that link to them would follow. Ask one of them.`);
+    if (!(await privateType(type))) return;
+    for (const id of ids) { const raw = await store.get(type, id, { include_deleted: true }).catch(() => null); if (!raw || !(await mayView(chain, type, { ...raw, urn: urn(type, id) }))) throw new KernelError("not_found", "no such record"); }
+  };
   const TASK_MAP = new Set(["title", "note", "due", "parent", "project"]);
   /** A link arrives as { urn } (the contract) or, from a module, as plain text: a task keeps its parent as an id and its project as a urn. */
   const refOf = (/** @type {any} */ v, /** @type {boolean} */ id) => {
@@ -1515,6 +1526,16 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
+    /** Joining two records moves their links and removes one: a row a caller may not read is neither joined nor undone, and a type that holds work (its rows are projects) is joined only by an owner or admin, since its children would follow. */
+    async merge(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ keepId, /** @type {string} */ dropId) {
+      await mergeGuard(chain, type, [keepId, dropId]);
+      return api.merge(chain, type, keepId, dropId);
+    },
+    async unmerge(/** @type {any} */ chain, /** @type {string} */ mergeId) {
+      const ev = isChain(chain) ? log.read({ type: "records.merged" }).find((/** @type {any} */ e) => e.id === mergeId) : null;
+      if (ev) await mergeGuard(chain, ev.data.type, [ev.data.keep, ev.data.drop]);
+      return api.unmerge(chain, mergeId);
+    },
     mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type), staffOfChain,
     /** Whether this chain may see events about one record of a listed type (the record gone: staff and services only). */
     mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!(await privateType(type))) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
@@ -1532,6 +1553,7 @@ export function createRecords(cfg) {
         const rows = []; for (const x of r.rows) if (await mayView(chain, type, x)) rows.push(x);
         return { ...r, rows };
       }
+      spec = checkPage(spec);
       // a custom type whose rows are private by their project: pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (it would otherwise count the others)
       let cursor = spec.page.cursor, rows = [], next;
       for (let pages = 0; pages < 10; pages++) {
@@ -1555,10 +1577,31 @@ export function createRecords(cfg) {
       return api.aggregate(chain, type, spec, await rowsMayView(chain, type));
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
-      const r = await api.search(chain, spec);
-      const keep = [];
-      for (const h of r.rows) keep.push((!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!(await privateType(h.type)) || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null))));
-      return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
+      const hitOk = async (/** @type {any} */ h) => (!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!(await privateType(h.type)) || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null)));
+      await projectLinksOf("");
+      const wide = Boolean(projectLinkMap && projectLinkMap.size) && (!Array.isArray(spec && spec.types) || !spec.types.length || spec.types.some((/** @type {string} */ t) => /** @type {any} */ (projectLinkMap).has(t)));
+      if (!wide) {
+        const r = await api.search(chain, spec);
+        const keep = []; for (const h of r.rows) keep.push(await hitOk(h));
+        return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
+      }
+      // a search that can reach rows private by their project: pages are cut to the hits she may read, and a cursor is given only when a hit she may read is still ahead (it would otherwise count the others)
+      spec = checkPage(spec);
+      let cursor = spec.page.cursor, rows = [], next;
+      for (let pages = 0; pages < 10; pages++) {
+        const r = await api.search(chain, { ...spec, page: { ...spec.page, ...(cursor ? { cursor } : {}) } });
+        rows = []; for (const h of r.rows) if (await hitOk(h)) rows.push(h);
+        next = r.next_cursor;
+        if (rows.length || !next) break;
+        cursor = next;
+      }
+      let more = false;
+      for (let ahead = 0; next && !more && ahead < 10; ahead++) {
+        const r = await api.search(chain, { ...spec, page: { ...spec.page, cursor: next } });
+        for (const h of r.rows) if (await hitOk(h)) { more = true; break; }
+        if (!more) next = r.next_cursor;
+      }
+      return { rows, ...(more ? { next_cursor: next } : {}) };
     },
   });
 }
