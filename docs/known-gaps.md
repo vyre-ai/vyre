@@ -43,7 +43,6 @@ CSV export is in the web app. A phone does not offer it yet.
 
 ### Members and sign-ins
 
-- A member cannot add a setup token or API key as their own AI account; the member signs in with the provider's own sign-in.
 - A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
 - A member's MCP servers that they sign in to inside a session are not carried to their next session.
 - The firm Microsoft 365 app is read-only. Member sends are not open.

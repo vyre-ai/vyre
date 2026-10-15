@@ -933,7 +933,7 @@ export class Switchboard {
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker) });
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker), ...(purpose === "job" || o.once === true ? { job: true } : {}) });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined, person: o.person || (o.kernelTurn && o.kernelTurn.asker) || undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
@@ -983,7 +983,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -4030,6 +4030,12 @@ export default {
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
       let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
+      // A member's own key or token is in THEIR vault and is lent for their own turn only: the vault finds the person from this turn's verified chain, and refuses an account that is not theirs or a locked vault.
+      if (v === undefined && a.person && a.kind !== "login") {
+        const lent = await ctx.call("vault.me.lend", { account: String(a.id) });
+        if (lent.error) throw Object.assign(new Error(lent.error.code === "locked" ? `unlock your own vault to use ${a.label}` : `${a.label} is not available to this turn: it is a key of one person, used in their own turns`), { code: "no_credential" });
+        v = lent.data && lent.data.value;
+      }
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was

@@ -98,7 +98,7 @@ const MEMBER = Symbol("member door");
 /** The caller label of the daemon's own door: the only one that may run the member calls. */
 const DOOR = "module:vyred";
 /** The sign-in calls a team member reaches through the team's server, and the account tool each runs (kernel/remote/wire.js CALLS.accounts). A member adds a login of their own; a key needs a Vault of their own (0.3.4). */
-const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind" });
+const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind", add: "sessions.accounts.add" });
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
 const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
@@ -459,11 +459,18 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
-        // A member's account is a sign-in of their own (a login, run as the account's own user). A key or token names an item in the home's vault, which is the owner's: a member could name the owner's
-        // item and have the owner's credential used for their turns. Until a member's keys live in a vault of their own, a member adds a login only.
+        // A member's account is a sign-in of their own (a login, run as the account's own user), or a key or setup token that lives in THEIR OWN vault (vault.me.*): the item is checked there, never in the home's
+        // vault (the owner's), and the key is read only at the start of that member's own turn (vault.me.lend). Nobody else's turn, and no agent's job, uses it.
         const who = await ownerOfAccount(meta);
-        if (who && (i.kind || (i.vault_item ? "api-key" : "login")) !== "login") throw Object.assign(new Error("on this server you add your own sign-in (kind login); a key needs a Vault of your own, which is not here yet"), { code: "denied" });
-        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
+        const wanted = i.kind || (i.vault_item ? "api-key" : "login");
+        if (who && wanted !== "login") {
+          if (!["api-key", "setup-token"].includes(String(wanted)) || !i.vault_item) throw Object.assign(new Error("add your own key or setup token as an item of your own vault first, then add the account naming that item"), { code: "bad_input" });
+          const has = await ctx.call("vault.me.has", { person: who, name: String(i.vault_item) });
+          if (has.error) throw Object.assign(new Error(String(has.error.message || "your vault could not be checked")), { code: "denied" });
+          if (!has.data || has.data.has !== true) throw Object.assign(new Error(`your own vault has no key or token named ${String(i.vault_item).slice(0, 60)}; add it there first`), { code: "bad_input" });
+          i = { ...i, scope: { projects: "*", agents: "*" } };
+        }
+        if (!who && i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
         const added = accounts.add({ ...i, person: who });
         // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
         if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
@@ -625,9 +632,20 @@ export default {
         return run(picked, { caller: "local", [MEMBER]: String(i.person) });
       },
     });
+    // The vault asks, for one member's turn, which item of THEIR vault an account of theirs names: only an account that is theirs and holds a key or token. Never a value. For the vault module.
+    ctx.tool("sessions.accounts.item", {
+      description: "The item of a member's own vault that one of their AI accounts names: { account, person } -> { item, kind, provider } or null. Only the vault module asks.", internal: true,
+      input: { type: "object", required: ["account", "person"], properties: { account: str, person: str } },
+      run: async (i, meta = {}) => {
+        if (String(meta.caller || "") !== "module:vault") throw Object.assign(new Error("only the vault asks which item an account names"), { code: "denied" });
+        const row = accounts.row(String(i.account));
+        if (!row || !row.person || String(row.person) !== String(i.person) || row.kind === "login" || !row.vault_item) return null;
+        return { item: String(row.vault_item), kind: String(row.kind), provider: String(row.provider) };
+      },
+    });
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
-      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str } },
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str, job: { type: "boolean" } } },
       run: async i => accounts.resolve(i),
     });
 

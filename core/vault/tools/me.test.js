@@ -22,7 +22,8 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
   t.after(() => people.close());
   const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) };
   const reg = /** @type {Map<string, any>} */ (new Map());
-  const ctx = gateTools({ kernel, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
+  const accounts = /** @type {Record<string, any>} */ ({});
+  const ctx = gateTools({ kernel, call: async (/** @type {string} */ tool, /** @type {any} */ i) => (tool === "sessions.accounts.item" ? { data: accounts[i.account] && accounts[i.account].person === i.person ? accounts[i.account] : null } : { error: { code: "no_such_tool" } }), tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
   register({ ctx, people, tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
   // a tool of the space (owner's) vault, as index.js registers it
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
@@ -31,7 +32,9 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
     const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
-  return { call, reg, people };
+  const events = /** @type {any[]} */ ([]);
+  people.emit = (/** @type {string} */ type, /** @type {any} */ p) => { events.push({ type, p }); };
+  return { call, reg, people, accounts, events };
 }
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
@@ -143,4 +146,33 @@ test("vault.me.release hands her Dropbox token to the files module only, for the
   // a locked vault answers locked, never a value
   people.lock(BOB);
   assert.equal((await asFiles({ name: "dropbox" }, BOB)).error.code, "locked");
+});
+
+test("vault.me.lend gives a member their own key for their own turn: the person is the turn's chain, the account must be theirs, the vault unlocked, and the value goes nowhere but the reply", async t => {
+  const { call, people, accounts, events } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  await call("vault.me.put", { name: "bob-claude", kind: "setup-token", fields: { value: "sk-ant-bob-0001" } }, BOB);
+  accounts.acct_bob = { person: BOB, item: "bob-claude", kind: "setup-token", provider: "claude" };
+  const lend = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.lend", input, who, { caller: "module:switchboard", ...extra });
+  assert.equal((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:sessions" })).data.has, true, "the add-time check");
+  assert.equal((await call("vault.me.has", { person: EVE, name: "bob-claude" }, null, { caller: "module:sessions" })).data.has, false, "not in her vault");
+  assert.equal((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:switchboard" })).error.code, "denied", "only the sessions module asks");
+  assert.equal(JSON.stringify((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:sessions" })).data).includes("sk-ant"), false, "never a value");
+  assert.deepEqual((await lend({ account: "acct_bob" }, BOB)).data, { value: "sk-ant-bob-0001" });
+  // the account names the person: another member's turn, even naming the account or a person, gets nothing
+  assert.equal((await lend({ account: "acct_bob", person: BOB }, EVE)).error.code, "denied");
+  assert.equal((await lend({ account: "acct_nobody" }, BOB)).error.code, "denied");
+  // not the owner, not a chain with no person, not two people, not an agent's turn, not another module or a surface
+  assert.equal((await lend({ account: "acct_bob" }, OWNER)).error.message, ME_REFUSAL);
+  assert.equal((await lend({ account: "acct_bob" }, null)).error.code, "denied");
+  assert.equal((await lend({ account: "acct_bob" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "denied", "an agent's job never uses a member's key");
+  for (const caller of ["module:files", "module:sessions", "module:mcp", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.lend", { account: "acct_bob" }, BOB, { caller })).error?.code, "denied", caller);
+  // a locked vault says so and gives nothing
+  people.lock(BOB);
+  const locked = await lend({ account: "acct_bob" }, BOB);
+  assert.equal(locked.error.code, "locked"); assert.equal(JSON.stringify(locked.error.message).includes("sk-ant"), false);
+  // every lend is in the audit trail by person, account and item, and the value is in none of it
+  assert.ok(events.some(e => e.type === "vault.me.lent" && e.p.person === BOB && e.p.account === "acct_bob" && e.p.item === "bob-claude"));
+  assert.equal(JSON.stringify(events).includes("sk-ant-bob-0001"), false, "no event carries the value");
 });

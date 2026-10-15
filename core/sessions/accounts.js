@@ -240,14 +240,15 @@ export class Accounts {
    * account out of scope is a refusal, never a fallback to a different one (reviewer-2's finding:
    * the assistant, or anything a prompt injection shapes, must not be able to reach another
    * project's account just by naming it).
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} i `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null, job?: boolean }} i `job`: an agent's unattended job (a member's own key or token is never chosen for it). `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
    * @returns {any} the resolved account (never synthetic-only unless nothing else exists), or null
    *   when the provider has no accounts configured at all (today's single-credential behavior).
    */
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    const listed = this.list(provider, i.person);
+    // an agent's job runs on the agent's own access, never on a member's own key or token: those are for that member's own turns
+    const listed = this.list(provider, i.person).filter(a => !(i.job === true && a.person && a.kind !== "login"));
     // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
     const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);

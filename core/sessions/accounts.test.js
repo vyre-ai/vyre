@@ -197,3 +197,12 @@ test("accounts: a member has one sign-in account of their own; keys are not limi
   await a.add({ provider: "codex", label: "Owner 1", kind: "login" });
   await a.add({ provider: "grok", label: "Owner 2", kind: "login" });
 });
+
+test("accounts: an agent's job never resolves to a member's own key or token, and a member's own turn still does", async () => {
+  const a = fresh();
+  const own = await a.add({ provider: "claude", label: "Space key", vault_item: "claude-space" });
+  const bob = await a.add({ provider: "claude", label: "Bob token", kind: "setup-token", vault_item: "bob-claude", person: "per_bob", is_default: true });
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob" }).id, bob.id, "Bob's own turn");
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true }).id, own.id, "a job on his behalf runs on the agent's own access");
+  assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: bob.id }), /no account/, "and cannot name it");
+});

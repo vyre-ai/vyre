@@ -13,6 +13,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const str = { type: "string" };
 const fields = { type: "object", additionalProperties: { type: "string" } };
 
+/** The kinds of item a member keeps an AI account's credential in. */
+const AI_KINDS = ["api-key", "setup-token", "secret"];
 export const ME_REFUSAL = "this is a member's own vault: it is for a signed-in member, and the owner uses the vault tools";
 
 /**
@@ -39,7 +41,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
   "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
-export const ME_MODULE_TOOLS = ["vault.me.release"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.lend"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -89,6 +91,38 @@ export function register({ ctx, people, tool }) {
     presence("Delete an item of your own vault", ({ name }) => `Delete ${String(name).slice(0, 64)} from your own vault`));
   // One field of one of the member's own items, handed to the module that uses it for her (files: her Dropbox token for a linked folder). Modules only (reach "modules", like vault.release), only the
   // module and item named here, and only for the one person in the call's chain: no `person` input, so the owner's vault and another member's are out of reach, and an agent's turn is refused.
+  // A member's own AI key or setup token, for the account row that names it. `has` answers only whether the named item is in that person's vault (the add-time check, never a value); it is for the sessions module.
+  // `lend` takes the ACCOUNT only and works out the person from the verified chain of the turn the call is made in: it gives the one item that account names, to the Switchboard, for that member's own turn, and
+  // only when the account row is theirs and their vault is unlocked. The value goes into the session's environment and nowhere else: never an event, a log line, an error or an audit row.
+  ctx.tool("vault.me.has", {
+    internal: true,
+    description: "Whether a member's own vault holds an AI key or setup token by this name: { person, name } -> { has }. Only the sessions module asks, at the moment a member adds the account. Never a value.",
+    input: obj({ person: str, name: str }, ["person", "name"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:sessions") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const person = String(input.person || "");
+      if (!person || person === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      let items; try { items = await people.list(person, {}); } catch { throw Object.assign(new Error("unlock your own vault first, then add the account"), { code: "denied" }); }
+      return { has: (items.items || items).some((/** @type {any} */ x) => x.name === String(input.name) && AI_KINDS.includes(String(x.kind))) };
+    },
+  });
+  ctx.tool("vault.me.lend", {
+    internal: true,
+    description: "A member's own AI key or setup token for one of their accounts, to start their own turn: { account } -> { value }. Only the Switchboard asks, inside the member's own turn; the person is the one on the turn's verified chain, never named. Refused unless the account is theirs and their vault is unlocked.",
+    input: obj({ account: str }, ["account"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:switchboard") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const person = await memberOf(ctx.kernel, meta);
+      const row = await ctx.call("sessions.accounts.item", { account: String(input.account || ""), person });
+      const acct = row && !row.error ? row.data : null;
+      if (!acct || typeof acct.item !== "string" || !AI_KINDS.includes(String(acct.kind || ""))) throw Object.assign(new Error("that account is not yours, or holds no key of yours"), { code: "denied" });
+      let it; try { it = await people.get(person, { name: acct.item }); } catch { throw Object.assign(new Error("unlock your own vault to use this account"), { code: "locked" }); }
+      const value = it.fields[String(acct.field || "value")] ?? it.fields.key ?? it.fields.token;
+      if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty"), { code: "denied" });
+      people.emit("vault.me.lent", { person, account: String(input.account), item: acct.item });   // who, which account and item: never the value
+      return { value };
+    },
+  });
   const RELEASE_TO = /** @type {Record<string, string[]>} */ ({ "module:files": ["dropbox"] });
   ctx.tool("vault.me.release", {
     internal: true,
