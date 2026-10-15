@@ -255,7 +255,11 @@ const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008
 const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
 const FORMATS = ["date", "time", "datetime", "weekday", "weekdaytime", "iso"];
 /** `{ref}`, `{ref + 2 hours}`, `{ref - 1 day}`, each optionally `as date`, `as time`, `as datetime`, `as weekday`, `as weekdaytime` or `as iso`. The ref is a field, `{now}` or `{today}`. */
-const TOKEN = /\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}/gi;
+/** A brace written as `\{` is a brace and nothing else: `\{name}` prints as {name} and fills nothing. The one place that reads and writes it. */
+const unesc = (/** @type {string} */ s) => s.replace(/\\\{/g, "{");
+/** Text as the author sees it: a brace that would be read as a token is shown escaped, so what was stored as plain text stays plain text when the Flow is saved again. */
+const esc = (/** @type {string} */ s) => s.replace(/(?<!\\)\{(?=[a-z0-9_.]+(?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?\})/gi, "\\{");
+const TOKEN = /(?<!\\)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
 const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
@@ -294,12 +298,12 @@ export const val = (t) => {
   const s = String(t ?? "");
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(s.trim());
   if (m) return { expr: HELPERS[m[1]] || tokenExpr(m[1]) };
-  if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return t; }
+  if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return typeof t === "string" ? unesc(t) : t; }
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
-  if (at < s.length) parts.push(lit(s.slice(at)));
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(unesc(s.slice(at, x.index)))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
+  if (at < s.length) parts.push(lit(unesc(s.slice(at))));
   return { expr: parts.join(" + ") };
 };
 const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|first\\([a-z0-9_.]+\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
@@ -312,7 +316,7 @@ function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
   let out = "";
   for (const p of e.match(TEMPLATE_PART) || []) {
-    if (p.startsWith('"')) { out += unlit(p); continue; }
+    if (p.startsWith('"')) { out += esc(unlit(p)); continue; }
     const f = /^format\(([a-z0-9_.]+), "([a-z]+)", (tz|"UTC")(?:, (-?\d+), "([a-z]+)")?\)$/.exec(p);
     if (f) {
       const ref = refToken(f[1]);
@@ -332,7 +336,7 @@ function templateText(e) {
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
 const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
