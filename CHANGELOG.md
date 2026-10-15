@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(flows): agent, assign and ask steps show a "Due time" in the failure panel (an hour to 30 days, or the Space's usual); the step card says "due in 1 day".
 - feat(flows): the Flows editor has a failure panel on every step: "If something goes wrong" sets the time limit for one try, the number of tries and the wait between them, which errors are tried again, Check the work (with a read-back for record steps) and "If this fails, run other steps"; the steps of a failure path are drawn under the card like Then and Else, and the Flow has an "If the run fails" lane. A stored Flow with these settings opens as editable cards and saves back unchanged; a step with a setting the panel cannot show stays an Advanced step. Steps in a failure path read `{error.message}`, `{error.code}` and `{error.step}`.
 
 ## 0.5.1
