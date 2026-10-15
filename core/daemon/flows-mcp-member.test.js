@@ -61,10 +61,23 @@ test("a member's MCP key inspects a Flow shared with her and is refused one that
   assert.ok(mixed.data, JSON.stringify(mixed.error));
   assert.ok(!JSON.stringify(mixed.data).includes("owner_only"), "the hidden Flow's words are not in it");
   assert.equal((await asBen("flows.describe", { run: hiddenRun.id, id: shared })).error?.code, "not_found", "a hidden run named beside a shared id");
-  // the hiding is forced: a member cannot name hide_for to see a run whole, nor to hide it from someone else
-  const steered = await asBen("flows.describe", { run: sharedRun.id, hide_for: "nobody" });
-  const plain = await asBen("flows.describe", { run: sharedRun.id });
-  assert.deepEqual(steered.data, plain.data, "a hide_for in the call changes nothing");
+  // the hiding is forced, from the run's own approver, whatever the caller writes: the Flows tool is called with hide_for = the person the run executed as (the owner) for a member, with none for the owner
+  const host = d.registry.deps.flowsHost.get(K.id.space);
+  const real = host.flows.tools["flows.describe"], calls = /** @type {any[]} */ ([]);
+  host.flows.tools["flows.describe"] = async (/** @type {any} */ c, /** @type {any} */ i) => { calls.push(i); return real(c, i); };
+  try {
+    for (const named of [undefined, "nobody", OWNER]) {
+      calls.length = 0;
+      const r = await asBen("flows.describe", { run: sharedRun.id, ...(named ? { hide_for: named } : {}) });
+      assert.ok(r.data, JSON.stringify(r.error));
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].hide_for, OWNER, `hide_for is the run's approver when the caller names ${named}`);
+      assert.deepEqual(Object.keys(calls[0]).sort(), ["hide_for", "run"], "nothing else the caller wrote goes through");
+    }
+    calls.length = 0;
+    assert.ok((await asOwner("flows.describe", { run: sharedRun.id })).data);
+    assert.equal(calls[0].hide_for, undefined, "the owner sees the run whole");
+  } finally { host.flows.tools["flows.describe"] = real; }
   // the app's member door answers the same way for the same people
   const svc = /** @type {any} */ (createMemberTools({ space: K.id.space, kernel: K, registry: d.registry }).flows);
   assert.ok((await svc.list(benChain, {})).every((/** @type {any} */ r) => r.id === shared), "the door lists only the shared Flow");
