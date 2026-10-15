@@ -11,7 +11,8 @@ const b64u = (/** @type {Uint8Array} */ b) => { let s = ""; for (const x of b) s
 const unb64u = (/** @type {string} */ s) => { const t = atob(String(s).replace(/-/g, "+").replace(/_/g, "/")); const out = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) out[i] = t.charCodeAt(i); return out; };
 
 /**
- * @typedef {{ public(create?: boolean): Promise<string>, dh(peer: string): Promise<string> }} ShellRelayBridge the shell's two calls (window.__vyreShell.relayKey), base64url both ways
+ * @typedef {{ public(create?: boolean): Promise<string>, dh(peer: string): Promise<string>, forget?(): Promise<void> }} ShellRelayBridge the shell's calls (window.__vyreShell.relayKey), base64url both ways;
+ *   `forget` drops the key (a removed device's wipe), and the next pairing makes a new one
  */
 
 /** The shell's relay key calls, when this page runs in a Mac shell that has them (an older shell has not: the page then keeps the key as a browser does). @param {any} w @returns {ShellRelayBridge | null} */
