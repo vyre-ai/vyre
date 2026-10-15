@@ -33,11 +33,11 @@ export const tokensOf = (text) => /** @type {{ token: string, path: string, suff
 export const HELPERS = /** @type {{ token: string, label: string, engine: boolean }[]} */ ([
   { token: "{today}", label: "Today's date", engine: true },
   { token: "{now}", label: "The date and time now", engine: true },
-  { token: "{run.number}", label: "The run number", engine: false },
-  { token: "{flow.name}", label: "The Flow's name", engine: false },
-  { token: "{approver.name}", label: "The approver's name", engine: false },
-  { token: "{space.name}", label: "The Space's name", engine: false },
-  { token: "{me.name}", label: "Your name", engine: false },
+  { token: "{run.number}", label: "The run number", engine: true },
+  { token: "{flow.name}", label: "The Flow's name", engine: true },
+  { token: "{approver.name}", label: "The approver's name", engine: true },
+  { token: "{space.name}", label: "The Space's name", engine: true },
+  { token: "{me.name}", label: "Your name (the person who started the run)", engine: true },
 ]);
 
 /** Sealed field names come as `sealed: true` on a field. @param {{ name: string, label: string, sealed?: boolean }} f */
