@@ -35,6 +35,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const od = await host().flows.tools["flows.define"](chainOf(owner), { flow: find("owners_flow") });
   assert.ok(od.ok, JSON.stringify(od));
   await host().flows.tools["flows.approve"](chainOf(owner), { id: od.id, version: od.version, hash: od.hash });
+  // a Flow is inspected by an owner or admin, the person who made it, and the people it is shared with (Can use or Can edit): before it is shared with her she is told it is not there
+  assert.ok(!(await svc.list(bob, {})).some((/** @type {any} */ r) => r.id === od.id), "an owner's Flow that is not shared with her is not on her list");
+  assert.match(await words(svc.get(bob, { id: od.id })), /no such Flow you can use/);
+  assert.match(await words(svc.start(bob, { id: od.id })), /no such Flow you can use/);
+  await host().flows.tools["flows.access.set"](chainOf(owner), { id: od.id, subject: BOB, level: "use" });
 
   // she sees it (approved), can read it and start it; a run she starts is tagged with her
   const listed = await svc.list(bob, {});
@@ -138,9 +143,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   await d.kernel.gateway.grants.setRole(chainOf(owner), { person: CAROL, role: "member" }, { presence: { method: "stand-in" } });
   const carolMember = chainOf(CAROL);
   // a second member improves bob's Flow: it is a draft; only bob (whose authority it runs on) or an owner/admin approves it
-  assert.ok((await svc.list(carolMember, {})).some((/** @type {any} */ r) => r.id === bd.id), "every member sees every Flow of the Space");
-  assert.ok((await svc.runs(carolMember, { id: bd.id })).length >= 1, "and the runs of every Flow of the Space");
+  assert.ok(!(await svc.list(carolMember, {})).some((/** @type {any} */ r) => r.id === bd.id), "another member's Flow that is not shared with her is not on her list");
+  assert.match(await words(svc.runs(carolMember, { id: bd.id })), /no such Flow you can use/, "nor are its runs");
   await host().flows.tools["flows.access.set"](chainOf(BOB), { id: bd.id, subject: CAROL, level: "edit" });   // bob made it, so he shares it: Can edit is what lets her change it
+  assert.ok((await svc.list(carolMember, {})).some((/** @type {any} */ r) => r.id === bd.id), "once it is shared with her she sees it");
+  assert.ok((await svc.runs(carolMember, { id: bd.id })).length >= 1, "and its runs");
   const cv2 = await svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carol's improvement" }) });
   assert.ok(cv2.ok, JSON.stringify(cv2));
   assert.match(await words(svc.approve(carolMember, { id: bd.id, version: cv2.version, hash: cv2.hash })), /runs on someone else's authority/, "she cannot approve her version of bob's Flow herself");

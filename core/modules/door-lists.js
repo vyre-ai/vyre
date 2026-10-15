@@ -22,9 +22,9 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
-  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
+  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
-  "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
+  "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.runs", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
   "memory.answer", "memory.ask", "memory.brief", "memory.card", "memory.context", "memory.decisions", "memory.facts", "memory.graph", "memory.prompt", "memory.relevant",
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
@@ -110,8 +110,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
   "files.linked.mentions.resolve",
-  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
-  "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
+  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.kit.remove", "flows.pause", "flows.resume",
+  "flows.rollback", "flows.run", "flows.settle", "flows.test.remove",
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.request", "gate.revise", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
