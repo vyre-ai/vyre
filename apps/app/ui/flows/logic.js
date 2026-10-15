@@ -671,8 +671,9 @@ const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("te
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
-  const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<) (-?\d+(?:\.\d+)?|"[^"]*")$/.exec(e || "");
-  if (!m) return { mode: "formula", formula: e || "" };
+  const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<|contains) (-?\d+(?:\.\d+)?|true|false|"[^"]*")$/.exec(e || "");
+  // A quoted text that looks like a number or a yes/no would come back unquoted, which is a different value: keep it as the formula it is.
+  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return { mode: "formula", formula: e || "" };
   return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
@@ -776,7 +777,7 @@ export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter((
 
 
 /** The operators of a condition, as [symbol, words]. */
-export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!=", "is not"], [">", "is more than"], ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"]]);
+export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!=", "is not"], [">", "is more than"], ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"], ["contains", "contains"]]);
 
 /** What a condition field reads: where it comes from and its name. `source` is "trigger" or an earlier step's id. @param {{ source?: string, field?: string }} c @param {Trigger} t */
 export function fieldExpr(c, t) {
@@ -793,7 +794,7 @@ export function condExpr(c, t) {
   const left = fieldExpr(c, t);
   if (!left || c.value === undefined || String(c.value).trim() === "") return "";
   const v = String(c.value).trim();
-  return `${left} ${c.op || "=="} ${/^-?\d+(\.\d+)?$/.test(v) ? v : JSON.stringify(v)}`;
+  return `${left} ${c.op || "=="} ${/^(-?\d+(\.\d+)?|true|false)$/.test(v) ? v : JSON.stringify(v)}`;
 }
 
 /** A condition in words for a collapsed card. @param {any} c @param {Trigger} t */

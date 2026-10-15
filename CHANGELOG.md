@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(flows): an If step can compare with contains and with yes or no (true or false is a real value, not text); a condition that compared with quoted text that looks like a number now stays the formula it is instead of turning into a number.
 - feat(flows): an Ask step can show a record with the question, and an Assign step says how the work is done (a template, a tailored template, an assistant, or the person) with the template text.
 - feat(flows): "Do something else in Vyre", a step for any module action (written module.action, with the address it acts on and named inputs), stored as the same call step the engine runs. Calls the editor has a step of its own for (text, email, document, project) stay those steps.
 - feat(flows): the editor has a settings card for the whole Flow: a description, how many runs go at once (1 to 32), a key that keeps runs with the same key apart, and how long a run may sit before it is called stuck. Each is optional and drops when emptied.

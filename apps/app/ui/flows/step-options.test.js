@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, flowSettings, setFlowSetting } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, condExpr, flowSettings, setFlowSetting } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -102,4 +102,15 @@ test("an ask step keeps its record and an assign step keeps how and template", (
   assert.deepEqual(checkFlow(out), []);
   const odd = fromDefinition(flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "reason" }] }]), options);
   assert.equal(odd.steps[0].kind, "advanced", "a question with a form of its own stays as it was");
+});
+
+test("a condition can say contains and compare to yes or no, and a quoted number stays the text it was", () => {
+  const trig = { kind: "created", type: "contact" };
+  assert.equal(condExpr({ mode: "build", source: "trigger", field: "name", op: "contains", value: "harlow" }, trig), 'trigger.after.name contains "harlow"');
+  assert.equal(condExpr({ mode: "build", source: "trigger", field: "vip", op: "==", value: "true" }, trig), "trigger.after.vip == true");
+  const kept = fromDefinition(flow([{ id: "d1", kind: "decide", if: 'trigger.after.code == "007"', then: [], else: [] }]), options);
+  assert.equal(kept.steps[0].cond.mode, "formula");
+  assert.equal(toDefinition(kept, options).steps[0].if, 'trigger.after.code == "007"');
+  const built = fromDefinition(flow([{ id: "d1", kind: "decide", if: 'trigger.after.name contains "harlow"', then: [], else: [] }]), options);
+  assert.deepEqual([built.steps[0].cond.mode, built.steps[0].cond.op, built.steps[0].cond.value], ["build", "contains", "harlow"]);
 });
