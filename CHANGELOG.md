@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(flows): a key typed into a web call's header or query value is refused when the Flow is checked ("Keep keys in the Vault: use a connection for this step instead of typing the key here."), so a key is not stored in a Flow that is copied, shared and read by models.
 - feat(flows): a web call step has a query and headers (never the key: that stays in the Vault) and a HEAD check; a call that moves a file through Drive stays an advanced step.
 - feat(flows): a Repeat step takes any list written as a formula, not only the records a Find step returned.
 - feat(flows): an If step can compare with contains and with yes or no (true or false is a real value, not text); a condition that compared with quoted text that looks like a number now stays the formula it is instead of turning into a number.
