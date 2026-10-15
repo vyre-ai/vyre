@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): Create, Update and Move to a stage pick the field or the stage from the object's own list (a typo no longer makes a bad field), the stage trigger picks from the object's stages, and some words follow the 13 Oct audit: "A record moves to a stage", "I press Run", "At a set time", "Look up records", "Run another Flow".
+- feat(flows): "Something else happens" lists every event the running modules announce (the event catalog) after the plain-worded ones, and a record, event or watcher trigger can carry an optional condition (`where`, a formula over what started it), which a stored Flow keeps and opens as the same editable trigger.
+- feat(flows): text and lists. A token written in doubled braces is a literal (`{{name}}` prints as {name} and fills nothing); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown doubled. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
+- feat(flows): the Flows editor has a failure panel on every step: "If something goes wrong" sets the time limit for one try, the number of tries and the wait between them, which errors are tried again, Check the work (with a read-back for record steps) and "If this fails, run other steps"; the steps of a failure path are drawn under the card like Then and Else, and the Flow has an "If the run fails" lane. A stored Flow with these settings opens as editable cards and saves back unchanged; a step with a setting the panel cannot show stays an Advanced step. Steps in a failure path read `{error.message}`, `{error.code}` and `{error.step}`.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
