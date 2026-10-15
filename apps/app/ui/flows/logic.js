@@ -12,7 +12,7 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
@@ -69,6 +69,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
   ] },
   { name: "Work", items: [
     { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent", words: "todo give delegate" },
+    { kind: "document", icon: "file", label: "Make a document", hint: "Fill a Word template from the Flow's records and values", words: "word docx template contract letter pdf generate document" },
     { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
     { kind: "subflow", icon: "flows", label: "Run another Flow", hint: "Use a Flow you already made", words: "subflow call nested" },
   ] },
@@ -90,7 +91,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -126,6 +127,7 @@ export function whoWords(who, o) {
 export function stepSummary(s, o, d) {
   switch (s.kind) {
     case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ")}` : ""}`;
+    case "document": return `Make a document from the ${s.template || "chosen"} template${s.format === "pdf" ? " as a PDF" : ""}`;
     case "project": {
       const t = o.templates.find((x) => x.id === s.template);
       return `Start a project from the ${t ? t.name : "chosen"} playbook${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
@@ -188,6 +190,7 @@ function kindProblem(s, o) {
   void o;
   switch (s.kind) {
     case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which object to create a record in.";
+    case "document": return !s.template ? "Choose the template." : (s.fields || []).some((/** @type {any} */ f) => f.field && !(f.value || "").trim()) ? "Give every placeholder of the template a value, or remove it." : (s.records || []).some((/** @type {any} */ r) => r.alias && !r.ref) ? "Choose the record for each kind of record the template reads." : null;
     case "project": return s.template ? null : "Choose a project playbook.";
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
@@ -273,6 +276,27 @@ export function fieldValue(o, type, current) {
   const cur = current || "";
   const hit = fieldChoices(o, type).find(([n, l]) => n === slug(cur) || l === cur);
   return hit ? hit[0] : cur;
+}
+
+/**
+ * What a document template asks for, split the way a step gives it: a plain placeholder ({client_name}) is a value, a dotted one ({contact.name}, {contact.spouse.name}) reads a record under the name before the first dot (its alias).
+ * `brand` is the Space's own and is never asked for. @param {string[]} names @returns {{ values: string[], aliases: string[] }}
+ */
+export function placeholderPlan(names) {
+  const values = [], aliases = [];
+  for (const n of [...new Set((names || []).map(String))]) {
+    const dot = n.indexOf(".");
+    if (dot < 0) values.push(n);
+    else { const a = n.slice(0, dot); if (a !== "brand" && !aliases.includes(a)) aliases.push(a); }
+  }
+  return { values, aliases };
+}
+/** A document step's rows made to match a template: one row for each placeholder and each alias, what was already filled in kept, what the template no longer asks for dropped. @param {any} s @param {string[]} names */
+export function syncDocumentRows(s, names) {
+  const plan = placeholderPlan(names);
+  const have = new Map((s.fields || []).map((/** @type {any} */ f) => [f.field, f.value]));
+  const refs = new Map((s.records || []).map((/** @type {any} */ r) => [r.alias, r.ref]));
+  return { fields: plan.values.map((field) => ({ field, value: have.get(field) ?? "" })), records: plan.aliases.map((alias) => ({ alias, ref: refs.get(alias) ?? "" })) };
 }
 
 /** Every event a Flow can start from: the plain-worded ones first, then every other event the running modules announce (the event catalog), named as the module says it; a stored event the catalog no longer lists stays choosable. @param {Options} o @param {string} [current] @returns {[string, string][]} */
@@ -407,6 +431,13 @@ function triggerBase(t) {
   }
 }
 
+/** The reference a record urn expression stands for: what started the Flow, or a record an earlier step made; null for anything else. @param {any} v @returns {string | null} */
+const urnRef = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.urn$/i.exec(e); return m ? m[1] : null; };
+/** The placeholder rows of a document step that name one. @param {any[] | undefined} rows */
+const placeholderRows = (rows) => (rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim());
+/** The urn of a record: what started the Flow (the event's subject), or one an earlier step made. A document is filled from records named by their address. @param {string | undefined} ref */
+const recUrn = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `steps.${ref}.record.urn` });
+
 /** The expression for the record an earlier step made, or what started the Flow. @param {string | undefined} ref */
 const rec = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `steps.${ref}.record.id` });
 
@@ -447,6 +478,7 @@ function kindDefinition(s, d) {
     case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: repeatLimit(s.max), steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
+    case "document": return { id: s.id, kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: s.template, ...(s.format === "pdf" ? { format: "pdf" } : {}), ...(placeholderRows(s.fields).length ? { values: Object.fromEntries(placeholderRows(s.fields).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])) } : {}), ...((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).length ? { records: Object.fromEntries((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).map((/** @type {any} */ r) => [r.alias, recUrn(r.ref)])) } : {}) } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
@@ -516,6 +548,7 @@ export function newStep(kind, d, o) {
   switch (kind) {
     case "create": return { id, kind, type: d.trigger.kind === "created" || d.trigger.kind === "changed" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
     case "project": return { id, kind, template: o.templates[0]?.id || "", name: "", link };
+    case "document": return { id, kind, template: "", format: "docx", fields: [], records: lastMade || isRecordTrigger(d.trigger) ? [{ alias: "record", ref: link }] : [] };
     case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link };
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "email": return { id, kind, to: "", subject: "", body: "" };
@@ -673,6 +706,11 @@ function stepFromKind(s) {
     }
     case "call": {
       const i = s.input || {};
+      if (s.action === "documents.generate" && s.resource === "vyre://space/documents" && keys(s, ["id", "kind", "action", "resource", "input"]) && keys(i, ["template", "format", "values", "records"]) && typeof i.template === "string" && (i.format === undefined || i.format === "pdf")) {
+        const vals = Object.entries(i.values || {}).map(([field, v]) => ({ field, value: unval(v) }));
+        const recs = Object.entries(i.records || {}).map(([alias, v]) => ({ alias, ref: urnRef(v) }));
+        if (vals.every((x) => x.value !== null) && recs.every((x) => x.ref !== null)) return { id: s.id, kind: "document", template: i.template, format: i.format === "pdf" ? "pdf" : "docx", fields: vals, records: recs };
+      }
       if (s.action === "work.start-project" && s.resource === "vyre://space/work" && typeof i.template === "string" && keys(i, ["template", "name", "client"])) {
         const link = i.client === undefined ? "" : refOf(i.client);
         const name = exprOf(i.name) === "trigger.name" ? "" : unval(i.name);
@@ -774,6 +812,7 @@ export function valueSources(d, stepId, o) {
       out.push([`{steps.${s.id}.record.id}`, `The record looked up by ${s.id}`], [`{steps.${s.id}.found}`, `Whether ${s.id} found one (true or false)`]);
       for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record looked up by ${s.id}`]);
     }
+    if (s.kind === "document") out.push([`{steps.${s.id}.path}`, `Where the document made by ${s.id} is filed`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
   out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);

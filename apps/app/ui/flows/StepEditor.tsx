@@ -13,6 +13,7 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
+import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
 import { dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
@@ -216,6 +217,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Text size="caption" tone="label">A removed record can be restored from its history.</Text>
         </>
       ) : null}
+      {s.kind === "document" ? <DocumentFields s={s} set={set} draft={draft} options={options} links={links} /> : null}
       {s.kind === "stage" ? (
         <>
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
