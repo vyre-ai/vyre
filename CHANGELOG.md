@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- test(design-pictures): a picture that draws nothing (a fixture still unpainted on a slow runner) is waited for and, if it stays blank, fails as a rule fault instead of being written as a reference; a manual run of the workflow can write the references (update input).
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
