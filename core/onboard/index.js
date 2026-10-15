@@ -269,7 +269,7 @@ export default {
       // guess from role/machine. relayJoin is false everywhere now (see
       // RELAY_JOIN_GONE_REASON above).
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, needsServer: Boolean(ctx.config.needsServer), ...(ctx.config.needsServer ? { notice: config.SOLO_RETIRED } : {}), ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
@@ -318,7 +318,8 @@ export default {
 
     ctx.tool("onboard.machine", {
       effect: "write",
-      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
+      needsYou: true,
+      description: "Choose server or device for this computer. An assistant's call waits for your one tap. Solo is no longer a way to run Vyre.",
       // "device" stays in the type (checkInput has no per-caller schema, and removing it would
       // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
       // run() guard below, not the schema, is what actually stops a person or an agent choosing
@@ -329,7 +330,7 @@ export default {
       // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
       // allowlist only so the two specific callers below can reach run() at all; which of them
       // may do what is checked there, by the exact caller string, not by this coarse kind.
-      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module", "mcp", "harness"],
       // Moving TO server turns on the eight box-only modules -- a real network-facing change --
       // so it needs an actual presence proof, EXCEPT the very first choice on a real box, before
       // any owner exists: that's already proven by the one-time link only cli/local/capsule can
@@ -341,6 +342,7 @@ export default {
       presence: { when: input => Boolean(input && input.machine === "server" && !(ctx.config.role === "box" && !net().ownerSeen)) },
       run: async ({ machine }, { caller }) => {
         const raw = String(caller);
+        if (machine === "solo") throw Object.assign(new Error(config.SOLO_RETIRED), { code: "solo_retired" });
         if (machine === "device") {
           // Only onboard's own onboard.join step, or relay's relay.join, ever sets this, each
           // after its own person-gated, presence-proved pairing (ADR 0039 section 5) -- never a
@@ -349,15 +351,30 @@ export default {
         } else if (raw.startsWith("module:")) {
           // Any other module reaching this tool may only ever set device (above); solo and
           // server are the person's own choice, whoever is asking on their behalf.
-          throw Object.assign(new Error("only a person chooses solo or server"), { code: "denied" });
+          throw Object.assign(new Error("only a person chooses server"), { code: "denied" });
         }
         // machine's own default (config/index.js defaults()) already covers "no choice made
         // yet"; this tool only ever records an actual choice, so calling it with the value
         // already in effect is a safe no-op, not an error.
         save({ machine });
+        ctx.config.needsServer = false;
         // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
         // this tool records the choice now so onboarding and Settings have something to call.
         return { machine: ctx.config.machine, service: null };
+      },
+    });
+
+    ctx.tool("onboard.windows", {
+      effect: "write",
+      needsYou: true,
+      description: "Ask to enrol this Windows computer. An assistant's call waits for your one tap and changes nothing until you approve.",
+      input: obj({ label: { type: "string", maxLength: 60 } }, ["label"]),
+      callers: ["cli", "local", "deck", "capsule", "onboard", "mcp", "harness"],
+      run: async ({ label }) => {
+        const l = String(label ?? "").trim();
+        if (!l || l.length > 60 || /[\u0000-\u001f]/.test(l)) throw Object.assign(new Error("the computer's name is one line of up to 60 characters"), { code: "bad_input" });
+        save({ onboard: { windows: { label: l, at: new Date().toISOString() } } });
+        return { recorded: true, label: l, next: "Open Vyre on that PC and approve the device there. Nothing on the device changes until you do." };
       },
     });
 

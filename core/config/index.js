@@ -155,25 +155,26 @@ export function privateSocketDir() {
  * the owner's Deck served from here, a real address other devices reach. True only for
  * `config.machine` "server", and for the legacy `config.role` value "box".
  *
- * NOT true for "solo" (fixed 28 Sep after reviewer's HOLD on 80fd866e): a first pass made solo
- * both a server and a device, which put the eight box-only modules -- the tailnet listener,
- * public webhooks, the relay, the owner-claim flow -- on every existing Mac by default, with no
- * choice made. Solo is the full local core and nothing that exposes this machine to anyone else;
- * a person turns individual server parts on by choosing them (pairing a device, `vyre server
- * here`), never by installing Vyre on a Mac.
+ * NOT true for a device, and not true for a retired solo install (those load as a device).
+ * A first pass made solo both a server and a device, which put the eight box-only modules
+ * on every existing Mac by default. A device runs the local core and reaches a server;
+ * it does not expose this machine as the server.
  * @param {string} [machine]
  */
 export function isServer(machine) { return machine === "server" || machine === "box"; }
 
 /**
- * Whether a machine is a device, of a server elsewhere or (under "solo") of no one: the
- * local-only modules, Capsule, voice, presence's Mac rules. True for `config.machine` "device"
- * and "solo", and for the legacy `config.role` value "local".
+ * Whether a machine is a device of a server elsewhere: the local-only modules, Capsule, voice,
+ * presence's computer rules. True for `config.machine` "device" and the legacy `config.role`
+ * value "local". A stored "solo" is not a device until load() rewrites it (see SOLO_RETIRED).
  * @param {string} [machine]
  */
-export function isDevice(machine) { return machine === "device" || machine === "solo" || machine === "local"; }
+export function isDevice(machine) { return machine === "device" || machine === "local"; }
 
-/** @typedef {{ name?: string, role: "box"|"local", machine: "solo"|"server"|"device", projectsDir: string, roots: string[],
+/** What a person sees when an old install was set to run only on this computer. */
+export const SOLO_RETIRED = "This install was set up to run only on this computer. That way of running Vyre has been removed. Add a server, or join a space on someone else's, to keep using it.";
+
+/** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", needsServer?: boolean, projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string },
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
@@ -191,7 +192,7 @@ export function isDevice(machine) { return machine === "device" || machine === "
  * route()). Off, the app is served at /app/ only; there is no other web app to answer "/".
  * `role` is the machine's old two-value job (box or local): its meaning and default (an OS guess)
  * are unchanged, so the many modules that still read `ctx.config.role` directly need no change.
- * `machine` is the person's actual choice (ADR 0039): solo, server or device -- module loading
+ * `machine` is server or device (ADR 0054 retires solo). Module loading
  * (roleBuckets, core/modules/index.js), presence and onboard read this one, not `role`. */
 
 /**
@@ -252,13 +253,8 @@ function defaults(root, platform = process.platform) {
     // A fresh install on a Mac or a Windows PC is someone's own device; only a bare Linux install
     // defaults to being the server.
     role: platform === "darwin" || platform === "win32" ? "local" : "box",
-    // The person's explicit choice (ADR 0039), defaulted the same way `role` always was until
-    // they say otherwise: alone on a Mac is Solo, and stays exactly today's local role (no
-    // box-only module, no server-side presence) until they choose "server" themselves; a
-    // provisioned box is already a server, since there was never a solo mode for one. Reviewer's
-    // HOLD on 80fd866e: a first pass made solo BOTH a server and a device, which put the eight
-    // box-only modules on every existing Mac with no choice made -- fixed in isServer(), above.
-    machine: platform === "darwin" ? "solo" : platform === "win32" ? "device" : "server",
+    // A fresh Mac or Windows PC is a device. A bare Linux install is the server. Solo is not a way to run Vyre (ADR 0054).
+    machine: platform === "darwin" || platform === "win32" ? "device" : "server",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
@@ -309,8 +305,11 @@ export function load(root = home(), platform = process.platform) {
   // machine (ADR 0039) is new and additive: an old config.json naming a role but no machine
   // gets one inferred from that explicit choice, which says more than the OS guess in
   // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
-  if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "solo" : c.machine;
-  if (!["solo", "server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not solo, server or device; using ${d.machine}`); c.machine = d.machine; }
+  if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "device" : c.machine;
+  // An old solo install, or a local role that never named a machine, keeps the local modules and is told to add or join a server. The file is not rewritten here, so the notice stays until they choose.
+  const retiredSolo = user.machine === "solo" || (user.machine === undefined && user.role === "local");
+  if (retiredSolo) { c.machine = "device"; c.needsServer = true; problems.push(SOLO_RETIRED); }
+  if (!["server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not server or device; using ${d.machine}`); c.machine = d.machine; }
   // A machine chosen as a server does the box's work whatever the OS guess said: the box-only modules (wink, the relay's server side) read `role`, so a Mac set up as a server (machine "server",
   // no role named) is role box too. A role named in the file is the person's and stays.
   if (user.role === undefined && c.machine === "server") c.role = "box";

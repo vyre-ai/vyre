@@ -2,7 +2,9 @@
   "onboard.status": {
     "mode": "loopback",
     "role": "box",
-    "machine": "solo",
+    "machine": "device",
+    "needsServer": true,
+    "notice": "This install was set up to run only on this computer. That way of running Vyre has been removed. Add a server, or join a space on someone else's, to keep using it.",
     "can": { "relayJoin": false, "relayJoinReason": "Not available on a Mac yet. Needs vyre-core." },
     "owner": null,
     "address": null,
@@ -227,9 +229,9 @@
   "onboard.machine": {
     "$by": "machine",
     "cases": {
-      "solo": { "machine": "solo", "service": null },
       "server": { "machine": "server", "service": null },
-      "*": { "machine": "solo", "service": null }
+      "device": { "machine": "device", "service": null },
+      "*": { "machine": "device", "service": null }
     }
   },
   "onboard.join": {

@@ -1,9 +1,11 @@
-//! This computer's TPM key for the device entry's `enclave` field (NK-2): a P-256 key made in the Trusted Platform Module through CNG's "Microsoft Platform Crypto Provider", with a UI policy
-//! asking Windows to ask the person for a signature. THAT A PROMPT FOLLOWS EVERY SIGNATURE IS NOT PROVEN: it needs a run on a TPM computer (reviewer-3, 5 Oct), and the Platform Crypto Provider's
-//! consent prompt may not be Windows Hello's (Hello's per-use consent is the Passport provider's, KeyCredentialManager). Until it is shown, the page treats this key as no proof of the person: the
-//! device entry is held as a web key and cannot change who speaks for the identity (src/identity/mac-key.ts `shellKeyHeld`). The private key never leaves the TPM. The signature is the raw 64 bytes r||s CNG gives for ECDSA, over the
-//! SHA-256 of the message; the public key is the raw uncompressed point (65 bytes). A computer with no TPM, or no Windows Hello set up, has no such key: every call says so, and its device entry
-//! signs with its Ed25519 key alone, as a Mac with no Secure Enclave does.
+//! This computer's key for the device entry's `enclave` field (NK-2): a P-256 key. The shell tries three stores, in order, and uses the first that already holds the key or can make it:
+//! Windows Hello ("Microsoft Passport Key Storage Provider", store `windows_hello`), then the TPM ("Microsoft Platform Crypto Provider", store `tpm`), then the software store
+//! ("Microsoft Software Key Storage Provider", store `software`), whose keys stay with this Windows user (DPAPI). Hello and the TPM get a UI policy asking Windows to ask the person.
+//! The software store does not: it has no person prompt. THAT A PROMPT FOLLOWS EVERY SIGNATURE IS NOT PROVEN: it needs a run on a real PC (reviewer-3, 5 Oct), and Hello's own prompt text is not
+//! the shell's summary (KP-3). Until a Hello prompt is shown on hardware, the page treats this key as no proof of the person: the device entry is held as a web key and cannot change who speaks
+//! for the identity (src/identity/mac-key.ts `shellKeyHeld`). The shell still asks in its own window before the key signs. The private key never leaves the store that made it. The signature is
+//! the raw 64 bytes r||s CNG gives for ECDSA, over the SHA-256 of the message; the public key is the raw uncompressed point (65 bytes). A computer where none of the three stores will make a key
+//! says so, and its device entry signs with its Ed25519 key alone, as a Mac with no Secure Enclave does.
 //!
 //! The CNG calls are declared here directly (ncrypt.dll) so they do not depend on a windows-sys version's types. Everything is Windows only; other hosts get the same functions refusing.
 
@@ -37,16 +39,22 @@ mod imp {
 
     const NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG: u32 = 0x2;
     const KEY_NAME: &str = "Vyre identity enclave key";
+    /// Hello, then the TPM, then software (DPAPI). The third value is whether that store gets a UI policy. A prompt per signature is NOT PROVEN on hardware.
+    const STORES: &[(&str, &str, bool)] = &[
+        ("Microsoft Passport Key Storage Provider", "windows_hello", true),
+        ("Microsoft Platform Crypto Provider", "tpm", true),
+        ("Microsoft Software Key Storage Provider", "software", false),
+    ];
 
     struct Prov(Handle);
     impl Drop for Prov { fn drop(&mut self) { if self.0 != 0 { unsafe { NCryptFreeObject(self.0) }; } } }
     struct Key(Handle);
     impl Drop for Key { fn drop(&mut self) { if self.0 != 0 { unsafe { NCryptFreeObject(self.0) }; } } }
 
-    fn provider() -> Result<Prov, String> {
+    fn open_provider(name: &str) -> Result<Prov, String> {
         let mut h: Handle = 0;
-        let name = w("Microsoft Platform Crypto Provider");
-        let s = unsafe { NCryptOpenStorageProvider(&mut h, name.as_ptr(), 0) };
+        let n = w(name);
+        let s = unsafe { NCryptOpenStorageProvider(&mut h, n.as_ptr(), 0) };
         if s != 0 { return Err(format!("This computer has no TPM that Vyre can use. (status {:#010x})", s as u32)); }
         Ok(Prov(h))
     }
@@ -58,45 +66,67 @@ mod imp {
         if s == 0 { Some(Key(h)) } else { None }
     }
 
-    fn make(p: &Prov) -> Result<Key, String> {
+    /// The store that already holds this computer's key, if one does.
+    fn find_key() -> Option<(Prov, Key, &'static str)> {
+        for (name, store, _) in STORES {
+            let Ok(p) = open_provider(name) else { continue };
+            if let Some(k) = open(&p) { return Some((p, k, *store)); }
+        }
+        None
+    }
+
+    fn make(p: &Prov, ui: bool) -> Result<Key, String> {
         let mut h: Handle = 0;
         let alg = w("ECDSA_P256");
         let name = w(KEY_NAME);
         let c = unsafe { NCryptCreatePersistedKey(p.0, &mut h, alg.as_ptr(), name.as_ptr(), 0, 0) };
-        if c != 0 { return Err(format!("This computer's TPM would not make a key. (status {:#010x})", c as u32)); }
+        if c != 0 { return Err(format!("This computer would not make a key. (status {:#010x})", c as u32)); }
         let key = Key(h);
-        // Windows asks the person (Windows Hello) every time this key signs.
-        let title = w("Vyre");
-        let friendly = w("Vyre identity key");
-        let desc = w("Approve this change to your name");
-        let ui = UiPolicy { dw_version: 1, dw_flags: NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG, psz_creation_title: title.as_ptr(), psz_friendly_name: friendly.as_ptr(), psz_description: desc.as_ptr() };
-        let prop = w("UI Policy");
-        let st = unsafe { NCryptSetProperty(key.0, prop.as_ptr(), &ui as *const UiPolicy as *const u8, std::mem::size_of::<UiPolicy>() as u32, 0) };
-        if st != 0 { return Err(format!("Windows Hello is not set up on this computer. (status {:#010x})", st as u32)); }
+        if ui {
+            // Hello and the TPM: ask Windows to ask the person. The software store has no such prompt, so it gets no policy.
+            let title = w("Vyre");
+            let friendly = w("Vyre identity key");
+            let desc = w("Approve this change to your name");
+            let policy = UiPolicy { dw_version: 1, dw_flags: NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG, psz_creation_title: title.as_ptr(), psz_friendly_name: friendly.as_ptr(), psz_description: desc.as_ptr() };
+            let prop = w("UI Policy");
+            let st = unsafe { NCryptSetProperty(key.0, prop.as_ptr(), &policy as *const UiPolicy as *const u8, std::mem::size_of::<UiPolicy>() as u32, 0) };
+            if st != 0 { return Err(format!("Windows Hello is not set up on this computer. (status {:#010x})", st as u32)); }
+        }
         let f = unsafe { NCryptFinalizeKey(key.0, 0) };
-        if f != 0 { return Err(format!("This computer's TPM would not keep the key. (status {:#010x})", f as u32)); }
+        if f != 0 { return Err(format!("This computer would not keep the key. (status {:#010x})", f as u32)); }
         Ok(key)
     }
 
-    /// The key's public point (65 bytes), made on first use when `create`. Err with plain words when there is no TPM, no Windows Hello, or no key and `create` is false.
-    pub fn public_point(create: bool) -> Result<[u8; 65], String> {
-        let p = provider()?;
-        let key = match open(&p) { Some(k) => k, None if create => make(&p)?, None => return Err("There is no TPM key on this computer.".into()) };
+    fn export_point(key: &Key) -> Result<[u8; 65], String> {
         let blob_type = w("ECCPUBLICBLOB");
         let mut need: u32 = 0;
-        if unsafe { NCryptExportKey(key.0, 0, blob_type.as_ptr(), null(), null_mut(), 0, &mut need, 0) } != 0 { return Err("The TPM key could not be read.".into()); }
+        if unsafe { NCryptExportKey(key.0, 0, blob_type.as_ptr(), null(), null_mut(), 0, &mut need, 0) } != 0 { return Err("The key could not be read.".into()); }
         let mut blob = vec![0u8; need as usize];
         let mut got: u32 = 0;
-        if unsafe { NCryptExportKey(key.0, 0, blob_type.as_ptr(), null(), blob.as_mut_ptr(), need, &mut got, 0) } != 0 { return Err("The TPM key could not be read.".into()); }
+        if unsafe { NCryptExportKey(key.0, 0, blob_type.as_ptr(), null(), blob.as_mut_ptr(), need, &mut got, 0) } != 0 { return Err("The key could not be read.".into()); }
         blob.truncate(got as usize);
-        vyre_capsule_win::identity::point_from_ecc_blob(&blob).ok_or_else(|| "The TPM key is not a P-256 key.".to_string())
+        vyre_capsule_win::identity::point_from_ecc_blob(&blob).ok_or_else(|| "The key is not a P-256 key.".to_string())
     }
 
-    /// The raw 64-byte signature (r then s) over the SHA-256 of `message`; Windows asks the person first. Err when there is no key or the person says no.
+    /// The key's public point (65 bytes) and which store holds it (`windows_hello`, `tpm` or `software`), made on first use when `create`.
+    pub fn public_point(create: bool) -> Result<([u8; 65], &'static str), String> {
+        if let Some((_p, key, store)) = find_key() { return export_point(&key).map(|p| (p, store)); }
+        if !create { return Err("There is no key on this computer.".into()); }
+        let mut last = "This computer has no TPM that Vyre can use.".to_string();
+        for (name, store, ui) in STORES {
+            let Ok(p) = open_provider(name) else { continue };
+            match make(&p, *ui) {
+                Ok(key) => return export_point(&key).map(|pt| (pt, *store)),
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
+    }
+
+    /// The raw 64-byte signature (r then s) over the SHA-256 of `message`. Err when there is no key or the person says no.
     pub fn sign(message: &[u8]) -> Result<[u8; 64], String> {
         use sha2::{Digest, Sha256};
-        let p = provider()?;
-        let key = open(&p).ok_or_else(|| "There is no TPM key on this computer.".to_string())?;
+        let (_p, key, _store) = find_key().ok_or_else(|| "There is no key on this computer.".to_string())?;
         let digest = Sha256::digest(message);
         let mut sig = [0u8; 64];
         let mut got: u32 = 0;
@@ -180,7 +210,7 @@ pub use imp::{agree_public, agree_secret, public_point, sign};
 
 
 #[cfg(not(windows))]
-pub fn public_point(_create: bool) -> Result<[u8; 65], String> { Err("This computer has no TPM that Vyre can use.".into()) }
+pub fn public_point(_create: bool) -> Result<([u8; 65], &'static str), String> { Err("This computer has no TPM that Vyre can use.".into()) }
 #[cfg(not(windows))]
 pub fn sign(_message: &[u8]) -> Result<[u8; 64], String> { Err("There is no TPM key on this computer.".into()) }
 

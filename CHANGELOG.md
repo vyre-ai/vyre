@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(windows): the Windows shell summarises a yes-moment proof the way the Mac shell does (canonical payload hash, then "Approve:" and the card's fields), and it tries Windows Hello, then the TPM, then the software key store. A Hello prompt per signature is still not proven on hardware, so the key stays held and the shell asks in its own window before the key signs.
+- feat(onboard): first run is Join a team or Add a server on the web, the Mac app and the Windows app. `machine: "solo"` is retired. An old Solo install loads as a device with a notice to add a server or join one, and `onboard.machine` refuses solo. `onboard.windows` records a request to enrol a Windows computer and changes nothing until that PC approves it.
+- feat(mcp): those steps, and `releases.info` (the app version and the names of any missing Mac or Windows signing secrets, never the values), are kernel tools an MCP caller can drive. A call that changes a device waits for one Needs-you tap. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.
+- feat(release): lumen-win signs the installer with Authenticode when the `windows` environment has WINDOWS_AUTHENTICODE_PFX_B64 and WINDOWS_AUTHENTICODE_PFX_PASSWORD, and otherwise publishes the unsigned installer and names each missing secret. release.yml passes `sign` on a publish and does not name the certificate. WINDOWS_SIGNING=required fails a publish that is still unsigned. Release notes draft: release/notes/0.5.3.md.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

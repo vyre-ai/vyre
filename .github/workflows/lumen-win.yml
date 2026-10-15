@@ -1,11 +1,9 @@
 # The Windows app: Cargo.lock files are committed and every build is --locked, with the Rust toolchain
 # and tauri-cli pinned to exact versions, because the result is auto-installed on people's PCs.
-# The Windows Capsule shell (Tier C, docs/design/windows-plan.md section 9). Only
-# local/capsule/native-win exists so far: the global-hotkey decision logic (which binding to ask
-# for, the Alt+Space-vs-system-menu conflict), host-independent and unit-tested. The Tauri panel
-# itself (tray, WebView2, Windows Hello, Authenticode sign/pin) is not scaffolded yet; this
-# workflow will grow with it. Runs on windows-latest per the plan, even though the crate today
-# builds anywhere, so a future win32-only dependency doesn't silently break here first.
+# The Windows app. The build job has no environment and no secret and uploads an unsigned installer.
+# The sign job publishes app-windows-<sha>. On a publish it runs in the GitHub environment "windows"
+# and Authenticode-signs when that environment has the certificate. A missing secret prints a skip
+# line that names it, and the unsigned installer is still published. Runs on windows-latest.
 name: lumen-win
 on:
   push:
@@ -20,6 +18,10 @@ on:
         description: "The release tag (vX.Y.Z...); the app's version is taken from it"
         type: string
         required: false
+      sign:
+        description: Run in the windows environment and Authenticode-sign the installer with its certificate. A release passes true on a publish.
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -106,13 +108,13 @@ jobs:
         run: |
           test -f app-web/index.html
           if [ -n "$(find app-web -type l)" ]; then echo "the web build holds a symlink"; exit 1; fi
-      - name: build the installer (NSIS, unsigned for 0.2)
+      - name: build the installer (NSIS)
         shell: bash
         working-directory: local/capsule/native-win/app
         run: |
           cargo install tauri-cli --version "=2.12.0" --locked
           cargo tauri build --bundles nsis -- --locked
-      - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
+      - name: the installer, named Vyre_<version>_x64-setup.exe, for the sign job
         shell: bash
         run: |
           exe=$(ls app/target/release/bundle/nsis/Vyre_*_x64-setup.exe | head -1)
@@ -120,8 +122,34 @@ jobs:
           mkdir -p ../../../out && cp "$exe" ../../../out/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: app-windows-${{ github.sha }}
+          name: app-windows-unsigned-${{ github.sha }}
           path: out/Vyre_*_x64-setup.exe
+          if-no-files-found: error
+  # Signs only when `sign` is true and the windows environment holds the certificate. Otherwise the
+  # same bytes are published unsigned, with a status file that names each missing secret.
+  sign:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.sign && 'windows' || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: app-windows-unsigned-${{ github.sha }}
+          path: out
+      - name: Sign the installer when the windows environment has a certificate
+        shell: pwsh
+        env:
+          WINDOWS_AUTHENTICODE_PFX_B64: ${{ inputs.sign && secrets.WINDOWS_AUTHENTICODE_PFX_B64 || '' }}
+          WINDOWS_AUTHENTICODE_PFX_PASSWORD: ${{ inputs.sign && secrets.WINDOWS_AUTHENTICODE_PFX_PASSWORD || '' }}
+        run: pwsh -File scripts/windows-authenticode.ps1 -Exe (Get-ChildItem out/Vyre_*_x64-setup.exe | Select-Object -First 1).FullName -Status out/windows-sign.status
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: |
+            out/Vyre_*_x64-setup.exe
+            out/windows-sign.status
           if-no-files-found: error
   # The Windows app's first run, proved on a real Windows machine (GitHub's windows-latest, a temporary machine): the app is built, started, and driven through its own window
   # (WebView2 over the DevTools protocol): Get started, a reservation code from a STAND-IN names directory, Create my name, the identity bridge (has, public, sign, the TPM and

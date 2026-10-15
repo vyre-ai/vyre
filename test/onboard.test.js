@@ -99,11 +99,12 @@ test("onboard: defaultOnboardPort is 7301 on darwin (never 7300), 7300 (ADR 0002
 
 // Reviewer, 28 Sep: onboard.machine changes which modules load, so it must be the person's own
 // action, never an agent's, and moving TO server (once an owner exists) needs a presence proof.
-test("onboard: onboard.machine refuses an agent caller outright", async t => {
+test("onboard: onboard.machine holds an agent caller for one tap and changes nothing", async t => {
   const { root, d } = await box(t);
+  const before = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).machine;
   const r = await d.registry.call("onboard.machine", { machine: "server" }, "mcp:agent:kit");
-  assert.equal(r.error.code, "denied");
-  assert.match(r.error.message, /not available to mcp callers/);
+  assert.equal(r.error.code, "held_for_approval");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).machine, before);
 });
 
 test("onboard: moving to server needs no proof during first-time setup (no owner yet)", async t => {
@@ -122,9 +123,9 @@ test("onboard: moving to server needs a presence proof once an owner already exi
   t.after(() => d.stop());
   const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
   assert.equal(later.error.code, "presence_required");
-  // solo never needs it, even with an owner established.
   const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
-  assert.equal(solo.data.machine, "solo");
+  assert.equal(solo.error.code, "solo_retired");
+  assert.match(solo.error.message, /run only on this computer/);
 });
 
 // Reviewer's HIGH, round 2: the first version exempted "no owner seen", which is permanently
@@ -150,7 +151,7 @@ test("onboard: device is set only by module:onboard or module:relay; nobody else
   assert.equal((await asDevice("module:relay")).data.machine, "device");
   assert.equal((await asDevice("cli")).error.code, "denied");
   assert.equal((await asDevice("module:notes")).error.code, "denied");
-  assert.equal((await asDevice("mcp:agent:kit")).error.code, "denied");
+  assert.equal((await asDevice("mcp:agent:kit")).error.code, "held_for_approval");
   const asServer = await d.registry.call("onboard.machine", { machine: "server" }, "module:onboard");
   assert.equal(asServer.error.code, "denied");
 });
@@ -184,8 +185,12 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
     assert.equal(r.error?.code, "not_a_server", `${tool} should refuse on solo`);
   }
   // status and machine, the two exceptions, still work.
-  assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.machine, "solo");
-  assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
+  const status = await d.registry.call("onboard.status", {}, "cli");
+  assert.equal(status.data.machine, "device");
+  assert.equal(status.data.needsServer, true);
+  assert.match(status.data.notice, /run only on this computer/);
+  const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
+  assert.equal(solo.error.code, "solo_retired");
 });
 
 test("onboard: join status says where the pair step stands and whether the relay is ready to pair", async t => {
