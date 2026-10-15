@@ -18,7 +18,7 @@ import { expandPaths, LinkError } from "../../lib/link/path.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device", "module", "mcp", "harness"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,80}$/;
 const SLUG = (/** @type {string} */ s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "document";
 

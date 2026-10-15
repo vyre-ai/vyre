@@ -155,7 +155,7 @@ export default {
     const bufferOf = (device, scope) => (state.get(device) && state.get(device).get(scope) && state.get(device).get(scope).buffer) || [];
 
     /** Everything but the aggregate summary is the person's (owner() still refuses a named agent); watch opens a 2 s sampler, so it writes. */
-    const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+    const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
     const EFFECT = { "vitals.watch": "write" };
     const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, effect: EFFECT[name] || "read", ...(name === "vitals.summary" ? {} : { callers: PEOPLE }) });
 
