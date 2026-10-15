@@ -126,20 +126,25 @@ export async function stopDaemon(dir) {
   throw new Error(`vyred pid ${pid} would not die; not removing its home`);
 }
 
+/** The pids of the children of this test process, now. */
+const childrenNow = () => { try { return execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { return []; /* none, or no pgrep */ } };
+
 /**
- * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child of this test process still running (a fake session the
- * daemon started and did not wait for). It assumes the test file starts no child of its own that must outlive the daemon test: every child of this process is ended and counted as a leftover. It hides nothing: a daemon that would not stop, or a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
- * @param {any} t @param {{ stop: () => Promise<any> }} d
+ * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child that appeared under this test process AFTER this call
+ * (a fake session the daemon started and did not wait for) and say so. Children that already ran when the helper was called (a sealing process the daemon started with itself, a server the file made
+ * before) are not touched: the daemon's own stop owns those. A child the file starts later and means to keep passes in `keep` as a function of its pid. It hides nothing: a daemon that would not stop, or
+ * a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
+ * @param {any} t @param {{ stop: () => Promise<any> }} d @param {{ keep?: (pid: number) => boolean }} [o]
  */
-export function stopDaemonBounded(t, d) {
+export function stopDaemonBounded(t, d, o = {}) {
+  const before = new Set(childrenNow());
   t.after(async () => {
     /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
     try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
     catch (e) { failure = e; }
     finally {
       clearTimeout(timer);
-      /** @type {number[]} */ let pids = [];
-      try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { /* none, or no pgrep */ }
+      const pids = childrenNow().filter(pid => !before.has(pid) && !(o.keep && o.keep(pid)));
       for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
       left = pids;
     }
