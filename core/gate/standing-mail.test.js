@@ -136,3 +136,39 @@ test("over MCP, an agent is covered by its own permission only: naming another a
   assert.equal(await send("kit", { by: "juno", agent_name: "juno" }), "held", "other naming fields change nothing");
   assert.equal(mail.mailbox.sent.length, 1, "only juno's mail went out");
 });
+
+test("a proposal is a card: nothing is granted until a person approves it, and an agent cannot approve its own", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const { d, K, OWNER, ok, as, agentCall } = w;
+  const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
+  const via = `mail:${mail.id}`;
+  await ok("agents.create", { name: "juno", kind: "agent" });
+  await ok("agents.create", { name: "kit", kind: "agent" });
+  const send = async (/** @type {string} */ agent) => {
+    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.ok(!r.error, JSON.stringify(r.error));
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  const count = async () => (await ok("gate.standing.list", { agent: "juno" })).permissions.length;
+  // nobody files a proposal as an ordinary request
+  const direct = await agentCall("kit", OWNER, "gate.request", { kind: "act", via: "gate:standing", to: "juno", content: { agent: "juno", summary: "x" } });
+  assert.equal(direct.error && direct.error.code, "bad_input");
+  const p = await agentCall("kit", OWNER, "gate.standing.propose", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 5 });
+  assert.ok(!p.error, JSON.stringify(p.error));
+  assert.equal((await ok("gate.get", { id: p.data.id })).state, "held", "the proposal waits as a card");
+  assert.equal(await count(), 0, "a proposal grants nothing");
+  assert.equal(await send("juno"), "held", "juno still asks");
+  // the proposing agent cannot approve it
+  const self = await d.registry.call("gate.approve", { id: p.data.id }, "mcp:agent:kit", { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: (await ok("agents.uid", { name: "kit" })).uid, session: "s-kit", thread: "t-kit", person: OWNER, vouched: true }), {})).token });
+  assert.ok(self.error, "an agent never approves");
+  assert.equal(await count(), 0);
+  // a person who may not grant for juno approves: refused, still nothing
+  const other = await as(BEN, "gate.approve", { id: p.data.id });
+  assert.ok(other.error || (other.data && other.data.state !== "sent"), "someone who may not give it cannot make it by approving");
+  assert.equal(await count(), 0);
+  // the owner approves: it is a permission now, and juno sends with no question
+  const yes = await as(OWNER, "gate.approve", { id: p.data.id });
+  assert.ok(!yes.error, JSON.stringify(yes.error));
+  assert.equal(await count(), 1, "the owner's yes made the permission");
+  assert.equal(await send("juno"), "sent");
+});
