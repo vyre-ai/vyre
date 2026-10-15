@@ -800,6 +800,16 @@ export default {
     // it waits for the person as a suggestion, and when the agent names a project it reaches, it is
     // also filed at once as the agent's own attributed correction, quoted, never an instruction.
     // memory.correct stays the person's; an agent reaches corrections only through this tool.
+    /** The project the calling thread belongs to, from the thread's own record (threads.get); null when the call names no thread or the thread is in no project. @param {string} caller @param {any} extra */
+    const chatProjectOf = async (caller, extra) => {
+      const id = typeof extra.thread === "string" && extra.thread ? extra.thread : (/^(?:mcp|harness):thread:([A-Za-z0-9_-]{1,64})$/.exec(caller) || [])[1];
+      if (!id) return null;
+      try {
+        const r = await ctx.call("threads.get", { thread: String(id), limit: 1 });
+        const th = r && !r.error && r.data ? (r.data.thread || r.data) : null;
+        return th && typeof th.project === "string" && th.project ? th.project : null;
+      } catch { return null; }
+    };
     ctx.tool("memory.heard", {
       effect: "write",
       callers: ["mcp", "harness"],
@@ -817,7 +827,8 @@ export default {
         const out = await fromAgent(input, caller, extra, (i, who) => applyCorrection(i, who));
         if (out.dropped) return out;
         // A correction the person made in this chat is also the agent's lesson: filed as the agent's own write (kind correction) in the project the chat is in, so the agent's Memory pane and the project's both show it. With no project it shows from memory.corrections' heard list.
-        const project = typeof input.project === "string" && input.project ? input.project : typeof input.room === "string" && input.room ? input.room : null;
+        // The project is the one the CHAT is in, as the Switchboard recorded it, never one the agent names: an agent that could name it would file its "lesson" into any project's memory.
+        const project = await chatProjectOf(caller, extra);
         if (!project) return out;
         if (!target) return out;
         try {
