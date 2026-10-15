@@ -2,7 +2,7 @@
 name: lumen-mac
 on:
   push:
-    branches: ["main", "work/**"]
+    branches: ["main", "release/**"]   # a branch with a pull request runs through the pull request, not twice (push and pull_request)
     paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/lumen-mac.yml"]
   pull_request:
     paths: ["local/capsule/**", "!local/capsule/native-win/**"]

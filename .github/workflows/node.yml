@@ -9,6 +9,8 @@ on:
     # suite on what landed. The newest tip cancels an older run.
     branches: ["main", "work/lead-*", "work/release-*", "release/**", "work/stage-0.2"]
   pull_request:
+    # ready_for_review starts the run that marking a draft ready asks for (the full Node matrix); a draft runs Node 24 only.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,9 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
-        # requests run both versions.
-        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+        # Team branches and DRAFT pull requests run Node 24 only (half the load on the shared runners); a pull request marked ready, release branches and main run both versions.
+        node: ${{ fromJSON((github.event.pull_request.draft == true || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
         # Five shards (node --test-shard) so a run is about a fifth of the suite per job; the eval and the perf gate run on shard 1 only.
         shard: [1, 2, 3, 4, 5]
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
