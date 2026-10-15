@@ -2,6 +2,8 @@
 # this is how a load-sensitive test is found and, after its fix, shown to pass twenty times in a row. Manual: pick the files, the passes and the load.
 name: flake-soak
 on:
+  push:
+    branches: ["work/0.6/rel6/soak"]
   workflow_dispatch:
     inputs:
       files:
@@ -40,9 +42,9 @@ jobs:
       - name: Soak
         shell: bash
         env:
-          FILES: ${{ inputs.files }}
-          PASSES: ${{ inputs.passes }}
-          LOAD: ${{ inputs.load }}
+          FILES: ${{ inputs.files || 'test/peer-race.test.js core/planner/link.test.js test/site-mac-rung.test.js' }}
+          PASSES: ${{ inputs.passes || '20' }}
+          LOAD: ${{ inputs.load || '6' }}
         run: |
           set -u
           hogs=()
