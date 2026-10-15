@@ -13,6 +13,7 @@
 import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createAgentWake } from "./agent-wake.js";
+import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
@@ -143,6 +144,16 @@ export function createFlowsHost(o) {
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
+      // The facts a person should see before they say yes to a call, filled in here so the one yes is a yes to exactly them: the files on an email get their name, size and content hash, read as the approver
+      // (an unreadable file stops the step here, in words, before anyone is asked). The same facts ride into the call, which holds the files to those hashes (lib/connectors/attachments.js).
+      preview: async (/** @type {any} */ chain, /** @type {string} */ _action, /** @type {any} */ input) => {
+        if (!input || typeof input !== "object" || !Array.isArray(input.attachments) || !input.attachments.length) return input;
+        const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+        if (!person) return input;
+        const c = personChain(String(person.actor.id));
+        const facts = await holdFiles({ kernel: { chain: async () => c, drive: gw.drive } }, {}, input.attachments);
+        return { ...input, attachments: facts };
+      },
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.

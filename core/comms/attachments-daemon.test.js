@@ -52,54 +52,48 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   await host().flows.tools["flows.approve"](host().personChain(), { id: def.id, version: def.version, hash: def.hash });
   const admin = ownerChain;
   /** The Flow's own question for the email (an outward step is asked before it runs), answered yes as the person with the presence proof. */
-  const sayYes = async () => {
-    const task = await until(async () => (await K.gateway.ask.list(admin, { state: ["needs_check"] })).find((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.form.action === "comms.email" && !yes.has(x.id)), "the Flow's question for the email");
+  const sayYes = async (/** @type {any} */ task) => {
     yes.add(task.id);
     const row = await K.gateway.ask.get(admin, task.id);
     await K.gateway.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
   };
   const yes = new Set();
-  const startRun = async () => {
-    const r = await ok("flows.start", { id: def.id });
-    const run = String(r.id || (r.run && r.run.id) || r.run);
-    // wait until the run waits on its question before answering it
-    await until(async () => (await ok("flows.run", { run })).run.state === "waiting", "the run to wait on its question");
-    await sayYes();
-    return run;
-  };
-  const heldItem = async (/** @type {string[]} */ seen) => until(async () => { const l = await ok("gate.held"); return Array.isArray(l) ? l.find((/** @type {any} */ x) => !seen.includes(x.id)) || null : null; }, "the held email");
+  /** The Flow's question for the email, once it is waiting: the card the person reads. */
+  const question = async () => until(async () => (await K.gateway.ask.list(admin, { state: ["needs_check"] })).find((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.form.action === "comms.email" && !yes.has(x.id)), "the Flow's question for the email");
+  const startRun = async () => { const r = await ok("flows.start", { id: def.id }); return String(r.id || (r.run && r.run.id) || r.run); };
 
-  // run one: the real Gate holds the message, nothing has gone out
-  await startRun();
-  const held = await heldItem([]);
-  assert.equal(posted.length, 0, "nothing is sent before the person approves");
-  const item = await ok("gate.get", { id: held.id });
-  const c = item.content;
-  assert.deepEqual([c.cc, c.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC are in the held message");
-  assert.equal(c.attachments.length, 2, "both files are in the held message");
-  const [fromFiles, fromDocs] = c.attachments;
+  // run one: the Flow asks the person ONCE, and the card shows the files by name, size and hash
+  const run1 = await startRun();
+  const card = await question();
+  const shown = card.form.input;
+  assert.deepEqual([shown.cc, shown.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC are on the card");
+  assert.equal(shown.attachments.length, 2, "both files are on the card");
+  const [fromFiles, fromDocs] = shown.attachments;
   assert.deepEqual([fromFiles.name, fromFiles.path, fromFiles.size, fromFiles.sha256, fromFiles.by], ["Rota week 1.pdf", "Rota/week1.pdf", rota.length, crypto.createHash("sha256").update(rota).digest("hex"), OWNER]);
   assert.match(fromDocs.path, /^Documents\/general\/engagement-letter-[0-9a-f]{8}\.docx$/, "the file the Documents step made");
   const docBytes = Buffer.from(await K.gateway.drive.get(ownerChain, fromDocs.path));
   assert.equal(fromDocs.sha256, crypto.createHash("sha256").update(docBytes).digest("hex"), "its hash is of the filed bytes");
-  assert.ok(!JSON.stringify(item).includes(b64(rota)) && !JSON.stringify(item).includes("%PDF-ROTA"), "no file bytes in the held message");
+  assert.ok(!JSON.stringify(shown).includes(b64(rota)) && !JSON.stringify(shown).includes("%PDF-ROTA"), "no file bytes on the card");
+  assert.equal(posted.length, 0, "nothing is sent before the person says yes");
 
-  // the person approves: the send carries CC, BCC and both files, and the log shows them
-  const out = await ok("gate.approve", { id: held.id });
-  assert.equal(out.state, "sent", JSON.stringify(out));
-  assert.equal(posted.length, 1);
+  // the person says yes once: that is the approval the send goes out on, with no second hold at the Gate
+  await sayYes(card);
+  await until(() => posted.length === 1, "the email to reach the provider");
+  assert.deepEqual(await ok("gate.held"), [], "the Gate holds nothing: the one yes was the approval");
   const body = posted[0].body;
   assert.deepEqual([body.cc, body.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC go out");
   assert.deepEqual(body.attachments, [{ filename: "Rota week 1.pdf", content: b64(rota) }, { filename: fromDocs.name, content: b64(docBytes) }], "both files go out, byte for byte");
   const logged = d.registry.deps.events.since(0, { limit: 5000 }).find((/** @type {any} */ e) => e.type === "comms.sent");
   assert.ok(logged && logged.payload.cc === 1 && logged.payload.bcc === 2 && logged.payload.files.length === 2, "the log shows them: " + JSON.stringify(logged));
+  assert.equal((await ok("flows.run", { run: run1 })).run.state !== "failed", true);
 
-  // run two: a file that changed after the message was held stops the send, and says so
+  // run two: a file that changed after the person was asked, before the yes, stops the send, and says so
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2")), base: 1 });
-  await startRun();
-  const second = await heldItem([held.id]);
+  const run2 = await startRun();
+  const card2 = await question();
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2-EDITED")), base: 2 });
-  const stopped = await owner("gate.approve", { id: second.id });
-  assert.ok(stopped.error && /Rota week 1\.pdf changed after you approved this message, so nothing was sent\. Approve it again\./.test(stopped.error.message), JSON.stringify(stopped));
+  await sayYes(card2);
+  const failed = await until(async () => { const r = (await ok("flows.run", { run: run2 })).run; return r.state === "failed" ? r : null; }, "the run to stop");
+  assert.match(JSON.stringify(failed), /Rota week 1\.pdf changed after you approved this message, so nothing was sent\. Approve it again\./);
   assert.equal(posted.length, 1, "nothing more went out");
 });
