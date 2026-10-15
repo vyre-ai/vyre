@@ -31,6 +31,10 @@ on:
         description: "Write the references instead of checking them (uploads design-refs as an artifact to commit after the owner's yes)"
         type: boolean
         default: false
+      only:
+        description: "Only these fixture ids, comma separated (empty: all)"
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -45,6 +49,7 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
     env:
+      ONLY: ${{ inputs.only }}
       UPDATE: ${{ contains(github.event.head_commit.message, '[pictures-update]') || inputs.update == true }}
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +63,7 @@ jobs:
       - run: npm i --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.49.1
       - run: EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web
         working-directory: apps/app
-      - run: PW_FROM="$RUNNER_TEMP/pw/" node scripts/design-pictures.mjs "$RUNNER_TEMP/pictures" --dist dist $([ "$UPDATE" = "true" ] && echo --update)
+      - run: PW_FROM="$RUNNER_TEMP/pw/" node scripts/design-pictures.mjs "$RUNNER_TEMP/pictures" --dist dist $([ "$UPDATE" = "true" ] && echo --update) $([ -n "$ONLY" ] && echo --only "$ONLY")
         working-directory: apps/app
       - if: always()
         uses: actions/upload-artifact@v4
