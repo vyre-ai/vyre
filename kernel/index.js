@@ -117,14 +117,15 @@ export async function createKernel(cfg) {
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   /**
-   * May this person use the vault connection a Gate sender goes through now: `mail:<connection>` and `google:<connection>` name one, any other sender names its own in `connection`; a sender with none counts as yes.
+   * May this person use the vault connection a Gate sender goes through now: `mail:<connection>` and `google:<connection>` name one, any other sender names its own in `connection`; a sender with none is a shared one, open to an owner and an admin only.
    * @param {string} person @param {string} via @param {string} [connection]
    */
   const mayUseVia = async (person, via, connection = undefined) => {
     // the connection a sender goes through: `mail:<id>` and `google:<id>` name theirs; any other sender (an MCP server, a made connector, a Slack workspace) names its vault connection in `connection`, which the Gate
-    // resolves from the vault's list. A sender with no connection of its own (a static one from the config, a shared service) has none to check.
-    const id = typeof connection === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(connection) ? connection : (/^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via)) || [])[1];
-    if (!id || !grantsStore) return true;
+    // resolves from the vault's list.     const id = typeof connection === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(connection) ? connection : (/^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via)) || [])[1];
+    if (!grantsStore) return true;
+    // a sender with no connection of its own is a shared one (comms:service, a configured sender): a member cannot send through those directly (their tools are the owner's and an admin's), so an agent working for a member cannot either
+    if (!id) { const role = grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }); return role === "owner" || role === "admin"; }
     try {
       const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${id}`;
       return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
@@ -403,7 +404,7 @@ export async function createKernel(cfg) {
         }
         return null;
       },
-      // Whether a person may use the connection a send goes through (yes or no; for a creator, at the moment they grant it). A sender with no connection of its own (a static one from the config) has none to check.
+      // Whether a person may use the connection a send goes through (yes or no; for a creator, at the moment they grant it). A shared sender (no connection of its own) is open to an owner or an admin only.
       mayUseConnection: (/** @type {string} */ person, /** @type {string} */ via, /** @type {string} */ connection) => mayUseVia(person, via, connection),
       // The addresses a list holds now, for a grantor who may read them (a standing permission snapshots them when it is made).
       snapshotList: (/** @type {string} */ person, /** @type {string} */ list) => snapshotList(String(person), String(list)),

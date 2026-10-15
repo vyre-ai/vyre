@@ -104,12 +104,13 @@ test("a payment is held over its limit for one payment, over its day, and in ano
   const bad = await as(OWNER, "gate.standing.add", { agent: "juno", kind: "spend", via: "no-such-sender", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
   assert.equal(bad.error && bad.error.code, "bad_input", "a permission names a way out the Space has");
   await ok("gate.standing.add", { agent: "juno", kind: "spend", via: "pay", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
-  const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example") => {
-    const r = await agentCall("juno", OWNER, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
+  const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example", /** @type {string} */ person = OWNER) => {
+    const r = await agentCall("juno", person, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
     assert.ok(!r.error, JSON.stringify(r.error));
     return r.data.state;
   };
   assert.equal(await pay(40), "sent", "inside the limits");
+  assert.equal(await pay(10, "USD", "billing@vendor.example", BEN), "held", "a member could not pay through a shared sender herself, so an agent working for her cannot");
   assert.equal(await pay(60), "held", "over the limit for one payment");
   assert.equal(await pay(40, "EUR"), "held", "another currency");
   assert.equal(await pay(40, "USD", "other@vendor.example"), "held", "another payee");
