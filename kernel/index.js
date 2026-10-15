@@ -367,7 +367,12 @@ export async function createKernel(cfg) {
         }
         return null;
       } } : {}),
-      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
+      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
+        // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
+        personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+          if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !["vault.call", "vault.read", "vault.fill"].includes(action)) throw new KernelError("bad_input", "name one person and a credential action");
+          try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+        } }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder
