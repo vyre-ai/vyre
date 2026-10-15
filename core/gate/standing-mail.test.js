@@ -173,3 +173,31 @@ test("a proposal is a card: nothing is granted until a person approves it, and a
   assert.equal(await count(), 1, "the owner's yes made the permission");
   assert.equal(await send("juno"), "sent");
 });
+
+test("the said fold: a send permission for named agents to exact addresses, added from Settings, is a standing grant (listed, revocable, checked by the one cover function); a post to a handle stays words", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const { OWNER, ok, as, agentCall } = w;
+  const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
+  await ok("agents.create", { name: "juno", kind: "agent" });
+  await ok("agents.create", { name: "kit", kind: "agent" });
+  const send = async (/** @type {string} */ agent, /** @type {string} */ to) => {
+    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.ok(!r.error, JSON.stringify(r.error));
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "held", "before: it asks");
+  const made = await ok("gate.said.add", { kind: "send", to: ["dana@harlowlegal.com", "*@northwind.example"], agents: ["juno"], what: "juno may email Dana" });
+  assert.equal(made.folded, true, "made as a standing grant");
+  assert.match(String(made.id), /^gr_/);
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "sent", "inside it goes out with no question");
+  assert.equal(await send("kit", "dana@harlowlegal.com"), "held", "another agent is not covered");
+  assert.equal(await send("juno", "other@elsewhere.example"), "held", "another address is not covered");
+  const listed = await ok("gate.said.list", {});
+  const rows = Array.isArray(listed) ? listed : listed.intents;
+  assert.ok(rows.some((/** @type {any} */ r) => r.id === made.id && r.grant === true && r.agents[0] === "juno"), "listed with the other permissions");
+  await ok("gate.said.revoke", { id: made.id });
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "held", "revoked: it asks again");
+  // what a grant cannot say stays as words in the vault: a post to a handle
+  const words = await ok("gate.said.add", { kind: "post", to: ["#ops"], agents: ["juno"], what: "juno may post to ops" });
+  assert.ok(!words.folded && words.id && !/^gr_/.test(String(words.id)), "a post to a handle is stored as words");
+});

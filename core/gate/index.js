@@ -164,6 +164,18 @@ export default {
       } catch { return null; }
     };
 
+    /**
+     * The one question every outward act is asked before it is held: does something the person already said cover it? Two sources answer it. A standing permission for the agent (a kernel grant,
+     * checked by the kernel) comes first; what the vault holds of the person's own words (a plain ask in this thread or its lineage, a permission for any of their agents) comes second. Either
+     * one lets the act go out; neither holds it for the person's yes. { by } for a permission, { intent } for words, or null.
+     */
+    const coverFor = async (/** @type {any} */ input, /** @type {any} */ meta, /** @type {any} */ filing, /** @type {any} */ by) => {
+      const standing = await standingCover(input, meta, by.agent);
+      if (standing) return { by: `standing:${standing.grant}` };
+      const intent = await said(input, filing.thread, by.agent);
+      return intent ? { intent } : null;
+    };
+
     ctx.tool("gate.request", {
       description: "Ask to send something as the user (email, post, payment, deletion): { kind, via, to, content }. Held until the user approves the final content.",
       input: obj({ kind: { type: "string", enum: KINDS }, via: { type: "string", description: "the way it goes out; tools_call gate.senders lists the values and what each takes" }, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
@@ -205,10 +217,8 @@ export default {
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
-        const standing = await standingCover(input, meta0, by.agent);
-        if (standing) return gate.sendNow({ ...input, ...filing }, { ...by, by: `standing:${standing.grant}` });
-        const intent = await said(input, filing.thread, by.agent);
-        if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
+        const cover = await coverFor(input, meta0, filing, by);
+        if (cover) return gate.sendNow({ ...input, ...filing }, { ...by, ...cover });
         return gate.request({ ...input, ...filing }, by);
       },
     });
@@ -308,7 +318,15 @@ export default {
       description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`. The assistant may read it for you.",
       input: obj({ thread: str, all: { type: "boolean" } }),
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: (input, { caller }) => { if (!isAssistant(caller)) approvedBy(caller); return vaultCall("vault.said.list", input); },
+      run: async (input, meta) => {
+        const { caller } = meta;
+        if (!isAssistant(caller)) approvedBy(caller);
+        const words = await vaultCall("vault.said.list", input);
+        // the standing permissions this person may see, in the same shape (one list of what may go out without asking)
+        let folded = [];
+        if (!input.thread) { try { const K = needK(); const person = await personOf(K, meta); const staff = ["owner", "admin"].includes(K.roleOf(person)); folded = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => staff || String(g.source).split(":")[3] === person).map((/** @type {any} */ g) => ({ id: g.id, thread: null, said: "standing", kind: "send", channel: null, to: (g.conditions && g.conditions.to && g.conditions.to.patterns) || [], what: `${String(g.source).split(":")[2]} may send by itself`, when: null, standing: true, limits: null, at: 0, revoked: null, agents: [String(g.source).split(":")[2]], used: null, grant: true })); } catch { folded = []; } }
+        return Array.isArray(words) ? [...words, ...folded] : words && Array.isArray(words.intents) ? { ...words, intents: [...words.intents, ...folded] } : words;
+      },
     });
 
     ctx.tool("gate.said.add", {
@@ -327,8 +345,32 @@ export default {
           return `Allow a standing permission to ${i && i.kind} to ${to} for ${who}${cap ? ` (${cap})` : ""}`;
         },
       },
-      run: (input, { caller }) => { approvedBy(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
+      run: async (input, meta) => {
+        const { caller } = meta;
+        approvedBy(caller);
+        // A permission for named agents to send to exact addresses is a standing permission like any other (one kernel grant per agent, one check): it is made here, on the person's own surface and with the same one tap as before, instead of being
+        // stored as words. What a grant cannot say (a post to a handle, a payment, an allowance for any agent, a plain ask bound to a thread) stays in the vault as words, checked by the same function.
+        if (foldable(input)) {
+          /** @type {string[]} */ const made = [];
+          const K = (() => { try { return needK(); } catch { return null; } })();
+          if (K) {
+            try {
+              const person = await personOf(K, meta);
+              for (const agent of input.agents.map(String)) { await mayGrantFor(K, person, agent); made.push((await createStanding(K, person, { agent, kind: "send", ...(input.channel ? { via: String(input.channel) } : {}), to: { patterns: input.to }, daily_cap: 1000 })).id); }
+              return { id: made[0], ids: made, kind: "send", to: input.to, agents: input.agents, standing: true, folded: true };
+            } catch {
+              // a person who may not grant for these agents, an unknown agent or sender, no person on this call: undo what was made and keep the old words-only permission
+              for (const id of made) { try { await K.mint.end({ id, reason: "a permission that could not be completed" }); } catch { /* gone */ } }
+            }
+          }
+        }
+        return vaultCall("vault.said.add", { ...input, surface: String(caller) });
+      },
     });
+    /** A said permission a standing grant can say: send, to exact addresses (or *@domain), for named agents, through no sender or a sender the Gate holds. */
+    const foldable = (/** @type {any} */ i) => Boolean(i) && i.kind === "send" && Array.isArray(i.agents) && i.agents.length > 0 && Array.isArray(i.to) && i.to.length > 0
+      && i.to.every((/** @type {any} */ a) => typeof a === "string" && /^(\*@[^\s@*,;<>"'()\[\]\\]+|[^\s@*,;<>"'()\[\]\\]+@[^\s@*,;<>"'()\[\]\\]+)$/.test(a.trim()))
+      && (!i.channel || (() => { try { gate.sender(String(i.channel)); return true; } catch { return false; } })());
 
     // ---- standing permissions for agents: kernel grants (action gate.act-standing, subject the agent, conditions to / rate / max_amount / daily_amount), checked by the kernel's standingFor ----
     // "mcp" is a person's own Claude Code too: an agent over MCP has two or more hops and is refused by `grantor`, and adding still needs the person's own proof
@@ -472,7 +514,19 @@ export default {
       description: "Take back something you asked to go out, or a standing permission. It stops covering sends at once. Needs no proof: taking permission away never does. The assistant may do it only when your own words asked for it (\"stop letting kit post there\").",
       input: obj({ id: str, thread: str }, ["id"]),
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (input, { caller }) => {
+      run: async (input, meta) => {
+        const { caller } = meta;
+        // a standing permission (a kernel grant) is taken back by its id, by whoever may give it
+        if (/^gr_/.test(String(input.id))) {
+          if (isAssistant(caller)) throw new Error("a standing permission is taken back by the person, from the agent's page or Settings");
+          approvedBy(caller);
+          const K = needK();
+          const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(input.id));
+          if (!g) throw Object.assign(new Error("no such standing permission"), { code: "not_found" });
+          await grantor(K, meta, String(g.source).split(":")[2]);
+          await K.mint.end({ id: String(input.id), reason: "a standing permission was taken away" });
+          return { revoked: String(input.id) };
+        }
         if (!isAssistant(caller)) { approvedBy(caller); return vaultCall("vault.said.revoke", { id: input.id }); }
         // The assistant acts for the person only on an intent of kind "revoke" that names this id,
         // recorded from the person's own turn in this thread (or its lineage), and used up by this call.
