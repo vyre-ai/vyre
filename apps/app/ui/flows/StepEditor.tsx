@@ -292,6 +292,9 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Rows rows={s.query ?? []} onChange={(query) => set({ query })} draft={draft} stepId={s.id} options={options} fieldLabel="Name" title="Query (optional)" help="Added to the address as ?name=value." />
           <Rows rows={s.headers ?? []} onChange={(headers) => set({ headers })} draft={draft} stepId={s.id} options={options} fieldLabel="Header" title="Headers (optional)" help="The key stays in the Vault: a header such as Authorization is never set here." />
           {(s.method ?? "GET") !== "GET" && (s.method ?? "GET") !== "HEAD" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <Select label="A file from Drive (optional)" value={s.driveMode ?? ""} options={[["", "None"], ["upload", "Send a file from Drive"], ["save", "Save the answer to Drive"]]} onChange={(driveMode) => set({ driveMode: driveMode || undefined })} />
+          {s.driveMode ? <Field label="Drive path" value={s.drivePath ?? ""} onChangeText={(drivePath) => set({ drivePath })} placeholder="For example contracts/signed.pdf" help="A path in the Space's Drive." /> : null}
+          {s.driveMode === "upload" ? <Field label="File type (optional)" value={s.driveType ?? ""} onChangeText={(driveType) => set({ driveType })} placeholder="For example application/pdf" /> : null}
           <NewConnection options={options} onAdded={(connector) => set({ connector })} />
           <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>
@@ -340,6 +343,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
+      {["email", "sms", "web", "action", "connection", "document", "project"].includes(s.kind) ? <Switch label="Always ask a person before this goes out" on={s.approve === true} onChange={(on) => set({ approve: on ? true : undefined })} /> : null}
       <FailurePanel s={s} setStep={set} inHandler={inHandler} />
     </>
   );

@@ -445,6 +445,23 @@ export const HOWS = /** @type {[string, string][]} */ ([["template", "Fill in a 
 const namedRows = (rows) => { const o = Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return Object.keys(o).length ? o : null; };
 /** The stored object as rows to edit; null when a value is not one the rows can show. @param {any} o */
 const namedRowsFrom = (o) => { if (!o || typeof o !== "object" || Array.isArray(o)) return null; const rows = Object.entries(o).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? rows : null; };
+/** A web call's hand-off with Drive as the stored step has it: send a file from a Drive path, or save the answer to one. @param {any} s */
+const driveOf = (s) => {
+  const path = String(s.drivePath || "").trim();
+  if (!path || path.split("/").includes("..")) return null;
+  if (s.driveMode === "upload") return { upload: { path, ...(String(s.driveType || "").trim() ? { contentType: String(s.driveType).trim() } : {}) } };
+  return s.driveMode === "save" ? { saveTo: path } : null;
+};
+/** The stored hand-off as the draft's fields; null when it says more than the editor shows (a version). @param {any} d */
+const driveFrom = (d) => {
+  if (d === undefined) return {};
+  if (!d || typeof d !== "object") return null;
+  const ks = Object.keys(d);
+  if (ks.length === 1 && ks[0] === "saveTo" && typeof d.saveTo === "string") return { driveMode: "save", drivePath: d.saveTo };
+  const u = d.upload;
+  if (ks.length === 1 && ks[0] === "upload" && u && typeof u.path === "string" && Object.keys(u).every((k) => k === "path" || k === "contentType")) return { driveMode: "upload", drivePath: u.path, ...(typeof u.contentType === "string" ? { driveType: u.contentType } : {}) };
+  return null;
+};
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
 /** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
@@ -466,7 +483,8 @@ export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Numb
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
   if (s.kind === "advanced") return s.raw;
-  return { ...kindDefinition(s, d), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+  const k = kindDefinition(s, d);
+  return { ...k, ...(s.approve === true && (k.kind === "call" || k.kind === "service") ? { approve: true } : {}), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
 }
 
 /** @param {DraftStep} s @param {Draft} d */
@@ -484,7 +502,7 @@ function kindDefinition(s, d) {
     case "wait":
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
-    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
+    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(driveOf(s) ? { drive: driveOf(s) } : {}), ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
@@ -718,8 +736,12 @@ function clauseFrom(e) {
 /** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
   const { plain, policy } = splitPolicy(s);
-  const d = stepFromKind(plain);
-  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...policyDraft(policy, stepFrom) };
+  // `approve: true` is the step's own "always ask a person" and rides on any call or service step.
+  const asks = plain.approve === true && (plain.kind === "call" || plain.kind === "service");
+  const { approve: _approve, ...bare } = plain;
+  void _approve;
+  const d = stepFromKind(asks ? bare : plain);
+  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...(asks ? { approve: true } : {}), ...policyDraft(policy, stepFrom) };
 }
 
 /** @param {any} s @returns {DraftStep} */
@@ -747,9 +769,10 @@ function stepFromKind(s) {
     }
     case "service": {
       if (s.connection !== undefined && s.connector === undefined) return typeof s.connection === "string" && typeof s.operation === "string" && keys(s, ["id", "kind", "connection", "operation", "input", "label"]) && (s.input === undefined || (typeof s.input === "object" && s.input !== null && !Array.isArray(s.input) && Object.values(s.input).every((v) => unval(v) !== null))) ? { id: s.id, kind: "connection", connection: s.connection, operation: s.operation, fields: rowsOf(s.input || {}) } : adv;
+      const dv = driveFrom(s.drive);
       const q = s.query === undefined ? [] : namedRowsFrom(s.query), h = s.headers === undefined ? [] : namedRowsFrom(s.headers);
-      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null
-        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}) } : adv;
+      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "drive", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null && dv !== null
+        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}), ...dv } : adv;
     }
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
     case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;

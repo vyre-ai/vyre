@@ -167,3 +167,20 @@ test("an If step joins several checks with and or or, and a mix of both stays a 
   assert.equal(fromDefinition(flow([{ id: "d1", kind: "decide", if: mixed, then: [], else: [] }]), options).steps[0].cond.mode, "formula");
   assert.equal(condExpr({ ...c, more: [{ source: "trigger", field: "", op: "==", value: "" }] }, trig), "", "a check left empty makes no condition yet");
 });
+
+test("a send can always ask a person, and a web call can send or save a Drive file", () => {
+  const d = flow([{ id: "m1", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: "+15550100", body: "Hi" }, approve: true }, { id: "w1", kind: "service", connector: "crm", method: "POST", path: "/up", drive: { upload: { path: "files/a.pdf", contentType: "application/pdf" } }, approve: true }]);
+  const draft = fromDefinition(d, options);
+  assert.deepEqual(draft.steps.map((s) => [s.kind, s.approve]), [["sms", true], ["web", true]]);
+  assert.equal(draft.steps[1].driveMode, "upload");
+  const out = toDefinition(draft, options);
+  assert.equal(out.steps[0].approve, true);
+  assert.deepEqual(out.steps[1].drive, { upload: { path: "files/a.pdf", contentType: "application/pdf" } });
+  assert.deepEqual(checkFlow(out), []);
+  draft.steps[0].approve = undefined; draft.steps[1].driveMode = "save"; draft.steps[1].drivePath = "files/out.json";
+  const again = toDefinition(draft, options);
+  assert.equal(again.steps[0].approve, undefined);
+  assert.deepEqual(again.steps[1].drive, { saveTo: "files/out.json" });
+  const versioned = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "POST", path: "/up", drive: { upload: { path: "a", version: 2 } } }]), options);
+  assert.equal(versioned.steps[0].kind, "advanced", "a pinned version stays as it was");
+});
