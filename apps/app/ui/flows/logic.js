@@ -270,7 +270,7 @@ const partExpr = (t, sign, n, unit, fmt) => {
   const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
   if (!sign && !fmt) {
     if (HELPERS[t]) return HELPERS[t];
-    if (kind === "emails" || kind === "phones") return `first(${base})`;
+    if (kind === "emails" || kind === "phones" || kind === "urls") return `first(${base})`;   // a list field prints its main item, not the list as JSON
     return kind === "datetime" ? `datetime(${base}, tz)` : kind === "date" ? `date(${base})` : `text(${base})`;
   }
   const dateOnly = kind === "date";
@@ -444,9 +444,9 @@ export function toDefinition(d, o) {
 function dateTokens(d, o) {
   /** @type {Map<string, string>} */ const out = new Map();
   if (!o) return out;
-  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones") out.set(token(f.name), f.kind); };
+  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones" || f.kind === "urls") out.set(token(f.name), f.kind); };
   if (isRecordTrigger(d.trigger)) add(d.trigger.type, (f) => `after.${f}`);
-  for (const s of flat([...d.steps, ...(d.onFailure || [])])) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
+  for (const s of flat([...d.steps, ...(d.onFailure || [])])) if (s.kind === "create" || s.kind === "upsert" || s.kind === "pick") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
   return out;
 }
 
