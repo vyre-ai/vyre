@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): `flows.patch` reaches the failure paths: `insert` takes `into` a step with `block: "on_fail"` (that step's failure path) or `lane: "on_failure"` with `first` or `after` (the Flow's own "If the run fails" steps), and `set`, `replace`, `move` and `remove` find a step inside either by its id; `meta` takes `sends` and `returns` too. The editor and the tool now say the same things about a Flow (team/0.6/FLOWS-PARITY.md).
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

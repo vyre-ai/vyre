@@ -41,7 +41,7 @@ const WHAT = {
   "flows.attention": "Runs that need a person (failed, paused, stuck, or a stage gate held), newest first: the Flow, step, plain reason, and whether loud or quiet.",
   "flows.settle": "Answer a run that needs attention: { run, action: retry | skip | stop | advance }. skip may carry `value` to use in place of the skipped step's output (a person's, not an assistant's); advance (a stage gate) takes `reason`. A person's own.",
   "flows.advance": "Move a record on before its stage's tasks are done: { run (the stage gate), reason }. The stage's owner or an admin, in their own name; the reason is on the gate's ledger.",
-  "flows.patch": "Edit a Flow with small named ops, stored as a new draft: { id, base (version read), ops: [{ op: set|insert|replace|remove|move|trigger|meta, ... }] }.",
+  "flows.patch": "Edit a Flow with small named ops, stored as a new draft: { id, base (version read), ops: [{ op: set|insert|replace|remove|move|trigger|meta, ... }] }. A step in a failure path is named by its id like any other; insert into a step's failure path with { into, block: \"on_fail\" }, or into the Flow's own failure steps with { lane: \"on_failure\", first | after }; meta takes name, label, description, concurrency, lock, stuck_after_ms, group, sends, returns.",
   "flows.test.save": "Save a test case: { id, name, event | input, expect }, or { id, from_run } to baseline a run. Failing cases block approval.",
   "flows.test.run": "Run every saved test case of a Flow (id, optional version) with nothing done for real, one line a case.",
   "flows.test.list": "The saved test cases of a Flow.",

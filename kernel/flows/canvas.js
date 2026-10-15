@@ -187,32 +187,51 @@ export function locate(steps, id) {
   for (let i = 0; i < steps.length; i++) {
     if (steps[i].id === id) return { list: steps, index: i };
     for (const b of /** @type {string[]} */ (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (steps[i].kind)] || [])) if (Array.isArray(steps[i][b])) { const r = locate(steps[i][b], id); if (r) return r; }
+    // a step's failure path holds steps too (on_fail.steps)
+    if (steps[i].on_fail && Array.isArray(steps[i].on_fail.steps)) { const r = locate(steps[i].on_fail.steps, id); if (r) return r; }
   }
   return null;
 }
 
+/** A step anywhere in a Flow: its steps (blocks and failure paths included) or the Flow's own failure steps (`on_failure`). @param {any} flow @param {string} id */
+export function locateIn(flow, id) { return locate(flow.steps, id) || (Array.isArray(flow.on_failure) ? locate(flow.on_failure, id) : null); }
+
 /** The builder's edits. Each returns a new Flow (the input is never changed) and the problems the shape check finds, if any. */
 export const ops = Object.freeze({
-  /** Add a step after another (or first, with after = null; or into a block with { into: id, block }). @param {any} flow @param {any} step @param {string|null} after @param {{ into?: string, block?: string }} [at] */
+  /** Add a step after another (or first, with after = null; or into a block with { into: id, block }). @param {any} flow @param {any} step @param {string|null} after @param {{ into?: string, block?: string, lane?: string }} [at] */
   addStep(flow, step, after, at = {}) {
     const f = structuredClone(flow);
-    if (at.into) { const host = locate(f.steps, at.into); if (!host) throw new Error("no such step"); const s = host.list[host.index]; const block = at.block || (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || [])[0]; if (!block) throw new Error("that step holds no steps"); s[block] = s[block] || []; s[block].push(step); }
+    if (at.lane === "on_failure") {
+      // the Flow's own failure steps: first (after = null) or after a step that is in them
+      f.on_failure = Array.isArray(f.on_failure) ? f.on_failure : [];
+      if (after === null) f.on_failure.unshift(step);
+      else { const l = locate(f.on_failure, after); if (!l) throw new Error("no such step"); l.list.splice(l.index + 1, 0, step); }
+      return f;
+    }
+    if (at.into) {
+      const host = locateIn(f, at.into); if (!host) throw new Error("no such step");
+      const s = host.list[host.index];
+      if (at.block === "on_fail") { s.on_fail = s.on_fail && typeof s.on_fail === "object" ? s.on_fail : { steps: [], then: "stop" }; s.on_fail.steps = Array.isArray(s.on_fail.steps) ? s.on_fail.steps : []; s.on_fail.steps.push(step); return f; }
+      const block = at.block || (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || [])[0];
+      if (!block) throw new Error("that step holds no steps");
+      s[block] = s[block] || []; s[block].push(step);
+    }
     else if (after === null) f.steps.unshift(step);
-    else { const l = locate(f.steps, after); if (!l) throw new Error("no such step"); l.list.splice(l.index + 1, 0, step); }
+    else { const l = locateIn(f, after); if (!l) throw new Error("no such step"); l.list.splice(l.index + 1, 0, step); }
     return f;
   },
   /** @param {any} flow @param {string} id */
-  removeStep(flow, id) { const f = structuredClone(flow); const l = locate(f.steps, id); if (!l) throw new Error("no such step"); l.list.splice(l.index, 1); return f; },
+  removeStep(flow, id) { const f = structuredClone(flow); const l = locateIn(f, id); if (!l) throw new Error("no such step"); l.list.splice(l.index, 1); return f; },
   /** @param {any} flow @param {string} id @param {Record<string, any>} patch a key set to undefined is removed */
   updateStep(flow, id, patch) {
-    const f = structuredClone(flow); const l = locate(f.steps, id); if (!l) throw new Error("no such step");
+    const f = structuredClone(flow); const l = locateIn(f, id); if (!l) throw new Error("no such step");
     const s = l.list[l.index];
     for (const [k, v] of Object.entries(patch)) { if (k === "id" || k === "kind") throw new Error("a step keeps its id and kind"); if (v === undefined) delete s[k]; else s[k] = v; }
     return f;
   },
   /** Move a step within its list by an offset. @param {any} flow @param {string} id @param {number} by */
   moveStep(flow, id, by) {
-    const f = structuredClone(flow); const l = locate(f.steps, id); if (!l) throw new Error("no such step");
+    const f = structuredClone(flow); const l = locateIn(f, id); if (!l) throw new Error("no such step");
     const to = Math.max(0, Math.min(l.list.length - 1, l.index + by));
     const [s] = l.list.splice(l.index, 1); l.list.splice(to, 0, s);
     return f;
