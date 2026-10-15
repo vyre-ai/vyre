@@ -61,6 +61,10 @@ test("a member's MCP key inspects a Flow shared with her and is refused one that
   assert.ok(mixed.data, JSON.stringify(mixed.error));
   assert.ok(!JSON.stringify(mixed.data).includes("owner_only"), "the hidden Flow's words are not in it");
   assert.equal((await asBen("flows.describe", { run: hiddenRun.id, id: shared })).error?.code, "not_found", "a hidden run named beside a shared id");
+  // the hiding is forced: a member cannot name hide_for to see a run whole, nor to hide it from someone else
+  const steered = await asBen("flows.describe", { run: sharedRun.id, hide_for: "nobody" });
+  const plain = await asBen("flows.describe", { run: sharedRun.id });
+  assert.deepEqual(steered.data, plain.data, "a hide_for in the call changes nothing");
   // the app's member door answers the same way for the same people
   const svc = /** @type {any} */ (createMemberTools({ space: K.id.space, kernel: K, registry: d.registry }).flows);
   assert.ok((await svc.list(benChain, {})).every((/** @type {any} */ r) => r.id === shared), "the door lists only the shared Flow");

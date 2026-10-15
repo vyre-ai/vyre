@@ -57,6 +57,15 @@ export async function mayInspectFlow(f, me, role, id) {
   const shared = typeof f.sharedWith === "function" ? await f.sharedWith(id).catch(() => []) : [];
   return (shared || []).some((/** @type {any} */ g) => g && g.subject === me && (g.level === "use" || g.level === "edit"));
 }
+/**
+ * Whose data a run's steps are hidden from: a run is shown whole to an owner, an admin and the person whose authority it ran on; to anyone else its steps' data is hidden (kernel/flows/redact.js), because a run reads
+ * what its approver may read. Returns the `hide_for` the Flows tool is called with, or null when she sees the run whole. Never taken from the caller: both doors use this one function.
+ * @param {any} run @param {string} me @param {boolean} admin
+ */
+export function hideFor(run, me, admin) {
+  const as = run && run.approver && run.approver.kind === "person" ? String(run.approver.id) : null;
+  return admin || as === me ? null : (as || "the person who approved it");
+}
 /** What a member is told about a Flow she may not inspect: the same words as one that is not there, so the answer says nothing about which Flows exist. */
 export const notYours = () => new KernelError("not_found", "there is no such Flow you can use (flows.list shows yours and the ones shared with you)");
 
@@ -151,9 +160,9 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
 
   /** A run is shown whole to its owner, an admin and the person whose authority it ran on; to anyone else its steps' data is hidden (kernel/flows/redact.js), because a run reads what its approver may read. Started by her is not enough. @param {any} run */
   async function hiding(run) {
-    const as = run.approver && run.approver.kind === "person" ? String(run.approver.id) : null;
-    if (admin || as === me) return i;
-    return { ...i, hide_for: as || "the person who approved it" };
+    const hf = hideFor(run, me, admin);
+    if (!hf) { const { hide_for: _drop, ...whole } = i; return whole; }   // she sees it whole: nothing she wrote steers what is hidden
+    return { ...i, hide_for: hf };
   }
   /** Rows of runs she started carry a flag the app can show. @param {any} rows */
   async function mark(rows) {

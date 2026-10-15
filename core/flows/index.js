@@ -6,7 +6,7 @@
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
-import { serveMember, mayInspectFlow, notYours, CALLS as MEMBER_CALLS } from "./member.js";
+import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
@@ -151,10 +151,12 @@ export default {
       const tool = f.flows.tools[INNER(name)];
       if (name === "flows.describe") {
         let id = rest.id;
-        if (rest.run) { const run = f.flows.store.getRun ? await f.flows.store.getRun(String(rest.run)).catch(() => null) : null; id = run && run.flow; }
+        let run = null;
+        if (rest.run) { run = f.flows.store.getRun ? await f.flows.store.getRun(String(rest.run)).catch(() => null) : null; id = run && run.flow; }
         if (typeof id !== "string" || !(await mayInspect(f, id, me, role))) throw notYours();
-        // only what was checked goes through: with a run, the run (its Flow is the one checked); else the id
-        return tool(chain, rest.run ? { run: String(rest.run), ...(rest.hide_for ? { hide_for: rest.hide_for } : {}) } : { id, ...(rest.version !== undefined ? { version: rest.version } : {}) });
+        // only what was checked goes through: with a run, the run (its Flow is the one checked) and the hiding the app's door applies (never one the caller names); else the id
+        if (run) { const hf = hideFor(run, me, false); return tool(chain, { run: String(rest.run), ...(hf ? { hide_for: hf } : {}) }); }
+        return tool(chain, { id, ...(rest.version !== undefined ? { version: rest.version } : {}) });
       }
       if (name === "flows.runs") {
         if (typeof rest.id === "string" && rest.id) { if (!(await mayInspect(f, rest.id, me, role))) throw notYours(); return tool(chain, rest); }
