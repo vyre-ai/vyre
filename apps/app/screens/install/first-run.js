@@ -48,10 +48,10 @@ export const FIRST = {
   join: { title: "Join a team", line: "Paste the invite your team sent you. You use their server, so you need none of your own." },
   server: { title: "Add a server", line: "A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and teammates can reach it.", upgrades: { mac: "This upgrades My Home to My Cloud.", windows: "This sets up My Cloud." } },
   home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. You can add a server later and move everything across." },
-  windows: "Using Vyre on this PC alone is coming. For now, join a team or add a server.",
+  windows: "Join a team, or add a server. This PC does not run Vyre on its own.",
 };
-/** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
-export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
+/** The choices in order: Join a space, or add a server. There is no solo home. @param {string} _kind */
+export const firstChoices = (_kind) => ["join", "server"];
 
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());

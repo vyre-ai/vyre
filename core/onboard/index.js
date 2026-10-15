@@ -17,6 +17,7 @@ import { anthropicKind } from "../../lib/credential-shapes.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
+import { registerFirstRun } from "./first-run.js";
 
 export const STEPS = ["you", "claude", "pair", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -163,6 +164,7 @@ export default {
       return r.data;
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
+    registerFirstRun(ctx, { call, tryCall, save });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things

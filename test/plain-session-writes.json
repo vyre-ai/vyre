@@ -325,6 +325,34 @@
    "class": "own",
    "why": "it looks at the provider lists and OpenRouter's public data (reads, at most once a minute) and writes only the registry; it spends nothing and starts no eval"
   },
+  "onboard.computer.add": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it adds a computer"
+  },
+  "onboard.github.finish": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it links GitHub to the person"
+  },
+  "onboard.member.link": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it makes an invite link"
+  },
+  "onboard.person.create": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it creates the person and the vault"
+  },
+  "onboard.phone.add": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it adds a phone"
+  },
+  "onboard.space.join": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it joins a space"
+  },
+  "onboard.space.open": {
+   "class": "refused",
+   "why": "an agent call is held for the person's yes (outward); it starts a space"
+  },
   "onboard.setup": {
    "class": "own",
    "why": "the setup step list: a read that is declared a write"

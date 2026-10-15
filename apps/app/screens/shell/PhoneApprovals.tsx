@@ -2,7 +2,7 @@
 // and once a minute while it is open; never faster. A phone build without the key module says so and offers no Approve.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform, View } from "react-native";
-import { Button, Card, Divider, Icon, Row, Text, showToast } from "@vyre/ui";
+import { Button, Card, Icon, NeedsYouCard, Text, showToast } from "@vyre/ui";
 import { call } from "../../src/api/box";
 import { phoneSigner } from "../../src/real/phone-signer";
 import { shellSigner } from "../../src/real/shell-signer";
@@ -88,24 +88,11 @@ export function PhoneApprovals({ want }: { want?: { act: "approve" | "deny"; car
     <View>
       {said}
       <GroupApprovals key={round} />
-    <View className="gap-s2 px-s4 pb-s3">
-      <Text size="caption" strong tone="label">Waiting for your approval</Text>
-      <Card flush>
-        {cards.map((c, i) => (
-          <View key={c.id}>{i ? <Divider /> : null}
-            <Row title={c.title} sub={c.body || "Approving makes this change. Nothing changes until you do."} />
-            <View className="gap-s1 px-s4 pb-s2">
-              {askedLine(c) ? <Text size="caption" tone="label">{askedLine(c)}</Text> : null}
-              {factLines(c).length ? <Text size="caption" strong tone="label">What you are signing</Text> : null}
-              {factLines(c).map((l) => <Text key={l} size="caption" tone="label" mono>{l}</Text>)}
-              <View className="flex-row gap-s2 pt-s2">
-                {canSign ? <Button kind="primary" size="sm" icon="faceid" label={busy === c.id ? "Waiting" : "Approve"} disabled={!!busy} onPress={() => void approve(c)} /> : <Text size="caption" tone="label">This phone cannot approve yet. Update Vyre.</Text>}
-                <Button kind="ghost" size="sm" label="Deny" disabled={!!busy} onPress={() => void no(c)} />
-              </View>
-            </View>
-          </View>
-        ))}
-      </Card>
+    <View className="gap-s3 px-s4 pb-s3">
+      <Text size="caption" strong tone="label">Needs you</Text>
+      {cards.map((c) => (
+        <NeedsYouCard key={c.id} title={c.title} why={c.body || "Approving makes this change. Nothing changes until you do."} note={askedLine(c) || undefined} facts={factLines(c)} busy={busy === c.id} canSign={!!canSign} onApprove={() => void approve(c)} onDeny={() => void no(c)} />
+      ))}
     </View>
     </View>
   );

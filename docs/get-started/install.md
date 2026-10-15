@@ -1,6 +1,6 @@
 ---
 title: Install
-summary: Reserve your name, put the Vyre app on your Mac or Windows PC, paste the code, then join a team, add a server, or use your Mac as your home, and add your phone.
+summary: Put the Vyre app on your Mac or Windows PC, create your identity, then join a space or create one, and add a phone.
 audience: users, operators
 owner: integrator
 status: stable
@@ -33,10 +33,9 @@ On a server with 4 to 6 GB, Vyre uses a smaller Records setup and tells you, whe
 
 ## 1. Reserve your name
 
-Open <https://vyre.run/setup> on any computer and type the name you want. It becomes `yourname.vyre.run`.
-If the name is free, press **Reserve this name**. The page shows a code that starts with `VYRE-`. Copy it.
+You choose the username in the app, in the next steps. It becomes your page at `vyre.run/u/your-name`. An older address, `your-name.vyre.run`, still opens the same page.
 
-The code is held for you for 24 hours and works once. If it runs out, reserve the name again.
+If you already reserved a name at <https://vyre.run/setup>, keep that code. The app can still use it. A new setup does not ask for it.
 
 ## 2. Install the Vyre app
 
@@ -51,29 +50,25 @@ The code is held for you for 24 hours and works once. If it runs out, reserve th
 
 The release lists a checksum for every file, and `SHA256SUMS` is signed, so you can check what you downloaded.
 
-## 3. Paste the code
+## 3. Create your identity
 
-Open the app and choose **Start**. It asks for the reservation code. Paste it. The app shows the name it holds for
-you and makes your key on this computer. The key stays here.
+Open the app. It asks for a username and a master password. The username is your page at `vyre.run/u/your-name`.
+The same password unlocks your vault. You can also choose **Continue with GitHub**. GitHub signs you in. The master password is still required.
+
+The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
+somewhere only you can reach, then choose **I saved it**.
 
 On a Windows PC the key is made with Windows Hello, which asks for your face, fingerprint or PIN. If Windows Hello is not set up, Vyre keeps the key on this PC instead.
-
-The app then shows a recovery code, once. It is the only way back in if you lose every device, so keep it
-somewhere only you can reach, then choose **I saved it**.
 
 
 ## 4. Choose how you will use Vyre
 
-The app asks how you will use it:
+The app asks how you will use it. There are two choices:
 
-- **Join a team.** Paste the invite your team sent. You run on your team's server and need none of your own. This is
-  the choice for most people who work at a company that uses Vyre.
-- **Add a server.** A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and your teammates can
-  reach it. Go to step 5. On a Mac this upgrades My Home to My Cloud, and on Windows it sets up My Cloud.
-- **Use My Home** (Mac only). Vyre runs on this Mac while it is awake. Nothing else to set up. You can add a server later
-  from Settings, and Vyre moves everything across: that is the upgrade from My Home to My Cloud.
+- **Join a space.** Paste the invite link you were sent (`vyre.run/i/...`). You are in. The link carries the route, so this path never asks you about a server.
+- **Create a space.** A Linux server, or a Mac that stays on. Go to step 5.
 
-On Windows the app offers **Join a team** and **Add a server**. A home on Windows is coming.
+On Windows the app offers the same two choices. This PC does not run Vyre on its own.
 
 ## 5. Add a server
 
@@ -81,23 +76,19 @@ On Windows the app offers **Join a team** and **Add a server**. A home on Window
 2. Choose **With Records** (recommended) or **Without Records** (a small server). Records is where your contacts, projects and
    tasks live, so pick it unless the server is small.
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
-   - On Linux it looks like `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
-   - On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=... VYRE_STORE=auto sh`. It asks for the
+   - On Linux it looks like `curl -fsSL vyre.run/i | sh`.
+   - On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | sh`. It asks for the
      Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
      Touch ID key approves new devices.
 
-   The line is good for one hour and works once. It carries a one-time code made by the app, so nobody at the server has to
-   answer a question.
-4. The installer checks the release's signature before it installs anything, and prints four words when it is up. The
-   app finds the server by itself and shows four words too. If they are the same, choose **Same**. If they are not, choose
-   **Not the same** and nothing is connected. If the words scrolled away or did not show on the server, run `vyre words` there
-   (on a Mac server, `~/.vyre-server/bin/vyre words`) to see them again.
-5. The app connects, and your Cloud is ready. Choose what to move across from Personal if you have anything there.
+   The line is good for one hour and works once. Nothing else is typed in the terminal.
+4. The installer checks the release's signature before it installs anything. The app waits on this screen until the server is online. You do not compare words and you do not type a code.
+5. The app connects, and your space is ready.
 
 
 ## 6. Add your phone
 
-From the app on your computer, choose **Add your phone** and follow the code it shows.
+From the app on your computer, choose **Add your phone**. The app shows a link. Open that link on the phone.
 
 - **Android.** Download `Vyre-android.apk` from the [latest release](https://github.com/vyre-ai/vyre/releases/latest) on the phone, open
   it, and allow installs from your browser or Files app when Android asks. The app is not on a store yet, so you sideload it.
@@ -105,7 +96,7 @@ From the app on your computer, choose **Add your phone** and follow the code it 
 - **iPhone.** There is no App Store app yet. Build the app from the source and install it on your phone with Xcode; the steps are
   in [On your phone](../using/mobile.md).
 
-Open the app on the phone, scan the code from your computer, and check that both screens show the same words.
+Open the link on the phone. The phone joins the space. There is no code to type and no words to compare.
 
 ## A Windows PC
 
@@ -152,7 +143,7 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 > The line is good for one hour. In the app choose **Start again**, then run the new line. Check that the server can reach the internet.
 > If the installer says `Vyre is already running`, run `vyre uninstall --keep-data` on the server first, then paste the new line. Your data stays.
 
-> [!SNAG] The four words do not match
-> Choose **Not the same**. Nothing is connected. Run a fresh line from the app, and make sure you are looking at the server you just ran it on.
+> [!SNAG] The app stays on Waiting
+> The line is good for one hour. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).
