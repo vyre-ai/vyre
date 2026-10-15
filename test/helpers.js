@@ -312,3 +312,24 @@ export async function offerUrl(d, caller = "cli", meta = { proof: { method: "pas
   const r = await resolveTicket(fromBase64url(minted.data.ticket), { relay: status.url, crypto: nodeCrypto() });
   return pairUrl({ relay: r.offer.relay, route: r.offer.route, box: Buffer.from(r.offer.box), secret: r.offer.secret, name: r.name });
 }
+
+/**
+ * A real mail connection for a test that runs a whole vyred: a fake IMAP and SMTP server (core/mail/testing/fake-imap.js), the connection made through the Vault the way a person makes it, and its use opened
+ * to agents. `cli(tool, input)` is the owner's call. Returns { mailbox, item, id }: the fake server (`mailbox.sent` lists what reached it), the vault item and the mail account id the `mail:<id>` sender is
+ * named by. Used by core/gate/standing-mail.test.js; core/appmods/docuseal-live.test.js builds the same by hand.
+ * @param {import("node:test").TestContext} t @param {(tool: string, input?: any) => Promise<any>} cli
+ */
+export async function mailFixture(t, cli, { user = "alex@harlow.example", password = "hunter2-hunter2" } = {}) {
+  const { startFakeMail } = await import("../core/mail/testing/fake-imap.js");
+  const mailbox = await startFakeMail(t, { user, password });
+  const fields = (/** @type {string} */ security) => ({ imap_host: "127.0.0.1", imap_port: String(mailbox.imap.port), smtp_host: "127.0.0.1", smtp_port: String(mailbox.smtp.port), username: user, password, from: user, security });
+  const conn = await cli("vault.connect", { module: "mail", need: "imap", label: "alex", fields: fields("tls") });
+  if (!conn.data || !conn.data.item) throw new Error(`the mail connection was not made: ${JSON.stringify(conn.error || conn)}`);
+  await cli("vault.put", { name: conn.data.item, kind: "env-set", fields: fields("none") });
+  const accounts = await cli("mail.accounts", {});
+  const rows = accounts.data && (Array.isArray(accounts.data) ? accounts.data : accounts.data.accounts) || [];
+  const id = String((rows[0] && rows[0].id) || conn.data.id || "");
+  if (!id) throw new Error(`no mail account id: ${JSON.stringify(accounts)}`);
+  await cli("vault.connections.grant", { id, surface: "agents" });
+  return { mailbox, item: String(conn.data.item), id };
+}
