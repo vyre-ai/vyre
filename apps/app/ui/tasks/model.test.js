@@ -25,7 +25,7 @@ test("client pays: the Welcome card names what it used and offers Send with Face
   assert.equal(m.why, "Intake drafted it from Welcome, using Research's notes.");
   assert.deepEqual(m.actions.map((a) => a.label), ["Send with Face ID", "Edit"]);
   assert.equal(m.lead, "intake");
-  assert.ok(m.tags.some((t) => t.text === "Doe estate plan"));
+  assert.ok(m.tags.some((t) => t.text === "Doe brand refresh"));
   const d = draftOf(w, need[0]);
   assert.match(d.body, /trust funded before the house sale/);
   assert.match(d.subject, /Welcome to Juniper Studio, Jane/);
@@ -47,7 +47,7 @@ test("the morning world: a stuck card says why and offers Fix and Reassign; a ta
   const now = nowModel(w);
   const stuck = now.needs.find((t) => t.state === "stuck");
   const m = cardFor(w, stuck);
-  assert.equal(m.title, "juno could not log in to the court portal");
+  assert.equal(m.title, "juno could not log in to the supplier portal");
   assert.equal(m.why, "The password changed. Update the password in the Vault, or reassign to Chris.");
   assert.deepEqual(m.actions.map((a) => a.label), ["Fix", "Reassign"]);
   assert.ok(m.tags.some((t) => t.text === "Stuck"));
@@ -72,9 +72,9 @@ test("a to-do with no stage and no record says it is waiting for you, never \"Du
 
 test("one field to fill is an inline input with the field's own label", async () => {
   const w = await loadWorld(createMockStore({ now: () => NOW }), () => NOW);
-  const t = nowModel(w).needs.find((x) => x.title === "Signing date");
+  const t = nowModel(w).needs.find((x) => x.title === "Launch date");
   const m = cardFor(w, t);
-  assert.deepEqual(m.inline, { name: "signing", label: "Signing date", kind: "date" });
+  assert.deepEqual(m.inline, { name: "signing", label: "Launch date", kind: "date" });
   assert.deepEqual(m.actions.map((a) => a.label), ["Save"]);
 });
 
@@ -92,7 +92,7 @@ test("scope narrows Now to a space; calendar and doing-now come from the store",
 test("the project page: stages made of tasks, the team with its doing-now line, the live line, the created line", async () => {
   const s = createMockStore({ now: () => NOW });
   const w = await loadWorld(s, () => NOW);
-  const rec = [...w.records.values()].find((r) => r.data.title === "Doe estate plan");
+  const rec = [...w.records.values()].find((r) => r.data.title === "Doe brand refresh");
   const tasks = w.tasks.filter((t) => t.record === rec.urn);
   const stages = w.types.get("matter").stages.map((x) => x.name);
   const groups = stageGroups(tasks, stages, rec.data.stage);
@@ -101,10 +101,10 @@ test("the project page: stages made of tasks, the team with its doing-now line, 
   assert.equal(groups[1].current, true);
   assert.equal(`${groups[1].done} of ${groups[1].total}`, "0 of 2");
   const team = teamOf({ tasks, actors: w.actors, owner: rec.data.owner.actor.id });
-  assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Drafting is drafting the engagement letter"]);
-  assert.equal(liveLine(tasks, w.actors), "Drafting is drafting the engagement letter");
+  assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Drafting is drafting the kickoff letter"]);
+  assert.equal(liveLine(tasks, w.actors), "Drafting is drafting the kickoff letter");
   const events = await s.events({ record: rec.urn });
-  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Estate planning matter, 9:00 am. Flow On payment: Jane Doe paid $1,500.");
+  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Client project, 9:00 am. Flow On payment: Jane Doe paid $1,500.");
   assert.equal(progressText(tasks), "2 of 4 tasks");
   assert.equal(stateWord(tasks.find((t) => t.state === "ready"), w.me), "Ready");
 });
@@ -117,7 +117,7 @@ test("task facts: doer, checker, output, how, inputs", async () => {
   assert.equal(f.checker.meta, "Their approval sends it");
   assert.equal(f.output.label, "A sent item");
   assert.equal(f.how, "Assistant tailors the template");
-  assert.deepEqual(f.inputs.slice(0, 2), ["Research notes on Doe estate plan", "Template: Welcome"]);
+  assert.deepEqual(f.inputs.slice(0, 2), ["Research notes on Doe brand refresh", "Template: Welcome"]);
 });
 
 test("Now never greets a raw id, and Recent is plain sentences with kernel housekeeping left out", () => {
