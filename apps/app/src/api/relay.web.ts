@@ -9,13 +9,24 @@ import { loadIdentity } from "../identity/store";
 import { shellIdentity } from "../shell/shell.ts";
 import { passkeyPresenceKey } from "../identity/passkey.js";
 import { makePairingStore } from "./pairing-store";
+import { shellRelayBridge, shellRelayCrypto, shellRelayKeyStore } from "./shell-relay-key.js";
 
 
+// The Mac app's window keeps its relay device key in the Mac's Keychain through the shell (shell-relay-key.js): the WKWebView does not give a CryptoKey stored in IndexedDB back, so a key kept
+// there was a new key on every dial. A browser, and an older Mac shell with no relay key calls, keep it in IndexedDB.
 let provider: ReturnType<typeof webCrypto> | null = null;
-export const relayCrypto = () => (provider ??= webCrypto());
+export const relayCrypto = () => {
+  if (provider) return provider;
+  const bridge = shellRelayBridge();
+  return (provider = bridge ? (shellRelayCrypto(bridge, webCrypto()) as ReturnType<typeof webCrypto>) : webCrypto());
+};
 
 let store: ReturnType<typeof indexedDbKeyStore> | null = null;
-export const relayKeyStore = () => (store ??= indexedDbKeyStore());
+export const relayKeyStore = () => {
+  if (store) return store;
+  const bridge = shellRelayBridge();
+  return (store = bridge ? (shellRelayKeyStore(bridge) as unknown as ReturnType<typeof indexedDbKeyStore>) : indexedDbKeyStore());
+};
 
 export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
   try {
