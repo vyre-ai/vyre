@@ -1170,10 +1170,12 @@ export class FlowRunner {
         if (!items) {
           const list = ev(s.over);
           items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-          await this.#mark(ctx, key, { status: "started", output: { items } });
+          // a list longer than the limit is cut, and the ledger says so (the run page shows "cut at 50 of 200"); recorded once with the items, so a replay says the same
+          await this.#mark(ctx, key, { status: "started", output: { items, ...(Array.isArray(list) && list.length > items.length ? { total: list.length, cut: true } : {}) } });
         }
         for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-        return { count: items.length };
+        const was = (this.#led(ctx, key) || {}).output || {};
+        return { count: items.length, ...(was.cut ? { cut: true, total: was.total } : {}) };
       });
       return;
     }
