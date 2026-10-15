@@ -134,10 +134,11 @@ const childrenNow = () => { try { return execFileSync("pgrep", ["-P", String(pro
  * (a fake session the daemon started and did not wait for) and say so. Children that already ran when the helper was called (a sealing process the daemon started with itself, a server the file made
  * before) are not touched: the daemon's own stop owns those. A child the file starts later and means to keep passes in `keep` as a function of its pid. It hides nothing: a daemon that would not stop, or
  * a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
- * @param {any} t @param {{ stop: () => Promise<any> }} d @param {{ keep?: (pid: number) => boolean }} [o]
+ * `before` is the set of children there were before the daemon started (startDaemonBounded passes it, so what start() itself launched is checked too).
+ * @param {any} t @param {{ stop: () => Promise<any> }} d @param {{ keep?: (pid: number) => boolean, before?: Set<number> }} [o]
  */
 export function stopDaemonBounded(t, d, o = {}) {
-  const before = new Set(childrenNow());
+  const before = o.before || new Set(childrenNow());
   t.after(async () => {
     /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
     try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
@@ -151,6 +152,19 @@ export function stopDaemonBounded(t, d, o = {}) {
     if (failure) throw failure;
     if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
   });
+}
+
+/**
+ * Start a daemon for a test (core/daemon start, the same options) and register its bounded stop: the children that exist BEFORE it starts are recorded first, so a sealing process or anything else
+ * start() launches is checked at the end too. Use it where a test would write `const d = await start(opts); t.after(() => d.stop());`.
+ * @param {any} t @param {any} opts @param {{ keep?: (pid: number) => boolean }} [o]
+ */
+export async function startDaemonBounded(t, opts, o = {}) {
+  const before = new Set(childrenNow());
+  const { start } = await import("../core/daemon/index.js");
+  const d = await start(opts);
+  stopDaemonBounded(t, d, { ...o, before });
+  return d;
 }
 
 /** Write a module folder under root with the given manifest and entry source. */

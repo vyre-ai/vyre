@@ -33,3 +33,12 @@ test("a daemon that stops cleanly with no new child passes, and a stop that thro
   stopDaemonBounded(t2, { stop: async () => { throw new Error("would not stop"); } });
   await assert.rejects(t2.run(), /would not stop/);
 });
+
+test("with a baseline taken before the start, a child the start itself leaves is reported", async () => {
+  const t = fakeT();
+  const before = new Set(/** @type {number[]} */ ([]));
+  // a child started "inside start()" is under the process by the time the daemon is stopped, and was not in the baseline
+  const inStart = spawn("sleep", ["30"], { stdio: "ignore" });
+  stopDaemonBounded(t, { stop: async () => {} }, { before });
+  try { await assert.rejects(t.run(), err => err.message.includes(String(inStart.pid))); } finally { inStart.kill("SIGKILL"); }
+});
