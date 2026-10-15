@@ -143,6 +143,8 @@ export function createFlowsHost(o) {
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
+      // the chain of a person who started a run, for the lesser-of-two read of a linked record (kernel/flows/runner.js)
+      actorChain: (/** @type {string} */ id) => personChain(id),
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
