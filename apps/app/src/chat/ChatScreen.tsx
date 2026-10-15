@@ -149,6 +149,20 @@ export function ChatScreen(p: ChatScreenProps) {
   const [draftN, setDraftN] = useState(0);
   // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
   const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
+  const [threadState, setThreadState] = useState<{ mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null } | undefined>();
+  useEffect(() => {
+    const thread = here.thread ?? p.sessionId;
+    if (!toolsOpen || allowsMock() || !thread) return;
+    let live = true;
+    tool<{ thread?: { mode?: string; effort?: string; thinking?: boolean; modes?: string[] } }>("threads.get", { thread, limit: 1 })
+      .then((d) => {
+        if (!live || !d?.thread) return;
+        const t = d.thread;
+        setThreadState({ mode: t.mode ?? null, effort: t.effort ?? null, thinking: typeof t.thinking === "boolean" ? t.thinking : null, modes: Array.isArray(t.modes) ? t.modes : null });
+      })
+      .catch(() => { if (live) setThreadState(undefined); });
+    return () => { live = false; };
+  }, [toolsOpen, here.thread, p.sessionId]);
   useEffect(() => {
     if (!toolsOpen || allowsMock()) return;
     let live = true;
@@ -338,6 +352,7 @@ export function ChatScreen(p: ChatScreenProps) {
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={sharedChat} replyMode={store.group.replyMode()}
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} noFork={noFork} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
+        away={here.away} state={threadState} projectSlug={chatProject.current?.slug ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
   );

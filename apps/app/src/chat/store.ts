@@ -123,6 +123,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     let meta = false;
     let reset = false;
     let groupChanged = false;
+    let sawGap = false;
     const v = source.viewer?.();
     if (v && v !== group.viewer) { group.setViewer(v); groupChanged = true; }
     for (const f of frames) {
@@ -131,6 +132,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       for (const k of g.touched) touched.add(k);
       const before = folder.status.state;
       const r = folder.apply(f as FoldFrame);
+      if (r.gap) sawGap = true;
       if (folder.status.state !== before) meta = true;
       if (r.dup) continue;
       if (r.reset) { reset = true; layout = true; meta = true; continue; }
@@ -159,6 +161,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     // A reply that streams repaints at the frame clock; its first characters show on the next frame.
     if (meta || layout) bumpMeta();
     if (groupChanged) for (const f of [...groupSubs]) f();
+    if (sawGap && conn) {
+      const from = folder.last;
+      conn.close();
+      conn = source.connect({ from, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
+    }
   }
   function onFrame(f: Frame) {
     buffer.push(f);

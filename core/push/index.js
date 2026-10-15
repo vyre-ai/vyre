@@ -214,8 +214,24 @@ export default {
 
     /** Planner firings pushed since start, so an ack elsewhere can close them; the newest 500. */
     const rung = new Set();
-    /** When a person last used a screen (push.seen), in memory only: a restart forgets it. */
-    let lastUse = 0;
+    /** When a person last used a screen on each push device (push.seen { device }), in memory only. */
+    const lastUseByDevice = new Map();
+    /** @param {string | null | undefined} device */
+    const touchSeen = (device) => {
+      const key = device ? String(device) : "";
+      lastUseByDevice.set(key, testHooks.now());
+      while (lastUseByDevice.size > RECEIPTS_MAX) lastUseByDevice.delete(lastUseByDevice.keys().next().value);
+    };
+    /** Devices that should not get a held kind yet (that device called push.seen recently). */
+    const heldOffDevices = () => {
+      const now = testHooks.now();
+      const out = new Set();
+      for (const d of /** @type {any[]} */ (db.prepare("SELECT id FROM push_devices").all())) {
+        const id = String(d.id);
+        if (now - (lastUseByDevice.get(id) ?? lastUseByDevice.get("") ?? 0) >= testHooks.holdMs) out.add(id);
+      }
+      return out;
+    };
     /** Held moments by tag, oldest first, and the one timer that sends them. */
     const pending = new Map();
     /** @type {NodeJS.Timeout | null} */
@@ -223,7 +239,16 @@ export default {
     const arm = () => {
       if (timer) { clearTimeout(timer); timer = null; }
       if (!pending.size) return;
-      timer = setTimeout(flush, Math.max(0, lastUse + testHooks.holdMs - testHooks.now()));
+      const next = [...pending.values()].map(() => {
+        let wait = testHooks.holdMs;
+        for (const id of heldOffDevices()) {
+          const t = lastUseByDevice.get(id) ?? lastUseByDevice.get("") ?? 0;
+          wait = Math.min(wait, Math.max(0, t + testHooks.holdMs - testHooks.now()));
+        }
+        return wait;
+      });
+      const ms = next.length ? Math.min(...next) : testHooks.holdMs;
+      timer = setTimeout(flush, ms);
       timer.unref();
     };
     /** The budget: how many capped pushes today, in the person's day (the quiet-hours zone, else the box's). */
@@ -233,8 +258,8 @@ export default {
       const v = r && !r.error && r.data ? Number(r.data.value) : NaN;
       return Number.isInteger(v) && v >= 0 ? v : CHATTINESS_DEFAULT;
     };
-    /** Sends now what may go: kinds, quiet hours, the daily budget and a device, checked when it is sent. */
-    const post = async (n, loud = false) => {
+    /** Sends now what may go: kinds, quiet hours, the daily budget and a device, checked when it is sent. @param {string | null} [onlyDevice] */
+    const post = async (n, loud = false, onlyDevice = null) => {
       const s = settings();
       if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
       if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
@@ -250,14 +275,21 @@ export default {
         }
         state.set("sent", { day, n: used + 1 });
       }
-      await deliver({ ...n, at: Date.now() });
+      await deliver({ ...n, at: Date.now() }, onlyDevice);
     };
     async function flush() {
       timer = null;
-      if (testHooks.now() - lastUse < testHooks.holdMs) return arm();
       const due = [...pending.values()];
       pending.clear();
-      for (const n of due) { try { await post(n); } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); } }
+      const now = testHooks.now();
+      for (const n of due) {
+        try {
+          const free = heldOffDevices();
+          if (!free.size) { pending.set(n.tag, n); continue; }
+          for (const id of free) await post(n, false, id);
+        } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
+      }
+      if (pending.size) arm();
     }
     const offs = Object.entries(NOTES).map(([type, make]) => ctx.events.on(type, async e => {
       try {
@@ -267,11 +299,18 @@ export default {
         const { loud, ...n } = made;
         if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
-        if (HELD.has(n.kind) && testHooks.now() - lastUse < testHooks.holdMs) {
-          pending.delete(n.tag);
-          pending.set(n.tag, n);
-          while (pending.size > PENDING_MAX) pending.delete(pending.keys().next().value);
-          if (!timer) arm();
+        if (HELD.has(n.kind)) {
+          const free = heldOffDevices();
+          if (free.size) {
+            for (const id of free) await post(n, loud, id);
+          }
+          const stillHeld = [.../** @type {any[]} */ (db.prepare("SELECT id FROM push_devices").all())].map((d) => String(d.id)).filter((id) => !free.has(id));
+          if (stillHeld.length) {
+            pending.delete(n.tag);
+            pending.set(n.tag, n);
+            while (pending.size > PENDING_MAX) pending.delete(pending.keys().next().value);
+            if (!timer) arm();
+          }
           return;
         }
         if (type === "planner.fired") { rung.add(String(e.payload.firing)); if (rung.size > 500) rung.delete(rung.values().next().value); }
@@ -363,13 +402,14 @@ export default {
       async i => {
         if (i.surface !== undefined && String(i.surface).length > 80) throw new Error("surface is at most 80 characters");
         if (i.device !== undefined && (typeof i.device !== "string" || i.device.length > 40)) throw new Error("device is a string of at most 40 characters");
-        lastUse = testHooks.now();
+        const now = testHooks.now();
+        touchSeen(i.device ? String(i.device) : "");
         if (i.standalone === true) {
           const surface = i.surface === undefined ? "" : String(i.surface);
           const last = seenEvents.get(surface);
-          if (last === undefined || lastUse - last >= SEEN_EVENT_MS) {
+          if (last === undefined || now - last >= SEEN_EVENT_MS) {
             seenEvents.delete(surface);
-            seenEvents.set(surface, lastUse);
+            seenEvents.set(surface, now);
             while (seenEvents.size > RECEIPTS_MAX) seenEvents.delete(seenEvents.keys().next().value);
             ctx.events.emit("push.seen", { surface: surface || null, standalone: true, ...(i.device ? { device: i.device } : {}) });
           }
