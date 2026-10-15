@@ -145,3 +145,17 @@ test("cc and bcc: each provider takes them in its own shape, they count toward t
   await send(conn("smtp", { smtpHost: "smtp.harlow.example" }), m, { smtp: { send: async (_c, _p, c) => { seen = c; return { message_id: "<1@x>" }; } } });
   assert.deepEqual([seen.cc, seen.bcc], [m.cc, m.bcc], "SMTP carries them too");
 });
+
+test("files: Resend, Postmark and SendGrid carry them as base64 in their own shape, SMTP hands them to the adapter, and Mailgun says it cannot", async () => {
+  const files = [{ filename: "week1.pdf", contentType: "application/pdf", bytes: Buffer.from("PDF-1") }];
+  const b64 = Buffer.from("PDF-1").toString("base64");
+  const m = { ...msg, attachments: files };
+  assert.deepEqual(json(shape(conn("resend"), m)).attachments, [{ filename: "week1.pdf", content: b64 }]);
+  assert.deepEqual(json(shape(conn("postmark"), m)).Attachments, [{ Name: "week1.pdf", Content: b64, ContentType: "application/pdf" }]);
+  assert.deepEqual(json(shape(conn("sendgrid"), m)).attachments, [{ content: b64, filename: "week1.pdf", type: "application/pdf", disposition: "attachment" }]);
+  assert.throws(() => shape(conn("mailgun"), m), /Mailgun cannot carry files/);
+  assert.equal(json(shape(conn("resend"), msg)).attachments, undefined, "none given, none sent");
+  /** @type {any} */ let seen;
+  await send(conn("smtp", { smtpHost: "smtp.harlow.example" }), m, { smtp: { send: async (_c, _p, c) => { seen = c; return { message_id: "<1@x>" }; } } });
+  assert.equal(seen.attachments[0].filename, "week1.pdf");
+});

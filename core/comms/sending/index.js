@@ -36,7 +36,7 @@ const textToHtml = t => t.split(/\n{2,}/).map(p => `<p>${p.replace(/&/g, "&amp;"
  * The message, checked and filled in: a from inside the firm's own domain (the saved from address when none is given), every address real and on one line, a subject on one line, and a body in
  * both forms. A Flow cannot send as another domain through the firm's account.
  * @param {any} conn @param {any} m
- * @returns {{ from: string, to: string[], cc?: string[], bcc?: string[], subject: string, html: string, text: string, replyTo?: string }}
+ * @returns {{ from: string, to: string[], cc?: string[], bcc?: string[], subject: string, html: string, text: string, replyTo?: string, attachments?: { filename: string, contentType: string, bytes: Buffer }[] }}
  */
 export function check(conn, m) {
   const saved = parseAddress(conn && conn.from);
@@ -62,7 +62,7 @@ export function check(conn, m) {
   if (!html.trim()) html = textToHtml(text);
   /** @type {string | undefined} */ let replyTo;
   if (m.replyTo !== undefined && m.replyTo !== "") { const r = parseAddress(m.replyTo); if (!r) throw fail(`${String(m.replyTo).slice(0, 60)} is not an email address`, "bad_input"); replyTo = r.name ? `${r.name} <${r.email}>` : r.email; }
-  return { from: from.name ? `${from.name} <${from.email}>` : from.email, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), subject, html, text, ...(replyTo ? { replyTo } : {}) };
+  return { from: from.name ? `${from.name} <${from.email}>` : from.email, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), subject, html, text, ...(replyTo ? { replyTo } : {}), ...(Array.isArray(m.attachments) && m.attachments.length ? { attachments: m.attachments } : {}) };
 }
 
 /**
@@ -78,9 +78,10 @@ export function shape(conn, m, o = {}) {
   const json = { "content-type": "application/json", accept: "application/json" };
   if (p === "resend") {
     return { url: "https://api.resend.com/emails", method: "POST", headers: { ...json, authorization: `Bearer ${k}`, ...(o.idem ? { "idempotency-key": o.idem } : {}) },
-      body: JSON.stringify({ from: c.from, to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, html: c.html, text: c.text, ...(c.replyTo ? { reply_to: c.replyTo } : {}) }) };
+      body: JSON.stringify({ from: c.from, to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, html: c.html, text: c.text, ...(c.replyTo ? { reply_to: c.replyTo } : {}), ...(c.attachments ? { attachments: c.attachments.map(a => ({ filename: a.filename, content: a.bytes.toString("base64") })) } : {}) }) };
   }
   if (p === "mailgun") {
+    if (c.attachments) throw fail("Mailgun cannot carry files from here yet: send this message through another sending service, or without the files", "bad_input");
     const domain = String(conn.domain || (parseAddress(c.from) || { email: "@" }).email.split("@")[1]);
     const host = conn.region === "eu" ? "api.eu.mailgun.net" : "api.mailgun.net";
     const f = new URLSearchParams({ from: c.from, to: c.to.join(","), subject: c.subject, text: c.text, html: c.html });
@@ -92,12 +93,12 @@ export function shape(conn, m, o = {}) {
   }
   if (p === "postmark") {
     return { url: "https://api.postmarkapp.com/email", method: "POST", headers: { ...json, "x-postmark-server-token": k },
-      body: JSON.stringify({ From: c.from, To: c.to.join(","), ...(c.cc ? { Cc: c.cc.join(",") } : {}), ...(c.bcc ? { Bcc: c.bcc.join(",") } : {}), Subject: c.subject, HtmlBody: c.html, TextBody: c.text, ...(c.replyTo ? { ReplyTo: c.replyTo } : {}), MessageStream: String(conn.stream || "outbound") }) };
+      body: JSON.stringify({ From: c.from, To: c.to.join(","), ...(c.cc ? { Cc: c.cc.join(",") } : {}), ...(c.bcc ? { Bcc: c.bcc.join(",") } : {}), Subject: c.subject, HtmlBody: c.html, TextBody: c.text, ...(c.attachments ? { Attachments: c.attachments.map(a => ({ Name: a.filename, Content: a.bytes.toString("base64"), ContentType: a.contentType })) } : {}), ...(c.replyTo ? { ReplyTo: c.replyTo } : {}), MessageStream: String(conn.stream || "outbound") }) };
   }
   const from = /** @type {{ name: string, email: string }} */ (parseAddress(c.from)), reply = c.replyTo ? parseAddress(c.replyTo) : null;
   return { url: "https://api.sendgrid.com/v3/mail/send", method: "POST", headers: { ...json, authorization: `Bearer ${k}` },
     body: JSON.stringify({ personalizations: [{ to: c.to.map(email => ({ email })), ...(c.cc ? { cc: c.cc.map(email => ({ email })) } : {}), ...(c.bcc ? { bcc: c.bcc.map(email => ({ email })) } : {}) }], from: { email: from.email, ...(from.name ? { name: from.name } : {}) }, subject: c.subject,
-      content: [{ type: "text/plain", value: c.text }, { type: "text/html", value: c.html }], ...(reply ? { reply_to: { email: reply.email, ...(reply.name ? { name: reply.name } : {}) } } : {}) }) };
+      content: [{ type: "text/plain", value: c.text }, { type: "text/html", value: c.html }], ...(c.attachments ? { attachments: c.attachments.map(a => ({ content: a.bytes.toString("base64"), filename: a.filename, type: a.contentType, disposition: "attachment" })) } : {}), ...(reply ? { reply_to: { email: reply.email, ...(reply.name ? { name: reply.name } : {}) } } : {}) }) };
 }
 
 /** What a provider said, as one short line (its own words), with the key taken out. @param {any} body @param {string} secret */
@@ -129,7 +130,7 @@ export async function send(conn, m, deps = {}) {
     const cfg = { address: from.email, username: String(conn.username || from.email), imap: { host, tls }, smtp: { host, ...(port ? { port } : {}), tls }, auth: { item: "sending", field: "password" } };
     const adapter = deps.smtp || imapAdapter();
     try {
-      const r = await adapter.send(cfg, async () => secret, { to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, body: c.text });
+      const r = await adapter.send(cfg, async () => secret, { to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, body: c.text, ...(c.attachments ? { attachments: c.attachments } : {}) });
       return { id: String(r && (r.message_id || r.id) || ""), provider: p };
     } catch (e) { throw fail(`SMTP did not send: ${scrub(String(/** @type {Error} */ (e).message || e), secret).slice(0, 200)}`, /** @type {any} */ (e).code === "auth" ? "auth" : "refused"); }
   }

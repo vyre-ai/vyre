@@ -28,6 +28,7 @@ import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pick
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";
 import { imapAdapter } from "./imap.js";
+import { hold as holdFiles, release as releaseFiles } from "../../lib/connectors/attachments.js";
 import { appsScriptAdapter } from "./apps-script.js";
 
 const str = { type: "string" };
@@ -43,7 +44,7 @@ const behalf = obj({ surface: { type: "string", enum: ["capsule", "chat", "agent
   []);
 
 /** What a held item of a mail:<account> sender carries, for gate.senders. */
-const CONTENT = { subject: "string", body: "string, plain text", cc: "email[]?", bcc: "email[]?", in_reply_to: "Message-ID?" };
+const CONTENT = { subject: "string", body: "string, plain text", cc: "email[]?", bcc: "email[]?", in_reply_to: "Message-ID?", attachments: "files by reference: path, name, size, sha256, by (IMAP accounts)?" };
 
 const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), { code, ...(detail ? { detail } : {}) });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -280,7 +281,7 @@ export default {
 
     // ---- sends ----
 
-    const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails,
+    const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails, attachments: { type: "array", description: "files of Files by reference: [{ path, name? }]; an IMAP account only", items: { type: "object", properties: { path: str, name: str }, required: ["path"] } },
       in_reply_to: { type: "string", description: "the Message-ID being answered, from mail.read" }, account, why: str, on_behalf: behalf };
 
     /** Hold one message at the Gate through the account's adapter. Nothing is sent here. */
@@ -327,6 +328,12 @@ export default {
         const acct = pickFor(list, named(input.account));
         if (!(acct.capabilities || []).includes("send_mail")) throw fail(`${acct.label || acct.account} is not allowed to send; it reads only`, "denied");
         const { to, c } = contentOf(input);
+        // files go by reference: path, name, size and hash are held and approved with the message; the bytes are read when it is sent (lib/connectors/attachments.js)
+        const files = await holdFiles(ctx, meta, input.attachments).catch(e => { throw fail(e.message, e.code || "bad_input"); });
+        if (files.length) {
+          if (adapterOf(acct) !== "imap") throw fail("files can go on a message from an IMAP account for now; this account sends without them", "bad_input");
+          c.attachments = files;
+        }
         return holdSend(acct, to, c, named(input.why), filing);
       },
     });
@@ -352,7 +359,9 @@ export default {
           ...(content.bcc ? { bcc: addresses(content.bcc, "bcc") } : {}), ...(named(content.in_reply_to) ? { in_reply_to: content.in_reply_to } : {}) };
         checkContent(dest, c);
         const [cfg, cred] = await nativeArgs(acct);
-        const out = await native[kind].send(cfg, cred, { to: dest, ...c });
+        const files = await releaseFiles(ctx, content.attachments).catch(e => { throw fail(e.message, e.code || "failed"); });
+        if (files.length && kind !== "imap") throw fail("this account cannot carry files, so nothing was sent", "denied");
+        const out = await native[kind].send(cfg, cred, { to: dest, ...c, ...(files.length ? { attachments: files } : {}) });
         ctx.events.emit("mail.sent", { account: acct.id });
         return { ...out, account: acct.id };
       },

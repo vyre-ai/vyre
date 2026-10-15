@@ -6,6 +6,7 @@ import { normalizePhone } from "../../records/comms/log.js";
 import { agentClaim } from "../modules/index.js";
 import { httpFetch } from "../../lib/http.js";
 import { send as sendThrough, check as checkMessage, LABELS, PROVIDERS } from "./sending/index.js";
+import { hold as holdFiles, release as releaseFiles } from "../../lib/connectors/attachments.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -21,7 +22,7 @@ export const SENDER_SERVICE = "comms:service";
 /** The Vault item the sending service is kept in (needs.credentials id sending). */
 const SENDING_ITEM = "comms-sending";
 const NEXT_STEP = "An owner or an admin adds one in Settings, Connections, Add a sending service (Resend, Mailgun, Postmark, SendGrid or SMTP); then try again.";
-const SERVICE_CONTENT = { subject: "string", text: "string (plain text)", html: "string (the same message as HTML)", from: "string (the firm's own address)", replyTo: "string (optional)", cc: "list of addresses (optional)", bcc: "list of addresses (optional)" };
+const SERVICE_CONTENT = { subject: "string", text: "string (plain text)", html: "string (the same message as HTML)", from: "string (the firm's own address)", replyTo: "string (optional)", cc: "list of addresses (optional)", bcc: "list of addresses (optional)", attachments: "files by reference: path, name, size, sha256, by (optional)" };
 /** The Vault item the Twilio need is kept in (needs.credentials id twilio, as the Vault names a module's single need). */
 const TWILIO_ITEM = "comms-twilio";
 const CONTENT = { body: "string (the text)" };
@@ -98,14 +99,14 @@ export function registerComms(ctx, o = {}) {
 
   ctx.tool("comms.send", {
     description: "Send an email or text as the person, held at the Gate for their yes: { via: email | sms, to, body, subject? }.",
-    input: obj({ via: { type: "string", enum: ["email", "sms"] }, to: { anyOf: [str, { type: "array", items: str }] }, subject: str, body: str, cc: { anyOf: [str, { type: "array", items: str }] }, bcc: { anyOf: [str, { type: "array", items: str }] }, account: str, why: str }, ["via", "to", "body"]),
+    input: obj({ via: { type: "string", enum: ["email", "sms"] }, to: { anyOf: [str, { type: "array", items: str }] }, subject: str, body: str, cc: { anyOf: [str, { type: "array", items: str }] }, bcc: { anyOf: [str, { type: "array", items: str }] }, attachments: { type: "array", items: { type: "object", properties: { path: str, name: str }, required: ["path"] } }, account: str, why: str }, ["via", "to", "body"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
       const body = String(i.body ?? "");
       if (!body.trim()) throw fail("there is nothing to say: body is empty", "bad_input");
       if (i.via === "email") {
         const to = (Array.isArray(i.to) ? i.to : String(i.to).split(/[,;]/)).map((/** @type {any} */ x) => String(x).trim()).filter(Boolean);
-        const r = await use("mail.send", { to, ...(i.cc ? { cc: i.cc } : {}), ...(i.bcc ? { bcc: i.bcc } : {}), subject: String(i.subject ?? ""), body, ...(i.account ? { account: String(i.account) } : {}), ...(i.why ? { why: String(i.why) } : {}), on_behalf: onBehalf(meta) });
+        const r = await use("mail.send", { to, ...(i.cc ? { cc: i.cc } : {}), ...(i.bcc ? { bcc: i.bcc } : {}), ...(Array.isArray(i.attachments) && i.attachments.length ? { attachments: i.attachments } : {}), subject: String(i.subject ?? ""), body, ...(i.account ? { account: String(i.account) } : {}), ...(i.why ? { why: String(i.why) } : {}), on_behalf: onBehalf(meta) });
         return { ...r, via: "email" };
       }
       if (body.length > SMS_MAX) throw fail(`a text is at most ${SMS_MAX} characters; this one is ${body.length}`, "bad_input");
@@ -124,16 +125,18 @@ export function registerComms(ctx, o = {}) {
 
   ctx.tool("comms.email", {
     description: "Send an email from the Space's sending service, held for a person's yes: { to, subject, text or html, replyTo?, from? }.",
-    input: obj({ to: { anyOf: [str, { type: "array", items: str }] }, cc: { anyOf: [str, { type: "array", items: str }] }, bcc: { anyOf: [str, { type: "array", items: str }] }, subject: str, text: str, html: str, body: str, replyTo: str, from: str, why: str }, ["to"]),
+    input: obj({ to: { anyOf: [str, { type: "array", items: str }] }, cc: { anyOf: [str, { type: "array", items: str }] }, bcc: { anyOf: [str, { type: "array", items: str }] }, subject: str, text: str, html: str, body: str, replyTo: str, from: str, why: str, attachments: { type: "array", items: { type: "object", properties: { path: str, name: str }, required: ["path"] } } }, ["to"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
       const conn = await serviceConn();
       const text = i.text ?? (i.html === undefined ? i.body : undefined);
       const m = checkMessage(conn, { to: i.to, cc: i.cc, bcc: i.bcc, subject: i.subject, text, html: i.html, from: i.from, replyTo: i.replyTo });
+      // files go by reference: their path, name, size and hash are held with the message (and approved with it); the bytes are read only when it is sent
+      const files = await holdFiles(ctx, meta, i.attachments).catch((/** @type {any} */ e) => { throw fail(e.message, e.code || "bad_input"); });
       await offer(SENDER_SERVICE, SERVICE_CONTENT);
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       const agent = agentClaim(String(meta.caller || "")) || undefined;
-      const content = { subject: m.subject, text: m.text, html: m.html, from: m.from, ...(m.cc ? { cc: m.cc } : {}), ...(m.bcc ? { bcc: m.bcc } : {}), ...(m.replyTo ? { replyTo: m.replyTo } : {}) };
+      const content = { subject: m.subject, text: m.text, html: m.html, from: m.from, ...(m.cc ? { cc: m.cc } : {}), ...(m.bcc ? { bcc: m.bcc } : {}), ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(files.length ? { attachments: files } : {}) };
       const held = await use("gate.request", { kind: "send", via: SENDER_SERVICE, to: m.to, content, ...(i.why ? { why: String(i.why) } : {}), ...(thread ? { thread } : {}), ...(agent ? { agent } : {}) });
       if (!held || !held.id) throw fail("the Gate did not hold this email, so nothing was sent", "failed");
       ctx.events.emit("comms.held", { id: held.id, via: "service", count: m.to.length }, thread ? { thread } : undefined);
@@ -200,7 +203,8 @@ export function registerComms(ctx, o = {}) {
       if (it.via === SENDER_SERVICE) {
         const conn = await serviceConn();
         const c = content && typeof content === "object" ? content : {};
-        const r = await sendThrough(conn, { to, cc: c.cc, bcc: c.bcc, subject: c.subject, text: c.text, html: c.html, from: c.from, replyTo: c.replyTo }, { http, idem: String(id) });
+        const attachments = await releaseFiles(ctx, c.attachments).catch((/** @type {any} */ e) => { throw fail(e.message, e.code || "failed"); });
+        const r = await sendThrough(conn, { to, cc: c.cc, bcc: c.bcc, ...(attachments.length ? { attachments } : {}), subject: c.subject, text: c.text, html: c.html, from: c.from, replyTo: c.replyTo }, { http, idem: String(id) });
         ctx.events.emit("comms.sent", { id, via: "service", provider: r.provider, sent: to.length });
         return { sent: [{ to, id: r.id }], via: r.provider };
       }

@@ -52,6 +52,14 @@
   },
   "shows": {},
   "needs": {
+    "kernel": {
+      "actions": [
+        "drive.read"
+      ],
+      "prefixes": [
+        "file/*"
+      ]
+    },
     "vault": [
       "per-connection"
     ],
