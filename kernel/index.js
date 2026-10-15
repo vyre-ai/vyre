@@ -117,6 +117,18 @@ export async function createKernel(cfg) {
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   /**
+   * May this person use the vault connection a Gate sender goes through now: `mail:<connection>` and `google:<connection>` name one; anything else has no connection of its own and counts as yes.
+   * @param {string} person @param {string} via
+   */
+  const mayUseVia = async (person, via) => {
+    const m = /^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via));
+    if (!m || !grantsStore) return true;
+    try {
+      const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${m[1]}`;
+      return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
+    } catch { return false; }
+  };
+  /**
    * Whether an address belongs to a named list of a standing permission's `to` (kernel/core/authorize.js toAllows): `contact:<id>` is that contact's own addresses, `project:<id>:clients` the addresses of the
    * contact the project is for. Read straight from the store, no gate (the rule's own question, as ownership.js does), and nothing here returns a row: only yes or no.
    * @param {string} list @param {string} address
@@ -342,18 +354,22 @@ export async function createKernel(cfg) {
       // The Gate only: may THIS agent send, post or pay this by itself (a person's standing permission). Read-only and answered from the kernel's own grants: the verified call chain must end in a named agent (never the
       // default assistant or a model slot), the grant must name that agent, be live, cover the connection, hold every recipient (an address, `*@domain` or a list read now) and, for a payment, its per-act and daily amount. The
       // issuer must still be an owner or admin, or the grant matches nothing. Counts the act against the grant's daily cap, and answers { grant } or null (the Gate then asks, as it always did).
-      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number }} */ q) => {
+      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number, agentOwner?: string | null }} */ q) => {
         let chain; try { chain = await handle.chain(meta || {}); } catch { return null; }
-        const last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
-        if (!last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
+        const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null, last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
+        if (!first || first.actor.kind !== "person" || !last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
         if (!q || !["send", "spend"].includes(q.kind) || typeof q.via !== "string" || !Array.isArray(q.to) || !q.to.length) return null;
         const resource = `vyre://${cfg.space}/outbox/${q.kind}/${q.via}`, now = clock();
-        for (const g of [...(await grantsStore.provider.forSubject(last.actor, undefined, { chain }))].filter((/** @type {any} */ x) => x.status === "active" && x.space === cfg.space && Array.isArray(x.actions) && x.actions.includes("gate.act-standing")).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.id < b.id ? -1 : 1))) {
+        // the person the agent works for must hold use of the connection the act goes through (a member's chat never sends as an address she could not use herself)
+        if (!(await mayUseVia(String(first.actor.id), q.via))) return null;
+        for (const g of [...(await grantsStore.provider.forSubject(last.actor, undefined, { chain }))].filter((/** @type {any} */ x) => x.status === "active" && x.space === cfg.space && Array.isArray(x.actions) && x.actions.includes("gate.act-standing") && String(x.source || "").startsWith("gate:standing:")).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.id < b.id ? -1 : 1))) {
           if (!matchGrant(g, "gate.act-standing", resource, { attrs: {}, now, since: 0, risk: "write" }).ok) continue;
           const c = g.conditions || {};
-          const issuer = g.issuer && g.issuer.kind === "person" ? g.issuer : null;
-          const role = issuer ? grantsStore.roleOf(issuer) : null;
-          if (role !== "owner" && role !== "admin") continue;
+          // gate:standing:<agent>:<person who granted it>: that person must still be an owner or admin, or the agent's owner, and still hold use of the connection, or the grant matches nothing
+          const issuer = String(g.source).split(":")[3] || "";
+          const role = issuer ? grantsStore.roleOf({ kind: "person", id: issuer, space: cfg.space }) : null;
+          if (!(role === "owner" || role === "admin" || (issuer && q.agentOwner === issuer))) continue;
+          if (!(await mayUseVia(issuer, q.via))) continue;
           if (!(await toAllows(c.to, q.to, listHas))) continue;
           if (q.kind === "spend") {
             const amount = Number(q.amount);
@@ -366,7 +382,11 @@ export async function createKernel(cfg) {
           return { grant: g.id, source: g.source };
         }
         return null;
-      } } : {}),
+      },
+      // Whether a person may use the connection a send goes through (yes or no; for a creator, at the moment they grant it). A sender with no connection of its own (a static one from the config) has none to check.
+      mayUseConnection: (/** @type {string} */ person, /** @type {string} */ via) => mayUseVia(person, via),
+      // A person's role in the Space, for who may grant and revoke (yes/no questions only).
+      roleOf: (/** @type {string} */ person) => grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) || null } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
         // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
         personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {

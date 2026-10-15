@@ -22,7 +22,6 @@ import { Gate, MIGRATIONS, KINDS } from "./gate.js";
 import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
 import { inputHash } from "../presence/index.js";
-import { asPerson } from "../../lib/project-reach.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -124,13 +123,15 @@ export default {
      * A plain ask is used up by the match (consume). A sender that cannot name its destinations never matches.
      */
     /** The kernel's answer to "may this verified agent do this by itself": { grant } or null. A person's own call, a model slot and the default assistant never match. */
-    const standingCover = async (input, meta) => {
+    const standingCover = async (input, meta, agentName) => {
       try {
         if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
         const to = gate.recipients(input);
         if (!to || !to.length) return null;
         const amount = input.kind === "spend" && input.content && typeof input.content === "object" ? Number(input.content.amount) : undefined;
-        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}) });
+        const maker = agentName ? await ctx.call("agents.maker", { agent: String(agentName) }).catch(() => null) : null;
+        const agentOwner = maker && !maker.error && maker.data && typeof maker.data.made_by === "string" ? maker.data.made_by : null;
+        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), agentOwner });
       } catch { return null; }
     };
     const said = async (input, thread, agent) => {
@@ -184,7 +185,7 @@ export default {
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
-        const standing = await standingCover(input, meta0);
+        const standing = await standingCover(input, meta0, by.agent);
         if (standing) return gate.sendNow({ ...input, ...filing }, { ...by, by: `standing:${standing.grant}` });
         const intent = await said(input, filing.thread, by.agent);
         if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
@@ -306,19 +307,31 @@ export default {
 
     // ---- standing permissions for agents: kernel grants (action gate.act-standing, subject the agent, conditions to / rate / max_amount / daily_amount), checked by the kernel's standingFor ----
     const PERSON_DOORS = ["cli", "local", "deck", "capsule", "device", "tailnet"];
-    const standingUrn = (/** @type {any} */ K, /** @type {string} */ kind, /** @type {string} */ via) => `vyre://${K.space}/outbox/${kind}${via ? `/${via}` : ""}`;
-    const needK = () => { if (!ctx.kernel || !ctx.kernel.grants) throw Object.assign(new Error("a standing permission is a kernel grant, and this build has no kernel"), { code: "unavailable" }); return ctx.kernel; };
+    const needK = () => { const K = ctx.kernel; if (!K || !K.mint || typeof K.standingFor !== "function") throw Object.assign(new Error("a standing permission is a kernel grant, and this build has no kernel"), { code: "unavailable" }); return K; };
+    /** The person on this call and whether they may grant or take back a permission for this agent: an owner, an admin, or the agent's own owner. */
+    const grantor = async (/** @type {any} */ K, /** @type {any} */ meta, /** @type {string} */ agentName) => {
+      const chain = await K.chain(meta);
+      const hop = chain && Array.isArray(chain.hops) && chain.hops.length === 1 ? chain.hops[0] : null;
+      if (!hop || hop.actor.kind !== "person") throw Object.assign(new Error("a standing permission is given by a person, on their own session"), { code: "denied" });
+      const person = String(hop.actor.id), role = K.roleOf(person);
+      const maker = await ctx.call("agents.maker", { agent: agentName }).catch(() => null);
+      const owns = Boolean(maker && !maker.error && maker.data && maker.data.made_by === person);
+      if (!(role === "owner" || role === "admin" || owns)) throw Object.assign(new Error("only an owner, an admin or the agent's own owner gives it a standing permission"), { code: "denied" });
+      return { person, owns };
+    };
     ctx.tool("gate.standing.add", {
-      description: "Let one agent send, post or pay by itself, once you say so: which kind (send covers email and posts, spend a payment), through which connection (`via`, or any), to whom (`to`: addresses, *@domain, or lists contact:<id> and project:<id>:clients), and a daily cap (acts a day; for a payment a money limit per act and per day). Inside it the act goes out with no question; outside it asks once. An owner or an admin, with presence; a model never.",
+      description: "Let one agent send, post or pay by itself, once you say so: which kind (send covers email and posts, spend a payment), through which connection (`via`, or any), to whom (`to`: addresses, *@domain, or lists contact:<id> and project:<id>:clients), and a daily cap (acts a day; for a payment a money limit per act and per day). Inside it the act goes out with no question; outside it asks once. An owner, an admin or the agent's own owner, with presence; a model never.",
       input: obj({ agent: str, kind: { type: "string", enum: ["send", "spend"] }, via: str, to: obj({ patterns: { type: "array", items: str }, lists: { type: "array", items: str } }), daily_cap: { type: "integer" }, max_amount: { type: "number" }, daily_amount: { type: "number" }, expires: { type: "number" } }, ["agent", "kind", "to"]),
       callers: PERSON_DOORS,
       presence: { summary: (/** @type {any} */ i) => `Let ${i && i.agent} ${i && i.kind === "spend" ? "pay" : "send"} by itself to ${[...(i && i.to && i.to.patterns || []), ...(i && i.to && i.to.lists || [])].join(", ") || "no one"}${i && i.daily_cap ? `, up to ${i.daily_cap} a day` : ""}${i && i.max_amount ? `, up to ${i.max_amount} each and ${i.daily_amount} a day` : ""}` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
-        const { chain, proof } = await asPerson(K, meta);
+        const agentName = String(i.agent || "");
+        if (agentName === "assistant") throw Object.assign(new Error("the default assistant is the person's own delegate and takes no standing permission: name an agent"), { code: "bad_input" });
+        const { person } = await grantor(K, meta, agentName);
         const to = { patterns: (Array.isArray(i.to && i.to.patterns) ? i.to.patterns : []).map((/** @type {any} */ p) => String(p).trim().toLowerCase()).filter(Boolean).slice(0, 50), lists: (Array.isArray(i.to && i.to.lists) ? i.to.lists : []).map((/** @type {any} */ p) => String(p).trim()).filter(Boolean).slice(0, 20) };
         if (!to.patterns.length && !to.lists.length) throw Object.assign(new Error("name who it may go to: an address, *@domain, or a list"), { code: "bad_input" });
-        for (const p of to.patterns) if (!/^(\*@)?[^\s@*]+(@[^\s@*]+)?\.?[^\s@*]*$/.test(p) || p === "*") throw Object.assign(new Error(`${p.slice(0, 60)} is not an address or *@domain`), { code: "bad_input" });
+        for (const p of to.patterns) if (p === "*" || !/^(\*@)?[^\s@*]+(@[^\s@*]+)?$/.test(p) || (!p.startsWith("*@") && !p.includes("@"))) throw Object.assign(new Error(`${p.slice(0, 60)} is not an address or *@domain`), { code: "bad_input" });
         for (const l of to.lists) if (!/^(contact:[A-Za-z0-9_-]{1,80}|project:[A-Za-z0-9_-]{1,80}:clients)$/.test(l)) throw Object.assign(new Error(`${l.slice(0, 60)} is not a list: use contact:<id> or project:<id>:clients`), { code: "bad_input" });
         const conditions = /** @type {any} */ ({ to });
         if (i.kind === "spend") {
@@ -330,36 +343,46 @@ export default {
           conditions.rate = { n: cap, per_seconds: 86400 };
         }
         if (i.expires !== undefined) { if (!(Number(i.expires) > Date.now())) throw Object.assign(new Error("an expiry is in the future"), { code: "bad_input" }); conditions.when = { expires: Number(i.expires) }; }
-        const u = await ctx.call("agents.uid", { name: String(i.agent) });
+        // nobody grants a connection they do not have themselves
+        const via = i.via ? String(i.via) : "";
+        if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
+        const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
-        if (!uid) throw Object.assign(new Error(`no agent named ${String(i.agent).slice(0, 60)}`), { code: "not_found" });
-        if (String(i.agent) === "assistant") throw Object.assign(new Error("the default assistant is the person's own delegate and takes no standing permission: name an agent"), { code: "bad_input" });
-        const actor = { kind: "agent", id: String(uid), space: K.space };
-        try { await K.grants.addActor(chain, actor, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "conflict" && c !== "exists") throw e; }
-        const g = await K.grants.create(chain, { subject: { kind: "actor", actor }, actions: ["gate.act-standing"], resource: { prefix: standingUrn(K, i.kind, i.via ? String(i.via) : "") }, conditions, source: `gate-standing:${String(i.agent)}`, reason: "a person's standing permission for an agent" }, proof);
-        return { id: g.id, agent: String(i.agent), kind: i.kind, via: i.via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount }) };
+        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });
+        const id = await K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(uid), space: K.space } }, actions: ["gate.act-standing"], resource: { prefix: `vyre://${K.space}/outbox/${i.kind}${via ? `/${via}` : ""}` }, conditions, source: `gate:standing:${agentName}:${person}`, reason: "a person's standing permission for an agent" });
+        return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount }) };
       },
     });
     ctx.tool("gate.standing.list", {
-      description: "The standing permissions agents hold: who, what, to whom, the daily cap, how many acts each has allowed and the last few. An owner or admin.",
+      description: "The standing permissions agents hold: who, what, to whom, the daily cap, how many acts each has allowed and the last few. An owner, an admin or an agent's owner sees theirs.",
       input: obj({ agent: str }),
       callers: PERSON_DOORS,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
-        const { chain } = await asPerson(K, meta);
-        const all = await K.grants.list(chain, {});
-        const rows = (Array.isArray(all) ? all : all && all.grants ? all.grants : []).filter((/** @type {any} */ g) => g.status === "active" && String(g.source || "").startsWith("gate-standing:") && (!i.agent || g.source === `gate-standing:${i.agent}`));
-        return { permissions: rows.map((/** @type {any} */ g) => { const c = g.conditions || {}; return { id: g.id, agent: String(g.source).slice("gate-standing:".length), resource: g.resource.prefix, to: c.to, ...(c.rate ? { daily_cap: c.rate.n } : {}), ...(c.max_amount ? { max_amount: c.max_amount, daily_amount: c.daily_amount } : {}), ...(c.when && c.when.expires ? { expires: c.when.expires } : {}), use: gate.standingUse(g.id) }; }) };
+        const chain = await K.chain(meta);
+        const me = chain && chain.hops && chain.hops[0] && chain.hops[0].actor.kind === "person" ? String(chain.hops[0].actor.id) : "";
+        const staff = ["owner", "admin"].includes(K.roleOf(me));
+        const rows = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => !i.agent || String(g.source).split(":")[2] === String(i.agent));
+        const out = [];
+        for (const g of rows) {
+          const [, , agentName, by] = String(g.source).split(":");
+          if (!staff && by !== me) continue;
+          const c = g.conditions || {};
+          out.push({ id: g.id, agent: agentName, by, resource: g.resource.prefix, to: c.to, ...(c.rate ? { daily_cap: c.rate.n } : {}), ...(c.max_amount ? { max_amount: c.max_amount, daily_amount: c.daily_amount } : {}), ...(c.when && c.when.expires ? { expires: c.when.expires } : {}), use: gate.standingUse(g.id) });
+        }
+        return { permissions: out };
       },
     });
     ctx.tool("gate.standing.revoke", {
-      description: "Take a standing permission away. It stops covering acts at once.",
+      description: "Take a standing permission away. It stops covering acts at once. Whoever may give one may take it back.",
       input: obj({ id: str }, ["id"]),
       callers: PERSON_DOORS,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
-        const { chain, proof } = await asPerson(K, meta);
-        await K.grants.revoke(chain, String(i.id), "a standing permission was taken away", proof);
+        const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
+        if (!g) throw Object.assign(new Error("no such standing permission"), { code: "not_found" });
+        await grantor(K, meta, String(g.source).split(":")[2]);
+        await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };
       },
     });
