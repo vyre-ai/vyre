@@ -97,17 +97,20 @@ test("a payment is held over its limit for one payment, over its day, and in ano
   t.after(() => new Promise(r => server.close(() => r(undefined))));
   const host = `127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   const w = await world(t, { senders: { pay: { type: "http", vault: "pay-token", hosts: [host] } } });
-  const { OWNER, ok, agentCall } = w;
+  const { OWNER, ok, as, agentCall } = w;
   await ok("vault.put", { name: "pay-token", kind: "api-key", fields: { value: `fixture-token-${crypto.randomBytes(6).toString("hex")}` } });
   await ok("vault.grant", { name: "pay-token", module: "gate" });
   await ok("agents.create", { name: "juno", kind: "agent" });
+  const bad = await as(OWNER, "gate.standing.add", { agent: "juno", kind: "spend", via: "no-such-sender", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
+  assert.equal(bad.error && bad.error.code, "bad_input", "a permission names a way out the Space has");
   await ok("gate.standing.add", { agent: "juno", kind: "spend", via: "pay", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
-  const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example") => {
-    const r = await agentCall("juno", OWNER, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
+  const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example", /** @type {string} */ person = OWNER) => {
+    const r = await agentCall("juno", person, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
     assert.ok(!r.error, JSON.stringify(r.error));
     return r.data.state;
   };
   assert.equal(await pay(40), "sent", "inside the limits");
+  assert.equal(await pay(10, "USD", "billing@vendor.example", BEN), "held", "a member could not pay through a shared sender herself, so an agent working for her cannot");
   assert.equal(await pay(60), "held", "over the limit for one payment");
   assert.equal(await pay(40, "EUR"), "held", "another currency");
   assert.equal(await pay(40, "USD", "other@vendor.example"), "held", "another payee");
@@ -133,4 +136,68 @@ test("over MCP, an agent is covered by its own permission only: naming another a
   assert.equal(await send("kit", { agent: "juno" }), "held", "kit naming juno in the input is still kit: held");
   assert.equal(await send("kit", { by: "juno", agent_name: "juno" }), "held", "other naming fields change nothing");
   assert.equal(mail.mailbox.sent.length, 1, "only juno's mail went out");
+});
+
+test("a proposal is a card: nothing is granted until a person approves it, and an agent cannot approve its own", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const { d, K, OWNER, ok, as, agentCall } = w;
+  const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
+  const via = `mail:${mail.id}`;
+  await ok("agents.create", { name: "juno", kind: "agent" });
+  await ok("agents.create", { name: "kit", kind: "agent" });
+  const send = async (/** @type {string} */ agent) => {
+    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.ok(!r.error, JSON.stringify(r.error));
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  const count = async () => (await ok("gate.standing.list", { agent: "juno" })).permissions.length;
+  // nobody files a proposal as an ordinary request
+  const direct = await agentCall("kit", OWNER, "gate.request", { kind: "act", via: "gate:standing", to: "juno", content: { agent: "juno", summary: "x" } });
+  assert.equal(direct.error && direct.error.code, "bad_input");
+  const p = await agentCall("kit", OWNER, "gate.standing.propose", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 5 });
+  assert.ok(!p.error, JSON.stringify(p.error));
+  assert.equal((await ok("gate.get", { id: p.data.id })).state, "held", "the proposal waits as a card");
+  assert.equal(await count(), 0, "a proposal grants nothing");
+  assert.equal(await send("juno"), "held", "juno still asks");
+  // the proposing agent cannot approve it
+  const self = await d.registry.call("gate.approve", { id: p.data.id }, "mcp:agent:kit", { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: (await ok("agents.uid", { name: "kit" })).uid, session: "s-kit", thread: "t-kit", person: OWNER, vouched: true }), {})).token });
+  assert.ok(self.error, "an agent never approves");
+  assert.equal(await count(), 0);
+  // a person who may not grant for juno approves: refused, still nothing
+  const other = await as(BEN, "gate.approve", { id: p.data.id });
+  assert.ok(other.error || (other.data && other.data.state !== "sent"), "someone who may not give it cannot make it by approving");
+  assert.equal(await count(), 0);
+  // the owner approves: it is a permission now, and juno sends with no question
+  const yes = await as(OWNER, "gate.approve", { id: p.data.id });
+  assert.ok(!yes.error, JSON.stringify(yes.error));
+  assert.equal(await count(), 1, "the owner's yes made the permission");
+  assert.equal(await send("juno"), "sent");
+});
+
+test("the said fold: a send permission for named agents to exact addresses, added from Settings, is a standing grant (listed, revocable, checked by the one cover function); a post to a handle stays words", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const { OWNER, ok, as, agentCall } = w;
+  const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
+  await ok("agents.create", { name: "juno", kind: "agent" });
+  await ok("agents.create", { name: "kit", kind: "agent" });
+  const send = async (/** @type {string} */ agent, /** @type {string} */ to) => {
+    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.ok(!r.error, JSON.stringify(r.error));
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "held", "before: it asks");
+  const made = await ok("gate.said.add", { kind: "send", to: ["dana@harlowlegal.com", "*@northwind.example"], agents: ["juno"], what: "juno may email Dana" });
+  assert.equal(made.folded, true, "made as a standing grant");
+  assert.match(String(made.id), /^gr_/);
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "sent", "inside it goes out with no question");
+  assert.equal(await send("kit", "dana@harlowlegal.com"), "held", "another agent is not covered");
+  assert.equal(await send("juno", "other@elsewhere.example"), "held", "another address is not covered");
+  const listed = await ok("gate.said.list", {});
+  const rows = Array.isArray(listed) ? listed : listed.intents;
+  assert.ok(rows.some((/** @type {any} */ r) => r.id === made.id && r.grant === true && r.agents[0] === "juno"), "listed with the other permissions");
+  await ok("gate.said.revoke", { id: made.id });
+  assert.equal(await send("juno", "dana@harlowlegal.com"), "held", "revoked: it asks again");
+  // what a grant cannot say stays as words in the vault: a post to a handle
+  const words = await ok("gate.said.add", { kind: "post", to: ["#ops"], agents: ["juno"], what: "juno may post to ops" });
+  assert.ok(!words.folded && words.id && !/^gr_/.test(String(words.id)), "a post to a handle is stored as words");
 });

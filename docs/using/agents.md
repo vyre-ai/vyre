@@ -28,6 +28,12 @@ others, such as a research agent or a bookkeeping agent.
 An agent never draws context from a project outside its list: its brief, its prompt hints and its
 `recall.search` stay inside those projects' folders.
 
+## Letting an agent act by itself
+
+An agent that wants to send an email, post or pay asks you first, each time. If you trust it with one kind of act, open its page, go to **Where it is used** and choose **Let it act by itself**: pick Send, Post or Pay, the connection it goes through, who it may go to (an address, everyone at a domain, or a list), how many a day (or, for a payment, the most for one payment and for a day) and, if you want, how many days it lasts. Inside that it goes out with no question. Outside it, over the day's number, after it ends or after you press **Revoke**, it asks as before.
+
+Your assistant, or another agent, can suggest one. It reaches you as a card and does nothing until you approve it, and you can change it first. Only an owner, an admin or the agent's own owner can give one, and only over a connection they can use themselves. A list you follow as it changes counts only addresses written by someone who holds that connection; a list you do not follow means the addresses it holds when you say yes.
+
 ## Talk to the assistant or an agent
 
 From Lumen, press Control twice and type. The assistant is the default destination; type
