@@ -50,8 +50,7 @@ const blank = (/** @type {any} */ v) => v === undefined || v === null || (typeof
 // ---------------------------------------------------------------------------------------------------------------------------- the table
 
 /** Every rule that moves a task from one state to another (there can be two: a guarded one and an unguarded one). @param {TaskState} from @param {TaskState} to @returns {readonly TransitionRule[]} */
-// (a withdrawal at a Flow's due time is the Flows service's, never a person's or an assistant's move: it is not offered here)
-export const rulesFor = (from, to) => TASK_TRANSITIONS.filter(r => r.from === from && r.to === to && r.by !== "flow_deadline");
+export const rulesFor = (from, to) => TASK_TRANSITIONS.filter(r => r.from === from && r.to === to);
 
 /** Does the table have any rule for this move? @param {TaskState} from @param {TaskState} to */
 export const canMove = (from, to) => rulesFor(from, to).length > 0;
@@ -73,7 +72,8 @@ export function guardedFor(task, rule) {
 
 /** The one rule of the table that applies to this task and this move, or undefined. @param {Task} task @param {TaskState} to */
 export function ruleOf(task, to) {
-  const rules = rulesFor(task.state, to);
+  // (a withdrawal at a Flow's due time is the Flows service's, never a person's or an assistant's move: the table lists it, no button offers it)
+  const rules = rulesFor(task.state, to).filter(r => r.by !== "flow_deadline");
   return rules.find(r => r.guarded === undefined) || rules.find(r => r.guarded === guardedFor(task, r));
 }
 
