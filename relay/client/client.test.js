@@ -5,7 +5,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connect, parsePairUrl, keyFingerprint, resolveTicket, deviceKey } from "./client.js";
+import { connect, parsePairUrl, keyFingerprint, resolveTicket, deviceKey, forgetDeviceKey } from "./client.js";
 import { webCrypto, memoryKeyStore } from "./webcrypto.js";
 import { memoryBox, serveWith, reply, settle, ROUTE } from "./testing.js";
 import { pairUrl, parsePairUrl as boxParse } from "../../core/relay/pairing.js";
@@ -46,6 +46,10 @@ test("client: one device key per store for the run, even when the store never gi
   await kept.set(other);
   assert.deepEqual((await deviceKey({ keyStore: kept, crypto })).publicKey, other.publicKey);
   assert.notDeepEqual(first.publicKey, other.publicKey);
+  // a store that forgot its key on purpose (a removed device) and says so: the next dial makes a new key
+  forgetDeviceKey(forgets);
+  assert.notDeepEqual((await deviceKey({ keyStore: forgets, crypto: counting })).publicKey, a.publicKey);
+  assert.equal(made, 2);
   // a make that failed is not kept: the next dial tries again
   const broken = { async get() { return null; }, async set() { throw new Error("disk full"); } };
   await assert.rejects(() => deviceKey({ keyStore: broken, crypto }), /disk full/);
