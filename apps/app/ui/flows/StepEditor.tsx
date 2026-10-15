@@ -13,7 +13,10 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
-import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { DateTimeField } from "../components/DateTimeField";
+import { DateValue } from "./DateValue";
+import { FailurePanel } from "./FailurePanel";
+import { dateChoices, dateKindOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -73,7 +76,7 @@ function Condition({ s, setStep, draft, options }: { s: DraftStep; setStep: (pat
 }
 
 /** The settings of one step, whatever its kind. */
-export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setStep: (id: string, patch: Partial<DraftStep>) => void; draft: Draft; options: Options }) {
+export function StepEditor({ s, setStep, draft, options, inHandler }: { s: DraftStep; setStep: (id: string, patch: Partial<DraftStep>) => void; draft: Draft; options: Options; /** The step runs only when something failed, so it has no failure steps of its own. */ inHandler?: boolean }) {
   const links = recordSources(draft, s.id, options);
   const set = (patch: Partial<DraftStep>) => setStep(s.id, patch);
   const sets = (patch: Partial<DraftStep>) => setStep(s.id, patch);
@@ -89,7 +92,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                     {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
                       <View key={fi} className="flex-row items-end gap-s2">
                         <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" /></View>
-                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" /></View>
+                        <View className="min-w-0 flex-1">{dateKindOf(options, s.type, f.field) ? <DateValue label={fi ? undefined : "Value"} name="Value" kind={dateKindOf(options, s.type, f.field) as "date" | "datetime"} zone={options.zone} value={f.value} onChange={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} /> : <Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" />}</View>
                         <Button kind="ghost" size="sm" icon="x" label="Remove field" onPress={() => setStep(s.id, { fields: s.fields.filter((_: any, k: number) => k !== fi) })} />
                       </View>
                     ))}
@@ -156,7 +159,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />
-                  <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
+                  {dateKindOf(options, s.type, s.field) ? <DateValue label="New value" name="New value" kind={dateKindOf(options, s.type, s.field) as "date" | "datetime"} zone={options.zone} value={s.value ?? ""} onChange={(value) => setStep(s.id, { value })} /> : <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />}
                 </>
               ) : null}
 
@@ -165,7 +168,8 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         <>
           <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find" || x.kind === "filter").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
           <Field label="Call each one" value={s.as ?? "item"} onChangeText={(as) => set({ as })} help="Inside, read it as this name, for example item.id." />
-          <Text size="caption" tone="label">Up to 50 items. The steps inside run once for each.</Text>
+          <Field label="Go through at most" kind="number" value={String(s.max ?? 50)} onChangeText={(max) => set({ max: max === "" ? "" : Number(max) })} help="The most items to handle: 50 unless you say, 1000 at the most. When the list is longer, the run page says it was cut." />
+          <Text size="caption" tone="label">The steps inside run once for each.</Text>
         </>
       ) : null}
       {s.kind === "parallel" ? <Text tone="muted">Each side runs at the same time. The Flow carries on when every side is done. Add steps to each side below.</Text> : null}
@@ -223,7 +227,13 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       ) : null}
       {s.kind === "wait" ? (
         <>
-          <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          <Select label="Wait" value={s.mode === "until" || s.mode === "on" ? s.mode : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          {s.mode === "on" ? (
+            <>
+              <DateTimeField label="Wait until" value={s.on ?? ""} zone={options.zone} onChange={(on) => set({ on: on ?? "" })} help={options.zone ? `In ${options.zone}.` : "In your own time zone."} />
+              <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
+            </>
+          ) : null}
           {s.mode === "until" ? (
             <>
               <Select label="Date to wait for" value={s.field ?? ""} options={dateChoices(draft, s.id, options)} placeholder="Choose the date, such as the appointment" onChange={(field) => set({ field })} />
@@ -293,6 +303,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
+      <FailurePanel s={s} setStep={set} inHandler={inHandler} />
     </>
   );
 }

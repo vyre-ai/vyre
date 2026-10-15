@@ -27,6 +27,7 @@ export type { SwitcherSpace } from "./components/SpaceSwitcherTitle";
 export { Row } from "./components/Row";
 export { Banner } from "./components/Banner";
 export { Field } from "./components/Field";
+export { DateTimeField } from "./components/DateTimeField";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
 export { Segmented } from "./components/Segmented";

@@ -232,6 +232,7 @@
       "design/system/components/mode-chip.md",
       "design/system/components/needs-row.md",
       "design/system/components/otp.md",
+      "design/system/components/date-time-field.md",
       "design/system/components/password-field.md",
       "design/system/components/phone-shell.md",
       "design/system/components/pill.md",

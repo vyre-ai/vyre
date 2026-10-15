@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
+import { DateTimeField } from "../components/DateTimeField";
 import { Field } from "../components/Field";
 import { Button } from "../components/Button";
 import { Select } from "../components/Select";
-import { actorIdOf, allowedStages, currencySymbol, isEmpty, isoDay, listOf, parseDay, parseNum, urnOf } from "./logic.js";
+import { actorIdOf, allowedStages, currencySymbol, isEmpty, isoDay, listOf, parseNum, urnOf } from "./logic.js";
 import { TagRow } from "../components/TagRow";
 import { tagsOf, withTag, withoutTag } from "../tags/model.js";
 import type { EditProps } from "./types";
@@ -53,17 +54,14 @@ export function BooleanEdit({ p, emit }: EditProps) {
   );
 }
 
-/** A day typed as 2026-10-28 (or 10/28/2026): the value saves only when it is a real date. */
+/** A day, picked (the browser's calendar on the web) or typed as 2026-10-28: the value saves only when it is a real date. The one date input of the app (components/DateTimeField). */
 export function DateEdit({ p, emit }: EditProps) {
-  const [t, setT] = useState(isoDay(p.value));
-  const bad = t.trim() !== "" && parseDay(t) === null;
-  return <Field kind="date" placeholder="2026-10-28" value={t} error={bad ? "Use a date like 2026-10-28." : undefined} onChangeText={(s) => { setT(s); const d = parseDay(s); if (d || !s.trim()) emit(d); }} name={p.definition.label} />;
+  return <DateTimeField dateOnly name={p.definition.label} value={isoDay(p.value)} onChange={(day) => emit(day)} />;
 }
 
+/** A day and a time of day, in the viewer's zone, saved as the moment they name. */
 export function DateTimeEdit({ p, emit }: EditProps) {
-  const [t, setT] = useState(isoDay(p.value));
-  const bad = t.trim() !== "" && parseDay(t) === null;
-  return <Field kind="date" placeholder="2026-10-28" value={t} error={bad ? "Use a date like 2026-10-28." : undefined} onChangeText={(s) => { setT(s); const d = parseDay(s); if (d || !s.trim()) emit(d ? new Date(`${d}T09:00:00`).toISOString() : null); }} name={p.definition.label} />;
+  return <DateTimeField name={p.definition.label} value={typeof p.value === "string" ? p.value : ""} onChange={(iso) => emit(iso)} />;
 }
 
 export function ChoiceEdit({ p, emit }: EditProps) {

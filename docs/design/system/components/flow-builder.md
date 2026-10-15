@@ -49,3 +49,4 @@ Owner's words: Flows are "process automation and project automation", and the ol
 - Groups of Flows use [GroupedList](grouped-list.md).
 - Sharing: a Share sheet with Can use and Can edit per person (`flows.access.get` and `flows.access.set`, the same shape agents use). Teams and roles are offered in the sample build only until the engine takes them.
 - Copy says "object" for a record table.
+- Every step card ends with "If something goes wrong" (`FailurePanel.tsx`, pure half `failure.js`): a time limit for one try, tries and the wait between them, which errors to try again, Check the work (`verify`), and "If this fails, run other steps" (`on_fail`). The steps of a failure path are one more lane under the card, labelled "If this fails". The Flow ends with an "If the run fails" lane (`on_failure`). The panel offers only what the engine does for the kind of step.
