@@ -6,13 +6,13 @@
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, kind?: string }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
@@ -90,7 +90,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -247,6 +247,15 @@ const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at |
 /** Things Vyre's own modules announce that a Flow can start from. */
 export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
 
+/** Every event a Flow can start from: the plain-worded ones first, then every other event the running modules announce (the event catalog), named as the module says it; a stored event the catalog no longer lists stays choosable. @param {Options} o @param {string} [current] @returns {[string, string][]} */
+export function eventChoices(o, current) {
+  const known = new Set(EVENT_CHOICES.map(([v]) => v));
+  const rest = (o.events || []).filter((e) => e && typeof e.type === "string" && !known.has(e.type) && !(/** @type {any} */ (e)).deprecated).map((e) => /** @type {[string, string]} */ ([e.type, e.module ? `${e.type} (from ${e.module})` : e.type])).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const out = [...EVENT_CHOICES, ...rest];
+  if (current && !out.some(([v]) => v === current)) out.push([current, current]);
+  return out;
+}
+
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
 const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
@@ -348,6 +357,14 @@ const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g,
 
 /** @param {Trigger} t */
 export function triggerDefinition(t) {
+  const base = triggerBase(t);
+  // an optional condition on what started it (a formula over `trigger`), for a record, event or watcher trigger
+  return WHERE_KINDS.has(t.kind) && typeof t.where === "string" && t.where.trim() ? { ...base, where: t.where.trim() } : base;
+}
+/** The triggers that take an optional `where` condition (kernel/flows/triggers.js: record events and watchers). */
+const WHERE_KINDS = new Set(["created", "changed", "removed", "event", "watcher"]);
+/** @param {Trigger} t */
+function triggerBase(t) {
   switch (t.kind) {
     case "created": return { on: "event", event: `${t.type}.created` };
     case "changed": return { on: "event", event: [`${t.type}.created`, `${t.type}.updated`], ...(t.field ? { field: t.field } : {}), when_record_changes: t.again === "keep" ? "keep" : "replace" };
@@ -530,8 +547,18 @@ const exprOf = (/** @type {any} */ v) => (v && typeof v === "object" && typeof v
 const refOf = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.id$/i.exec(e); return m ? m[1] : null; };
 const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.keys(o).every((k) => allowed.includes(k));
 
-/** @param {any} t @returns {Trigger} */
+/** A stored trigger as a draft trigger: its kind's settings and its optional `where` condition. @param {any} t @returns {Trigger} */
 function triggerFrom(t) {
+  if (t && typeof t === "object" && t.where !== undefined) {
+    const { where, ...rest } = t;
+    const d = triggerFromKind(rest);
+    return d.kind !== "advanced" && WHERE_KINDS.has(d.kind) && typeof where === "string" ? { ...d, where } : { kind: "advanced", raw: t };
+  }
+  return triggerFromKind(t);
+}
+
+/** @param {any} t @returns {Trigger} */
+function triggerFromKind(t) {
   const raw = { kind: "advanced", raw: t };
   if (!t || typeof t !== "object") return raw;
   if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };

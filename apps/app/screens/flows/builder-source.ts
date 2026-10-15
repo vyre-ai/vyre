@@ -14,7 +14,7 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
 const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArray(d?.[key]) ? d[key] : []);
 
 export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string; kind?: string }[] }[], space?: string | null, reload?: () => void): Promise<FlowOptions> {
-  const [vaultNames, agents, tpls, roles, fl, conns, mailCreds, smsCreds] = await Promise.all([ask("vault.items.names"), ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list"), ask("connectors.connection.list"), ask("comms.credentials", { kind: "email" }), ask("comms.credentials", { kind: "sms" })]);
+  const [vaultNames, agents, tpls, roles, fl, conns, mailCreds, smsCreds, events] = await Promise.all([ask("vault.items.names"), ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list"), ask("connectors.connection.list"), ask("comms.credentials", { kind: "email" }), ask("comms.credentials", { kind: "sms" }), ask("events.catalog")]);
   // comms.* is an owner's on a member's door: where it cannot be read the picker says an owner chooses
   const creds = (d: any) => (d && Array.isArray(d.credentials) ? d.credentials.map((c: any) => ({ id: String(c.id), name: String(c.name), provider: String(c.provider), step: String(c.step) })) : null);
   // an agent may approve only if an owner or an admin made it: the agent's page says so (agents.docs.get made_by.staff); where that cannot be read it is not offered
@@ -37,6 +37,8 @@ export async function realOptions(types: { name: string; label: string; fields?:
       return { name: id, label: c.label };
     },
     connections: list(conns, "connections").map((c) => ({ name: String(c.name), label: String(c.label || c.name) })),
+    // every event the running modules announce, for "Something else happens" (the catalog is the owner's to read: a person it refuses sees the plain-worded events only)
+    events: list(events, "events").filter((e: any) => e && typeof e.type === "string").map((e: any) => ({ type: String(e.type), ...(typeof e.module === "string" ? { module: e.module } : {}), ...(e.deprecated ? { deprecated: true } : {}) })),
     credentials: creds(mailCreds) && creds(smsCreds) ? { email: creds(mailCreds), sms: creds(smsCreds) } : null,
     flows: list(fl, "flows").filter((f) => f.active).map((f) => ({ name: String(f.name), label: String(f.label || f.name) })),
     roles: list(roles, "roles").map((r) => ({ name: String(r.name || r.id), label: String(r.label || r.name || r.id) })),
