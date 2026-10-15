@@ -36,3 +36,17 @@ test("an address is one plain address: a second @, a list, a display name or a b
   assert.equal(plainAddress("Lee@Harlow.Example"), "lee@harlow.example");
   assert.equal(plainAddress("lee@@x"), null);
 });
+
+test("a delegated standing grant never carries a larger payment limit, a missing one or another currency", async () => {
+  const { containsDims } = await import("./authorize.js");
+  const mk = (/** @type {any} */ cond) => ({ space: "spc_a", actions: ["gate.act-standing"], resource: { prefix: "vyre://spc_a/outbox/spend/pay" }, conditions: cond });
+  const parent = mk({ to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
+  const same = { to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" };
+  assert.equal(containsDims(parent, mk(same)), true, "equal passes");
+  assert.equal(containsDims(parent, mk({ ...same, max_amount: 20, daily_amount: 40 })), true, "smaller passes");
+  assert.equal(containsDims(parent, mk({ ...same, max_amount: 51 })), false, "a larger payment limit is refused");
+  assert.equal(containsDims(parent, mk({ ...same, daily_amount: 101 })), false, "a larger day limit is refused");
+  assert.equal(containsDims(parent, mk({ to: same.to, daily_amount: 100, currency: "usd" })), false, "no payment limit is wider than one");
+  assert.equal(containsDims(parent, mk({ to: same.to, max_amount: 50, currency: "usd" })), false, "no day limit is wider than one");
+  assert.equal(containsDims(parent, mk({ ...same, currency: "eur" })), false, "another currency is refused");
+});

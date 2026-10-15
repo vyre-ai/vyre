@@ -127,6 +127,9 @@ export function containsDims(parent, child, since = () => 0, riskOf = () => unde
   if (pc.rate) {
     if (!cc.rate || !(cc.rate.n <= pc.rate.n) || !(cc.rate.per_seconds >= pc.rate.per_seconds) || !onlyKeys(pc.rate, new Set(["n", "per_seconds"])) || !onlyKeys(cc.rate, new Set(["n", "per_seconds"]))) return false;
   }
+  // payment limits: the child's per-payment and per-day limits no larger than the parent's (and present when the parent has one), the same currency
+  for (const k of ["max_amount", "daily_amount"]) if (pc[k] !== undefined && !(typeof cc[k] === "number" && typeof pc[k] === "number" && cc[k] <= pc[k])) return false;
+  if (pc.currency !== undefined && cc.currency !== pc.currency) return false;
   // who may use it
   if (pc.audience !== undefined && !subsetOf(pc.audience, cc.audience)) return false;
   // where an act may go: a child carries the very same destinations or none at all is refused (a delegated grant is never wider, and this is never narrowed in place)
