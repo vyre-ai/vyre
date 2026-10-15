@@ -68,6 +68,8 @@ const LIBRARY = {
   "flows.kit.library": "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds.",
   "flows.kit.library.get": "One Kit from the library in the form flows.kit.card, flows.kit.diff and flows.kit.propose take.",
 };
+/** Tools a member reaches only for a Flow she made or one shared with her. */
+const INSPECT = new Set(["flows.describe", "flows.runs", "flows.connections"]);
 const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
@@ -133,9 +135,48 @@ export default {
               if (problems.length) return { ok: false, errors: problems.map(message => ({ path: "kit", message })) };
             }
           }
+          // A member (not an owner or an admin) inspects a Flow only if she made it or it is shared with her (Can use or Can edit): describe, its runs and the Connections its Flows use (roadmap 0.6 item 14).
+          if (INSPECT.has(name)) {
+            const first = chain.hops && chain.hops[0] ? chain.hops[0].actor : null, me = first && first.kind === "person" ? String(first.id) : "";
+            const role = me && f.roleOf ? f.roleOf(me) : "";
+            if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me);
+          }
           return f.flows.tools[INNER(name)](chain, rest);
         },
       });
+    }
+    /** Whether a member made a Flow or it is shared with her. @param {any} f @param {string} id @param {string} me */
+    const mayInspect = async (f, id, me) => {
+      const row = f.flows.store.flowRow ? await f.flows.store.flowRow(id) : null;
+      if (!row) return false;
+      const first = row.versions && row.versions[0] && row.versions[0].by;
+      if (first && first.kind === "person" && String(first.id) === me) return true;
+      return ((await f.sharedWith(id).catch(() => [])) || []).some((/** @type {any} */ g) => g && g.subject === me && (g.level === "use" || g.level === "edit"));
+    };
+    const noFlow = () => refuse("you can inspect a Flow you made or one shared with you (Can use or Can edit): ask its owner to share it", "denied");
+    /** @param {any} f @param {string} name @param {any} rest @param {any} chain @param {string} me */
+    async function inspectAsMember(f, name, rest, chain, me) {
+      const tool = f.flows.tools[INNER(name)];
+      if (name === "flows.describe") {
+        let id = rest.id;
+        if (rest.run) { const run = f.flows.store.getRun ? await f.flows.store.getRun(String(rest.run)).catch(() => null) : null; id = run && run.flow; }
+        if (typeof id !== "string" || !(await mayInspect(f, id, me))) throw noFlow();
+        return tool(chain, rest);
+      }
+      if (name === "flows.runs") {
+        if (typeof rest.id === "string" && rest.id) { if (!(await mayInspect(f, rest.id, me))) throw noFlow(); return tool(chain, rest); }
+        const all = await tool(chain, rest), keep = new Map();
+        for (const r of Array.isArray(all) ? all : []) if (!keep.has(r.flow)) keep.set(r.flow, await mayInspect(f, String(r.flow), me));
+        return (Array.isArray(all) ? all : []).filter((/** @type {any} */ r) => keep.get(r.flow));
+      }
+      // flows.connections: only the Flows she may inspect, and a Connection none of them uses is not listed
+      const out = await tool(chain, rest), rows = [];
+      for (const c of out && Array.isArray(out.connections) ? out.connections : []) {
+        const flows = [];
+        for (const x of c.flows || []) if (await mayInspect(f, String(x.id), me)) flows.push(x);
+        if (flows.length) rows.push({ ...c, flows });
+      }
+      return { ...out, connections: rows };
     }
     // A watcher that finds something new starts the Flows armed on it, once per item (kernel/flows/watcher-bridge.js reads the items back as this module, so a Flow sees what that
     // tool lets this caller see). The watchers module is the home's own, so this is the home's own Space.
