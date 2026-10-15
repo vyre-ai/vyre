@@ -1783,7 +1783,7 @@ export class Registry {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
         let card;
-        try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
+        try { card = await hold.run({ tool, fields, from: asker, input, ...(typeof meta.thread === "string" && meta.thread ? { thread: meta.thread } : {}) }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
         return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
       }

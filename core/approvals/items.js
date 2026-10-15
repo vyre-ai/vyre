@@ -194,7 +194,7 @@ export const OWNERS = [
 /**
  * @param {{ call: (tool: string, input?: any) => Promise<any>, on: (pattern: string, fn: (e: any) => void) => (() => void), now: () => number, log?: (m: string) => void, emit?: (type: string, payload: any) => void, extra?: () => any[] }} deps `extra`: the cards this queue holds itself (a yes waiting on the phone), which need no owner
  */
-export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [] }) {
+export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [], extraRecent = () => [] }) {
   /** @type {Map<string, any>} */ const open = new Map();
   /** @type {Map<string, any>} */ const recent = new Map();
   /** Outcomes the owners' events told us, until the card they belong to closes. @type {Map<string, string>} */ const hints = new Map();
@@ -250,7 +250,7 @@ export function createItems({ call, on, now, log = () => {}, emit = () => {}, ex
     async list() {
       if (timer) { clearTimeout(timer); timer = null; }
       await refresh();
-      return { items: [...extra(), ...open.values()], recent: [...recent.values()], ...(partial.size ? { partial: [...partial] } : {}) };
+      return { items: [...extra(), ...open.values()], recent: [...recent.values(), ...extraRecent()], ...(partial.size ? { partial: [...partial] } : {}) };
     },
     start() { schedule(); },
     /** Something this queue holds itself changed (a card was held, answered or ended): say so after the owners' own changes are read too. */
