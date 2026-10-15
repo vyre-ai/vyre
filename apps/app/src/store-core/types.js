@@ -20,7 +20,7 @@ export const TRIP_STAGES = ["Dreaming", "Booked", "Packing", "Away", "Back"];
 const DAY = 86_400_000;
 
 /**
- * The Kit "Estate planning matter": the tasks each stage makes (DESIGN-tasks.md, idea 5), as the kernel's TaskTemplateDef. A doer is a reference ("teammate:research",
+ * The Kit "Client project": the tasks each stage makes (DESIGN-tasks.md, idea 5), as the kernel's TaskTemplateDef. A doer is a reference ("teammate:research",
  * "person:alex"); the title may hold {client}; depends_on names tasks of the same stage by title; the template is a Template record's name.
  * @type {Record<string, TaskTemplateDef[]>}
  */
@@ -31,13 +31,13 @@ export const ESTATE_KIT_TASKS = {
       depends_on: ["Research the client"] },
   ],
   Kickoff: [
-    { title: "Engagement letter", doer: "teammate:drafting", checker: "person:alex", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "Engagement letter", due_offset_ms: DAY },
-    { title: "Review the draft with {client}", doer: "person:alex", output: { kind: "decision", target: "Approved or changes" }, how: "person", depends_on: ["Engagement letter"], due_offset_ms: 3 * DAY },
+    { title: "Kickoff letter", doer: "teammate:drafting", checker: "person:alex", output: { kind: "sent", target: "Letter for sign-off" }, how: "tailor", template: "Kickoff letter", due_offset_ms: DAY },
+    { title: "Review the draft with {client}", doer: "person:alex", output: { kind: "decision", target: "Approved or changes" }, how: "person", depends_on: ["Kickoff letter"], due_offset_ms: 3 * DAY },
   ],
   Design: [{ title: "Design the new brand", doer: "teammate:drafting", checker: "person:chris", output: { kind: "file", target: "Brand files" }, how: "assistant", due_offset_ms: 5 * DAY }],
   Review: [
-    { title: "Signing date", doer: "person:alex", output: { kind: "fields", target: "signing" }, how: "person" },
-    { title: "Collect signatures", doer: "person:alex", output: { kind: "file", target: "Signed documents" }, how: "person", depends_on: ["Signing date"] },
+    { title: "Launch date", doer: "person:alex", output: { kind: "fields", target: "signing" }, how: "person" },
+    { title: "Collect sign-off", doer: "person:alex", output: { kind: "file", target: "Signed-off files" }, how: "person", depends_on: ["Launch date"] },
   ],
   Launch: [{ title: "Publish the new site", doer: "agent:rev", checker: "person:chris", output: { kind: "file", target: "Live site" }, how: "assistant" }],
 };

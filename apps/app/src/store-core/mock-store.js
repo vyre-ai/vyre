@@ -10,7 +10,7 @@
 //   events    EventEnvelope: noun.past-verb types, a subject urn, an actor "<kind>:<id>@<space>", a data bag with the sentence the Deck prints (data.what, data.why);
 //             the hashes are stand-ins (the mock keeps no chain). Record events say what changed, never a value
 //
-// Worlds: "morning" (the morning after a payment: spaces Mine and Juniper Studio, Alex Rivera, Chris Park, juno, kit, Research, Intake, Drafting, Jane Doe and
+// Worlds: "morning" (the morning after a payment: spaces Mine and Juniper Studio, Alex Rivera, Chris Park, juno, kit, Research, Intake, Design, Jane Doe and
 // the rest, tasks k1..k28 from the approved prototype), "payday" (the same without Doe brand refresh, so the "client pays" scenario can play on top of it),
 // and "empty" (spaces, people and types only).
 import { advanceStage, approve, evidenceOf, isProof, makeStuck, move as moveTask, ownerOf, reassign as reassignTask, reject, spawnStage, startsItself, unblock, whyNot, withEvidence,

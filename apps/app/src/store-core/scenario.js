@@ -15,11 +15,11 @@ import { actorValue, money, ref } from "./mock-values.js";
  */
 
 const DEFAULT_FINDINGS = {
-  situation: "Widowed, two adult children",
-  assets: "House at 18 Larkin St, sale in November",
-  pressure: "Fund the trust before the sale",
-  notes: "Wants the trust funded before the house sale in November. Two adult children, Marcus is the likely successor trustee.",
-  sources: ["Intake form, 8 Sep", "County property record", "Her first message"],
+  situation: "Runs a boutique hotel",
+  assets: "Hotel site at 18 Larkin St, season opens in November",
+  pressure: "Launch before the season",
+  notes: "Wants the new site live before the November season. Marcus, her son, handles the logo files.",
+  sources: ["Intake form, 8 Sep", "Old site pages", "Her first message"],
 };
 
 /**
@@ -42,7 +42,7 @@ export async function runClientPays(store, o = {}) {
   const known = (await store.list("contact")).find((c) => c.data.name === client.name);
   const contact = known || await store.create("contact", { name: client.name, role: "Client", email: [client.email], phone: [client.phone] }, { by: "vyre", space });
 
-  const matter = await store.create("matter", { title: `${last} estate plan`, client: ref(contact.urn), plan: "Both", fee: money(amount), owner: actorValue({ kind: "person", id: me, space }) },
+  const matter = await store.create("matter", { title: `${last} brand refresh`, client: ref(contact.urn), plan: "Both", fee: money(amount), owner: actorValue({ kind: "person", id: me, space }) },
     { by: "vyre", why: `Flow On payment: ${client.name} paid ${money$}.`, space });
   await pause(2, `${matter.data.title} was created from the Kit, and its team is working`);
 
@@ -59,10 +59,10 @@ export async function runClientPays(store, o = {}) {
   if (!welcome) throw new Error("The Kit made no Welcome email task.");
   const [templates, actors, fresh] = await Promise.all([store.list("template"), store.actors(), store.get(matter.urn)]);
   const tpl = templates.find((t) => t.urn === welcome.template);
-  const attorney = actors.find((a) => a.id === aid(/** @type {any} */ (fresh?.data.owner)?.actor))?.name || "your attorney";
-  const tailored = "I read that you want the trust funded before the house sale in November, so we will start there. We will also ask about Marcus at our first call.";
+  const attorney = actors.find((a) => a.id === aid(/** @type {any} */ (fresh?.data.owner)?.actor))?.name || "your designer";
+  const tailored = "I read that you want the new site live before the November season, so we will start there. We will also ask about Marcus at our first call.";
   const fill = (/** @type {string} */ s) => s.replace("[Client first name]", first).replace("[Tailored paragraph]", tailored).replace("[Job title]", String(matter.data.title))
-    .replace("[Attorney name]", attorney).replace("[Firm signature]", "Juniper Studio");
+    .replace("[Designer name]", attorney).replace("[Firm signature]", "Juniper Studio");
   await store.submit(welcome.id, { draft: { subject: fill(String(tpl?.data.subject || "Welcome")), body: fill(String(tpl?.data.body || `Hi ${first},`)), sources: findings.sources.length } }, "intake");
   await pause(4, `Welcome email for ${client.name} is ready`);
   return { contact: contact.urn, matter: matter.urn, task: welcome.id };
