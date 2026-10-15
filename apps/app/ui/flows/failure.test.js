@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
 import { world, install, settle } from "../../../../kernel/flows/testing/world.js";
 import { findStep, flat, mapStep, removeDeep, lanesOf, laneSteps } from "./tree.js";
-import { draftProblems, fromDefinition, inFailurePath, newStep, stepProblem, toDefinition, valueSources, val, policyWords } from "./logic.js";
+import * as logic from "./logic.js";
+import { draftProblems, fromDefinition, newStep, stepProblem, toDefinition, valueSources, val, policyWords } from "./logic.js";
 import { offers, policyKeys, span } from "./failure.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
@@ -22,7 +23,7 @@ const FULL = flowOf([
 test("a stored Flow with failure settings opens as editable steps, and saves back unchanged", () => {
   assert.deepEqual(checkFlow(FULL), []);
   const d = fromDefinition(FULL);
-  assert.deepEqual(d.steps.map((s) => s.kind), ["create", "decide", "create"], "no step fell back to Advanced");
+  assert.deepEqual(d.steps.map((s) => s.kind), ["create", "decide", "create"], "no step fell back to Advanced (before, a step with retry or on_fail did)");
   assert.equal(d.steps[0].retry.attempts, 4);
   assert.deepEqual(d.steps[0].on_fail.steps[0].fields, [{ field: "client", value: "{error.message}" }], "a handler reads what went wrong as a plain token");
   assert.equal(d.onFailure.length, 1);
@@ -77,8 +78,8 @@ test("a step in a failure path can read what went wrong, and no other step is of
   assert.ok(tokens("h1").includes("{error.message}"));
   assert.ok(tokens("alert1").includes("{error.code}"));
   assert.ok(!tokens("m2").includes("{error.message}"));
-  assert.equal(inFailurePath(d, "h1"), true);
-  assert.equal(inFailurePath(d, "m1"), false);
+  assert.equal(logic.inFailurePath(d, "h1"), true);
+  assert.equal(logic.inFailurePath(d, "m1"), false);
   assert.deepEqual(val("{error.message}"), { expr: "error.message" });
 });
 
