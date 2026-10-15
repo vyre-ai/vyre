@@ -53,7 +53,7 @@ const ACTORS = [
   { id: WHO.rev, family: "assistant", name: "rev", role: "Assistant", seed: "rev", owner: WHO.alex },
   { id: WHO.research, family: "teammate", name: "Research", role: "Teammate, Juniper Studio", seed: "research-juniper", owner: WHO.alex },
   { id: WHO.intake, family: "teammate", name: "Intake", role: "Teammate, Juniper Studio", seed: "intake-juniper", owner: WHO.alex },
-  { id: WHO.drafting, family: "teammate", name: "Drafting", role: "Teammate, Juniper Studio", seed: "drafting-juniper", owner: WHO.alex },
+  { id: WHO.drafting, family: "teammate", name: "Design", role: "Teammate, Juniper Studio", seed: "drafting-juniper", owner: WHO.alex },
   { id: WHO.vyre, family: "service", name: "Vyre", role: "The Kit and its Flows", seed: "vyre" },
 ];
 
@@ -473,9 +473,9 @@ export function createMockStore(opts = {}) {
     c("c5", { name: "Lena Ortiz", role: "Vendor", email: "lena@ortiznotary.example.com", phone: "+1 415 555 0123", notes: "Mobile notary. Signs same day." });
     c("c6", { name: "Dana Reyes", role: "Client", email: "dana.reyes@example.com", phone: "+1 415 555 0190", notes: "Site rebuild client contact." });
     put("template", H, { name: "Welcome", kind: "Email", subject: "Welcome to Juniper Studio, [Client first name]",
-      body: "Hi [Client first name],\n\nThank you for choosing Juniper Studio. [Tailored paragraph]\n\nYour project is [Matter title], and [Designer name] is your designer. Next we will send your kickoff letter.\n\n[Firm signature]" }, "tpl1");
-    put("template", H, { name: "Kickoff letter", kind: "Document", subject: "Kickoff letter, [Matter title]",
-      body: "Client: [Client name]\nID number: [SSN]\nProject: [Matter title]\nFee: [Fee]\n\nThis letter confirms that Juniper Studio will work for you on this project.\n\n[Firm signature]" }, "tpl2");
+      body: "Hi [Client first name],\n\nThank you for choosing Juniper Studio. [Tailored paragraph]\n\nYour project is [Job title], and [Designer name] is your designer. Next we will send your kickoff letter.\n\n[Firm signature]" }, "tpl1");
+    put("template", H, { name: "Kickoff letter", kind: "Document", subject: "Kickoff letter, [Job title]",
+      body: "Client: [Client name]\nID number: [SSN]\nProject: [Job title]\nFee: [Fee]\n\nThis letter confirms that Juniper Studio will work for you on this project.\n\n[Firm signature]" }, "tpl2");
     log({ type: "member.joined", subject: urnOf(H, "space", H), actor: WHO.chris, what: "joined Juniper Studio", at: today(10, 20) });
     if (world === "empty") return;
 
@@ -485,12 +485,12 @@ export function createMockStore(opts = {}) {
     };
     if (world === "morning") {
       m("m1", { title: "Doe brand refresh", client: "c1", plan: "Both", fee: 4800, owner: WHO.alex, situation: "Runs a boutique hotel", assets: "Hotel site at 18 Larkin St, season opens in November", pressure: "Launch before the season",
-        research: "Sources: intake form (8 Sep), old site pages, her first message. Wants the new site live before the November season. Marcus, her son, handles the logo files.", closing: "2026-10-28" }, "Engagement");
+        research: "Sources: intake form (8 Sep), old site pages, her first message. Wants the new site live before the November season. Marcus, her son, handles the logo files.", closing: "2026-10-28" }, "Kickoff");
     }
-    m("m2", { title: "Roe site rebuild", client: "c2", plan: "Trust", fee: 6500, owner: WHO.kit, closing: "2026-11-14" }, "Engagement");
-    m("m3", { title: "Shah logo update", client: "c4", plan: "Will", fee: 1200, owner: WHO.kit, closing: "2026-10-20" }, "Intake");
-    m("m4", { title: "Doe launch, Marcus", client: "c3", plan: "Trust", fee: 3900, owner: WHO.chris, closing: "2026-10-09" }, "Signing");
-    m("m5", { title: "Ortiz photo shoot", client: "c5", plan: "Will", fee: 800, owner: WHO.alex, closing: "2026-10-05" }, "Funding");
+    m("m2", { title: "Roe site rebuild", client: "c2", plan: "Site", fee: 6500, owner: WHO.kit, closing: "2026-11-14" }, "Kickoff");
+    m("m3", { title: "Shah logo update", client: "c4", plan: "Brand", fee: 1200, owner: WHO.kit, closing: "2026-10-20" }, "Intake");
+    m("m4", { title: "Doe launch, Marcus", client: "c3", plan: "Site", fee: 3900, owner: WHO.chris, closing: "2026-10-09" }, "Review");
+    m("m5", { title: "Ortiz photo shoot", client: "c5", plan: "Brand", fee: 800, owner: WHO.alex, closing: "2026-10-05" }, "Launch");
     const p = (/** @type {string} */ alias, /** @type {string} */ space, /** @type {any} */ v) => { const { owner, brief, ...rest } = v; put("project", space, { ...rest, owner: own(owner, space), brief: file(brief) }, alias); };
     p("p1", H, { title: "Site rebuild", template: "tpl_ad-campaign", owner: WHO.kit, due: "2026-10-30", brief: "Site rebuild brief.docx" });
     p("p2", H, { title: "Northwind Holdings billing dispute", template: "tpl_estate-plan", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
@@ -526,20 +526,20 @@ export function createMockStore(opts = {}) {
         result: { note: { text: "Wants the new site live before the November season.", sources: ["Intake form, 8 Sep", "Old site pages", "Her first message"] } } });
       k("m1", { title: "Welcome email for Jane Doe", doer: WHO.intake, checker: WHO.alex, stage: "Intake", state: "done", output: { kind: "sent", target: "Email to Jane Doe" }, how: "tailor", template: "tpl1", dependsOn: [k1.id],
         result: { draft: { subject: "Welcome to Juniper Studio, Jane", body: "Hi Jane,\n\nThank you for choosing Juniper Studio. I read that you want the new site live before the November season, so we will start there.\n\nJuniper Studio", sources: 3 } } });
-      const k3 = k("m1", { title: "Kickoff letter", doer: WHO.drafting, checker: WHO.alex, stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for sign-off" }, how: "tailor", template: "tpl2", due: today(12, 0) + dayMs, now: "is drafting the kickoff letter" });
-      k("m1", { title: "Review the draft with Jane Doe", doer: WHO.alex, stage: "Engagement", state: "ready", output: { kind: "decision", target: "Approved or changes" }, how: "person", dependsOn: [k3.id], madeBy: WHO.chris, note: "Assigned by Chris", due: today(12, 0) + 3 * dayMs });
+      const k3 = k("m1", { title: "Kickoff letter", doer: WHO.drafting, checker: WHO.alex, stage: "Kickoff", state: "working", output: { kind: "sent", target: "Letter for sign-off" }, how: "tailor", template: "tpl2", due: today(12, 0) + dayMs, now: "is drafting the kickoff letter" });
+      k("m1", { title: "Review the draft with Jane Doe", doer: WHO.alex, stage: "Kickoff", state: "ready", output: { kind: "decision", target: "Approved or changes" }, how: "person", dependsOn: [k3.id], madeBy: WHO.chris, note: "Assigned by Chris", due: today(12, 0) + 3 * dayMs });
     }
-    k("m2", { title: "Kickoff letter for John Roe", doer: WHO.drafting, checker: WHO.alex, stage: "Engagement", state: "working", output: { kind: "sent", target: "Letter for sign-off" }, how: "tailor", template: "tpl2", now: "is filling Kickoff letter with John's notes" });
-    k("m2", { title: "Check the supplier portal", doer: WHO.juno, stage: "Engagement", state: "stuck", output: { kind: "note", target: "Portal note" }, how: "assistant", madeBy: WHO.juno, note: "juno stopped",
+    k("m2", { title: "Kickoff letter for John Roe", doer: WHO.drafting, checker: WHO.alex, stage: "Kickoff", state: "working", output: { kind: "sent", target: "Letter for sign-off" }, how: "tailor", template: "tpl2", now: "is filling Kickoff letter with John's notes" });
+    k("m2", { title: "Check the supplier portal", doer: WHO.juno, stage: "Kickoff", state: "stuck", output: { kind: "note", target: "Portal note" }, how: "assistant", madeBy: WHO.juno, note: "juno stopped",
       say: "juno could not log in to the supplier portal", session: "c1", stuck: { reason: "The password changed.", since: today(8, 40), suggestedFix: "Update the password in the Vault, or reassign to Chris.", vaultItem: "supplier-portal" } });
     const k7 = k("m3", { title: "Research the client", doer: WHO.research, stage: "Intake", state: "working", output: { kind: "fields", fields: ["situation", "assets", "pressure", "research"] }, how: "assistant", now: "is reading Priya Shah's intake form" });
     k("m3", { title: "Welcome email for Priya Shah", doer: WHO.intake, checker: WHO.alex, stage: "Intake", state: "waiting", output: { kind: "sent", target: "Email to Priya Shah" }, how: "tailor", template: "tpl1", dependsOn: [k7.id] });
     k("m3", { title: "Approve a $720 refund for Priya Shah", doer: WHO.alex, stage: "Intake", state: "ready", output: { kind: "decision", target: "Refund or not" }, how: "person", note: "Flow: Large refunds", madeBy: WHO.vyre, required: false,
       source: "flow_step", say: "Approve a $720 refund for Priya Shah" });
-    const k10 = k("m4", { title: "Launch date", doer: WHO.alex, stage: "Signing", state: "ready", output: { kind: "fields", fields: ["signing"] }, how: "person", madeBy: WHO.kit, note: "kit asked", source: "assistant_request", session: "c1",
+    const k10 = k("m4", { title: "Launch date", doer: WHO.alex, stage: "Review", state: "ready", output: { kind: "fields", fields: ["signing"] }, how: "person", madeBy: WHO.kit, note: "kit asked", source: "assistant_request", session: "c1",
       say: "kit needs the client's launch date to continue" });
-    k("m4", { title: "Collect sign-off", doer: WHO.alex, stage: "Signing", state: "waiting", dependsOn: [k10.id], output: { kind: "file", target: "Signed-off files" }, how: "person" });
-    k("m5", { title: "Publish the site", doer: WHO.rev, stage: "Funding", state: "working", output: { kind: "file", target: "Live site" }, how: "assistant", now: "is publishing the site" });
+    k("m4", { title: "Collect sign-off", doer: WHO.alex, stage: "Review", state: "waiting", dependsOn: [k10.id], output: { kind: "file", target: "Signed-off files" }, how: "person" });
+    k("m5", { title: "Publish the site", doer: WHO.rev, stage: "Launch", state: "working", output: { kind: "file", target: "Live site" }, how: "assistant", now: "is publishing the site" });
     k("p1", { title: "Send the Q3 report to Dana Reyes", doer: WHO.kit, checker: WHO.alex, state: "needs_check", output: { kind: "sent", target: "Email to Dana Reyes" }, how: "assistant", note: "Needs your approval",
       say: "Email to Dana is waiting for approval", result: { draft: { subject: "Q3 report, the short version", body: "Hi Dana,\n\nThe short version: leads are up 18% and the intake form now converts 31% better on mobile. The full report is attached.\n\nAlex" } } });
     const k14 = k("p1", { title: "Fix the intake form label", doer: WHO.kit, state: "working", output: { kind: "file", target: "Intake form" }, how: "assistant", now: "is running the intake form tests" });

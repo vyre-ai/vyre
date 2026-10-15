@@ -24,16 +24,16 @@ test("the mock store implements the whole Store interface", async () => {
   const s = createMockStore({ now: () => NOON });
   for (const m of METHODS) assert.equal(typeof /** @type {any} */ (s)[m], "function", m);
   assert.deepEqual((await s.spaces()).map(x => x.name), ["Mine", "Juniper Studio"]);
-  assert.deepEqual((await s.actors()).map(a => a.name), ["Alex Rivera", "Chris Park", "juno", "kit", "iris", "rev", "Research", "Intake", "Drafting", "Vyre"]);
+  assert.deepEqual((await s.actors()).map(a => a.name), ["Alex Rivera", "Chris Park", "juno", "kit", "iris", "rev", "Research", "Intake", "Design", "Vyre"]);
   const types = await s.types();
   assert.ok(["contact", "matter", "project", "trip", "template"].every(n => types.some(t => t.name === n)));
   assert.deepEqual((await s.types(SPACE.mine)).map(t => t.name).sort(), ["project", "trip"]);
   const doe = (await s.list("matter")).find(m => m.data.title === "Doe brand refresh");
-  assert.equal(doe?.data.stage, "Engagement");
+  assert.equal(doe?.data.stage, "Kickoff");
   assert.equal(doe?.urn, aliasUrn("m1"));
   assert.equal(doe?.version, 1);
   assert.equal((await s.list("contact", { space: SPACE.juniper })).some(c => c.data.name === "Jane Doe"), true);
-  assert.equal((await s.list("matter", { filter: { field: "stage", op: "eq", value: "Signing" } })).length, 1);
+  assert.equal((await s.list("matter", { filter: { field: "stage", op: "eq", value: "Review" } })).length, 1);
   assert.equal(await s.get("vyre://spc_juniperaaaaaa/matter/nope"), null);
   assert.equal(await s.task("nope"), null);
 });
@@ -233,7 +233,7 @@ test("client pays: Now's Needs-you holds exactly one card, and approving it move
 
   // One tap: the checker's approval is the Gate approval. The stage moves on by itself.
   await s.decide(card.id, { outcome: "approved", proof: proof("approve") });
-  assert.equal((await s.get(ran.matter))?.data.stage, "Engagement");
+  assert.equal((await s.get(ran.matter))?.data.stage, "Kickoff");
   const after = await s.tasks({ record: ran.matter });
   assert.deepEqual(after.map(t => [t.title, t.state]), [["Research the client", "done"], ["Welcome email for Jane Doe", "done"], ["Kickoff letter", "working"], ["Review the draft with Jane Doe", "waiting"]]);
   assert.equal((await s.tasks()).filter(t => needsYou(t, WHO.alex, actors)).length, 0, "nothing needs Alex until the kickoff letter is drafted");

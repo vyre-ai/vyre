@@ -38,7 +38,7 @@ test("approving the Welcome email through the Gate sends it and moves the stage 
   assert.equal(before.data.stage, "Intake");
   await s.decide(r.task, { outcome: "approved", proof: { signer: "secure_enclave", key_id: "k", payload_hash: "h", decision: "approve", chain_hash: "c", issued_at: NOW, expires_at: NOW + 1, nonce: "n", signature: "s" } });
   const after = await s.get(r.matter);
-  assert.equal(after.data.stage, "Engagement");
+  assert.equal(after.data.stage, "Kickoff");
 });
 
 test("the morning world: a stuck card says why and offers Fix and Reassign; a task assigned by a colleague says so", async () => {
@@ -96,7 +96,7 @@ test("the project page: stages made of tasks, the team with its doing-now line, 
   const tasks = w.tasks.filter((t) => t.record === rec.urn);
   const stages = w.types.get("matter").stages.map((x) => x.name);
   const groups = stageGroups(tasks, stages, rec.data.stage);
-  assert.deepEqual(groups.map((g) => g.label), ["Intake", "Engagement"]);
+  assert.deepEqual(groups.map((g) => g.label), ["Intake", "Kickoff"]);
   assert.equal(groups[0].complete, true);
   assert.equal(groups[1].current, true);
   assert.equal(`${groups[1].done} of ${groups[1].total}`, "0 of 2");

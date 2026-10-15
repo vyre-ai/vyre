@@ -61,7 +61,7 @@ export async function runClientPays(store, o = {}) {
   const tpl = templates.find((t) => t.urn === welcome.template);
   const attorney = actors.find((a) => a.id === aid(/** @type {any} */ (fresh?.data.owner)?.actor))?.name || "your attorney";
   const tailored = "I read that you want the trust funded before the house sale in November, so we will start there. We will also ask about Marcus at our first call.";
-  const fill = (/** @type {string} */ s) => s.replace("[Client first name]", first).replace("[Tailored paragraph]", tailored).replace("[Matter title]", String(matter.data.title))
+  const fill = (/** @type {string} */ s) => s.replace("[Client first name]", first).replace("[Tailored paragraph]", tailored).replace("[Job title]", String(matter.data.title))
     .replace("[Attorney name]", attorney).replace("[Firm signature]", "Juniper Studio");
   await store.submit(welcome.id, { draft: { subject: fill(String(tpl?.data.subject || "Welcome")), body: fill(String(tpl?.data.body || `Hi ${first},`)), sources: findings.sources.length } }, "intake");
   await pause(4, `Welcome email for ${client.name} is ready`);

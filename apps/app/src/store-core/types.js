@@ -13,7 +13,7 @@
 /** @typedef {import("./contracts.js").StageDef} StageDef */
 /** @typedef {import("./contracts.js").TaskTemplateDef} TaskTemplateDef */
 
-export const MATTER_STAGES = ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"];
+export const MATTER_STAGES = ["Intake", "Kickoff", "Design", "Review", "Launch", "Closed"];
 export const PROJECT_STAGES = ["Plan", "Build", "Review", "Ship"];
 export const TRIP_STAGES = ["Dreaming", "Booked", "Packing", "Away", "Back"];
 
@@ -30,16 +30,16 @@ export const ESTATE_KIT_TASKS = {
     { title: "Welcome email for {client}", doer: "teammate:intake", checker: "person:alex", output: { kind: "sent", target: "Email to {client}" }, how: "tailor", template: "Welcome",
       depends_on: ["Research the client"] },
   ],
-  Engagement: [
+  Kickoff: [
     { title: "Engagement letter", doer: "teammate:drafting", checker: "person:alex", output: { kind: "sent", target: "Letter for signature" }, how: "tailor", template: "Engagement letter", due_offset_ms: DAY },
     { title: "Review the draft with {client}", doer: "person:alex", output: { kind: "decision", target: "Approved or changes" }, how: "person", depends_on: ["Engagement letter"], due_offset_ms: 3 * DAY },
   ],
-  Drafting: [{ title: "Draft the trust and will", doer: "teammate:drafting", checker: "person:chris", output: { kind: "file", target: "Trust and will" }, how: "assistant", due_offset_ms: 5 * DAY }],
-  Signing: [
+  Design: [{ title: "Design the new brand", doer: "teammate:drafting", checker: "person:chris", output: { kind: "file", target: "Brand files" }, how: "assistant", due_offset_ms: 5 * DAY }],
+  Review: [
     { title: "Signing date", doer: "person:alex", output: { kind: "fields", target: "signing" }, how: "person" },
     { title: "Collect signatures", doer: "person:alex", output: { kind: "file", target: "Signed documents" }, how: "person", depends_on: ["Signing date"] },
   ],
-  Funding: [{ title: "Fund the trust and record the deed", doer: "agent:rev", checker: "person:chris", output: { kind: "file", target: "Recorded deed" }, how: "assistant" }],
+  Launch: [{ title: "Publish the new site", doer: "agent:rev", checker: "person:chris", output: { kind: "file", target: "Live site" }, how: "assistant" }],
 };
 
 /** @type {TypeDefinition} */
@@ -56,19 +56,19 @@ export const contact = {
     { name: "ssn", label: "SSN", kind: "sealed", seal: { level: "human", class: "us-ssn" } },
     { name: "acct", label: "Account number", kind: "sealed", seal: { level: "human", class: "bank-account" } },
     { name: "notes", label: "Notes", kind: "rich_text" },
-    { name: "matter", label: "Matter", kind: "link", to: "matter" },
+    { name: "matter", label: "Job", kind: "link", to: "matter" },
   ],
 };
 
 /** @type {TypeDefinition} */
 export const matter = {
-  name: "matter", label: "Matter", icon: "records",
+  name: "matter", label: "Job", icon: "records",
   fields: [
     { name: "title", label: "Title", kind: "text", required: true },
     { name: "client", label: "Client", kind: "link", to: "contact" },
-    { name: "plan", label: "Plan", kind: "choice", options: ["Will", "Trust", "Both"] },
-    { name: "situation", label: "Family situation", kind: "text" },
-    { name: "assets", label: "Assets in play", kind: "text" },
+    { name: "plan", label: "Plan", kind: "choice", options: ["Brand", "Site", "Both"] },
+    { name: "situation", label: "Situation", kind: "text" },
+    { name: "assets", label: "Assets", kind: "text" },
     { name: "pressure", label: "Time pressure", kind: "text" },
     { name: "fee", label: "Fee", kind: "money" },
     { name: "stage", label: "Stage", kind: "stage", options: MATTER_STAGES },

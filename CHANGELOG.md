@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- docs(app): the app's sample data reads as a design studio, not a law firm, in the three places the site captures draw it from (the chat demo, the chat stream and the sample store): no Matter, attorney, engagement letter, lease, court portal or estate-planning Kit; the sample names (alex, Harlow Legal, Northwind Bakery, Juniper Studio, Doe, Roe) stay. The record type is still called matter inside the sample store and its stage names live in store-core/types.js, which this leaves for the Kit work. The pictures and the site captures are refreshed after this lands.
+- docs(app): the app's sample data reads as a design studio, not a law firm, in the three places the site captures draw it from (the chat demo, the chat stream and the sample store): no Matter, attorney, engagement letter, lease, court portal or estate-planning Kit; the sample names (alex, Harlow Legal, Northwind Bakery, Juniper Studio, Doe, Roe) stay. The sample record type is shown as Job (its internal name stays matter), its stages are Intake, Kickoff, Design, Review, Launch and Closed, and its plan choices are Brand, Site and Both. The pictures and the site captures are refreshed after this lands.
 
 ## 0.5.1
 
