@@ -63,3 +63,30 @@ test("e2: flows.patch stores a new draft, says what changed, and refuses a patch
   const active = await w.store.active(v.id);
   assert.equal(active.version, v.version, "the live version is untouched");
 });
+
+test("0.6: a patch reaches a step's failure path and the Flow's own failure steps, and sets sends and returns", () => {
+  const base = flowOf([m("a"), m("c")]);
+  // a step's failure path: made, filled, edited, moved and removed by name
+  let f = applyPatch(base, [{ op: "insert", into: "a", block: "on_fail", step: m("h1") }, { op: "insert", after: "h1", step: m("h2") }]);
+  assert.deepEqual(f.steps[0].on_fail, { steps: [m("h1"), m("h2")], then: "stop" });
+  f = applyPatch(f, [{ op: "set", step: "h2", key: "set.client", value: "Z" }, { op: "move", step: "h2", by: -1 }]);
+  assert.deepEqual(f.steps[0].on_fail.steps.map((/** @type {any} */ s) => s.id), ["h2", "h1"]);
+  assert.equal(f.steps[0].on_fail.steps[0].set.client, "Z");
+  f = applyPatch(f, [{ op: "remove", step: "h1" }, { op: "replace", step: "h2", with: m("h3") }]);
+  assert.deepEqual(f.steps[0].on_fail.steps.map((/** @type {any} */ s) => s.id), ["h3"]);
+  assert.equal(base.steps[0].on_fail, undefined, "the stored Flow is not changed");
+  // the Flow's own failure steps
+  f = applyPatch(base, [{ op: "insert", lane: "on_failure", first: true, step: m("n1") }, { op: "insert", lane: "on_failure", after: "n1", step: m("n2") }, { op: "set", step: "n2", key: "set.client", value: "Q" }]);
+  assert.deepEqual(f.on_failure.map((/** @type {any} */ s) => s.id), ["n1", "n2"]);
+  assert.equal(f.on_failure[1].set.client, "Q");
+  f = applyPatch(f, [{ op: "move", step: "n2", by: -1 }, { op: "remove", step: "n1" }]);
+  assert.deepEqual(f.on_failure.map((/** @type {any} */ s) => s.id), ["n2"]);
+  // sends and returns are Flow settings
+  f = applyPatch(base, [{ op: "meta", key: "sends", value: { allow: ["mail"], max: 5 } }, { op: "meta", key: "returns", value: ["matter"] }]);
+  assert.deepEqual(f.sends, { allow: ["mail"], max: 5 });
+  assert.deepEqual(f.returns, ["matter"]);
+  const bad = (/** @type {any[]} */ ops, /** @type {RegExp} */ re) => assert.throws(() => applyPatch(base, ops), re);
+  bad([{ op: "insert", lane: "steps", first: true, step: m("x") }], /lane is on_failure/);
+  bad([{ op: "insert", lane: "on_failure", step: m("x") }], /say where in the failure steps/);
+  bad([{ op: "insert", into: "nope", block: "on_fail", step: m("x") }], /no step nope/);
+});
