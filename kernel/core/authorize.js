@@ -401,6 +401,9 @@ export function createAuthorizer(cfg) {
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
     const m = matchGrant(g, action, resource, { attrs, now, probe, origin, since: since(action), risk: riskOf(action) });
     if (!m.ok) return m;
+    // A grant lent for one task (a Flow's lend of the task to an agent, a vault lease for it) ends with the task: once the task is done, skipped or withdrawn it holds nothing, even before the lend is taken back.
+    const lent = /^(?:flows:task|vault:lease):(.+)$/.exec(String(g.source || ""));
+    if (lent && typeof cfg.taskOpen === "function" && !(await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).

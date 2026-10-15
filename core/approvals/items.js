@@ -176,7 +176,7 @@ export const OWNERS = [
     ["gate.*", (t, p) => (t === "gate.released" ? [`gate:${p && p.id}`, "sent"] : t === "gate.rejected" ? [`gate:${p && p.id}`, "refused"] : t === "gate.settled" ? [`gate:${p && p.id}`, one(p && p.outcome) || "sent"] : t === "gate.failed" ? [`gate:${p && p.id}`, "failed"] : null)]] },
   { name: "flows", tool: "flows.attention", map: d => [...fromAttention(d && Array.isArray(d.runs) ? d.runs : []), ...fromStuckTasks(d && Array.isArray(d.tasks) ? d.tasks : [])], watch: [
     ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
-    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
+    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" || t === "task.withdrawn" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
     ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
   { name: "documents", tool: "documents.signing.waiting", map: d => fromSigning(d && Array.isArray(d.requests) ? d.requests : []), quiet: true, watch: [
     ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },
@@ -194,7 +194,7 @@ export const OWNERS = [
 /**
  * @param {{ call: (tool: string, input?: any) => Promise<any>, on: (pattern: string, fn: (e: any) => void) => (() => void), now: () => number, log?: (m: string) => void, emit?: (type: string, payload: any) => void, extra?: () => any[] }} deps `extra`: the cards this queue holds itself (a yes waiting on the phone), which need no owner
  */
-export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [] }) {
+export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [], extraRecent = () => [] }) {
   /** @type {Map<string, any>} */ const open = new Map();
   /** @type {Map<string, any>} */ const recent = new Map();
   /** Outcomes the owners' events told us, until the card they belong to closes. @type {Map<string, string>} */ const hints = new Map();
@@ -250,7 +250,7 @@ export function createItems({ call, on, now, log = () => {}, emit = () => {}, ex
     async list() {
       if (timer) { clearTimeout(timer); timer = null; }
       await refresh();
-      return { items: [...extra(), ...open.values()], recent: [...recent.values()], ...(partial.size ? { partial: [...partial] } : {}) };
+      return { items: [...extra(), ...open.values()], recent: [...recent.values(), ...extraRecent()], ...(partial.size ? { partial: [...partial] } : {}) };
     },
     start() { schedule(); },
     /** Something this queue holds itself changed (a card was held, answered or ended): say so after the owners' own changes are read too. */

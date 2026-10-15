@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 39 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 15 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
@@ -45,7 +45,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 49 | 0 | none |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 14 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
@@ -175,7 +175,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#approvals), 4 of them only for other modules
+- Tools: [15](tools.md#approvals), 5 of them only for other modules
 - Emits: [1 events](events.md#approvals)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -444,14 +444,14 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"task","actions":["tasks.read","tasks.work"]},{"prefix":"flow-act","actions":["flows.act-standing"]},{"prefix":"flow","actions":["flows.run","flows.define"]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work","tasks.withdraw"],"prefixes":["*"],"mints":[{"prefix":"task","actions":["tasks.read","tasks.work"]},{"prefix":"flow-act","actions":["flows.act-standing"]},{"prefix":"flow","actions":["flows.run","flows.define"]}]}`
 
 ## gate
 
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [13](tools.md#gate), 2 of them only for other modules
+- Tools: [14](tools.md#gate), 3 of them only for other modules
 - Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`

@@ -148,7 +148,7 @@ export default {
     ctx.tool("approvals.hold", {
       internal: true,
       description: "The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.",
-      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" }, input: { type: "object" } }, ["tool", "fields", "from"]),
+      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" }, input: { type: "object" }, thread: { type: "string" } }, ["tool", "fields", "from"]),
       callers: ["module"],
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry holds a call", "denied");
@@ -166,7 +166,7 @@ export default {
         // The call's own input (the registry's, the asker's words never reach it any other way) lets the person read every word and change some of them. It is held only if it is what the card's digest covers.
         const held = input.input && typeof input.input === "object" && !Array.isArray(input.input) && holdFields(input.input).input_sha256 === request.fields.input_sha256 ? input.input : null;
         const group = groupFor(from);
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, ...(typeof input.thread === "string" && input.thread ? { thread: input.thread.slice(0, 120) } : {}), short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
         return { id, line, group };
       },
     });
@@ -366,6 +366,21 @@ export default {
       },
     });
 
+    // The Flows host ends what an agent held for a task whose due time passed (ADR 0054): the cards that session asked for stop waiting and say why, in words, in the queue's recent list and to the asker. The card
+    // stays for the same time an answered one does. A repeat finds nothing waiting. Only the Space's own host calls it.
+    ctx.tool("approvals.withdraw-thread", {
+      description: "Cancel every approval still waiting that an agent session asked for: the task it worked on ran out of time. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: obj({ thread: { type: "string" }, why: { type: "string" } }, ["thread"]),
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:vyred") throw refuse("only the Space's own host cancels held approvals", "denied"); // internal-word: the caller label, not shown text
+        const why = clean(String(input.why || "The task ran out of time, so this was cancelled and nothing was sent.")).slice(0, 200);
+        let n = 0;
+        for (const a of open.values()) if (a.state === "waiting" && a.moment && a.thread && a.thread === String(input.thread)) { a.state = "cancelled"; a.why = why; a.at = now(); n++; }
+        return { cancelled: n };
+      },
+    });
+
     ctx.tool("approvals.status", {
       description: "Where an approval this session asked for stands: { state: waiting | approved | refused | none }, and when approved the proof, once, to attach to the act as kernel_proof. Only the session that asked reads it.",
       input: obj({ id: { type: "string" } }, ["id"]),
@@ -375,6 +390,7 @@ export default {
         const a = open.get(String(input.id));
         if (!a || !mine(meta, a)) return { state: "none" };
         if (a.state === "waiting") return { state: "waiting" };
+        if (a.state === "cancelled") return { state: "cancelled", why: a.why };
         if (a.moment) return a.state === "approved" ? { state: "approved", approval: a.id } : { state: "refused" };
         open.delete(a.id);
         return a.state === "approved" ? { state: "approved", proof: a.proof } : { state: "refused" };
@@ -386,7 +402,8 @@ export default {
     const cardRow = (/** @type {any} */ a) => ({ id: a.id, kind: "approval", title: clean(a.short || a.line || WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op), at: a.at, source: "approvals",
       answer: { tool: "approvals.answer", input: { id: a.id }, fill: ["yes"] } });
     items = createItems({ call: (tool, input) => ctx.call(tool, input), on: (pattern, fn) => (ctx.events && typeof ctx.events.on === "function" ? ctx.events.on(pattern, fn) : () => {}), now, log: ctx.log, emit: (type, payload) => { if (ctx.events && typeof ctx.events.emit === "function") ctx.events.emit(type, payload); },
-      extra: () => { sweep(); return [...open.values()].filter(a => a.state === "waiting").map(cardRow); } });
+      extra: () => { sweep(); return [...open.values()].filter(a => a.state === "waiting").map(cardRow); },
+      extraRecent: () => [...open.values()].filter(a => a.state === "cancelled").map(a => ({ id: a.id, kind: "approval", title: clean(a.short || a.line || a.op), source: "approvals", state: "settled", outcome: "cancelled", detail: a.why, settled_at: a.at })) });
     ctx.tool("approvals.items", {
       description: "Everything else that waits on the person, as cards in this queue: the Gate's held drafts (draft), a session's asks (ask) and the vault's pending grants, passes and requests (access). Answers { items: [{ id, kind, title, detail?, project?, thread?, at, source, answer: { tool, input, fill } }], recent: [the same, settled, with outcome], partial? }. Each card names the owner's tool that settles it; the owner decides, and the card closes with what it decided. Titles never carry a value.",
       input: obj({}),

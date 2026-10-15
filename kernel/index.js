@@ -13,7 +13,7 @@ import { createEventLog } from "./core/events.js";
 import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
-import { createTasks } from "./tasks/tasks.js";
+import { createTasks, taskOpen } from "./tasks/tasks.js";
 import { mayWrite, mayReadTask, judgeWriter, projectTeamOf } from "./gateway/ownership.js";
 import { sealerPresence } from "./core/presence.js";
 import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
@@ -127,6 +127,8 @@ export async function createKernel(cfg) {
     verifyUpgradeReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyUpgradeReceipt !== "function") throw new KernelError("unavailable", "this home cannot check My Cloud's receipt"); return h.verifyUpgradeReceipt(r, c); },
     verifyMoveReceipt: (/** @type {any} */ r, /** @type {any} */ c) => { const h = spaces && typeof spaces.moveHooks === "function" ? spaces.moveHooks() : null; if (!h || typeof h.verifyReceipt !== "function") throw new KernelError("unavailable", "this home cannot check a receipt from another home"); return h.verifyReceipt(r, c); },
     room: roomPort,
+    // a grant lent for ONE task (source flows:task:<id> or vault:lease:<id>) is dead the moment the task is done or skipped, before anything ends the grant (kernel/core/authorize.js)
+    taskOpen: (/** @type {string} */ id) => taskOpen(tasks, id),
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,

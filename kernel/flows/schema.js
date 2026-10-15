@@ -96,7 +96,7 @@ export const STEP_KEYS = {
 const POLICY_KEYS = ["timeout_ms", "retry", "on_fail", "verify"];
 /** Errors that may be retried by name. The runner refuses any other name (denied, outside_caps, taint, outcome_unknown, ... never retry). */
 export const RETRY_CODES = Object.freeze(["timeout", "unavailable", "rate_limited", "upstream_5xx", "connection_reset", "busy"]);
-export const POLICY_LIMITS = Object.freeze({ timeoutMin: 1, timeoutMax: 3_600_000, attempts: 8, backoffMax: 3_600_000, verifyExpr: 500 });
+export const POLICY_LIMITS = Object.freeze({ timeoutMin: 1, timeoutMax: 3_600_000, dueMax: 90 * 86_400_000, attempts: 8, backoffMax: 3_600_000, verifyExpr: 500 });
 
 const OUTPUT_KINDS = ["fields", "note", "draft", "sent", "decision", "file"];
 
@@ -257,7 +257,9 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
  * @param {any} s @param {string} p @param {Problem[]} out @param {Set<string>} ids @param {number} depth @param {{ count: number }} budget @param {boolean} inHandler
  */
 function checkPolicy(s, p, out, ids, depth, budget, inHandler) {
-  if (s.timeout_ms !== undefined && s.kind !== "wait" && !(Number.isInteger(s.timeout_ms) && s.timeout_ms >= POLICY_LIMITS.timeoutMin && s.timeout_ms <= POLICY_LIMITS.timeoutMax)) out.push({ path: `${p}.timeout_ms`, message: `timeout_ms is a whole number of milliseconds, 1 to ${POLICY_LIMITS.timeoutMax}` });
+  // on a step that waits for a person or an agent it is the due time of the task (the runner withdraws the task and fails the step with `timeout`), so it may be days
+  const max = ["ask", "assign", "agent"].includes(s.kind) ? POLICY_LIMITS.dueMax : POLICY_LIMITS.timeoutMax;
+  if (s.timeout_ms !== undefined && s.kind !== "wait" && !(Number.isInteger(s.timeout_ms) && s.timeout_ms >= POLICY_LIMITS.timeoutMin && s.timeout_ms <= max)) out.push({ path: `${p}.timeout_ms`, message: `timeout_ms is a whole number of milliseconds, 1 to ${max}` });
   if (s.retry !== undefined && s.retry !== false) {
     if (!isObj(s.retry)) out.push({ path: `${p}.retry`, message: "retry is false, or { attempts, backoff_ms, on }" });
     else {

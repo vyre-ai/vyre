@@ -24,6 +24,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.read", resource_type: "task", risk: "read", label: "see tasks", gloss: "Open tasks." },
   { action: "tasks.work", resource_type: "task", risk: "write", label: "work on tasks", gloss: "Start, finish or flag a task you were given." },
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
+  { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
 const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
@@ -38,6 +39,10 @@ const DENIALS_TO_STUCK = 3;
 /** The kernel's own read of a record's stage tasks (the gateway's stage gate). Held beside the public api, not on it: a surface cannot reach it. */
 const VIEWS = new WeakMap();
 /** @param {any} api @param {string} record @param {string} stage @returns {{ title: string, state: string, required: boolean }[]} */
+/** Whether a task is still open (not done or skipped). A task the kernel does not hold counts as CLOSED: a grant lent for a task nobody can find holds nothing (fail closed). Held beside the public api like the stage view. */
+const LIVE = new WeakMap();
+/** @param {any} api @param {string} id */
+export const taskOpen = (api, id) => { const v = LIVE.get(api); return v ? v(id) : false; };
 export const stageTasks = (api, record, stage) => { const v = VIEWS.get(api); return v ? v(record, stage) : []; };
 
 const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre://${space}/task/${id}`;
@@ -691,11 +696,31 @@ export function createTasks(cfg) {
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not reopened");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task reopens it");
       await ownsWrite(chain, t, {});
+      if (t.withdrawn) throw new KernelError("bad_state", "a task withdrawn at its due time is not reopened: make a new task");
       if (needsCheck(t)) throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
       if (!TASK_REOPENS.some(x => x.from === t.state && x.to === "ready")) throw new KernelError("bad_state", `a task that is ${t.state} is not reopened`);
       const { answer: _a, ...rest } = t;
       const n = stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
       note(chain, "task.reopened", n, {});
+      return n;
+    },
+
+    /**
+     * The Flows service ends a task its step gave once the step's due time has passed (R051-03). Only the Flows service may: its chain's acting hop is service `flows` and the grant `tasks.withdraw` is in its
+     * manifest, never in a role. The task ends as skipped with `withdrawn: { reason, at }` in ONE write, whatever state it is in (a doer working on it too), so every later start, hand-in, move or check by anyone
+     * is refused (bad_state); the lend of the task to an agent is then ended from the durable `task.withdrawn` event, and a repeat of the call is harmless (an ended task is refused, nothing else changes).
+     * A required stage task stays required: dependants that wait for it keep waiting (skipped and required does not release them).
+     */
+    async withdraw(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ reason?: string }} */ o = {}) {
+      await gate(chain, "tasks.withdraw", urnOf(cfg.space, id));
+      const a = acting(chain);
+      if (!a || a.kind !== "service" || a.id !== "flows") throw new KernelError("not_allowed", "only the Flows service withdraws a task");
+      const t = get_(id);
+      if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not withdrawn");
+      rule(t, "skipped", "flow_deadline");
+      const withdrawn = freeze({ reason: "timeout", at: clock() });
+      const n = put(t, { state: "skipped", withdrawn });
+      note(chain, "task.withdrawn", n, { reason: String((o && o.reason) || "the due time passed").slice(0, 200), withdrawn_reason: "timeout" });
       return n;
     },
 
@@ -911,6 +936,7 @@ export function createTasks(cfg) {
   }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
+  LIVE.set(frozen, (/** @type {string} */ id) => { const t = tasks.get(id); return Boolean(t) && !["done", "skipped"].includes(t.state); });
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));
   return frozen;
 }
