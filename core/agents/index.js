@@ -853,13 +853,14 @@ export default {
 
     // Which task a wake thread is for, and a wake marked failed so one retry may start it again. For the Flows host only.
     ctx.tool("agents.woken", {
-      description: "The task a wake job thread was started for: { task, agent, state }, or null. For the Flows host.",
+      description: "The task a wake job thread was started for, or the thread a task's wake started: { task, agent, thread, failed, tries }, or null. Give a thread or a task. For the Flows host.",
       internal: true, callers: ["module"],
-      input: { type: "object", required: ["thread"], properties: { thread: { type: "string" } } },
+      input: { type: "object", properties: { thread: { type: "string" }, task: { type: "string" } } },
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks which task a job is for"), { code: "denied" }); // internal-word: the caller label, not shown text
-        const row = /** @type {any} */ (db.prepare("SELECT task, agent, failed, tries FROM agents_wakes WHERE thread = ?").get(String(i.thread)));
-        return row ? { task: row.task, agent: row.agent, failed: row.failed === 1, tries: row.tries } : null;
+        // by task: the thread the wake itself recorded for it (a task's own form is the doer's to edit and is never where a thread is read from)
+        const row = /** @type {any} */ (i.thread !== undefined ? db.prepare("SELECT task, agent, thread, failed, tries FROM agents_wakes WHERE thread = ?").get(String(i.thread)) : i.task !== undefined ? db.prepare("SELECT task, agent, thread, failed, tries FROM agents_wakes WHERE task = ? ORDER BY at DESC LIMIT 1").get(String(i.task)) : null);
+        return row ? { task: row.task, agent: row.agent, thread: row.thread, failed: row.failed === 1, tries: row.tries } : null;
       },
     });
     ctx.tool("agents.wake-failed", {

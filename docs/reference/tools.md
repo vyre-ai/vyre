@@ -409,10 +409,11 @@ Mark a task's wake as failed (its job stopped before the task was handed in): on
 
 ### `agents.woken`
 
-The task a wake job thread was started for: { task, agent, state }, or null. For the Flows host.
+The task a wake job thread was started for, or the thread a task's wake started: { task, agent, thread, failed, tries }, or null. Give a thread or a task. For the Flows host.
 
 - Input:
-  - `thread` string, required
+  - `task` string
+  - `thread` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## appearance

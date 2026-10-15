@@ -138,3 +138,23 @@ test("a job that stopped with a bare reason but whose thread says the sign-in ex
   assert.match(stuck[0].reason, /^juno's AI sign-in has expired\./);
   assert.equal(stuck[0].suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
 });
+
+test("a withdrawn task ends the thread its wake started, never one the task's form names", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const wakeRecord = new Map([["t1", "th-real"]]);
+  // the doer edited the task's form to point at someone else's thread
+  const gw = { ask: { get: async () => task({ form: { thread: "th-victim" } }), edit: async () => {} } };
+  const callModule = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    calls.push({ tool, input });
+    if (tool === "agents.woken") return input.task && wakeRecord.has(input.task) ? { task: input.task, agent: "juno", thread: wakeRecord.get(input.task), failed: false, tries: 0 } : null;
+    return {};
+  };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), callModule, clock: () => NOW });
+  await onEvent({ type: "task.withdrawn", data: { task: { id: "t1" } } });
+  const stops = calls.filter((c) => ["threads.stop", "gate.withdraw-thread", "approvals.withdraw-thread"].includes(c.tool));
+  assert.equal(stops.length, 3);
+  assert.ok(stops.every((c) => c.input.thread === "th-real"), "the thread comes from the wake's own record");
+  calls.length = 0;
+  await onEvent({ type: "task.withdrawn", data: { task: { id: "t-never-woken" } } });
+  assert.equal(calls.filter((c) => c.tool === "threads.stop").length, 0, "a task that was never woken stops nothing");
+});

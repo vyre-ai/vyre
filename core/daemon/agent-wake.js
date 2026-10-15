@@ -46,11 +46,11 @@ export function createAgentWake(o) {
     } catch (err) { log(`agent wake ${o.space}: thread ${thread} ended and its task was not checked (${/** @type {Error} */ (err).message})`); }
   }
 
-  /** End the job thread an agent was woken in for a task (the thread is written on the task as form.thread). @param {string} taskId */
+  /** End the job thread an agent was woken in for a task. The thread is the one the wake itself recorded (agents.woken by task), never the task's form: the form is the doer's to edit, and a doer must not be able to aim the stop at another thread. @param {string} taskId */
   async function stopThread(taskId) {
     try {
-      const t = await o.gw.ask.get(o.chain(), taskId);
-      const thread = t && t.form && typeof t.form.thread === "string" ? t.form.thread : null;
+      const w = await o.callModule("agents.woken", { task: taskId }, o.space);
+      const thread = w && w.task === taskId && typeof w.thread === "string" && w.thread ? w.thread : null;
       if (thread) {
         await o.callModule("threads.stop", { thread }, o.space);
         // what the session held for a yes meanwhile is cancelled, with the reason in plain words in the approvals queue

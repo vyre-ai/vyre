@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(flows): when a task is withdrawn at its due time, the agent's thread that is stopped is the one the wake itself recorded (agents.woken by task), never the thread named in the task's form, which the doer can edit.
 - feat(flows): an agent, assign or ask step has a due time (`timeout_ms`, up to 90 days; for an agent the Space's default `flows.agent_due_hours`, 24 hours). Past it the Flows service withdraws the task (new kernel transition `flow_deadline`, action `tasks.withdraw`, event `task.withdrawn`, ADR 0054): nobody can start, hand in or reopen it, the agent's session ends, its lend of the task is dead at once and taken back, what it held for a yes is cancelled with the reason in the approvals queue, and the step fails with `timeout` and runs its nested steps.
 
 ## 0.5.1
