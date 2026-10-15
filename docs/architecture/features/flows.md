@@ -83,7 +83,7 @@ Every call runs under the caller's own chain, and a call with no person or sessi
 - In 0.5, a "For each" step takes up to 50 items in the editor, though the engine allows 1000. A longer list is cut, and the run page gives no note. A Flow written in the code view loops over up to the engine's 1000.
 - An agent step has no deadline in 0.5. A session that ends without finishing is marked stuck. 0.6 plans a due time on the step with a failure path, and a failure panel on every step in the editor (R051-03, R051-04).
 - A Flow email carries no CC, BCC or attachments in 0.5. 0.6 plans all three, with date helpers (R051-08).
-- In 0.5, `flows.describe`, `flows.runs` and `flows.connections` over MCP stay with owners, so a member cannot inspect a Flow that way.
+- A member inspects a Flow, its runs and the Connections it uses only if she made it or it is shared with her (Can use or Can edit); owners and admins inspect every Flow. The app's member door and the MCP tools `flows.describe`, `flows.runs` and `flows.connections` use the one rule (`mayInspectFlow`, `core/flows/member.js`). A Flow she may not inspect answers like one that is not there.
 - When the palette lacks a step, such as a lookup in your own system, build a custom module. A Flow calls its tools with a `call` step and starts from its events. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related

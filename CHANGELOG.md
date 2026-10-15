@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- feat(flows): `flows.describe`, `flows.runs` and `flows.connections` are open to a member over MCP for a Flow she made or one shared with her (Can use or Can edit); a Flow that is not hers or shared is refused, `flows.runs` without an id lists only her Flows' runs, and `flows.connections` names only Flows she may inspect. Owners and admins are served as before.
+- feat(flows): `flows.describe`, `flows.runs` and `flows.connections` are open to a member over MCP for a Flow she made or one shared with her (Can use or Can edit); a Flow that is not hers or shared is refused, `flows.runs` without an id lists only her Flows' runs, and `flows.connections` names only Flows she may inspect. Owners and admins are served as before. The app's member door uses the same rule (one function, `mayInspectFlow`): its Flow list, a Flow, its runs, timeline, health, start and drafts cover only the Flows she made or that are shared with her, where every member used to see every Flow; a Flow she may not inspect answers like one that is not there.
 
 ## 0.5.1
 
