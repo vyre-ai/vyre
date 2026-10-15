@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, valueSources, flowSettings, setFlowSetting } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, flowSettings, setFlowSetting } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -73,4 +73,23 @@ test("Flow settings read from a stored Flow, write back inside the engine's rang
   assert.ok(!("lock" in out) && !("description" in out));
   assert.deepEqual(checkFlow(out), []);
   assert.equal(setFlowSetting(d, "stuckMinutes", "0").rest.stuck_after_ms, undefined, "zero means the default");
+});
+
+test("any other module action is a step of its own that stores as the same call, and the steps with a form of their own stay theirs", () => {
+  const d = { name: "Action", trigger: { kind: "created", type: "contact" }, steps: [] };
+  const s = newStep("action", d, options);
+  assert.notEqual(stepProblem(s, options), null, "an empty action says what to write");
+  Object.assign(s, { action: "tasks.nudge", resource: "vyre://space/tasks", fields: [{ field: "taskId", value: "{after.id}" }, { field: "note", value: "Still open" }] });
+  d.steps.push(s);
+  assert.equal(stepProblem(s, options), null);
+  const stored = toDefinition(d, options);
+  assert.deepEqual(checkFlow(stored), []);
+  assert.deepEqual([stored.steps[0].kind, stored.steps[0].action, stored.steps[0].resource], ["call", "tasks.nudge", "vyre://space/tasks"]);
+  assert.deepEqual(stored.steps[0].input.taskId, { expr: "trigger.after.id" });
+  assert.equal(stored.steps[0].input.note, "Still open", "names keep the case they were typed in");
+  const back = fromDefinition(stored, options);
+  assert.equal(back.steps[0].kind, "action");
+  assert.deepEqual(toDefinition(back, options), stored);
+  const text = fromDefinition({ ...d, steps: [{ id: "x", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "carrier-pigeon" } }] }, options);
+  assert.equal(text.steps[0].kind, "advanced", "a text or email call the editor cannot show stays advanced");
 });

@@ -301,6 +301,13 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a fact" onPress={() => set({ fields: [...(s.fields ?? []), { name: "", kind: "text" }] })} /></View>
         </>
       ) : null}
+      {s.kind === "action" ? (
+        <>
+          <Field label="Action" value={s.action ?? ""} onChangeText={(action) => set({ action })} placeholder="For example records.create" help="A module and what it does, written as module.action." />
+          <Field label="Where it acts" value={s.resource ?? ""} onChangeText={(resource) => set({ resource })} placeholder="For example vyre://space/records" help="Starts with vyre://. It runs with the access of the person who approved the Flow." />
+          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Input" title="What to give it" help="The name the action expects, and the value to hand over." />
+        </>
+      ) : null}
       {s.kind === "subflow" ? (
         <>
           <Select label="The flow to run" value={s.flow ?? ""} options={pick(options.flows ?? [])} placeholder="Choose a flow" onChange={(flow) => set({ flow })} />
