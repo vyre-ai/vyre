@@ -30,6 +30,7 @@ export function RealFlow({ id }: { id: string }) {
   // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
+  const [confirmStop, setConfirmStop] = useState<string | null>(null);
   const [def, setDef] = useState<unknown>(null);
   const [nver, setNver] = useState<{ versions: number; active: number | null }>({ versions: 0, active: null });
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
@@ -136,7 +137,9 @@ export function RealFlow({ id }: { id: string }) {
           </Card>
           <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
-          {canStop(picked_run.state) ? <View className="self-start pt-s2"><Button kind="ghost" size="sm" label={busy ? "Stopping" : "Stop this run"} disabled={busy} onPress={() => stop(picked_run.id)} /></View> : null}
+          {canStop(picked_run.state) ? (confirmStop === picked_run.id ? (
+            <View className="flex-row gap-s2 pt-s2"><Button kind="primary" size="sm" label={busy ? "Stopping" : "Stop it"} disabled={busy} onPress={async () => { await stop(picked_run.id); setConfirmStop(null); }} /><Button kind="ghost" size="sm" label="Keep it" onPress={() => setConfirmStop(null)} /></View>
+          ) : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Stop this run" onPress={() => setConfirmStop(picked_run.id)} /></View>) : null}
         </Sec>
       ) : null}
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
