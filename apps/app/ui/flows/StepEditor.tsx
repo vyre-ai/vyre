@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -310,9 +310,10 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       ) : null}
       {s.kind === "action" ? (
         <>
-          <Field label="Action" value={s.action ?? ""} onChangeText={(action) => set({ action })} placeholder="For example records.create" help="A module and what it does, written as module.action." />
-          <Field label="Where it acts" value={s.resource ?? ""} onChangeText={(resource) => set({ resource })} placeholder="For example vyre://space/records" help="Starts with vyre://. It runs with the access of the person who approved the Flow." />
-          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Input" title="What to give it" help="The name the action expects, and the value to hand over." />
+          <Field label="Search the actions" value={s.actionSearch ?? ""} onChangeText={(actionSearch) => set({ actionSearch })} placeholder="For example document, task, mail" />
+          <Select label="Action" value={s.action ?? ""} options={[...(s.action && !(options.actions ?? []).some((a) => a.action === s.action) ? [[s.action, s.action] as [string, string]] : []), ...actionChoices(options, s.actionSearch ?? "")]} placeholder={(options.actions ?? []).length ? "Choose an action" : "No actions to choose from"} onChange={(action) => { const p = actionPick(options, action); set({ action, resource: p.resource, fields: p.fields }); }} />
+          {s.action ? <Text size="caption" tone="label">{`Acts on ${s.resource ?? ""}. It runs with the access of the person who approved the Flow.`}</Text> : null}
+          {s.action ? <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Input" title="What to give it" help="The name the action expects, and the value to hand over." /> : null}
         </>
       ) : null}
       {s.kind === "subflow" ? (
