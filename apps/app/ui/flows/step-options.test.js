@@ -10,7 +10,7 @@ const flow = (steps) => ({ name: "Options", trigger: { kind: "created", type: "c
 const round = (def) => toDefinition(fromDefinition(def, options), options);
 
 test("an agent step stored with await false stays false when the Flow is saved again", () => {
-  const d = flow([{ id: "a1", kind: "agent", agent: "juno", title: "Look", instructions: "Read it", output: { kind: "note" }, record: { expr: "event.subject" }, await: false }]);
+  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Look", instructions: "Read it", output: { kind: "note" }, record: { expr: "event.subject" }, await: false }]);
   const draft = fromDefinition(d, options);
   assert.equal(draft.steps[0].kind, "agent", "it opens as an agent step, not an advanced one");
   const again = toDefinition(draft, options);
@@ -21,7 +21,7 @@ test("an agent step stored with await false stays false when the Flow is saved a
 });
 
 test("skills on an agent or an assign step round-trip as a typed list, capped at 20 and 60 characters", () => {
-  const d = flow([{ id: "a1", kind: "agent", agent: "juno", title: "Look", instructions: "Read it", output: { kind: "note" }, record: { expr: "event.subject" }, await: true, skills: ["intake", "billing"] }]);
+  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Look", instructions: "Read it", output: { kind: "note" }, record: { expr: "event.subject" }, await: true, skills: ["intake", "billing"] }]);
   const draft = fromDefinition(d, options);
   assert.equal(draft.steps[0].skills, "intake, billing");
   draft.steps[0].skills = Array.from({ length: 25 }, (_, i) => `s${i}`).join(", ");
