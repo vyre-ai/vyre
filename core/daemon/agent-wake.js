@@ -18,6 +18,8 @@ const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
 export function createAgentWake(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
+  /** @type {Set<string>} tasks whose job already ended unstarted once: the second time the task is stuck, in words */
+  const retried = new Set();
   /**
    * A task the agent could not start or did not finish is never left open in silence: it is marked stuck, as the agent itself (the assigner on the chain, the one shape the kernel takes for the doer's own
    * flag), with what happened in plain words and what to do. It surfaces in Needs you for the assigner and approver, and the run shows it. The wake is marked failed so one retry may start it again.
@@ -39,6 +41,13 @@ export function createAgentWake(o) {
       if (!w || !w.task) return;
       const t = await o.gw.ask.get(o.chain(), w.task);
       if (!t || !["ready", "working"].includes(t.state)) return;
+      // A job that ended before the agent ever started its task (the moment the lend is held to the job's thread, a refusal there, a crash at launch) is woken once more, quietly: the task is not stuck yet.
+      if (t.state === "ready" && !retried.has(t.id)) {
+        retried.add(t.id);
+        await o.callModule("agents.wake-failed", { task: t.id, agent: t.doer.id }, o.space).catch(() => null);
+        await onEvent({ type: "task.readied", data: { task: { id: t.id } } });
+        return;
+      }
       // the stop reason is often bare; what the thread itself said last (an expired sign-in says so there) is the better words
       let said = reason || "";
       if (!AUTH.test(said)) { try { const g = await o.callModule("threads.get", { thread, limit: 1 }, o.space); const th = g && (g.thread || g.data && g.data.thread); const line = th && (th.last_line || th.stopped_reason); if (line) said = `${said} ${String(line)}`.trim(); } catch { /* the thread could not be read: the reason given stands */ } }

@@ -167,3 +167,26 @@ test("a task an agent handed on wakes the agent for the person the kernel record
   assert.equal(r.woke.find(w => w.task === "h2").approver, undefined, "no person, no approver");
   assert.equal(r.woke.find(w => w.task === "h3").approver, "ben", "a person who assigned it stays the approver");
 });
+
+test("a job that ends before its agent started the task is woken once more, quietly; the second time the task is stuck", async () => {
+  const woke = /** @type {any[]} */ ([]), marked = /** @type {any[]} */ ([]), stuck = /** @type {any[]} */ ([]);
+  const t = task({ id: "r1" });
+  const gw = { ask: { get: async () => t, edit: async () => {}, stuck: async (/** @type {any} */ c, /** @type {string} */ id, /** @type {any} */ info) => { stuck.push({ id, info }); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: x => ({ for: x.doer.id }), clock: () => NOW, log: () => {},
+    callModule: async (tool, input) => {
+      if (tool === "agents.wake") { woke.push(input); return { thread: `job${woke.length}`, already: false }; }
+      if (tool === "agents.woken") return { task: "r1", agent: "juno", failed: false, tries: 0 };
+      if (tool === "agents.wake-failed") { marked.push(input); return {}; }
+      return {};
+    } });
+  await onEvent(created("r1"));
+  assert.equal(woke.length, 1);
+  await onEvent.threadEnded("job1", "stopped");
+  assert.equal(woke.length, 2, "woken again once, the task still ready");
+  assert.deepEqual(marked, [{ task: "r1", agent: "juno" }], "the first wake's claim was freed for the retry");
+  assert.deepEqual(stuck, [], "not stuck after the first end");
+  await onEvent.threadEnded("job2", "stopped");
+  assert.equal(woke.length, 2, "and not a third time");
+  assert.equal(stuck.length, 1, "the second end marks it stuck, in words");
+  assert.match(stuck[0].info.reason, /juno stopped before it finished/);
+});
