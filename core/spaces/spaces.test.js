@@ -2040,3 +2040,26 @@ test("the identity list the door admits devices from is the same whether it is r
   assert.equal(webEntry.held, "web", "the held-web key is still held web when the name is stored: the door refuses it");
   assert.equal(byState.find((/** @type {any} */ e) => e.eid === pk.eid).held, undefined, "a proven key is not held web");
 });
+
+test("spaces.names: the Space's own host reads this Space's name and a member's Vyre name for what a Flow run prints; nobody else may, and a stranger has no name", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const { d, space } = await harlow(t, w);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const casey = await claimIdentity({ name: "casey", code: (await reserve("casey")).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => Date.now(), agree: pt() });
+  assert.ok(!(await d.call("spaces.members.add", { space, person: casey.id, role: "member" })).error);
+  await d.ok("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
+  // refused to every caller but the host: a person's CLI, another module, a model
+  for (const caller of ["cli", "module:wink", "module:flows", "mcp"]) {
+    const r = await d.call("spaces.names", { space }, caller);
+    assert.ok(r.error, `${caller} is refused`);
+  }
+  const mine = await d.ok("spaces.names", { space }, "module:vyred");
+  assert.deepEqual(Object.keys(mine).sort(), ["person", "space"]);
+  assert.equal(mine.person, null, "no person asked, no person name");
+  assert.ok(mine.space === null || typeof mine.space === "string");
+  const alex = await d.ok("spaces.names", { space, person: (await d.ok("spaces.identity.status", {})).id }, "module:vyred");
+  assert.equal(alex.person, "alex", "the owner's own claimed name, without the .vyre.run ending");
+  assert.equal((await d.ok("spaces.names", { space, person: casey.id }, "module:vyred")).person, "casey", "a member whose Vyre name the directory confirmed");
+  assert.equal((await d.ok("spaces.names", { space, person: "per_nobodyatall000000000000000" }, "module:vyred")).person, null, "a stranger has no name: the run says a team member");
+});

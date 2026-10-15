@@ -10,7 +10,7 @@ import { isRecordTrigger } from "./logic.js";
 /** @typedef {{ title: string, items: Item[], object?: string, soon?: Item[] }} Group  `object`: the object's own label, shown before a field in a chip */
 
 /** `{path}`, and for a date `{path - 1 day}`, `{path + 2 hours as date}`: a path, then an optional offset and an optional format (the engine's own grammar, logic.js). The path is group 1, the rest group 2. */
-export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}/gi;
+export const TOKEN_RE = /(?<!\{)\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}(?!\})/gi;
 
 /** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string, suffix: string })[]} */
 export function parseTemplate(text) {
@@ -33,11 +33,11 @@ export const tokensOf = (text) => /** @type {{ token: string, path: string, suff
 export const HELPERS = /** @type {{ token: string, label: string, engine: boolean }[]} */ ([
   { token: "{today}", label: "Today's date", engine: true },
   { token: "{now}", label: "The date and time now", engine: true },
-  { token: "{run.number}", label: "The run number", engine: false },
-  { token: "{flow.name}", label: "The Flow's name", engine: false },
-  { token: "{approver.name}", label: "The approver's name", engine: false },
-  { token: "{space.name}", label: "The Space's name", engine: false },
-  { token: "{me.name}", label: "Your name", engine: false },
+  { token: "{run.number}", label: "The run number", engine: true },
+  { token: "{flow.name}", label: "The Flow's name", engine: true },
+  { token: "{approver.name}", label: "The approver's name", engine: true },
+  { token: "{space.name}", label: "The Space's name", engine: true },
+  { token: "{me.name}", label: "Your name (the person who started the run)", engine: true },
 ]);
 
 /** Sealed field names come as `sealed: true` on a field. @param {{ name: string, label: string, sealed?: boolean }} f */

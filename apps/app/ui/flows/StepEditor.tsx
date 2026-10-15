@@ -13,6 +13,7 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
+import { FailurePanel } from "./FailurePanel";
 import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
@@ -73,7 +74,7 @@ function Condition({ s, setStep, draft, options }: { s: DraftStep; setStep: (pat
 }
 
 /** The settings of one step, whatever its kind. */
-export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setStep: (id: string, patch: Partial<DraftStep>) => void; draft: Draft; options: Options }) {
+export function StepEditor({ s, setStep, draft, options, inHandler }: { s: DraftStep; setStep: (id: string, patch: Partial<DraftStep>) => void; draft: Draft; options: Options; /** The step runs only when something failed, so it has no failure steps of its own. */ inHandler?: boolean }) {
   const links = recordSources(draft, s.id, options);
   const set = (patch: Partial<DraftStep>) => setStep(s.id, patch);
   const sets = (patch: Partial<DraftStep>) => setStep(s.id, patch);
@@ -165,7 +166,8 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         <>
           <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find" || x.kind === "filter").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
           <Field label="Call each one" value={s.as ?? "item"} onChangeText={(as) => set({ as })} help="Inside, read it as this name, for example item.id." />
-          <Text size="caption" tone="label">Up to 50 items. The steps inside run once for each.</Text>
+          <Field label="Go through at most" kind="number" value={String(s.max ?? 50)} onChangeText={(max) => set({ max: max === "" ? "" : Number(max) })} help="The most items to handle: 50 unless you say, 1000 at the most. When the list is longer, the run page says it was cut." />
+          <Text size="caption" tone="label">The steps inside run once for each.</Text>
         </>
       ) : null}
       {s.kind === "parallel" ? <Text tone="muted">Each side runs at the same time. The Flow carries on when every side is done. Add steps to each side below.</Text> : null}
@@ -293,6 +295,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
+      <FailurePanel s={s} setStep={set} inHandler={inHandler} />
     </>
   );
 }

@@ -170,6 +170,15 @@ export function createFlowsHost(o) {
       // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
       sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
+      // The names a run can print about itself ({approver.name}, {me.name}, {space.name}): a person's name from the Space's member list, the Space's own name. A name the host cannot find is null, and prints as nothing.
+      names: async (/** @type {{ space?: string, person?: string }} */ q) => {
+        if (typeof o.callModule !== "function") return null;
+        try {
+          const r = await o.callModule("spaces.names", { space, ...(q.person ? { person: q.person } : {}) });
+          const v = q.person ? r && r.person : r && r.space;
+          return typeof v === "string" && v ? v : null;
+        } catch { return null; }
+      },
       // A pool is the team members (people and assistants) whose `role` is the pool's name, on any project: the same records the team screen shows. A member's skills are the words in its
       // `skills` field (comma separated) and its role.
       pool: async (/** @type {string} */ _space, /** @type {string} */ name) => {

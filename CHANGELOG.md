@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): a run can print its own number among the Flow's, the Flow's name, who approved it, who started it ("your name") and the Space's name: `{run.number}`, `{flow.name}`, `{approver.name}`, `{me.name}`, `{space.name}`, offered under Insert a value. They are fixed once when the run starts, a name the server cannot find reads "a team member" (or "this Space"), never nothing, and the number comes from a counter kept with the Flow that only grows (pruning runs never takes a number back). A trigger field that has a helper's name stays reachable as `{trigger.me.name}`: the helper wins the short name. The host reads the names through the new `spaces.names` (host only, no person on the call).
+- feat(flows): text and lists. A brace written as `\{` is a brace (`\{name}` prints as {name}); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown escaped. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
+- feat(flows): text and lists. A token written in doubled braces is a literal (`{{name}}` prints as {name} and fills nothing); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown doubled. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
+- feat(flows): the Flows editor has a failure panel on every step: "If something goes wrong" sets the time limit for one try, the number of tries and the wait between them, which errors are tried again, Check the work (with a read-back for record steps) and "If this fails, run other steps"; the steps of a failure path are drawn under the card like Then and Else, and the Flow has an "If the run fails" lane. A stored Flow with these settings opens as editable cards and saves back unchanged; a step with a setting the panel cannot show stays an Advanced step. Steps in a failure path read `{error.message}`, `{error.code}` and `{error.step}`.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

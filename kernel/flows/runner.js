@@ -778,7 +778,8 @@ export class FlowRunner {
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
     const byModel = (callerChain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
-    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {} }, { trust: byModel ? "external" : "member", data: input ?? {} });
+    const starter = (callerChain.hops || []).find((/** @type {any} */ h) => h.actor.kind === "person");
+    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {}, ...(starter ? { by: String(starter.actor.id) } : {}) }, { trust: byModel ? "external" : "member", data: input ?? {} });
   }
 
   /** Wait for every started run to reach a resting state. For tests and for shutdown. */
@@ -803,6 +804,25 @@ export class FlowRunner {
   async #start(f, trig, src) {
     const id = runIdFor(f.id, trig.key);
     return this.#locked(id, () => this.#startLocked(id, f, trig, src));
+  }
+
+  /** The next run number of a Flow, from the store's counter that only grows; a store with none falls back to one more than the highest a surviving run has. @param {string} flow */
+  async #nextNumber(flow) {
+    if (typeof /** @type {any} */ (this.store).nextRunNumber === "function") return /** @type {any} */ (this.store).nextRunNumber(flow);
+    const runs = await this.store.listRuns({ flow, limit: 1000 });
+    const top = runs.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, Number(r.number) || 0), 0);
+    return (top || runs.length) + 1;
+  }
+
+  /** The display names a run can print (the approver, the starter, the Space), from the host's `names` port; one it cannot find is left out here and the scope says "a team member" or "this Space" in its place. @param {any} f @param {string} [starter] */
+  async #namesFor(f, starter) {
+    const get = /** @type {any} */ (this.ports).names;
+    if (typeof get !== "function") return {};
+    const one = async (/** @type {{ person?: string }} */ q) => { try { const v = await get({ space: f.space, ...q }); return typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : undefined; } catch { return undefined; } };
+    const approver = f.approver && f.approver.kind === "person" ? await one({ person: String(f.approver.id) }) : undefined;
+    const by = starter ? (f.approver && String(f.approver.id) === starter ? approver : await one({ person: starter })) : undefined;
+    const space = await one({});
+    return { ...(approver ? { approver } : {}), ...(by ? { starter: by } : {}), ...(space ? { space } : {}) };
   }
 
   /** @param {string} id @param {any} f @param {any} trig @param {any} src */
@@ -836,6 +856,10 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver, label: String(f.flow.label || f.flow.name || "").slice(0, 120) };
+    // The words a Flow can print about itself, fixed once when the run starts (so a replay prints the same): this run's number among the Flow's, who approved it, who started it, and the Space's name.
+    run.number = await this.#nextNumber(f.id);
+    if (typeof trig.by === "string" && trig.by) run.started_by = trig.by;
+    run.names = await this.#namesFor(f, run.started_by);
     const about = recordOfTrigger(trig);
     if (about) run.record = about;
     if (hold) {
@@ -1124,7 +1148,7 @@ export class FlowRunner {
     const run = ctx.run, t = run.trigger;
     const inh = run.inherit;                                 // a lane of a parallel step reads what its parent had read when it split
     const trigger = inh ? inh.trigger : t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
-    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
+    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow, number: run.number ?? null, flow_name: run.label || run.flow, approver_name: (run.names && run.names.approver) || NAME_FALLBACK.person, starter_name: (run.names && (run.names.starter || run.names.approver)) || NAME_FALLBACK.person, space_name: (run.names && run.names.space) || NAME_FALLBACK.space }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
   }
 
   /** @param {any} ctx @param {string} key @param {Partial<import('./store.js').Run['steps'][string]>} patch */
@@ -1170,10 +1194,12 @@ export class FlowRunner {
         if (!items) {
           const list = ev(s.over);
           items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-          await this.#mark(ctx, key, { status: "started", output: { items } });
+          // a list longer than the limit is cut, and the ledger says so (the run page shows "cut at 50 of 200"); recorded once with the items, so a replay says the same
+          await this.#mark(ctx, key, { status: "started", output: { items, ...(Array.isArray(list) && list.length > items.length ? { total: list.length, cut: true } : {}) } });
         }
         for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-        return { count: items.length };
+        const was = (this.#led(ctx, key) || {}).output || {};
+        return { count: items.length, ...(was.cut ? { cut: true, total: was.total } : {}) };
       });
       return;
     }
@@ -2065,6 +2091,8 @@ function deviceOffline(r) {
 const SERVICE_BODY_CAP = 64 * 1024;
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
+/** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
+const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
 const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
 
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }
