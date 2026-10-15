@@ -47,7 +47,7 @@ export const PRIVACY_ROWS = [
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
-const ADMIN_ROWS = ["/u/settings/roles", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
+const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
 
@@ -89,6 +89,7 @@ function all(/** @type {string} */ space) {
       ["Roles", "Decide what each person can do, see and use", "/u/settings/roles", "users"],
       ["Rules", "Set what an agent never does, drafts only, or asks about first", "/u/settings/rules", "hand"],
       ["Privacy and sealing", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
+      ["Audit", "See who changed what on a record, with the value before and after", "/u/settings/audit", "clock"],
       ["Kits", "Add or remove ready-made sets for a kind of work", "/u/kits", "kits"],
       ["Engineer", "Set up your Space by describing what you want", "/u/settings/engineer", "bolt"],
     ] },
