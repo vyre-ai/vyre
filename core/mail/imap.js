@@ -858,7 +858,7 @@ export function imapAdapter(deps = {}) {
       const domain = cfg.address.split("@").pop();
       const message_id = `<${crypto.randomBytes(12).toString("hex")}.${now().toString(36)}@${domain}>`;
       const text = rfc822Text({
-        from: cfg.address, to, cc, subject: c.subject, body: c.body,
+        from: cfg.address, to, cc, subject: c.subject, body: c.body, ...(Array.isArray(c.attachments) && c.attachments.length ? { attachments: c.attachments } : {}),
         in_reply_to: c.in_reply_to || undefined, references: c.references || undefined,
         date: new Date(now()), message_id,
       });

@@ -13,6 +13,7 @@
 import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createAgentWake } from "./agent-wake.js";
+import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
@@ -143,6 +144,18 @@ export function createFlowsHost(o) {
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
+      // The facts a person should see before they say yes to a call, filled in here so the one yes is a yes to exactly them: the files on an email get their name, size and content hash, read as the approver
+      // (an unreadable file stops the step here, in words, before anyone is asked). The same facts ride into the call, which holds the files to those hashes (lib/connectors/attachments.js).
+      preview: async (/** @type {any} */ chain, /** @type {string} */ _action, /** @type {any} */ input, /** @type {string | null} */ by) => {
+        if (!input || typeof input !== "object" || !Array.isArray(input.attachments) || !input.attachments.length) return input;
+        const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+        if (!person) return input;
+        const c = personChain(String(person.actor.id));
+        const facts = await holdFiles({ kernel: { chain: async () => c, drive: gw.drive } }, {}, input.attachments);
+        // the person who started the run (or whose change fired it) must be able to read each file too: the lesser of the two chains, as for a linked record
+        if (by && by !== String(person.actor.id)) { const theirs = personChain(by); await holdFiles({ kernel: { chain: async () => theirs, drive: gw.drive } }, {}, input.attachments.map((/** @type {any} */ a) => ({ path: a && a.path }))); }
+        return { ...input, attachments: facts };
+      },
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
@@ -414,8 +427,18 @@ export function createFlowsHost(o) {
         if ((await sh.mint.list({ source: lendSource(t.id) })).some((/** @type {any} */ g) => g.subject && g.subject.actor && g.subject.actor.id === t.doer.id)) return;
         await sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(t.doer.id), space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 } }, source: lendSource(t.id), reason: "the agent was given this task" });
       };
-      const reclaim = (/** @type {string} */ id) => sh.mint.end({ source: lendSource(id), reason: "the task is over" });
-      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
+      // The connections the approved Kit names for this task are lent to the agent for the one job, and only when a person approved the task: that person must hold each one (the vault refuses otherwise). With no approver
+      // the agent lends nothing and runs on its own access. The lend ends with the task (reclaim) or at the day's end.
+      const lendConnections = async (/** @type {any} */ t) => {
+        const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : "";
+        if (!approver || !o.callModule) return;
+        let named;
+        try { named = await o.callModule("flows.kit.credentials", { task: String(t.id) }); } catch { return; }   // no approved Kit version names credentials for it: nothing to lend
+        if (!named || !Array.isArray(named.credentials) || !named.credentials.length) return;
+        await o.callModule("vault.connections.lend", { task: String(t.id), agent: String(t.doer.id), connections: named.credentials, until: clock() + 24 * 3600 * 1000, approver });
+      };
+      const reclaim = async (/** @type {string} */ id) => { await sh.mint.end({ source: lendSource(id), reason: "the task is over" }); try { await o.callModule("vault.connections.end", { task: String(id), reason: "the task is over" }); } catch { /* none was lent */ } };
+      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend: async (/** @type {any} */ t) => { await lend(t); await lendConnections(t); }, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
       k.log.subscribe("agent-wake", {}, wakeUp);
       // A job that ends with its task still open is not left in silence (core/daemon/agent-wake.js).
       if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });

@@ -23,7 +23,7 @@
     },
     "cli": ["connect"]
   },
-  "needs": { "vault": ["per-connection"] },
+  "needs": { "vault": ["per-connection"], "kernel": { "actions": ["drive.read"], "prefixes": ["file/*"] } },
   "teaches": {
     "tips": [
       {"id": "sign-in", "text": "Connect a Google account in a browser with `vyre connect add google home --sign-in`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre connect add google home --sign-in", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},

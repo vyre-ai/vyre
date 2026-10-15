@@ -27,7 +27,7 @@ const SRC = fs.readFileSync(new URL("../apps-script.gs", import.meta.url), "utf8
 /**
  * @typedef {{ id: string, thread_id: string, from: string, to: string, cc?: string, subject: string,
  *   date: string, message_id: string, body: string, attachments?: string[], unread?: boolean, reply_to?: string }} FakeMessage
- * @typedef {{ kind: "send" | "reply", to: string, cc: string, bcc: string, subject: string, body: string, thread_id?: string, in_reply_to?: string }} FakeSent
+ * @typedef {{ kind: "send" | "reply", to: string, cc: string, bcc: string, subject: string, body: string, thread_id?: string, in_reply_to?: string, files?: { name: string, type: string, text: string }[] }} FakeSent
  */
 
 /** Sample messages: Dana writing to Alex, and Alex's answer. */
@@ -48,7 +48,7 @@ export function sampleMessages() {
 /**
  * Load apps-script.gs into a fresh vm context with stub Gmail, Session, PropertiesService and
  * ContentService. `doPost(obj)` runs the script's doPost and returns the parsed JSON it answered.
- * @param {{ token?: string | null, address: string, messages: FakeMessage[], sent?: FakeSent[] }} o
+ * @param {{ token?: string | null, address: string, messages: FakeMessage[], sent?: FakeSent[], legacy?: boolean }} o
  */
 export function loadScript(o) {
   const sent = o.sent || [];
@@ -74,7 +74,7 @@ export function loadScript(o) {
       getHeader: name => (name === "Message-ID" ? m.message_id : ""),
       getAttachments: () => (m.attachments || []).map(n => ({ getName: () => n })),
       reply: (body, opts = {}) => {
-        sent.push({ kind: "reply", to: m.reply_to || m.from, cc: opts.cc || "", bcc: opts.bcc || "",
+        sent.push({ kind: "reply", to: m.reply_to || m.from, cc: opts.cc || "", bcc: opts.bcc || "", ...filesOf(opts),
           subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`, body, thread_id: m.thread_id, in_reply_to: m.message_id });
       },
     };
@@ -91,6 +91,12 @@ export function loadScript(o) {
     }
     return true;
   }
+  /** The files GmailApp was given, as the test reads them (name, type, text). */
+  const filesOf = (/** @type {any} */ opts) => (Array.isArray(opts.attachments) && opts.attachments.length ? { files: opts.attachments.map((/** @type {any} */ b) => ({ name: b.getName(), type: b.getContentType(), text: Buffer.from(b.bytes).toString("utf8") })) } : {});
+  const Utilities = {
+    base64Decode: (/** @type {string} */ s) => Array.from(Buffer.from(String(s), "base64")),
+    newBlob: (/** @type {number[]} */ bytes, /** @type {string} */ type, /** @type {string} */ name) => ({ bytes, getName: () => name, getContentType: () => type }),
+  };
   const GmailApp = {
     search(q, start, max) {
       const hits = msgs.filter(m => matches(m, q));
@@ -99,7 +105,7 @@ export function loadScript(o) {
       return [...latest.values()].sort((a, b) => byDate(b, a)).slice(start, start + max).map(m => threadOf(m.thread_id));
     },
     getMessageById(id) { const m = msgs.find(x => x.id === id); if (!m) throw new Error("Invalid argument: id"); return wrap(m); },
-    sendEmail(to, subject, body, opts = {}) { sent.push({ kind: "send", to, cc: opts.cc || "", bcc: opts.bcc || "", subject, body }); },
+    sendEmail(to, subject, body, opts = {}) { sent.push({ kind: "send", to, cc: opts.cc || "", bcc: opts.bcc || "", ...filesOf(opts), subject, body }); },
   };
   const ContentService = {
     MimeType: { JSON: "application/json" },
@@ -107,11 +113,12 @@ export function loadScript(o) {
   };
   const ctx = vm.createContext({
     GmailApp,
+    Utilities,
     ContentService,
     Session: { getEffectiveUser: () => ({ getEmail: () => o.address }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === "vyre_token" ? o.token ?? null : null) }) },
   });
-  vm.runInContext(SRC, ctx, { filename: "apps-script.gs" });
+  vm.runInContext(o.legacy ? SRC.replace(", attachments: true", "") : SRC, ctx, { filename: "apps-script.gs" });
   return {
     sent,
     /** @param {string} contents the raw POST body */
@@ -128,14 +135,14 @@ export function loadScript(o) {
  * Start the fake. It closes when the test ends.
  * @param {{ after: (fn: () => any) => void }} t
  * @param {{ token: string, address: string, messages?: FakeMessage[], redirect?: boolean, html?: boolean,
- *   redirectTo?: string, slow?: number, huge?: boolean }} o
+ *   redirectTo?: string, slow?: number, huge?: boolean, legacy?: boolean }} o
  */
-export async function startFakeAppsScript(t, { token, address, messages = sampleMessages(), redirect = true, html = false, redirectTo, slow = 0, huge = false }) {
+export async function startFakeAppsScript(t, { token, address, messages = sampleMessages(), redirect = true, html = false, redirectTo, slow = 0, huge = false, legacy = false }) {
   /** @type {FakeSent[]} */ const sent = [];
   /** @type {any[]} */ const posts = [];
   /** @type {string[]} */ const postUrls = [];
   /** @type {{ method: string, url: string, headers: Record<string, any>, body: string }[]} */ const echoGets = [];
-  const script = loadScript({ token, address, messages, sent });
+  const script = loadScript({ token, address, messages, sent, legacy });
   /** @type {Map<string, string>} */ const echoes = new Map();
   const execPath = "/macros/s/AKfycbFakeDeployment0123456789/exec";
 

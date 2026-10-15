@@ -44,3 +44,33 @@ test("a grant to project:<id> names a project record that exists", { timeout: 12
   await assert.rejects(() => give("project:nope"), { code: "bad_input" });
   assert.equal((await give(`project:${proj.id}`)).status, "active");
 });
+
+test("personMay: only the vault's handle answers whether a member may use a credential, and only allow or deny", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const h = d.kernel.kernelFor(VAULT), owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const vid = await h.vault.personalVault();
+  const res = `vyre://${space}/vault/${vid}/connection/harlow-drive`;
+  assert.equal(await h.vault.personMay(owner, "vault.call", res), true, "the owner holds it");
+  assert.equal(await h.vault.personMay("per_nobody1234567890abcdefgh", "vault.call", res), false, "a stranger does not");
+  await assert.rejects(() => h.vault.personMay(owner, "records.update", res), { code: "bad_input" }, "only the use of a credential is asked");
+  for (const m of [{ name: "mail", needs: { kernel: { reach: true } } }, { name: "flows", needs: { kernel: { reach: true } } }, { name: "sessions", needs: { kernel: {} } }]) {
+    const other = d.kernel.kernelFor(m);
+    assert.equal(other.vault, undefined, `${m.name} has no vault handle`);
+    assert.equal(other.personMay, undefined, `${m.name} cannot ask`);
+  }
+});
+
+test("personMay is on the vault, mail and comms handles only, and each asks only about its own actions", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  for (const name of ["mail", "comms", "google"]) {
+    const h = d.kernel.kernelFor({ name, needs: {} });
+    assert.equal(typeof h.personMay, "function", `${name} has it`);
+    assert.equal(await h.personMay(owner, "drive.read", `vyre://${space}/file/Rota/week1.pdf`), true, "the owner may read a file");
+    assert.equal(await h.personMay("per_nobody1234567890abcdefgh", "drive.read", `vyre://${space}/file/Rota/week1.pdf`), false);
+    await assert.rejects(() => h.personMay(owner, "vault.call", `vyre://${space}/vault/x/connection/y`), { code: "bad_input" }, `${name} asks only about files`);
+  }
+  for (const name of ["sessions", "flows", "agents", "files", "work", "documents"]) assert.equal(d.kernel.kernelFor({ name, needs: {} }).personMay, undefined, `${name} does not have it`);
+  const vault = d.kernel.kernelFor(VAULT);
+  await assert.rejects(() => vault.vault.personMay(owner, "drive.read", `vyre://${space}/file/x`), { code: "bad_input" }, "the vault asks only about credentials");
+});

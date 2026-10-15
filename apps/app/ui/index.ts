@@ -11,6 +11,8 @@ export type { IconName } from "./components/Icon";
 export { Button, IconButton } from "./components/Button";
 export { Chip } from "./components/Chip";
 export { ChipToken } from "./components/ChipToken";
+export { FilePicks } from "./components/FilePicks";
+export type { FilePick, FileChoice } from "./components/FilePicks";
 export { StatusPill } from "./components/StatusPill";
 export { PickerList, optionId } from "./components/PickerList";
 export type { PickerItem } from "./components/PickerList";

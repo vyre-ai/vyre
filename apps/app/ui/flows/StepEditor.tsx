@@ -9,6 +9,7 @@ import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
+import { AttachmentsField } from "./AttachmentsField";
 import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
@@ -114,6 +115,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                     help="They go into the prompt that wakes the agent for this task, after its own instructions (who to escalate to, which email alias to use outside)." />
                   <Select label="The record to hand over" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
+                  <Text size="caption" tone="label">{`Runs as ${s.agent || "the agent"}, with its own access. A Connection the approved Kit names for the task is lent for that task only, and only from someone who holds it.`}</Text>
                 </>
               ) : null}
               {s.kind === "assign" ? (
@@ -138,10 +140,12 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <SendWith kind="email" s={s} set={set} options={options} />
                   <AddressField label="From (optional)" value={s.from ?? ""} onChange={(from) => setStep(s.id, { from: from || undefined })} placeholder="The sending account's own address" draft={draft} stepId={s.id} options={options} note="Sends only if this address is on the sending account's domain. If it is not, the run stops and tells you." />
                   <AddressField label="To" many value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="Cc (optional)" many value={s.cc ?? ""} onChange={(cc) => setStep(s.id, { cc: cc || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="Bcc (optional)" many value={s.bcc ?? ""} onChange={(bcc) => setStep(s.id, { bcc: bcc || undefined })} placeholder="Copied without the others seeing" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
                   <AddressField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
-                  <ComingNext />
+                  <AttachmentsField value={s.attachments ?? ""} onChange={(attachments) => setStep(s.id, { attachments: attachments || undefined })} draft={draft} stepId={s.id} options={options} />
                 </>
               ) : null}
               {s.kind === "ask" ? (
@@ -298,14 +302,6 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
 }
 
 /** What the sending service cannot do yet: shown, switched off, never faked. */
-function ComingNext() {
-  return (
-    <View className="gap-s2">
-      {["CC", "BCC", "Attachments"].map((x) => <Field key={x} label={x} name={x} value="" disabled placeholder="Coming next" />)}
-      <Text size="caption" tone="label">CC, BCC and attachments (a file from Files, or one an earlier step made) need the sending service to carry them. They are next.</Text>
-    </View>
-  );
-}
 
 /** A new connection, inline: a name, one https address, how the key is sent and which Vault item holds it. It is saved as a Connection in the Vault (connectors.connection.create); the key itself is never typed here. */
 function NewConnection({ options, onAdded }: { options: Options; onAdded: (name: string) => void }) {

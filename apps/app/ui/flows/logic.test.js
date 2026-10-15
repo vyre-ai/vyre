@@ -423,3 +423,44 @@ test("Look up one record and Keep only some of a list are in the palette and rou
   assert.equal(stepProblem({ id: "filter2", kind: "filter", from: "", where: "" }, o), "Choose the list to narrow. Add a Find records step first.");
   assert.equal(newStep("filter", { ...d, steps: d.steps.slice(0, 1) }, o).from, "steps.find1.rows");
 });
+
+test("cc and bcc on an email step are saved in the definition and read back, on both ways of sending", () => {
+  for (const sendStep of [undefined, "comms.email"]) {
+    const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", ...(sendStep ? { sendStep } : {}), to: "{email}", cc: "ops@harlow.example", bcc: "{owner}", subject: "Hello", body: "Hi" }] };
+    const def = toDefinition(d);
+    assert.ok(def.steps[0].input.cc && def.steps[0].input.bcc, "both are in the step's input");
+    const back = fromDefinition(def).steps[0];
+    assert.equal(back.cc, "ops@harlow.example"); assert.equal(back.bcc, "{owner}"); assert.equal(back.kind, "email");
+  }
+  const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
+  assert.equal("cc" in none.steps[0].input, false, "left out when empty");
+});
+
+test("files on an email step are saved as a list of paths (typed, or a value from an earlier step) and read back, on both ways of sending", () => {
+  for (const sendStep of [undefined, "comms.email"]) {
+    const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", ...(sendStep ? { sendStep } : {}), to: "a@b.co", attachments: "Rota/week1.pdf, {signed_copy}", subject: "Rota", body: "Attached" }] };
+    const def = toDefinition(d);
+    const att = def.steps[0].input.attachments;
+    assert.equal(att.length, 2);
+    assert.deepEqual(att[0], { path: "Rota/week1.pdf" });
+    assert.ok(att[1].path && att[1].path.expr, "a value from an earlier step is an expression, resolved when the step runs");
+    const back = fromDefinition(def).steps[0];
+    assert.equal(back.kind, "email");
+    assert.equal(back.attachments, "Rota/week1.pdf, {signed_copy}");
+  }
+  const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
+  assert.equal("attachments" in none.steps[0].input, false, "left out when empty");
+});
+
+test("the file picks keep a list of paths and tokens as the step's text, and a Documents step's file is offered as a value", async () => {
+  const { attList, attText } = await import("./logic.js");
+  const { insertList } = await import("./template.js");
+  assert.deepEqual(attList("Rota/week1.pdf, {letter.path}\n"), ["Rota/week1.pdf", "{letter.path}"]);
+  assert.equal(attText(attList("a.pdf,b.pdf")), "a.pdf, b.pdf");
+  assert.equal(attList(Array.from({ length: 14 }, (_, i) => `f${i}.pdf`).join(",")).length, 10, "ten at most");
+  const doc = { id: "letter", kind: "advanced", raw: { id: "letter", kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: "engagement" } } };
+  const draft = { name: "F", trigger: { kind: "signup" }, steps: [doc, { id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] };
+  const groups = insertList(/** @type {any} */ (draft), "email1", /** @type {any} */ ({ types: [], agents: [], templates: [], roles: [], people: [] }));
+  const items = groups.flatMap((g) => g.items);
+  assert.ok(items.some((i) => i.token === "{steps.letter.path}" && i.known), "the document the step made can be inserted");
+});

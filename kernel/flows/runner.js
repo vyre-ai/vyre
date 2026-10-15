@@ -1098,6 +1098,17 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, { action: "flows.run", resource: `vyre://${ctx.cat.space}/flow/${target.id}` }, () => this.joins.subflow(ctx, s, key, val, target), { input: s.input === undefined ? undefined : val(s.input) });
   }
 
+  /**
+   * The input of a call step as the person will be asked about it, and as it will run: the host may fill in facts the person should see and the act should hold to (the files on an email: name, size and
+   * content hash, read as the approver), so the one yes the Flow asks is a yes to exactly those. Nothing is changed in a dry run or when the host offers no preview.
+   * @param {any} ctx @param {any} s @param {any} input
+   */
+  async #preview(ctx, s, input) {
+    if (ctx.dry || typeof this.ports.preview !== "function") return input;
+    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
+    catch (e) { throw new StepFail(String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e)); }
+  }
+
   /** @param {string} type @param {any} data @param {Run} run @param {string} subject */
   #emit(type, data, run, subject) {
     if (run.dry) return;
@@ -1187,17 +1198,17 @@ export class FlowRunner {
         case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
         case "wait": out = await this.#wait(ctx, s, key, val); break;
         case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-        case "call": { const rides = ridesOf(ctx.flow, s.id, ctx.cat), ride = s.with ? ctx.dry ? "dry" : this.#rideOf(ctx, s) : undefined; out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
+        case "call": { const callInput = await this.#preview(ctx, s, val(s.input)), rides = ridesOf(ctx.flow, s.id, ctx.cat), ride = s.with ? ctx.dry ? "dry" : this.#rideOf(ctx, s) : undefined; out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
           if (ctx.dry) return { dry: true };
           if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
           // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
           const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
           if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
           // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
-          const input = val(s.input);
+          const input = callInput;
           const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }), ...(ride ? { ride: { run: ctx.run.id, step: s.id, with: s.with } } : {}) } : {}) });
           return draftAs ? { draft: true, via: draftAs, result: r } : r;
-        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }), rides, ride }); break; }
+        }, { input: callInput, bind: actBind({ action: s.action, resource: s.resource, input: callInput }), rides, ride }); break; }
         case "classify": out = await this.#classify(ctx, s, key, val); break;
         case "extract": out = await this.#extract(ctx, s, key, val); break;
         case "service": out = await this.#service(ctx, s, key, val); break;

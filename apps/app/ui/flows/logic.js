@@ -12,7 +12,7 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]>, filesOf?: (query: string) => Promise<{ path: string, name: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat } from "./tree.js";
 
@@ -268,6 +268,14 @@ const partExpr = (t, sign, n, unit, fmt) => {
   const f = (fmt || "").toLowerCase() || (dateOnly || t === "today" ? "weekday" : "weekdaytime");
   return `format(${base}, "${f}", ${dateOnly ? '"UTC"' : "tz"}${sign ? `, ${sign === "-" ? "-" : ""}${Number(n)}, "${String(unit).toLowerCase()}"` : ""})`;
 };
+/** The files an email carries, from the box's text (paths of Files, or values from earlier steps, apart by commas or lines), as the call's `attachments`. @param {string} t */
+export const valAtt = (t) => attList(t).map((x) => ({ path: val(x) }));
+/** The files of an email step as a list (paths, or {tokens}), from the text the step keeps. @param {string} t @returns {string[]} */
+export const attList = (t) => String(t ?? "").split(/[\n,]/).map((x) => x.trim()).filter(Boolean).slice(0, 10);
+/** The step's text for a list of files. @param {string[]} l */
+export const attText = (l) => l.join(", ");
+/** The box's text for a saved `attachments` list, or null when it is not a plain list of paths. @param {any} v */
+const unvalAtt = (v) => { if (!Array.isArray(v) || !v.length) return null; const out = []; for (const a of v) { if (!a || typeof a !== "object" || Object.keys(a).some((k) => k !== "path")) return null; const p = unval(a.path); if (p === null) return null; out.push(p); } return out.join(", "); };
 /** An address or number for a send step: a whole {token} of an emails or phones field is its main address (the engine's `first`), anything else is a value as `val` has it. @param {string} t */
 export const valAddr = (t) => {
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim());
@@ -383,8 +391,8 @@ export function stepDefinition(s, d) {
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
-      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
-      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
+      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), ...(s.cc && s.cc.trim() ? { cc: valAddr(s.cc) } : {}), ...(s.bcc && s.bcc.trim() ? { bcc: valAddr(s.bcc) } : {}), ...(s.attachments && s.attachments.trim() ? { attachments: valAtt(s.attachments) } : {}), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
+      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), ...(s.cc && s.cc.trim() ? { cc: valAddr(s.cc) } : {}), ...(s.bcc && s.bcc.trim() ? { bcc: valAddr(s.bcc) } : {}), ...(s.attachments && s.attachments.trim() ? { attachments: valAtt(s.attachments) } : {}), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title) };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || "") } };
     default: throw new Error(`no step kind ${s.kind}`);
@@ -594,8 +602,8 @@ function stepFrom(s) {
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
       if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unvalAddr(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unvalAddr(i.to), body: unval(i.body) };
-      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
-      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
+      if (s.action === "comms.email" && keys(i, ["to", "cc", "bcc", "attachments", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && (i.attachments === undefined || unvalAtt(i.attachments) !== null) && (i.cc === undefined || unvalAddr(i.cc) !== null) && (i.bcc === undefined || unvalAddr(i.bcc) !== null) && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), ...(i.attachments === undefined ? {} : { attachments: unvalAtt(i.attachments) }), ...(i.cc === undefined ? {} : { cc: unvalAddr(i.cc) }), ...(i.bcc === undefined ? {} : { bcc: unvalAddr(i.bcc) }), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
+      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "cc", "bcc", "attachments", "subject", "body"]) && unvalAddr(i.to) !== null && (i.attachments === undefined || unvalAtt(i.attachments) !== null) && (i.cc === undefined || unvalAddr(i.cc) !== null) && (i.bcc === undefined || unvalAddr(i.bcc) !== null) && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), ...(i.attachments === undefined ? {} : { attachments: unvalAtt(i.attachments) }), ...(i.cc === undefined ? {} : { cc: unvalAddr(i.cc) }), ...(i.bcc === undefined ? {} : { bcc: unvalAddr(i.bcc) }), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }
     case "agent": {

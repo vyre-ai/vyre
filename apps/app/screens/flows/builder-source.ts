@@ -41,6 +41,12 @@ export async function realOptions(types: { name: string; label: string; fields?:
     flows: list(fl, "flows").filter((f) => f.active).map((f) => ({ name: String(f.name), label: String(f.label || f.name) })),
     roles: list(roles, "roles").map((r) => ({ name: String(r.name || r.id), label: String(r.label || r.name || r.id) })),
     people: [],
+    // the file picks: the names of files in the Space's Drive the person may read, by part of a name
+    filesOf: async (q) => {
+      const r = await ask<any>("files.drive.space.list", { prefix: "", limit: 1000 });   // answers { prefix, entries: [{ path, size, version, at }], next }
+      const needle = q.trim().toLowerCase();
+      return list(r, "entries").map((e: any) => String(e.path ?? e.name ?? "")).filter((p) => p && (!needle || p.toLowerCase().includes(needle))).map((p) => ({ path: p, name: p.split("/").pop() || p }));
+    },
     // the tag picker's "a specific record": some records of an object, by the person's own read
     recordsOf: async (type) => {
       const r = await ask<any>("records.query", { type, page: { limit: 20 } });

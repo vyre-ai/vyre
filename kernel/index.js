@@ -154,6 +154,16 @@ export async function createKernel(cfg) {
     if (r.owner !== ownerRef.id) { const was = ownerRef.id; ownerRef.id = r.owner; if (typeof cfg.onOwnerAdopted === "function") await cfg.onOwnerAdopted(r.owner, was); }
     return r;
   };
+  /**
+   * Whether a member of this Space may do one of `allowed` (a credential's use, a file's read) on a resource now: the answer only, allow or deny. The person's chain is built here and never leaves the kernel.
+   * @param {readonly string[]} allowed
+   */
+  const personMayFor = (allowed) => async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+    if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !allowed.includes(action)) throw new KernelError("bad_input", "name one person and an action this handle may ask about");
+    // the vault is the owner's: the owner holds every credential of it (no role bundle carries vault.call; what others hold is a grant)
+    if (action.startsWith("vault.") && grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner") return true;
+    try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "may-check", person, path: "direct", session: "may-check" }), action, resource })).effect === "allow"; } catch { return false; }
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
@@ -322,7 +332,10 @@ export async function createKernel(cfg) {
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
       ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
-      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
+      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
+        personMay: personMayFor(["vault.call", "vault.read", "vault.fill"]) }) } : {}),
+      // The same question for the three modules that send a person's files out (mail, comms and google): may this member read this file now. The one function, asked of the one kernel; no other handle has it.
+      ...(m.name === "mail" || m.name === "comms" || m.name === "google" ? { personMay: personMayFor(["drive.read"]) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder
