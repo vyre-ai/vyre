@@ -115,3 +115,22 @@ test("a payment is held over its limit for one payment, over its day, and in ano
   assert.equal(await pay(40), "held", "over the day");
   assert.equal(paid.length, 2, "only the two inside the limits went out");
 });
+
+test("over MCP, an agent is covered by its own permission only: naming another agent in the input does not borrow it", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const { OWNER, ok, as, agentCall } = w;
+  const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
+  const via = `mail:${mail.id}`;
+  await ok("agents.create", { name: "juno", kind: "agent" });
+  await ok("agents.create", { name: "kit", kind: "agent" });
+  await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
+  const send = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
+    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
+    assert.ok(!r.error, `${agent}: ${JSON.stringify(r.error)}`);
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  assert.equal(await send("juno"), "sent", "juno, over MCP with its inherited token, goes out inside its permission");
+  assert.equal(await send("kit", { agent: "juno" }), "held", "kit naming juno in the input is still kit: held");
+  assert.equal(await send("kit", { by: "juno", agent_name: "juno" }), "held", "other naming fields change nothing");
+  assert.equal(mail.mailbox.sent.length, 1, "only juno's mail went out");
+});
