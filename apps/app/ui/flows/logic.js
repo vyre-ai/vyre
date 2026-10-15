@@ -72,6 +72,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "document", icon: "file", label: "Make a document", hint: "Fill a Word template from the Flow's records and values", words: "word docx template contract letter pdf generate document" },
     { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
     { kind: "subflow", icon: "flows", label: "Run another Flow", hint: "Use a Flow you already made", words: "subflow call nested" },
+    { kind: "connection", icon: "globe", label: "Use a connection's operation", hint: "A named operation of a connection in the Vault", words: "connection operation api integration request" },
     { kind: "action", icon: "bolt", label: "Do something else in Vyre", hint: "Any action a module offers, written as module.action", words: "action module call tool api other custom" },
   ] },
 ]);
@@ -153,6 +154,7 @@ export function stepSummary(s, o, d) {
     case "extract": return `Pull out ${(s.fields || []).map((/** @type {any} */ f) => f.name).filter(Boolean).join(", ") || "facts"} from the text`;
     case "subflow": return `Run the flow ${named(o.flows || [], s.flow) || "chosen"}`;
     case "action": return `Do ${(s.action || "").trim() || "an action"}`;
+    case "connection": return `Run ${(s.operation || "").trim() || "an operation"} on ${named(o.connections || [], s.connection) || "a connection"}`;
     case "decide": return `If ${condWords(s.cond, d ? d.trigger : { kind: "manual" })}: ${(s.then || []).length} step${(s.then || []).length === 1 ? "" : "s"}, otherwise ${(s.else || []).length}`;
     case "repeat": return `For each item${s.over ? ` of ${s.over}` : ""}: ${(s.steps || []).length} step${(s.steps || []).length === 1 ? "" : "s"}`;
     case "parallel": return `Do ${(s.lanes || []).length} things side by side, then carry on`;
@@ -212,6 +214,7 @@ function kindProblem(s, o) {
     case "classify": return !(s.input || "").trim() ? "Say what to read." : String(s.labels || "").split(",").filter((x) => x.trim()).length < 2 ? "Give at least two groups, separated by commas." : null;
     case "extract": return !(s.input || "").trim() ? "Say what to read." : !(s.fields || []).some((/** @type {any} */ f) => (f.name || "").trim()) ? "Name at least one fact to pull out." : null;
     case "subflow": return s.flow ? null : "Choose the flow to run.";
+    case "connection": return !s.connection ? "Choose the connection (an owner adds one in the Vault)." : !/^(request|[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,3})$/.test((s.operation || "").trim()) ? "Name the operation, for example contacts.list, or request." : null;
     case "action": return !ACTION_WORDS.test((s.action || "").trim()) ? "Write the action as module.action, for example records.create." : !RESOURCE_WORDS.test((s.resource || "").trim()) ? "Write where it acts, starting with vyre://." : null;
     case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
     case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
@@ -487,6 +490,7 @@ function kindDefinition(s, d) {
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
     case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
+    case "connection": { const input = Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return { id: s.id, kind: "service", connection: s.connection, operation: (s.operation || "").trim(), ...(Object.keys(input).length ? { input } : {}) }; }
     case "action": { const input = Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return { id: s.id, kind: "call", action: (s.action || "").trim(), resource: (s.resource || "").trim(), ...(Object.keys(input).length ? { input } : {}) }; }
     case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: repeatLimit(s.max), steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
@@ -581,6 +585,7 @@ export function newStep(kind, d, o) {
     case "extract": return { id, kind, input: "", fields: [{ name: "", kind: "text" }] };
     case "subflow": return { id, kind, flow: o.flows?.[0]?.name || "", fields: [{ field: "", value: "" }] };
     case "action": return { id, kind, action: "", resource: "", fields: [{ field: "", value: "" }] };
+    case "connection": return { id, kind, connection: o.connections?.[0]?.name || "", operation: "request", fields: [{ field: "", value: "" }] };
     case "decide": return { id, kind, cond: { mode: "build", source: "trigger", field: "", op: ">", value: "" }, then: [], else: [] };
     case "repeat": return { id, kind, over: "", as: "item", max: 50, steps: [] };
     case "parallel": return { id, kind, lanes: [{ steps: [] }, { steps: [] }] };
@@ -712,6 +717,7 @@ function stepFromKind(s) {
       return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
     }
     case "service": {
+      if (s.connection !== undefined && s.connector === undefined) return typeof s.connection === "string" && typeof s.operation === "string" && keys(s, ["id", "kind", "connection", "operation", "input", "label"]) && (s.input === undefined || (typeof s.input === "object" && s.input !== null && !Array.isArray(s.input) && Object.values(s.input).every((v) => unval(v) !== null))) ? { id: s.id, kind: "connection", connection: s.connection, operation: s.operation, fields: rowsOf(s.input || {}) } : adv;
       const q = s.query === undefined ? [] : namedRowsFrom(s.query), h = s.headers === undefined ? [] : namedRowsFrom(s.headers);
       return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null
         ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}) } : adv;

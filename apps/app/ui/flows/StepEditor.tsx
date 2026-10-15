@@ -308,6 +308,14 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a fact" onPress={() => set({ fields: [...(s.fields ?? []), { name: "", kind: "text" }] })} /></View>
         </>
       ) : null}
+      {s.kind === "connection" ? (
+        <>
+          <Select label="Connection" value={s.connection ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connection) => set({ connection })} />
+          <Field label="Operation" value={s.operation ?? ""} onChangeText={(operation) => set({ operation })} placeholder="For example contacts.list, or request" help="The name the connection gives the operation." />
+          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Input" title="What to give it" help="The key stays in the Vault. A change a connection makes is held for your yes." />
+          <NewConnection options={options} onAdded={(connection) => set({ connection })} />
+        </>
+      ) : null}
       {s.kind === "action" ? (
         <>
           <Field label="Action" value={s.action ?? ""} onChangeText={(action) => set({ action })} placeholder="For example records.create" help="A module and what it does, written as module.action." />

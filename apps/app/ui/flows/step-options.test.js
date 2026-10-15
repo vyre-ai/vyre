@@ -135,3 +135,14 @@ test("a web call keeps its query and headers and can check with HEAD", () => {
   const guarded = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "GET", path: "/", drive: { saveTo: "files/x" } }]), options);
   assert.equal(guarded.steps[0].kind, "advanced", "a drive hand-off stays as it was");
 });
+
+test("a connection's named operation is a step of its own and stores as the same service step", () => {
+  const d = flow([{ id: "c1", kind: "service", connection: "crm", operation: "contacts.list", input: { limit: "5", q: "{after.name}" } }]);
+  const draft = fromDefinition(d, options);
+  assert.equal(draft.steps[0].kind, "connection");
+  const out = toDefinition(draft, options);
+  assert.deepEqual([out.steps[0].kind, out.steps[0].connection, out.steps[0].operation], ["service", "crm", "contacts.list"]);
+  assert.deepEqual(Object.keys(out.steps[0].input), ["limit", "q"]);
+  assert.equal(stepProblem({ id: "c1", kind: "connection", connection: "crm", operation: "Bad Op" }, options) !== null, true);
+  assert.equal(fromDefinition(flow([{ id: "c1", kind: "service", connection: "crm", operation: "request", approve: "x" }]), options).steps[0].kind, "advanced");
+});
