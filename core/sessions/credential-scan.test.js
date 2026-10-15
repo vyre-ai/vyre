@@ -4,7 +4,7 @@
 // descriptors of that process, its memory (blocked by Yama ptrace_scope 1, or not), and the session's config folder. The scan prints counts only, never the secret.
 //
 // "Known state" tests assert what is TRUE TODAY, marked with KNOWN; when a fix lands the strict assertion fails and its expected value is flipped on purpose (the point: a leak cannot come back, and a fix
-// cannot be claimed without the scan). "Bar" tests assert what must hold before a member may drive an agent or teammate on a picked credential; they run as `todo` until the delivery is fixed.
+// cannot be claimed without the scan). "Bar" tests assert what must hold before a member may drive an agent or teammate on a picked credential; the delivery is fixed (a descriptor), so the bar is live: if one goes red it is a credential leak, never flip it back.
 // Linux only; skipped where the claude binary (VYRE_CLAUDE_BIN or `claude` on the PATH) is missing. Run it on a test box, never on a person's Mac.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
@@ -121,8 +121,8 @@ test("Vyre's launch hands a setup token over on file descriptor 3, so no tool re
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true });
   assert.equal(r.env, 0, JSON.stringify(r)); assert.equal(r.environ, 0, JSON.stringify(r)); assert.equal(r.fd, 0, JSON.stringify(r));
 });
-// THE BAR: when this passes, a setup token may be used for a turn somebody else drives (not before)
-test("BAR: Vyre's launch hands a setup token over where no tool of the session can read it", { skip: SKIP, todo: "rc2-own-compute's fd delivery of the setup token (work/rc2/sealed-credential)", timeout: 150_000 }, async () => {
+// THE BAR: a setup token may be used for a turn somebody else drives only while this passes. It is a leak if it goes red.
+test("BAR: Vyre's launch hands a setup token over where no tool of the session can read it", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true });
   assert.ok(clean(r), JSON.stringify(r));
 });
