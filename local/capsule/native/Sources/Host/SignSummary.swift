@@ -2,6 +2,7 @@
 // JavaScript) could then ask for a signature over "add this device" and call it "Unlock Drive". So the shell reads the bytes itself and writes the words itself:
 //   - an identity-list change ("vyre-chain-v1" and the op's JSON): add, remove, replace-code, recover, genesis
 //   - a yes-moment proof (the canonical proof JSON): only when the page also hands the card's fields and they hash to the proof's payload_hash, the same check the phone's card does
+//   - a server ownership proof ("vyre-wink-pair-to-v1", the server's box key, this device's id there, the pairing ticket's tag; relay/client/finish.js pairToProofMessage): exactly that shape, nothing more
 // Anything else has no summary, and no summary means no prompt and no signature. The page's own caption is never read.
 
 import CryptoKit
@@ -13,8 +14,23 @@ enum SignSummary {
     /// The plain words for `message`, or nil when the shell cannot read it (then it is not signed). `fields` and `space` are the card's, for a yes-moment proof.
     static func of(message: Data, fields: [String: Any]? = nil, space: String? = nil) -> String? {
         if let tag = chainTag.data(using: .utf8), message.starts(with: tag) { return chain(message.dropFirst(tag.count)) }
+        if let tag = pairToTag.data(using: .utf8), message.starts(with: tag) { return pairTo(message) }
         return proof(message, fields: fields, space: space)
     }
+
+    static let pairToTag = "vyre-wink-pair-to-v1\n"
+
+    /// A server ownership proof, read strictly: four lines, the tag, a 32-byte key in base64url (43 characters), a relay device id (16 of a-z and 2-7) and a ticket tag (24 hex). Anything else is nil.
+    /// The server's own name is not in the bytes, so the words do not claim one.
+    private static func pairTo(_ message: Data) -> String? {
+        guard let text = String(data: message, encoding: .utf8) else { return nil }
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count == 4, lines[0] == "vyre-wink-pair-to-v1",
+              matches(lines[1], "^[A-Za-z0-9_-]{43}$"), matches(lines[2], "^[a-z2-7]{16}$"), matches(lines[3], "^[0-9a-f]{24}$") else { return nil }
+        return "Make the server you are pairing yours"
+    }
+
+    private static func matches(_ s: String, _ pattern: String) -> Bool { s.range(of: pattern, options: .regularExpression) != nil }
 
     private static func clean(_ s: Any?, _ max: Int = 40) -> String {
         let t = String(((s as? String) ?? "").unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7f }.map(Character.init)).trimmingCharacters(in: .whitespaces)
