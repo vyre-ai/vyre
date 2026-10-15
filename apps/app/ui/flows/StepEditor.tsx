@@ -63,13 +63,24 @@ function Condition({ s, setStep, draft, options }: { s: DraftStep; setStep: (pat
       </>
     );
   }
+  const more: any[] = c.more ?? [];
+  const setClause = (i: number, patch: Record<string, unknown>) => (i === 0 ? set(patch) : set({ more: more.map((x, k) => (k === i - 1 ? { ...x, ...patch } : x)) }));
   return (
     <>
-      <Select label="Check a field of" value={c.source ?? "trigger"} options={earlier} onChange={(source) => set({ source })} />
-      <Field label="Field" value={c.field ?? ""} onChangeText={(field) => set({ field })} placeholder="For example amount" />
-      <Select label="Is" value={c.op ?? ">"} options={OPERATORS} onChange={(op) => set({ op })} />
-      <Field label="Value" value={String(c.value ?? "")} onChangeText={(value) => set({ value })} placeholder="For example 500" />
-      <View className="flex-row"><Button kind="ghost" size="sm" label="Edit as a formula" onPress={() => set({ mode: "formula", formula: condExpr(c, draft.trigger) })} /></View>
+      {[c, ...more].map((x, i) => (
+        <View key={i} className="gap-s2">
+          {i ? <Select label="Joined to the one above with" value={c.join === "or" ? "or" : "and"} options={[["and", "and: both must hold"], ["or", "or: either can hold"]]} onChange={(join) => set({ join })} /> : null}
+          <Select label="Check a field of" value={x.source ?? "trigger"} options={earlier} onChange={(source) => setClause(i, { source })} />
+          <Field label="Field" value={x.field ?? ""} onChangeText={(field) => setClause(i, { field })} placeholder="For example amount" />
+          <Select label="Is" value={x.op ?? ">"} options={OPERATORS} onChange={(op) => setClause(i, { op })} />
+          <Field label="Value" value={String(x.value ?? "")} onChangeText={(value) => setClause(i, { value })} placeholder="For example 500" />
+          {i ? <View className="flex-row"><Button kind="ghost" size="sm" icon="x" label="Remove this check" onPress={() => set({ more: more.filter((_, k) => k !== i - 1) })} /></View> : null}
+        </View>
+      ))}
+      <View className="flex-row gap-s2">
+        <Button kind="ghost" size="sm" icon="plus" label="Add another check" onPress={() => set({ more: [...more, { source: "trigger", field: "", op: "==", value: "" }] })} />
+        <Button kind="ghost" size="sm" label="Edit as a formula" onPress={() => set({ mode: "formula", formula: condExpr(c, draft.trigger) })} />
+      </View>
     </>
   );
 }

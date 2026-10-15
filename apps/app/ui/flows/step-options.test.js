@@ -155,3 +155,15 @@ test("every call a dedicated step writes is on the list the generic action step 
   assert.equal(actions.length, 4, "each of the four dedicated steps writes one call");
   for (const a of actions) assert.ok(SPECIAL_ACTIONS.has(a), a);
 });
+
+test("an If step joins several checks with and or or, and a mix of both stays a formula", () => {
+  const trig = { kind: "created", type: "contact" };
+  const c = { mode: "build", source: "trigger", field: "amount", op: ">", value: "500", join: "or", more: [{ source: "trigger", field: "name", op: "contains", value: "harlow and sons" }] };
+  assert.equal(condExpr(c, trig), 'trigger.after.amount > 500 or trigger.after.name contains "harlow and sons"');
+  const back = fromDefinition(flow([{ id: "d1", kind: "decide", if: condExpr(c, trig), then: [], else: [] }]), options).steps[0].cond;
+  assert.deepEqual([back.mode, back.join, back.more.length, back.more[0].value], ["build", "or", 1, "harlow and sons"]);
+  assert.equal(toDefinition(fromDefinition(flow([{ id: "d1", kind: "decide", if: condExpr(c, trig), then: [], else: [] }]), options), options).steps[0].if, condExpr(c, trig));
+  const mixed = 'trigger.after.a > 1 and trigger.after.b > 2 or trigger.after.c > 3';
+  assert.equal(fromDefinition(flow([{ id: "d1", kind: "decide", if: mixed, then: [], else: [] }]), options).steps[0].cond.mode, "formula");
+  assert.equal(condExpr({ ...c, more: [{ source: "trigger", field: "", op: "==", value: "" }] }, trig), "", "a check left empty makes no condition yet");
+});

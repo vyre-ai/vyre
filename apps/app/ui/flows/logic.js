@@ -216,7 +216,7 @@ function kindProblem(s, o) {
     case "subflow": return s.flow ? null : "Choose the flow to run.";
     case "connection": return !s.connection ? "Choose the connection (an owner adds one in the Vault)." : !/^(request|[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,3})$/.test((s.operation || "").trim()) ? "Name the operation, for example contacts.list, or request." : null;
     case "action": return !ACTION_WORDS.test((s.action || "").trim()) ? "Write the action as module.action, for example records.create." : !RESOURCE_WORDS.test((s.resource || "").trim()) ? "Write where it acts, starting with vyre://." : null;
-    case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
+    case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || ![s.cond, ...(s.cond.more || [])].every((c) => (c.field || "").trim() && String(c.value ?? "").trim() !== "") ? "Say what to check: a field, how, and a value." : null;
     case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
     default: return null;
   }
@@ -680,10 +680,39 @@ const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("te
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
+  const parts = splitJoined(e || "");
+  if (!parts) return { mode: "formula", formula: e || "" };
+  const clauses = parts.list.map(clauseFrom);
+  if (clauses.some((c) => !c)) return { mode: "formula", formula: e || "" };
+  return { mode: "build", ...clauses[0], ...(clauses.length > 1 ? { join: parts.join, more: clauses.slice(1) } : {}) };
+}
+
+/** An expression split at its top-level " and " or " or ": one kind of joiner only, and never inside quoted text. Null when both kinds are mixed. @param {string} e @returns {{ join: "and" | "or", list: string[] } | null} */
+function splitJoined(e) {
+  /** @type {{ at: number, word: "and" | "or" }[]} */ const cuts = [];
+  let q = false;
+  for (let i = 0; i < e.length; i++) {
+    const ch = e[i];
+    if (q) { if (ch === "\\") i++; else if (ch === '"') q = false; continue; }
+    if (ch === '"') q = true;
+    else if (e.startsWith(" and ", i)) cuts.push({ at: i, word: "and" });
+    else if (e.startsWith(" or ", i)) cuts.push({ at: i, word: "or" });
+  }
+  if (new Set(cuts.map((c) => c.word)).size > 1 || e.includes("(") && cuts.length) return null;
+  const word = cuts[0]?.word ?? "and";
+  const list = [];
+  let from = 0;
+  for (const c of cuts) { list.push(e.slice(from, c.at)); from = c.at + word.length + 2; }
+  list.push(e.slice(from));
+  return { join: word, list };
+}
+
+/** One field, operator and value as the builder shows it; null when it is more than that. @param {string} e */
+function clauseFrom(e) {
   const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<|contains) (-?\d+(?:\.\d+)?|true|false|"[^"]*")$/.exec(e || "");
   // A quoted text that looks like a number or a yes/no would come back unquoted, which is a different value: keep it as the formula it is.
-  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return { mode: "formula", formula: e || "" };
-  return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
+  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return null;
+  return { source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
 /** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
@@ -805,6 +834,12 @@ export function fieldExpr(c, t) {
 export function condExpr(c, t) {
   if (!c) return "";
   if (c.mode === "formula") return String(c.formula || "").trim();
+  const parts = [c, ...(c.more || [])].map((x) => clauseExpr(x, t));
+  return parts.some((x) => !x) ? "" : parts.join(c.join === "or" ? " or " : " and ");
+}
+
+/** One field, operator and value as an expression; empty when it is not filled in. @param {any} c @param {Trigger} t */
+function clauseExpr(c, t) {
   const left = fieldExpr(c, t);
   if (!left || c.value === undefined || String(c.value).trim() === "") return "";
   const v = String(c.value).trim();
@@ -815,8 +850,8 @@ export function condExpr(c, t) {
 export function condWords(c, t) {
   if (!c) return "a condition holds";
   if (c.mode === "formula") return String(c.formula || "").trim() || "a condition holds";
-  const op = OPERATORS.find(([x]) => x === c.op)?.[1] || "is";
-  return c.field && String(c.value ?? "").trim() !== "" ? `${c.field} ${op} ${c.value}` : "a condition holds";
+  const words = [c, ...(c.more || [])].map((x) => { const op = OPERATORS.find(([y]) => y === x.op)?.[1] || "is"; return x.field && String(x.value ?? "").trim() !== "" ? `${x.field} ${op} ${x.value}` : ""; });
+  return words.some((x) => !x) ? "a condition holds" : words.join(c.join === "or" ? " or " : " and ");
 }
 void fieldExpr;
 

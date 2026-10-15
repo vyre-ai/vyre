@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(flows): an If step can join several checks with and or or ("Add another check"); a condition that mixes both stays a formula.
 - feat(flows): "Use a connection's operation", a step that names a connection in the Vault and one of its operations with its inputs, stored as the same service step the engine runs.
 - feat(flows): a web call step has a query and headers (never the key: that stays in the Vault) and a HEAD check; a call that moves a file through Drive stays an advanced step.
 - feat(flows): a Repeat step takes any list written as a formula, not only the records a Find step returned.
