@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): `flows.describe`, `flows.runs` and `flows.connections` are open to a member over MCP for a Flow she made or one shared with her (Can use or Can edit); a Flow that is not hers or shared is refused, `flows.runs` without an id lists only her Flows' runs, and `flows.connections` names only Flows she may inspect. Owners and admins are served as before.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
