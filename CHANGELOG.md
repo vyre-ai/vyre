@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6
 
 - feat(vault,flows): credentials carried to a woken agent. A task woken for an agent with an approver lends the Connections its approved Kit names (`vault.connections.lend`, source `vault:lease:<task>`, use only) and ends them with the task; `leaseTask` refuses a Connection the approver does not hold, asked through a new read-only `personMay` on the vault's own kernel handle (allow or deny, no other module has it); a wake with no approver lends nothing and the agent runs on its own access, and the agent step says so. kernel/index.js, kernel/grants/index.js (the lease grant records its approver), core/vault/access.js, core/daemon/flows-host.js.
+- feat(comms,flows): email CC and BCC. `comms.send` passes cc and bcc to the mail account, `comms.email` carries them through the Gate's held content to Resend, Mailgun, Postmark, SendGrid and SMTP (they count toward the 50 recipients, a bad address is refused by name), and the Flow email step has Cc and Bcc fields that save and read back. Attachments follow once the byte source is ruled. core/comms/sending/index.js, core/comms/index.js, apps/app/ui/flows.
 
 ## 0.5.1
 

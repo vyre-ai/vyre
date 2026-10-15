@@ -128,3 +128,20 @@ test("smtp: hands the message to the SMTP adapter with the saved login and the p
 test("an unknown provider is refused by name", () => {
   assert.throws(() => shape({ provider: "carrier-pigeon", apiKey: KEY, from: "a@b.example" }, msg), /not a sending service Vyre knows/);
 });
+
+test("cc and bcc: each provider takes them in its own shape, they count toward the 50, and a bad one is refused by name", async () => {
+  const m = { ...msg, cc: ["ops@northwind-bakery.example"], bcc: ["alex@harlow.example", "juno@harlow.example"] };
+  assert.deepEqual([json(shape(conn("resend"), m)).cc, json(shape(conn("resend"), m)).bcc], [m.cc, m.bcc]);
+  const f = new URLSearchParams(shape(conn("mailgun"), m).body);
+  assert.deepEqual([f.get("cc"), f.get("bcc")], ["ops@northwind-bakery.example", "alex@harlow.example,juno@harlow.example"]);
+  const p = json(shape(conn("postmark"), m));
+  assert.deepEqual([p.Cc, p.Bcc], ["ops@northwind-bakery.example", "alex@harlow.example,juno@harlow.example"]);
+  const s = json(shape(conn("sendgrid"), m)).personalizations[0];
+  assert.deepEqual([s.cc, s.bcc], [[{ email: "ops@northwind-bakery.example" }], [{ email: "alex@harlow.example" }, { email: "juno@harlow.example" }]]);
+  assert.equal(json(shape(conn("resend"), msg)).cc, undefined, "none given, none sent");
+  assert.throws(() => check(conn("resend"), { ...msg, cc: ["not an address"] }), /not an email address/);
+  assert.throws(() => check(conn("resend"), { ...msg, to: Array.from({ length: 30 }, (_, i) => `a${i}@x.example`), bcc: Array.from({ length: 30 }, (_, i) => `b${i}@x.example`) }), /at most 50/);
+  /** @type {any} */ let seen;
+  await send(conn("smtp", { smtpHost: "smtp.harlow.example" }), m, { smtp: { send: async (_c, _p, c) => { seen = c; return { message_id: "<1@x>" }; } } });
+  assert.deepEqual([seen.cc, seen.bcc], [m.cc, m.bcc], "SMTP carries them too");
+});
