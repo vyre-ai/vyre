@@ -261,7 +261,7 @@ test("apps-script.gs: every op, the token check and the setup check", () => {
   const s = loadScript({ token: TOKEN, address: ALEX, messages: sampleMessages() });
   const ok = body => { const { json, mime } = s.doPost({ token: TOKEN, ...body }); assert.equal(mime, "application/json"); return json; };
 
-  assert.deepEqual(ok({ op: "test" }), { ok: true, data: { address: ALEX } });
+  assert.deepEqual(ok({ op: "test" }), { ok: true, data: { address: ALEX, attachments: true } });
 
   const found = ok({ op: "search", q: "loaves", limit: 100 });
   assert.equal(found.ok, true);
@@ -308,4 +308,20 @@ test("apps-script.gs: Gmail errors become code gmail without the request", () =>
   assert.match(json.error, /too many times/);
   assert.ok(!JSON.stringify(json).includes(TOKEN));
   assert.equal(s.doPost({ token: TOKEN, op: "test" }).json.ok, true);
+});
+
+test("send with files: the script gets each file as a blob, a reply carries them too, and an older script is refused in words before anything is sent", async t => {
+  const fake = await startFakeAppsScript(t, { token: TOKEN, address: ALEX });
+  const a = appsScriptAdapter();
+  const files = [{ filename: "rota.pdf", contentType: "application/pdf", bytes: Buffer.from("PDF-1") }];
+  assert.deepEqual(await a.send(cfg, fields(fake.url), { to: DANA, subject: "Rota", body: "Attached.", attachments: files }), { sent: true });
+  assert.deepEqual(fake.sent.at(-1).files, [{ name: "rota.pdf", type: "application/pdf", text: "PDF-1" }]);
+  await a.send(cfg, fields(fake.url), { to: [DANA], subject: "Re: Order for Friday", body: "Here.", in_reply_to: "<order-2@northwind-bakery.example>", attachments: files });
+  assert.equal(fake.sent.at(-1).kind, "reply");
+  assert.deepEqual(fake.sent.at(-1).files.map(f => f.name), ["rota.pdf"]);
+  const old = await startFakeAppsScript(t, { token: TOKEN, address: ALEX, legacy: true });
+  await assert.rejects(a.send(cfg, fields(old.url), { to: DANA, subject: "Rota", body: "Attached.", attachments: files }), /older version that cannot carry files, so nothing was sent/);
+  assert.equal(old.sent.length, 0, "nothing went out");
+  await a.send(cfg, fields(old.url), { to: DANA, subject: "No files", body: "Plain." });
+  assert.equal(old.sent.length, 1, "an older script still sends without files");
 });

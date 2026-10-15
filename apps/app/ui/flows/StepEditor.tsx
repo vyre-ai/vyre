@@ -144,7 +144,8 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
                   <AddressField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
-                  <ComingNext />
+                  <ValueField label="Files to attach (optional)" value={s.attachments ?? ""} onChange={(attachments) => setStep(s.id, { attachments: attachments || undefined })} placeholder="A file in your Files, or Insert a file an earlier step made" draft={draft} stepId={s.id} options={options}
+                    help="Separate several with commas. Up to 10 files and 25 MB in all. The file is read when you approve the message, and the message stops if it changed since." />
                 </>
               ) : null}
               {s.kind === "ask" ? (
@@ -301,14 +302,6 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
 }
 
 /** What the sending service cannot do yet: shown, switched off, never faked. */
-function ComingNext() {
-  return (
-    <View className="gap-s2">
-      {["CC", "BCC", "Attachments"].map((x) => <Field key={x} label={x} name={x} value="" disabled placeholder="Coming next" />)}
-      <Text size="caption" tone="label">CC, BCC and attachments (a file from Files, or one an earlier step made) need the sending service to carry them. They are next.</Text>
-    </View>
-  );
-}
 
 /** A new connection, inline: a name, one https address, how the key is sent and which Vault item holds it. It is saved as a Connection in the Vault (connectors.connection.create); the key itself is never typed here. */
 function NewConnection({ options, onAdded }: { options: Options; onAdded: (name: string) => void }) {

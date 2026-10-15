@@ -290,7 +290,7 @@ export default {
       let held, via;
       if (kind === "google") {
         const r = await use("google.mail.send", { account: acct.ref, to, subject: c.subject, body: c.body, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}),
-          ...(c.in_reply_to ? { in_reply_to: c.in_reply_to } : {}), ...(why ? { why } : {}), on_behalf: on });
+          ...(c.in_reply_to ? { in_reply_to: c.in_reply_to } : {}), ...(c.attachment_refs ? { attachments: c.attachment_refs } : {}), ...(why ? { why } : {}), on_behalf: on });
         held = r.held; via = `google:${acct.ref}`;
       } else if (kind === "mcp") {
         const m = (await mcpMap(acct)).send;
@@ -329,10 +329,11 @@ export default {
         if (!(acct.capabilities || []).includes("send_mail")) throw fail(`${acct.label || acct.account} is not allowed to send; it reads only`, "denied");
         const { to, c } = contentOf(input);
         // files go by reference: path, name, size and hash are held and approved with the message; the bytes are read when it is sent (lib/connectors/attachments.js)
-        const files = await holdFiles(ctx, meta, input.attachments).catch(e => { throw fail(e.message, e.code || "bad_input"); });
-        if (files.length) {
-          if (adapterOf(acct) !== "imap") throw fail("files can go on a message from an IMAP account for now; this account sends without them", "bad_input");
-          c.attachments = files;
+        const kind = adapterOf(acct);
+        if (Array.isArray(input.attachments) && input.attachments.length) {
+          if (kind === "google") c.attachment_refs = input.attachments;   // the Google module holds them itself, as the asker
+          else if (kind === "imap" || kind === "apps-script") c.attachments = await holdFiles(ctx, meta, input.attachments).catch(e => { throw fail(e.message, e.code || "bad_input"); });
+          else throw fail("this account cannot carry files; send without them", "bad_input");
         }
         return holdSend(acct, to, c, named(input.why), filing);
       },
@@ -360,7 +361,7 @@ export default {
         checkContent(dest, c);
         const [cfg, cred] = await nativeArgs(acct);
         const files = await releaseFiles(ctx, content.attachments).catch(e => { throw fail(e.message, e.code || "failed"); });
-        if (files.length && kind !== "imap") throw fail("this account cannot carry files, so nothing was sent", "denied");
+        if (files.length && kind !== "imap" && kind !== "apps-script") throw fail("this account cannot carry files, so nothing was sent", "denied");
         const out = await native[kind].send(cfg, cred, { to: dest, ...c, ...(files.length ? { attachments: files } : {}) });
         ctx.events.emit("mail.sent", { account: acct.id });
         return { ...out, account: acct.id };

@@ -63,14 +63,14 @@ test("personMay: only the vault's handle answers whether a member may use a cred
 test("personMay is on the vault, mail and comms handles only, and each asks only about its own actions", { timeout: 120_000 }, async t => {
   const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
   const owner = d.kernel.id.owner, space = d.kernel.id.space;
-  for (const name of ["mail", "comms"]) {
+  for (const name of ["mail", "comms", "google"]) {
     const h = d.kernel.kernelFor({ name, needs: {} });
     assert.equal(typeof h.personMay, "function", `${name} has it`);
     assert.equal(await h.personMay(owner, "drive.read", `vyre://${space}/file/Rota/week1.pdf`), true, "the owner may read a file");
     assert.equal(await h.personMay("per_nobody1234567890abcdefgh", "drive.read", `vyre://${space}/file/Rota/week1.pdf`), false);
     await assert.rejects(() => h.personMay(owner, "vault.call", `vyre://${space}/vault/x/connection/y`), { code: "bad_input" }, `${name} asks only about files`);
   }
-  for (const name of ["sessions", "flows", "agents", "files", "work"]) assert.equal(d.kernel.kernelFor({ name, needs: {} }).personMay, undefined, `${name} does not have it`);
+  for (const name of ["sessions", "flows", "agents", "files", "work", "documents"]) assert.equal(d.kernel.kernelFor({ name, needs: {} }).personMay, undefined, `${name} does not have it`);
   const vault = d.kernel.kernelFor(VAULT);
   await assert.rejects(() => vault.vault.personMay(owner, "drive.read", `vyre://${space}/file/x`), { code: "bad_input" }, "the vault asks only about credentials");
 });

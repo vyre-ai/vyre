@@ -332,8 +332,8 @@ export async function createKernel(cfg) {
       ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
         personMay: personMayFor(["vault.call", "vault.read", "vault.fill"]) }) } : {}),
-      // The same question for the two modules that send a person's files out (mail and comms): may this member read this file now. The one function, asked of the one kernel; no other handle has it.
-      ...(m.name === "mail" || m.name === "comms" ? { personMay: personMayFor(["drive.read"]) } : {}),
+      // The same question for the three modules that send a person's files out (mail, comms and google): may this member read this file now. The one function, asked of the one kernel; no other handle has it.
+      ...(m.name === "mail" || m.name === "comms" || m.name === "google" ? { personMay: personMayFor(["drive.read"]) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder

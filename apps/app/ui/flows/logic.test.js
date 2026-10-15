@@ -435,3 +435,19 @@ test("cc and bcc on an email step are saved in the definition and read back, on 
   const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
   assert.equal("cc" in none.steps[0].input, false, "left out when empty");
 });
+
+test("files on an email step are saved as a list of paths (typed, or a value from an earlier step) and read back, on both ways of sending", () => {
+  for (const sendStep of [undefined, "comms.email"]) {
+    const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", ...(sendStep ? { sendStep } : {}), to: "a@b.co", attachments: "Rota/week1.pdf, {signed_copy}", subject: "Rota", body: "Attached" }] };
+    const def = toDefinition(d);
+    const att = def.steps[0].input.attachments;
+    assert.equal(att.length, 2);
+    assert.deepEqual(att[0], { path: "Rota/week1.pdf" });
+    assert.ok(att[1].path && att[1].path.expr, "a value from an earlier step is an expression, resolved when the step runs");
+    const back = fromDefinition(def).steps[0];
+    assert.equal(back.kind, "email");
+    assert.equal(back.attachments, "Rota/week1.pdf, {signed_copy}");
+  }
+  const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
+  assert.equal("attachments" in none.steps[0].input, false, "left out when empty");
+});

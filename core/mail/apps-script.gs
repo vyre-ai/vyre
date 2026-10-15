@@ -40,7 +40,7 @@ function doPost(e) {
   if (!same_(String(req.token || ""), expected)) return answer_(false, "wrong token", "auth");
 
   try {
-    if (req.op === "test") return answer_(true, { address: Session.getEffectiveUser().getEmail() });
+    if (req.op === "test") return answer_(true, { address: Session.getEffectiveUser().getEmail(), attachments: true });
     if (req.op === "search") return answer_(true, search_(req));
     if (req.op === "read") return answer_(true, read_(req));
     if (req.op === "send") return answer_(true, send_(req));
@@ -109,6 +109,13 @@ function send_(req) {
   if (!to.length) throw fail_("send needs at least one address in to", "bad_input");
   if (typeof req.subject !== "string" || /[\r\n]/.test(req.subject)) throw fail_("send needs a subject on one line", "bad_input");
   if (typeof req.body !== "string") throw fail_("send needs a body", "bad_input");
+  // files arrive as { name, type, data } with the data in base64; GmailApp takes them as blobs
+  var blobs = [];
+  var files = Array.isArray(req.attachments) ? req.attachments : [];
+  for (var f = 0; f < files.length; f++) {
+    if (!files[f] || typeof files[f].data !== "string" || typeof files[f].name !== "string") throw fail_("an attachment needs a name and its data", "bad_input");
+    blobs.push(Utilities.newBlob(Utilities.base64Decode(files[f].data), String(files[f].type || "application/octet-stream"), files[f].name));
+  }
 
   if (req.in_reply_to) {
     var id = String(req.in_reply_to);
@@ -127,6 +134,7 @@ function send_(req) {
     var opts = {};
     if (cc.length || extra.length) opts.cc = extra.concat(cc).join(",");
     if (bcc.length) opts.bcc = bcc.join(",");
+    if (blobs.length) opts.attachments = blobs;
     target.reply(req.body, opts);
     return { sent: true };
   }
@@ -134,6 +142,7 @@ function send_(req) {
   var options = {};
   if (cc.length) options.cc = cc.join(",");
   if (bcc.length) options.bcc = bcc.join(",");
+  if (blobs.length) options.attachments = blobs;
   GmailApp.sendEmail(to.join(","), req.subject, req.body, options);
   return { sent: true };
 }

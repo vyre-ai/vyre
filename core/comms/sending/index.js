@@ -68,7 +68,7 @@ export function check(conn, m) {
 /**
  * The HTTP request a provider wants for this message. Pure: nothing is sent.
  * @param {any} conn { provider, apiKey, from, domain?, region? } @param {any} m the message (checked here) @param {{ idem?: string }} [o]
- * @returns {{ url: string, method: "POST", headers: Record<string, string>, body: string }}
+ * @returns {{ url: string, method: "POST", headers: Record<string, string>, body: string | FormData }}
  */
 export function shape(conn, m, o = {}) {
   const p = String(conn && conn.provider);
@@ -81,15 +81,22 @@ export function shape(conn, m, o = {}) {
       body: JSON.stringify({ from: c.from, to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, html: c.html, text: c.text, ...(c.replyTo ? { reply_to: c.replyTo } : {}), ...(c.attachments ? { attachments: c.attachments.map(a => ({ filename: a.filename, content: a.bytes.toString("base64") })) } : {}) }) };
   }
   if (p === "mailgun") {
-    if (c.attachments) throw fail("Mailgun cannot carry files from here yet: send this message through another sending service, or without the files", "bad_input");
     const domain = String(conn.domain || (parseAddress(c.from) || { email: "@" }).email.split("@")[1]);
     const host = conn.region === "eu" ? "api.eu.mailgun.net" : "api.mailgun.net";
+    const auth = `Basic ${Buffer.from(`api:${k}`).toString("base64")}`;
+    const url = `https://${host}/v3/${encodeURIComponent(domain)}/messages`;
+    if (c.attachments) {
+      // with files, a multipart form: the same fields, and each file as an `attachment` part (the content type of the form, with its boundary, comes from the form itself)
+      const f = new FormData();
+      for (const [n, v] of [["from", c.from], ["to", c.to.join(",")], ["subject", c.subject], ["text", c.text], ["html", c.html], ...(c.cc ? [["cc", c.cc.join(",")]] : []), ...(c.bcc ? [["bcc", c.bcc.join(",")]] : []), ...(c.replyTo ? [["h:Reply-To", c.replyTo]] : [])]) f.set(String(n), String(v));
+      for (const a of c.attachments) f.append("attachment", new Blob([a.bytes], { type: a.contentType }), a.filename);
+      return { url, method: "POST", headers: { accept: "application/json", authorization: auth }, body: f };
+    }
     const f = new URLSearchParams({ from: c.from, to: c.to.join(","), subject: c.subject, text: c.text, html: c.html });
     if (c.cc) f.set("cc", c.cc.join(","));
     if (c.bcc) f.set("bcc", c.bcc.join(","));
     if (c.replyTo) f.set("h:Reply-To", c.replyTo);
-    return { url: `https://${host}/v3/${encodeURIComponent(domain)}/messages`, method: "POST",
-      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${Buffer.from(`api:${k}`).toString("base64")}` }, body: f.toString() };
+    return { url, method: "POST", headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", authorization: auth }, body: f.toString() };
   }
   if (p === "postmark") {
     return { url: "https://api.postmarkapp.com/email", method: "POST", headers: { ...json, "x-postmark-server-token": k },
