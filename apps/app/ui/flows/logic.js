@@ -130,7 +130,7 @@ export function stepSummary(s, o, d) {
     case "assign": return `Ask ${whoWords(s.to, o)} to ${s.title && s.title.trim() ? lc(s.title.trim()) : "do a task"}${crew(s, o)}`;
     case "email": return `Email ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the address from the form" : s.to.trim()) : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
-    case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
+    case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"}${(s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).length ? ` and ${(s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).length} more` : ""} on ${linkWords(s.record, d, o)}`;
     case "pick": return `Look up one ${named(o.types, s.type) || "record"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
     case "filter": return `Keep only the ones where ${(s.where || "").trim() || "a condition holds"}`;
     case "find": return `Find ${named(o.types, s.type) || "records"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
@@ -386,7 +386,7 @@ export function stepDefinition(s, d) {
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title) };
-    case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || "") } };
+    case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || ""), ...Object.fromEntries((s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) } };
     default: throw new Error(`no step kind ${s.kind}`);
   }
 }
@@ -608,7 +608,7 @@ function stepFrom(s) {
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
-      return rec && f.length === 1 && unval(s.set[f[0]]) !== null && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]) } : adv;
+      return rec && f.length >= 1 && f.every((k) => unval(s.set[k]) !== null) && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]), ...(f.length > 1 ? { more: f.slice(1).map((k) => ({ field: k, value: unval(s.set[k]) })) } : {}) } : adv;
     }
     default: return adv;
   }
