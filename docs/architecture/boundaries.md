@@ -48,8 +48,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/comms -> core/mail` | imap.js | the sending service reuses the mail module's IMAP adapter; it becomes a ctx.call when the adapter has a tool | ctx.call |
 | `core/files -> core/google` | drive-seam.js | linked Google Drive folders use the Drive seam's client directly; it goes through google.drive.* tools when the bridge is split | ctx.call |
-| `core/import -> core/sessions` | credfiles.js | import must never move a login file; it shares the one credential-file test, which belongs in lib | lib |
-| `core/runner -> core/sessions` | credfiles.js | the runner skips login files when it reads or syncs a home; it shares the one credential-file test, which belongs in lib | lib |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |

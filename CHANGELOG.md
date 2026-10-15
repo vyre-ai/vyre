@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
+## 0.6
+
+- fix(runner, security): the workspace reader's sandbox no longer reads every session driver. The credential file names it imports move to lib/drivers/credfiles.js, alone in that folder, and the reader's sandbox mounts that folder read-only instead of core/sessions/drivers (least privilege); import, the runner's sync and the reader use the one file. The two core-to-core boundary exceptions for it are gone. core/runner/reader-mount.test.js holds the mount and the folder to that.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
