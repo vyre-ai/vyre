@@ -10,6 +10,7 @@ import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, R
 import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
+import { FlowTests } from "./FlowTests";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
@@ -135,6 +136,7 @@ export function RealFlow({ id }: { id: string }) {
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
       {def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}
       <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
+      <FlowTests id={id} runId={picked_run?.id} />
       <Sec title="Run history">
         {runs.length ? (
           <Card flush>
