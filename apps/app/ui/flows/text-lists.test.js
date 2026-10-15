@@ -41,3 +41,18 @@ test("plain text stored before the escape existed keeps meaning plain text when 
   assert.equal(d.steps[0].instructions, "Greet them as \\{client} says, then ask about \\{topic}.", "shown escaped: these braces were never tokens");
   assert.equal(toDefinition(d, options).steps[0].instructions, "Greet them as {client} says, then ask about {topic}.", "and saved as the plain text it was");
 });
+
+test("a wait until a date and time I pick is a stored instant, reads back as the same step and says when in words", async () => {
+  const { fromDefinition, stepSummary, stepProblem, WAIT_MODES } = await import("./logic.js");
+  assert.ok(WAIT_MODES.some(([m]) => m === "on"));
+  const iso = "2026-10-28T09:30:00.000Z";
+  const d = { name: "Wait", trigger: { kind: "manual" }, steps: [{ id: "wait1", kind: "wait", mode: "on", on: iso }, { id: "c1", kind: "create", type: "matter", fields: [{ field: "title", value: "x" }] }] };
+  const stored = toDefinition(d, options);
+  assert.deepEqual(checkFlow(stored), []);
+  assert.deepEqual(stored.steps[0], { id: "wait1", kind: "wait", until: iso });
+  const back = fromDefinition(stored);
+  assert.deepEqual([back.steps[0].kind, back.steps[0].mode, back.steps[0].on], ["wait", "on", iso], "it opens as the same editable step, not Advanced");
+  assert.deepEqual(toDefinition(back, options), stored);
+  assert.equal(stepSummary(back.steps[0], { ...options, zone: "Asia/Karachi" }, back), "Wait until 2026-10-28 at 14:30");
+  assert.equal(stepProblem({ id: "w", kind: "wait", mode: "on", on: "" }, options), "Pick the date and time to wait for.");
+});

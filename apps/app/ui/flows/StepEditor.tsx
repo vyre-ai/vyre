@@ -13,6 +13,7 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
+import { DateTimeField } from "../components/DateTimeField";
 import { FailurePanel } from "./FailurePanel";
 import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
@@ -225,7 +226,13 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       ) : null}
       {s.kind === "wait" ? (
         <>
-          <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          <Select label="Wait" value={s.mode === "until" || s.mode === "on" ? s.mode : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          {s.mode === "on" ? (
+            <>
+              <DateTimeField label="Wait until" value={s.on ?? ""} zone={options.zone} onChange={(on) => set({ on: on ?? "" })} help={options.zone ? `In ${options.zone}.` : "In your own time zone."} />
+              <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
+            </>
+          ) : null}
           {s.mode === "until" ? (
             <>
               <Select label="Date to wait for" value={s.field ?? ""} options={dateChoices(draft, s.id, options)} placeholder="Choose the date, such as the appointment" onChange={(field) => set({ field })} />

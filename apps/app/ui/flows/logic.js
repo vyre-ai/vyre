@@ -12,10 +12,11 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ zone?: string, types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
+import { dateString, localParts, systemZone, validZone, wallString } from "../../../../lib/time/index.js";
 import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
 
 export { policyWords };
@@ -90,7 +91,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(typeof o.zone === "string" ? { zone: o.zone } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -141,7 +142,8 @@ export function stepSummary(s, o, d) {
     case "upsert": return `${s.updateFields ? "Find or create" : "Find, then change or create"} a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
-    case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
+    case "wait": if (s.mode === "on") return s.on ? `Wait until ${showAt(s.on, o.zone)}` : "Wait until a date and time";
+      if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
       return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
     case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
     case "web": return `${s.method === "GET" || !s.method ? "Fetch" : "Send"} ${s.path || "/"} ${s.method === "GET" || !s.method ? "from" : "to"} ${named(o.connections || [], s.connector) || "a web service"}`;
@@ -199,6 +201,7 @@ function kindProblem(s, o) {
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
     case "wait":
+      if (s.mode === "on") return s.on && Number.isFinite(Date.parse(s.on)) ? null : "Pick the date and time to wait for.";
       if (s.mode === "until") return !/^\{[a-z0-9_.]+\}$/i.test((s.field || "").trim()) ? "Pick the date to wait for." : s.when !== "at" && !(Number(s.amount) > 0) ? "Say how long before or after." : null;
       return Number(s.amount) > 0 ? null : "Say how long to wait.";
     case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
@@ -389,6 +392,7 @@ function kindDefinition(s, d) {
     case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
     case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
     case "wait":
+      if (s.mode === "on") return { id: s.id, kind: "wait", until: s.on };   // a moment picked by hand: an ISO instant, read in the zone the person picked it in
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
     case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
@@ -425,7 +429,9 @@ function tokenWords(f, d, o, none = "a date") {
 }
 /** What a Wait until can wait for: the values before this step, each named plainly, as [token, label]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
 export const dateChoices = (d, stepId, o) => valueSources(d, stepId, o).filter(([tok]) => tok !== "{now}" && tok !== "{today}").map(([tok, words]) => /** @type {[string, string]} */ ([tok, words.replace(/ of the record that started it$/, "").replace(/ from the form$/, "")]));
-export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"]]);
+export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"], ["on", "Until a date and time I pick"]]);
+/** A picked moment in words, in the Space's zone when the options name one, else the viewer's. @param {string} iso @param {string} [zone] */
+const showAt = (iso, zone) => { const ms = Date.parse(iso); if (!Number.isFinite(ms)) return "a date and time"; const z = zone && validZone(zone) ? zone : systemZone(); const p = localParts(ms, z); return `${dateString(p)} at ${wallString(p)}`; };
 export const WHEN_CHOICES = /** @type {[string, string][]} */ ([["before", "before"], ["after", "after"], ["at", "at that time"]]);
 export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);
 /** A formula is a Code step that returns one value: the engine evaluates the expression (its own language, kernel/flows/expr.js) before the code runs. `FORMULA_HASH` is the hash of this source, checked by a test. */
@@ -591,6 +597,7 @@ function stepFromKind(s) {
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
     case "wait": {
+      if (typeof s.until === "string" && /^\d{4}-\d{2}-\d{2}T/.test(s.until) && Number.isFinite(Date.parse(s.until)) && keys(s, ["id", "kind", "until", "label"])) return { id: s.id, kind: "wait", mode: "on", on: s.until };
       if (s.until !== undefined) {
         const off = s.offset_ms === undefined ? 0 : s.offset_ms, f = unval(s.until);
         const u = Object.entries(UNITS).reverse().find(([, ms]) => off % ms === 0);
