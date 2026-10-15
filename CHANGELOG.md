@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(records): per-record privacy for custom record types. A row of a type with a link field to a project, or to a type that holds work (a Matter), is read only by that project's team, its owner, and the Space's owners and admins, on every path: get, list and its cursor, search, totals, computed totals, the records that link here, references and the events about it. A member files such a row only under a project they are on. kernel/gateway/records.js, ownership.js (`workTeamOf`), kernel/gateway/project-private-rows.test.js; the known gap is closed.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
