@@ -86,7 +86,6 @@ const open = async (s, t) => {
   page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text()); });
   return { ctx, page };
 };
-/** One picture: the page for a fixture, the element, its rule faults. Retried twice on a dead page or browser. */
 /** In the page: is this PNG one flat colour (nothing was drawn)? */
 const isFlat = (page, png) => page.evaluate(async (d) => {
   const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = "data:image/png;base64," + d; });
@@ -95,6 +94,7 @@ const isFlat = (page, png) => page.evaluate(async (d) => {
   for (let i = 4; i < px.length; i += 4) if (Math.abs(px[i] - px[0]) + Math.abs(px[i + 1] - px[1]) + Math.abs(px[i + 2] - px[2]) > 6) return false;
   return true;
 }, png.toString("base64"));
+/** One picture: the page for a fixture, the element, its rule faults. Retried twice on a dead page or browser. */
 const shoot = async (cur, s, t, id) => {
   for (let attempt = 0; ; attempt++) {
     try {
