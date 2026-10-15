@@ -26,10 +26,11 @@ export function policyKeys(kind) {
   return kind === "wait" ? ["retry", "on_fail", "verify"] : POLICY;
 }
 
-/** What the panel offers for a kind: the engine ignores a time limit on a step that waits for a person or an agent, so none is offered there. @param {string} kind */
+/** What the panel offers for a kind. On a step that waits for a person or an agent `timeout_ms` is not a limit on one try but the task's due time (the runner withdraws the task and fails the step with `timeout`), so it is offered as "Due time". @param {string} kind */
 export function offers(kind) {
   const k = policyKeys(kind);
-  return { timeout: k.includes("timeout_ms") && !["ask", "assign", "agent"].includes(kind), retry: k.includes("retry"), verify: k.includes("verify"), fail: k.includes("on_fail"), readback: ["create", "update", "upsert", "stage"].includes(kind) };
+  const task = ["ask", "assign", "agent"].includes(kind);
+  return { due: task, timeout: k.includes("timeout_ms") && !task, retry: k.includes("retry"), verify: k.includes("verify"), fail: k.includes("on_fail"), readback: ["create", "update", "upsert", "stage"].includes(kind) };
 }
 
 const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -79,6 +80,7 @@ export function policyDefinition(s, defOf) {
 /** "30 seconds", "1 minute", "2 hours". @param {number} ms */
 export function span(ms) {
   const n = (/** @type {number} */ v, /** @type {string} */ u) => `${v} ${u}${v === 1 ? "" : "s"}`;
+  if (ms % 86_400_000 === 0) return n(ms / 86_400_000, "day");
   if (ms % 3_600_000 === 0) return n(ms / 3_600_000, "hour");
   if (ms % 60_000 === 0) return n(ms / 60_000, "minute");
   if (ms % 1000 === 0) return n(ms / 1000, "second");
@@ -88,7 +90,7 @@ export function span(ms) {
 /** What a step's policy says, as the clause that follows its summary ("", or ", tries up to 3 times, runs 2 steps if it fails"). @param {DraftStep} s */
 export function policyWords(s) {
   const bits = [];
-  if (s.timeout_ms !== undefined) bits.push(`gives up after ${span(s.timeout_ms)}`);
+  if (s.timeout_ms !== undefined) bits.push(offers(s.kind).due ? `due in ${span(s.timeout_ms)}` : `gives up after ${span(s.timeout_ms)}`);
   if (s.retry === false) bits.push("never tries again");
   else if (isObj(s.retry) && s.retry.attempts !== undefined) bits.push(`tries up to ${s.retry.attempts} time${s.retry.attempts === 1 ? "" : "s"}`);
   if (s.verify) bits.push(s.verify.essential === false ? "checks the work and flags a miss" : "checks the work");

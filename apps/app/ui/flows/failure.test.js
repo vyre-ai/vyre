@@ -86,7 +86,9 @@ test("a step in a failure path can read what went wrong, and no other step is of
 test("what the panel offers follows what the engine does with each kind of step", () => {
   assert.deepEqual(policyKeys("wait"), ["retry", "on_fail", "verify"]);
   assert.deepEqual(policyKeys("decide"), ["on_fail", "verify"]);
-  assert.equal(offers("agent").timeout, false, "the engine ignores a time limit on a step that waits for an agent");
+  assert.equal(offers("agent").timeout, false, "on a step that waits for an agent it is a due time, not a limit on one try");
+  assert.equal(offers("agent").due, true);
+  assert.equal(span(86_400_000), "1 day");
   assert.equal(offers("create").timeout, true);
   assert.equal(offers("create").readback, true);
   assert.equal(offers("email").readback, false);
@@ -100,6 +102,7 @@ test("a half-set panel says what is missing, in words", () => {
   assert.match(stepProblem(s({ verify: { essential: true } }), O), /how to check the work/);
   assert.match(stepProblem(s({ verify: { check: "1 +" } }), O), /not a formula/);
   assert.equal(stepProblem(s({ verify: { readback: true } }), O), null);
+  assert.equal(policyWords({ id: "a", kind: "agent", timeout_ms: 86_400_000 }), ", due in 1 day");
   assert.equal(policyWords(s({ timeout_ms: 60_000, retry: { attempts: 3 }, on_fail: { steps: [{}] } })), ", gives up after 1 minute, tries up to 3 times, 1 step to run if it fails");
 });
 

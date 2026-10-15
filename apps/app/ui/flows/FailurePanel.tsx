@@ -11,6 +11,7 @@ import { RETRY_WHY, offers, span } from "./failure.js";
 import type { DraftStep } from "./logic.js";
 
 const TIME_LIMITS: [string, string][] = [["", "The usual for this kind of step"], ["10000", "10 seconds"], ["30000", "30 seconds"], ["60000", "1 minute"], ["300000", "5 minutes"], ["900000", "15 minutes"], ["3600000", "1 hour"]];
+const DUE_TIMES: [string, string][] = [["", "The Space's usual (an agent, a day; a person, no limit)"], ["3600000", "1 hour"], ["14400000", "4 hours"], ["86400000", "1 day"], ["259200000", "3 days"], ["604800000", "1 week"], ["2592000000", "30 days"]];
 const TRIES: [string, string][] = [["", "The usual for this kind of step"], ["off", "Do not try again"], ["2", "Up to 2 tries"], ["3", "Up to 3 tries"], ["4", "Up to 4 tries"], ["5", "Up to 5 tries"], ["8", "Up to 8 tries"]];
 const WAITS: [string, string][] = [["", "The usual wait"], ["0", "No wait"], ["1000", "1 second"], ["5000", "5 seconds"], ["30000", "30 seconds"], ["60000", "1 minute"], ["300000", "5 minutes"]];
 
@@ -26,7 +27,7 @@ export function FailurePanel({ s, setStep, inHandler }: { s: DraftStep; setStep:
   const set = Boolean(s.timeout_ms !== undefined || s.retry !== undefined || s.verify || s.on_fail);
   const [open, setOpen] = useState(set);
   const fail = o.fail && !inHandler;
-  if (s.kind === "advanced" || (!o.timeout && !o.retry && !o.verify && !fail)) return null;
+  if (s.kind === "advanced" || (!o.timeout && !o.due && !o.retry && !o.verify && !fail)) return null;
   if (!open) return <View className="flex-row"><Button kind="ghost" size="sm" icon="warning" label={set ? "If something goes wrong: set" : "If something goes wrong"} onPress={() => setOpen(true)} /></View>;
 
   const retry = s.retry === false ? null : (s.retry ?? {});
@@ -48,6 +49,13 @@ export function FailurePanel({ s, setStep, inHandler }: { s: DraftStep; setStep:
       {o.timeout ? (
         <Select label="Give up on one try after" value={s.timeout_ms !== undefined ? String(s.timeout_ms) : ""} options={withCurrent(TIME_LIMITS, s.timeout_ms !== undefined ? String(s.timeout_ms) : "", span(s.timeout_ms ?? 0))}
           onChange={(x) => setStep({ timeout_ms: x ? Number(x) : undefined })} />
+      ) : null}
+
+      {o.due ? (
+        <View className="gap-s2">
+          <Select label="Due time" value={s.timeout_ms !== undefined ? String(s.timeout_ms) : ""} options={withCurrent(DUE_TIMES, s.timeout_ms !== undefined ? String(s.timeout_ms) : "", span(s.timeout_ms ?? 0))} onChange={(x) => setStep({ timeout_ms: x ? Number(x) : undefined })} />
+          <Text size="caption" tone="label">Past it the task is withdrawn: nobody can hand it in late, and the agent stops working on it. The step then fails with "timeout" and runs the steps below, if you add any.</Text>
+        </View>
       ) : null}
 
       {o.retry ? (
