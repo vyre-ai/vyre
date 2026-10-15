@@ -20,7 +20,7 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF });
   t.after(() => people.close());
-  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) };
+  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => { if (m.gone) throw new Error("not a member of this Space"); return { hops: m.hops || [] }; } };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const accounts = /** @type {Record<string, any>} */ ({});
   const ctx = gateTools({ kernel, call: async (/** @type {string} */ tool, /** @type {any} */ i) => (tool === "sessions.accounts.item" ? { data: accounts[i.account] && accounts[i.account].person === i.person ? accounts[i.account] : null } : { error: { code: "no_such_tool" } }), tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
@@ -168,11 +168,18 @@ test("vault.me.lend gives a member their own key for their own turn: the person 
   assert.equal((await lend({ account: "acct_bob" }, null)).error.code, "denied");
   assert.equal((await lend({ account: "acct_bob" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "denied", "an agent's job never uses a member's key");
   for (const caller of ["module:files", "module:sessions", "module:mcp", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.lend", { account: "acct_bob" }, BOB, { caller })).error?.code, "denied", caller);
+  // a member who has left the Space has no chain in it: a thread resumed on their account gets no value and no other credential
+  const gone = await lend({ account: "acct_bob" }, BOB, { gone: true });
+  assert.equal(gone.error.code, "denied");
+  assert.equal(JSON.stringify(gone).includes("sk-ant"), false);
+  // the owner's turn naming the member's account id is refused too (the account is not the owner's, and the owner is not a member)
+  assert.equal((await lend({ account: "acct_bob", person: BOB }, OWNER)).error.code, "denied");
   // a locked vault says so and gives nothing
   people.lock(BOB);
   const locked = await lend({ account: "acct_bob" }, BOB);
   assert.equal(locked.error.code, "locked"); assert.equal(JSON.stringify(locked.error.message).includes("sk-ant"), false);
   // every lend is in the audit trail by person, account and item, and the value is in none of it
-  assert.ok(events.some(e => e.type === "vault.me.lent" && e.p.person === BOB && e.p.account === "acct_bob" && e.p.item === "bob-claude"));
+  assert.ok(events.some(e => e.type === "vault.me.lent" && e.p.person === BOB && e.p.account === "acct_bob"));
+  assert.equal(JSON.stringify(events.filter(e => e.type === "vault.me.lent")).includes("bob-claude"), false, "the event names the account, never the item the member labelled");
   assert.equal(JSON.stringify(events).includes("sk-ant-bob-0001"), false, "no event carries the value");
 });

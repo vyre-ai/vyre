@@ -119,7 +119,7 @@ export function register({ ctx, people, tool }) {
       let it; try { it = await people.get(person, { name: acct.item }); } catch { throw Object.assign(new Error("unlock your own vault to use this account"), { code: "locked" }); }
       const value = it.fields[String(acct.field || "value")] ?? it.fields.key ?? it.fields.token;
       if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty"), { code: "denied" });
-      people.emit("vault.me.lent", { person, account: String(input.account), item: acct.item });   // who, which account and item: never the value
+      people.emit("vault.me.lent", { person, account: String(input.account) });   // who and which account: never the value, and never the item's name (the member's own label for a secret)
       return { value };
     },
   });
