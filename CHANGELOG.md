@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
+## 0.6
+
+- test(security): the credential scan (core/sessions/credential-scan.test.js) runs in CI with a real claude binary (.github/workflows/credential-scan.yml: bubblewrap, Yama ptrace_scope 1, Claude Code 2.1.286, fake secrets and a fake Messages API), where no case may be skipped or left todo; before, it skipped wherever there was no claude binary, so it ran only where nobody looked. THE BAR (a setup token through Vyre's own launch is readable by no tool of the session) is no longer todo. A pin that goes red is a leak to fix, never one to flip back.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
