@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(comms,flows): email CC and BCC. `comms.send` passes cc and bcc to the mail account, `comms.email` carries them through the Gate's held content to Resend, Mailgun, Postmark, SendGrid and SMTP (they count toward the 50 recipients, a bad address is refused by name), and the Flow email step has Cc and Bcc fields that save and read back. Attachments follow once the byte source is ruled. core/comms/sending/index.js, core/comms/index.js, apps/app/ui/flows.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
