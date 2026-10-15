@@ -1,0 +1,60 @@
+# The flake soak: named test files run many times at once under CPU load, the way a busy shared runner runs them, and the run is red when any pass fails. A flake is a red (DEVELOPMENT-RULES, T1):
+# this is how a load-sensitive test is found and, after its fix, shown to pass twenty times in a row. Manual: pick the files, the passes and the load.
+name: flake-soak
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "Test files, space separated (quoted globs are expanded by node --test)"
+        type: string
+        default: "test/peer-race.test.js core/planner/link.test.js test/site-mac-rung.test.js"
+      passes:
+        description: "How many times each file runs"
+        type: string
+        default: "20"
+      load:
+        description: "CPU hogs running beside the tests (the runner has 4 cores)"
+        type: string
+        default: "6"
+permissions:
+  contents: read
+concurrency:
+  group: flake-soak-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --no-audit --no-fund
+      - name: Soak
+        shell: bash
+        env:
+          FILES: ${{ inputs.files }}
+          PASSES: ${{ inputs.passes }}
+          LOAD: ${{ inputs.load }}
+        run: |
+          set -u
+          hogs=()
+          for i in $(seq 1 "$LOAD"); do (while :; do :; done) & hogs+=($!); done
+          trap 'kill "${hogs[@]}" 2>/dev/null || true' EXIT
+          fails=0
+          for f in $FILES; do
+            bad=0
+            for i in $(seq 1 "$PASSES"); do
+              if ! node --test --test-reporter=spec "$f" > "soak.out" 2>&1; then bad=$((bad+1)); echo "::group::$f failed on pass $i"; grep -E '✖|not ok|Error|HUNG' soak.out | head -20; echo "::endgroup::"; fi
+            done
+            echo "$f: $bad of $PASSES passes failed"
+            fails=$((fails+bad))
+          done
+          [ "$fails" = 0 ]

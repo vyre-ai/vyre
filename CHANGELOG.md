@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- ci(flake-soak): a manual workflow runs named test files many times at once under CPU load on Node 22 and 24 and fails when any pass fails, so a load-sensitive test is found and, once fixed, shown to pass twenty times in a row.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
