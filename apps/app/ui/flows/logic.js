@@ -465,11 +465,19 @@ const driveFrom = (d) => {
 /** What a task hands back: the kinds the engine knows, and the optional name of what it is for. */
 export const OUTPUTS = /** @type {[string, string][]} */ ([["note", "A note"], ["fields", "Filled-in fields"], ["draft", "A draft to check"], ["sent", "Something sent"], ["decision", "A yes or no"], ["file", "A file"]]);
 /** The stored output of a task step from the draft. @param {any} s */
-const outputOf = (s) => (OUTPUTS.some((x) => x[0] === s.output) && s.output !== "note" ? { kind: s.output, ...(String(s.outputTarget || "").trim() ? { target: String(s.outputTarget).trim() } : {}) } : { kind: "note" });
+const outputOf = (s) => {
+  if (!OUTPUTS.some((x) => x[0] === s.output) || s.output === "note") return { kind: "note" };
+  const text = String(s.outputTarget || "").trim();
+  if (!TARGETED.has(s.output) || !text) return { kind: s.output };
+  return { kind: s.output, target: s.output === "fields" ? text.split(",").map((x) => x.trim()).filter(Boolean) : text };
+};
+/** The output kinds that take a target: the record fields a task fills in, the name of a draft, the folder a file lands in. */
+export const TARGETED = new Set(["fields", "draft", "file"]);
 /** The draft's output fields from a stored output; null when it says more than the editor shows. @param {any} o */
 const outputFrom = (o) => {
-  if (!o || typeof o !== "object" || !OUTPUTS.some((x) => x[0] === o.kind) || Object.keys(o).some((k) => k !== "kind" && k !== "target") || (o.target !== undefined && typeof o.target !== "string")) return null;
-  return o.kind === "note" && o.target === undefined ? {} : { output: o.kind, ...(o.target ? { outputTarget: o.target } : {}) };
+  if (!o || typeof o !== "object" || !OUTPUTS.some((x) => x[0] === o.kind) || Object.keys(o).some((k) => k !== "kind" && k !== "target")) return null;
+  if (o.target !== undefined && !(TARGETED.has(o.kind) && (typeof o.target === "string" || (o.kind === "fields" && Array.isArray(o.target) && o.target.every((x) => typeof x === "string" && x && !x.includes(",")))))) return null;
+  return o.kind === "note" ? {} : { output: o.kind, ...(o.target !== undefined ? { outputTarget: Array.isArray(o.target) ? o.target.join(", ") : o.target } : {}) };
 };
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };

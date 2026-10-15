@@ -186,11 +186,11 @@ test("a send can always ask a person, and a web call can send or save a Drive fi
 });
 
 test("an agent or assign step says what comes back, not only a note", () => {
-  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Draft", instructions: "Write it", output: { kind: "draft", target: "welcome" }, record: { expr: "event.subject" }, await: true }, { id: "t1", kind: "assign", to: "role:intake", title: "Sign", output: { kind: "file" } }]);
+  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Draft", instructions: "Write it", output: { kind: "draft", target: "welcome" }, record: { expr: "event.subject" }, await: true }, { id: "t1", kind: "assign", to: "role:intake", title: "Fill", output: { kind: "fields", target: ["status", "owner"] }, record: { expr: "event.subject" } }]);
   const draft = fromDefinition(d, options);
-  assert.deepEqual([draft.steps[0].kind, draft.steps[0].output, draft.steps[0].outputTarget, draft.steps[1].output], ["agent", "draft", "welcome", "file"]);
+  assert.deepEqual([draft.steps[0].kind, draft.steps[0].output, draft.steps[0].outputTarget, draft.steps[1].output, draft.steps[1].outputTarget], ["agent", "draft", "welcome", "fields", "status, owner"]);
   const out = toDefinition(draft, options);
-  assert.deepEqual([out.steps[0].output, out.steps[1].output], [{ kind: "draft", target: "welcome" }, { kind: "file" }]);
+  assert.deepEqual([out.steps[0].output, out.steps[1].output], [{ kind: "draft", target: "welcome" }, { kind: "fields", target: ["status", "owner"] }]);
   assert.deepEqual(checkFlow(out), []);
   draft.steps[0].output = "note";
   assert.deepEqual(toDefinition(draft, options).steps[0].output, { kind: "note" });
