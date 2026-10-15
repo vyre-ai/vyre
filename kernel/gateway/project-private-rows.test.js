@@ -178,3 +178,17 @@ test("a merge needs the team of every project either row links to, in both direc
   assert.equal(await code(R.unmerge(dev(EVE), m.merge_id)), "not_allowed", "undoing a merge of rows on Other");
   assert.equal(await code(R.unmerge(dev(EVE), joined.merge_id)), null, "undoing her own");
 });
+
+test("a built-in private type pages the same way: no cursor and no search cursor that counts rows the reader may not see", async () => {
+  const { R, owner, dev, rivera, person } = await rig();
+  for (let i = 0; i < 6; i++) await R.create(owner, "team-member", { name: `Seat ${i}`, actor: person(BOB), kind: "person", project: { urn: rivera.urn } });
+  const first = await R.query(dev(EVE), "team-member", { page: { limit: 1 } });
+  assert.equal(first.rows.length, 0, "EVE is on no team: she reads none of the seats");
+  assert.equal(first.next_cursor, undefined, "and is given no cursor to count them by");
+  const found = await R.search(dev(EVE), { text: "Seat", types: ["team-member"], page: { limit: 1 } });
+  assert.equal(found.rows.length, 0); assert.equal(found.next_cursor, undefined, "search likewise");
+  const some = await R.query(dev(BOB), "team-member", { page: { limit: 2 } });
+  assert.equal(some.rows.length, 2, "the team reads its own seats");
+  assert.ok(some.next_cursor, "and pages on");
+  assert.equal((await R.query(owner, "team-member", { page: { limit: 50 } })).rows.length >= 6, true);
+});
