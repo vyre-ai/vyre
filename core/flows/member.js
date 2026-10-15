@@ -43,6 +43,24 @@ export const CALLS = Object.freeze(/** @type {Record<string, { tool: string, kin
 const no = (/** @type {string} */ message) => new KernelError("not_allowed", message);
 
 /**
+ * THE rule for who inspects a Flow, its runs and the Connections it uses, for both doors (this member door and the Flows tools a member's MCP key reaches, core/flows/index.js): an owner or an admin, the
+ * person who made the Flow, or someone it is shared with (Can use or Can edit). Anyone else is told the Flow is not there. `f` is the Space's Flows host entry.
+ * @param {any} f @param {string} me @param {string} role @param {string} id
+ */
+export async function mayInspectFlow(f, me, role, id) {
+  if (role === "owner" || role === "admin") return true;
+  const store = f.flows.store;
+  const row = store.flowRow ? await store.flowRow(id) : null;
+  if (!row) return false;
+  const first = row.versions && row.versions[0] && row.versions[0].by;
+  if (first && first.kind === "person" && String(first.id) === me) return true;
+  const shared = typeof f.sharedWith === "function" ? await f.sharedWith(id).catch(() => []) : [];
+  return (shared || []).some((/** @type {any} */ g) => g && g.subject === me && (g.level === "use" || g.level === "edit"));
+}
+/** What a member is told about a Flow she may not inspect: the same words as one that is not there, so the answer says nothing about which Flows exist. */
+export const notYours = () => new KernelError("not_found", "there is no such Flow you can use (flows.list shows yours and the ones shared with you)");
+
+/**
  * One member call, with the rules. `f` is the Space's Flows host entry (f.flows.tools, f.flows.store).
  * @param {any} f @param {string} name @param {any} i @param {any} chain @param {string} me @param {string} role @param {any} [kernel]
  */
@@ -66,14 +84,19 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   const exists = async (/** @type {string} */ id) => Boolean(await rowOf(id));
   /** Reading a Flow, its runs and its health is every member's: Flows belong to the Space. */
   const there = async (/** @type {string} */ id) => { if (!(await exists(id))) throw new KernelError("not_found", "there is no such Flow (flows.list shows the Space's)"); };
+  /** A Flow she may inspect: one she made or one shared with her (owners and admins: every Flow). One rule, shared with the MCP tools. */
+  const seen = async (/** @type {string} */ id) => { if (!(await mayInspectFlow(f, me, role, id))) throw notYours(); };
+  /** Rows that name a Flow, cut to the Flows she may inspect. @param {any[]} rows @param {(r: any) => string | undefined} flowOf */
+  const onlyMine = async (rows, flowOf) => { if (admin || !Array.isArray(rows)) return rows; const keep = new Map(); const out = []; for (const r of rows) { const id = flowOf(r); if (typeof id !== "string") continue; if (!keep.has(id)) keep.set(id, await mayInspectFlow(f, me, role, id)); if (keep.get(id)) out.push(r); } return out; };
 
   switch (spec.kind) {
     case "open": return call();
-    case "list": case "runs": return mark(await tools[spec.tool](chain, i));
+    case "list": return mark(await onlyMine(await tools[spec.tool](chain, i), (r) => r.id));
+    case "runs": { if (typeof i.id === "string" && i.id) await seen(i.id); return mark(await onlyMine(await tools[spec.tool](chain, i), (r) => r.flow)); }
     // The Flow runs that need a look. The stuck tasks of the whole Space are not Flows matters, so a member is shown none of them.
     case "attention": {
       const a = await tools[spec.tool](chain, i);
-      const rows = a && Array.isArray(a.runs) ? a.runs : [];
+      const rows = await onlyMine(a && Array.isArray(a.runs) ? a.runs : [], (r) => r.flow);
       // a run's message can quote what a step read: for a run on someone else's authority only the kind of trouble is shown (as in hiding())
       return { runs: await Promise.all(rows.map(async (/** @type {any} */ r) => {
         const run = store.getRun ? await store.getRun(r.run).catch(() => null) : null;
@@ -81,19 +104,24 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
         return admin || as === me ? r : { ...r, message: `This needs a look (${r.kind || "stuck"}). The detail is for ${as || "the person who approved it"}, whose authority the run used; ask them.` };
       })) };
     }
-    case "health": if (i.id) await there(need("id", "the Flow's id")); return call();
+    case "health": { if (i.id) { await there(need("id", "the Flow's id")); await seen(String(i.id)); return call(); } const h = await call(); return h && Array.isArray(h.flows) ? { ...h, flows: await onlyMine(h.flows, (x) => x.id) } : h; }
     case "read": {
       await there(need("id", "the Flow's id"));
+      await seen(String(i.id));
       const out = await call();
       // The app chooses Approve or Send for approval from these, so it never infers them: who the Flow RUNS AS (runs_as) and who made the version shown (by).
       if (spec.tool !== "flows.get" && spec.tool !== "flows.card") return out;
       const r = await rowOf(String(i.id)); const v = r && r.versions.find((/** @type {any} */ x) => x.version === out.version);
       return { ...out, runs_as: await setterUp(String(i.id)), by: v && v.by && v.by.kind === "person" ? String(v.by.id) : null };
     }
-    case "describe": if (i.run) return call(await hiding(await runOf(String(i.run)))); await there(need("id", "the Flow's id")); return call();
+    case "describe": {
+      if (i.run) { const run = await runOf(String(i.run)); await seen(String(run.flow)); return call(await hiding(run)); }   // the run's Flow is the one checked, and the call carries only the run
+      await there(need("id", "the Flow's id")); await seen(String(i.id)); return call();
+    }
     // Setting up and improving: any member writes a new version, a patch or a test of any Flow of the Space as a DRAFT. Which version runs, and on whose authority, is decided only at approval (below).
     case "define": case "write": case "simulate": {
       // Drafts she has made of one Flow and nobody has approved are capped, so one member cannot fill the Flow with versions (the vault caps pending requests the same way).
+      if (typeof i.id === "string" && i.id) await seen(i.id);
       if (typeof i.id === "string" && i.id && spec.kind !== "simulate") {
         const r = await rowOf(i.id);
         const mine = r ? r.versions.filter((/** @type {any} */ v) => v.by && v.by.kind === "person" && String(v.by.id) === me && (r.active === null || v.version > r.active)).length : 0;
@@ -110,10 +138,11 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     case "start": {
       const id = need("id", "the Flow's id");
       await there(id);
+      await seen(id);   // starting a Flow is Can use: she may not start one she may not inspect
       // the starter is written into the run (its trigger key), so "the runs I started" is a fact of the run, not of a list somewhere
       return tools["flows.start"](chain, { ...i, key: `mem:${me}:${typeof i.key === "string" && i.key ? i.key.slice(0, 60) : Math.random().toString(36).slice(2, 12)}` });
     }
-    case "run": return call(await hiding(await runOf(need("run", "the run's id"))));
+    case "run": { const run = await runOf(need("run", "the run's id")); await seen(String(run.flow)); return call(await hiding(run)); }
     case "cancelrun": { const run = await runOf(need("run", "the run's id")); if (!admin && !startedBy(run, me) && (await setterUp(run.flow)) !== me) throw no("you cannot stop that run: it is not yours. Ask whoever set the Flow up, or an owner or admin."); return call(); }
     case "propose": return proposeVersion();
     case "approve": return approve();
@@ -138,6 +167,7 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   /** A version of the Space's Flow that someone else set up: a card goes to the person it runs for (or an owner when they are gone), who approves it in Flows with their own yes. Nothing applies by this call. */
   async function proposeVersion() {
     const id = need("id", "the Flow's id"), version = Number(i.version);
+    await seen(id);
     const row = await rowOf(id);
     const made = row && row.versions ? row.versions.find((/** @type {any} */ x) => x.version === version) : null;
     const v = made ? await store.getVersion(id, version) : null;

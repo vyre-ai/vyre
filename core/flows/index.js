@@ -6,7 +6,7 @@
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
-import { serveMember, CALLS as MEMBER_CALLS } from "./member.js";
+import { serveMember, mayInspectFlow, notYours, CALLS as MEMBER_CALLS } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
@@ -139,41 +139,34 @@ export default {
           if (INSPECT.has(name)) {
             const first = chain.hops && chain.hops[0] ? chain.hops[0].actor : null, me = first && first.kind === "person" ? String(first.id) : "";
             const role = me && f.roleOf ? f.roleOf(me) : "";
-            if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me);
+            if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
           return f.flows.tools[INNER(name)](chain, rest);
         },
       });
     }
-    /** Whether a member made a Flow or it is shared with her. @param {any} f @param {string} id @param {string} me */
-    const mayInspect = async (f, id, me) => {
-      const row = f.flows.store.flowRow ? await f.flows.store.flowRow(id) : null;
-      if (!row) return false;
-      const first = row.versions && row.versions[0] && row.versions[0].by;
-      if (first && first.kind === "person" && String(first.id) === me) return true;
-      return ((await f.sharedWith(id).catch(() => [])) || []).some((/** @type {any} */ g) => g && g.subject === me && (g.level === "use" || g.level === "edit"));
-    };
-    const noFlow = () => refuse("you can inspect a Flow you made or one shared with you (Can use or Can edit): ask its owner to share it", "denied");
-    /** @param {any} f @param {string} name @param {any} rest @param {any} chain @param {string} me */
-    async function inspectAsMember(f, name, rest, chain, me) {
+    const mayInspect = (/** @type {any} */ f, /** @type {string} */ id, /** @type {string} */ me, /** @type {string} */ role) => mayInspectFlow(f, me, role, id);
+    /** @param {any} f @param {string} name @param {any} rest @param {any} chain @param {string} me @param {string} role */
+    async function inspectAsMember(f, name, rest, chain, me, role) {
       const tool = f.flows.tools[INNER(name)];
       if (name === "flows.describe") {
         let id = rest.id;
         if (rest.run) { const run = f.flows.store.getRun ? await f.flows.store.getRun(String(rest.run)).catch(() => null) : null; id = run && run.flow; }
-        if (typeof id !== "string" || !(await mayInspect(f, id, me))) throw noFlow();
-        return tool(chain, rest);
+        if (typeof id !== "string" || !(await mayInspect(f, id, me, role))) throw notYours();
+        // only what was checked goes through: with a run, the run (its Flow is the one checked); else the id
+        return tool(chain, rest.run ? { run: String(rest.run), ...(rest.hide_for ? { hide_for: rest.hide_for } : {}) } : { id, ...(rest.version !== undefined ? { version: rest.version } : {}) });
       }
       if (name === "flows.runs") {
-        if (typeof rest.id === "string" && rest.id) { if (!(await mayInspect(f, rest.id, me))) throw noFlow(); return tool(chain, rest); }
+        if (typeof rest.id === "string" && rest.id) { if (!(await mayInspect(f, rest.id, me, role))) throw notYours(); return tool(chain, rest); }
         const all = await tool(chain, rest), keep = new Map();
-        for (const r of Array.isArray(all) ? all : []) if (!keep.has(r.flow)) keep.set(r.flow, await mayInspect(f, String(r.flow), me));
+        for (const r of Array.isArray(all) ? all : []) if (!keep.has(r.flow)) keep.set(r.flow, await mayInspect(f, String(r.flow), me, role));
         return (Array.isArray(all) ? all : []).filter((/** @type {any} */ r) => keep.get(r.flow));
       }
       // flows.connections: only the Flows she may inspect, and a Connection none of them uses is not listed
       const out = await tool(chain, rest), rows = [];
       for (const c of out && Array.isArray(out.connections) ? out.connections : []) {
         const flows = [];
-        for (const x of c.flows || []) if (await mayInspect(f, String(x.id), me)) flows.push(x);
+        for (const x of c.flows || []) if (await mayInspect(f, String(x.id), me, role)) flows.push(x);
         if (flows.length) rows.push({ ...c, flows });
       }
       return { ...out, connections: rows };
