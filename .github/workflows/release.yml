@@ -341,6 +341,14 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
+  # The first-run gate (first-run.yml): the real Mac app, installed from its dmg onto a clean runner, walked name, Create, Vault, Ready. A broken path fails the release (0.5.0 shipped
+  # stuck at Vault on a device with no server). It holds no key and its stand-ins never reach vyre.run; the release job needs it to have succeeded.
+  first-run:
+    needs: prepare
+    uses: ./.github/workflows/first-run.yml
+    permissions:
+      contents: read
+
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
   app-web:
@@ -491,9 +499,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web, windows, mac, android]
+    needs: [prepare, images, manifests, app-web, windows, mac, android, first-run]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && needs.first-run.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the

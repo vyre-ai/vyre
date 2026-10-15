@@ -169,8 +169,32 @@ enum Drive {
             let from = (c["since"] as? Int) ?? 0
             say(["timings": Array(out.dropFirst(max(0, from))), "count": out.count]); return
         }
+        if let op = c["web"] as? String { web(op, c); return }
         if VJ.truthy(c["memory"]) { say(["memory": memory()]); return }
         say(["error": "unknown command"])
+    }
+
+    /// The Vyre app's own window, for the first-run proof (scripts/mac-first-run-proof.mjs): open it the way a launch does, run a script in its page, click a point, take its picture.
+    static func web(_ op: String, _ c: [String: Any]) {
+        let w = VyreAppWindow.shared
+        switch op {
+        case "open":
+            w.showShell()
+            say(["web": "open", "boxless": w.boxless])
+        case "eval":
+            guard let js = c["js"] as? String else { say(["error": "no js"]); return }
+            w.driveEval(js) { value, error in
+                DispatchQueue.main.async { say(error.map { ["web": "eval", "error": $0] } ?? ["web": "eval", "value": value ?? NSNull()]) }
+            }
+        case "click":
+            guard let x = c["x"] as? Double, let y = c["y"] as? Double else { say(["error": "no point"]); return }
+            say(["web": "click", "ok": w.driveClick(x: x, y: y)])
+        case "shot":
+            guard let path = c["path"] as? String else { say(["error": "no path"]); return }
+            w.driveShot(path: path) { ok in DispatchQueue.main.async { say(["web": "shot", "ok": ok]) } }
+        default:
+            say(["error": "unknown web command"])
+        }
     }
 
     static func probe(_ a: CapsuleApp) -> [String: Any] {

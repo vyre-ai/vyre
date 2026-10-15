@@ -1,0 +1,90 @@
+# The first-run gate: the real Vyre Mac app, installed from its dmg onto a clean macOS runner with empty state, walked screen by screen as a person walks it: name, Create (add a server),
+# Vault, Ready (scripts/mac-first-run-proof.mjs). A broken path fails the release: release.yml needs this job, and test/first-run-gate.test.js keeps it that way.
+# 0.5.0 shipped stuck at Vault on any device with no server, and nothing walked the screens.
+#
+# What is real: the Swift app built from this checkout, packaged by scripts/mac-app-package.sh into a dmg, mounted and copied to /Applications, the web build inside it, a real vyred on the runner
+# for the Create step. What is a stand-in: the names directory and the relay (nothing reaches vyre.run), which the web build is pointed at through EXPO_PUBLIC_VYRE_NAMES_DIRECTORY and
+# EXPO_PUBLIC_VYRE_RELAY (the same seams the Windows proof uses). Same sources as the release build, two constants apart.
+name: first-run
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ["work/0.6/rel6/first-run"]
+permissions:
+  contents: read
+concurrency:
+  group: first-run-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') }}
+env:
+  FIRST_RUN_NAMES_PORT: "8787"
+  FIRST_RUN_RELAY_PORT: "8788"
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app, pointed at the stand-ins
+        working-directory: apps/app
+        env:
+          EXPO_PUBLIC_VYRE_NAMES_DIRECTORY: http://127.0.0.1:${{ env.FIRST_RUN_NAMES_PORT }}
+          EXPO_PUBLIC_VYRE_RELAY: ws://127.0.0.1:${{ env.FIRST_RUN_RELAY_PORT }}
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: first-run-web
+          path: apps/app/dist
+          retention-days: 2
+  walk:
+    needs: web
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Build the Mac app
+        run: sh local/capsule/native/build.sh app
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: first-run-web
+          path: ${{ runner.temp }}/web
+      - name: Package it as the release does (a dmg), then install it from the dmg onto this empty Mac
+        env:
+          VYRE_APP_WEB_DIR: ${{ runner.temp }}/web
+        run: |
+          set -eu
+          version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+          sh scripts/mac-app-package.sh "$version" aarch64 local/capsule/native/.build/Vyre.app "$RUNNER_TEMP/dist-mac"
+          mnt="$(mktemp -d)"
+          hdiutil attach "$RUNNER_TEMP/dist-mac/Vyre-${version}-aarch64.dmg" -nobrowse -mountpoint "$mnt" >/dev/null
+          rm -rf /Applications/Vyre.app
+          ditto "$mnt/Vyre.app" /Applications/Vyre.app
+          hdiutil detach "$mnt" >/dev/null
+          test -f /Applications/Vyre.app/Contents/Resources/app/index.html
+          codesign -dv /Applications/Vyre.app 2>&1 | grep -E "Identifier|Signature" || true
+      - name: The walk
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/first-run-out"
+          node scripts/mac-first-run-proof.mjs --app /Applications/Vyre.app --out "$RUNNER_TEMP/first-run-out" --names-port "$FIRST_RUN_NAMES_PORT" --relay-port "$FIRST_RUN_RELAY_PORT" | tee "$RUNNER_TEMP/first-run-out/walk.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: first-run-walk
+          path: ${{ runner.temp }}/first-run-out
+          if-no-files-found: warn
+          retention-days: 14
