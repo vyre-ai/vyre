@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- ci(regen): on a pull request into a release branch, regen.yml runs scripts/team/regen.mjs on Linux and commits stale generated files (docs reference and index, agent docs, architecture map, golden lists) to the PR branch, then starts node.yml on the new commit; a fork's pull request fails with the stale files named. Nobody edits generated files by hand.
+- ci(regen): on a pull request into a release branch, regen.yml runs scripts/team/regen.mjs on Linux in a read-only job and, when the docs reference and index, the agent docs or the architecture map are stale, a second job with the write token applies only those paths as a commit to the PR branch (never the golden lists, which change through golden-refresh) and starts node, app, box-image and design-pictures on the new commit; a fork's pull request fails with the stale files named. Nobody edits generated files by hand.
 
 ## 0.5.1
 
