@@ -61,7 +61,9 @@ jobs:
     steps:
       - name: A fork's pull request gets no commit
         if: github.event.pull_request.head.repo.full_name != github.repository
-        run: echo "::error::this pull request comes from a fork and the generated files are stale: run node scripts/team/regen.mjs and commit the result"; exit 1
+        run: |
+          echo "::error::this pull request comes from a fork and the generated files are stale, so run node scripts/team/regen.mjs and commit the result"
+          exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
