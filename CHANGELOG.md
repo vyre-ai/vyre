@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- ci: a pull request's newer push cancels its older run in node, app, box-image and design-pictures (the work/ test alone never matched a pull request's ref); main, release branches and tags never cancel. box-image and design-pictures already run only when their inputs change.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

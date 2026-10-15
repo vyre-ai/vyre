@@ -30,7 +30,7 @@ permissions:
   contents: read
 concurrency:
   group: design-pictures-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref_name, 'work/') }}
 jobs:
   pictures:
     runs-on: ubuntu-latest
