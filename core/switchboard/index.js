@@ -53,6 +53,7 @@ import { Leases, ownSurface, sameKeyboard } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
+import { registerComposerSlashTools } from "./composer-slash.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere, registerTranscriptTools } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
@@ -4762,9 +4763,7 @@ export default {
         return sb.switchEffort(i.thread, i.effort ?? null);
       });
 
-    tool("threads.commands", "The slash commands a running thread offers, for a composer's / menu. Send one as a message, e.g. \"/compact\".",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
+    registerComposerSlashTools(tool, { sb, ctx, guard, queuesFor, personTurn, surfaceOf, str });
 
     tool("threads.tasks", "A running thread's background tasks (shell commands run in the background, subagents): id, kind, title, status (running, completed, failed, killed), summary.",
       { type: "object", required: ["thread"], properties: { thread: str } },
@@ -4785,20 +4784,6 @@ export default {
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches thinking"), { code: "denied" });
         return sb.thinking(i.thread, i.on);
       });
-
-    tool("threads.shell", "Claude Code's ! mode: run a shell line in the thread's folder, as you, under the security floor. Its output shows here and goes to Claude with your next message. Only a person can.",
-      { type: "object", required: ["thread", "command"], properties: { thread: str, command: str } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not run the person's shell lines"), { code: "denied" });
-        return sb.shell(i.thread, i.command);
-      }, ["cli", "local", "deck", "capsule"]);
-
-    tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions: the person edits them, or another session does"), { code: "denied" });
-        return sb.remember(i.thread, i.text, i.scope || "project");
-      }, ["cli", "local", "deck", "capsule"]);
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation and folder that the original never sees. For terminal-busy sessions.",
       { type: "object", required: ["thread"], properties: { thread: str, at: { type: "string", description: "A message's uuid (thread.turn's): fork from just before that turn instead of from the live end." }, prompt: str, name: str, surface: str } },

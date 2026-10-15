@@ -233,6 +233,11 @@
         "effect": "read"
       },
       {
+        "name": "threads.slash",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "threads.tasks",
         "reach": "anyone",
         "effect": "read"
