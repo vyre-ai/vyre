@@ -15,7 +15,7 @@ import { Refused } from "./safety.js";
 export const LIMITS = { depth: 4, entries: 2000, results: 200, list: 1000 };
 
 /** files.recent lists the folders other sessions worked in, so a model is not among its callers. */
-const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 

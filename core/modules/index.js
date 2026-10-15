@@ -602,7 +602,7 @@ export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(c
  * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
  * to decide, not this list's. "mobile" is the old bare phone label: any caller can claim it, and the phone arrives as its paired device (`device:<id>`), so a callers list that still names it never admits a bare "mobile".
  */
-const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent", "mobile"]);
+const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
 
 /** The raw kernel of a hosted Space, keyed by the view a module holds for it. Module-private: only routedKernel reads it. @type {WeakMap<object, any>} */
 const HOSTED_KERNEL = new WeakMap();

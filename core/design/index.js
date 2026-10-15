@@ -21,7 +21,7 @@ const MIGRATIONS = [
   `CREATE TABLE design_css (scope TEXT PRIMARY KEY, css TEXT NOT NULL, tokens TEXT NOT NULL, status TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL)`,
 ];
 /** Who may call the tools an agent may use: the person's own surfaces, other modules, and a model through the MCP or the harness. The rest default to the person's surfaces. */
-const ANYONE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const ANYONE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 const ID = /^[a-z][a-z0-9-]{0,30}$/;
 const MAX_BYTES = 256 * 1024;
 

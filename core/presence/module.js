@@ -341,7 +341,7 @@ export default {
     ctx.tool("presence.person.locked", {
       effect: "read",
       description: "The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.",
-      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      callers: ["cli", "local", "deck", "capsule"],
       input: obj({}),
       run: async () => {
         const out = [];

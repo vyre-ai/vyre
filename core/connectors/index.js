@@ -133,7 +133,7 @@ export default {
     // what can be asked of it and which asks are outward; the credential carries that to the vault, which is where a Flow, a watcher and an assistant meet it.
     ctx.tool("connectors.declared", {
       effect: "read",
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
       description: "The connectors this build ships as declarations (Stripe, Gmail, Google Calendar ...), each: id, label, how it signs in, its operations (name, label, kind, outward) and the polls a watcher can run on it, plus whether a credential of that name is already in the vault. Holds no value.",
       input: obj({ id: str }),
       run: async ({ id } = {}) => {
@@ -230,7 +230,7 @@ export default {
     registerSiteTools(ctx, { made, runner: siteRunner, governor: gov, yours, fail, obj, str, people: PEOPLE, readers: [] });
     const formShape = obj({ why: str, label: str, id: str, base_url: str, app: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
       headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]), operations: { type: "array" } }, ["label", "send", "credential", "check"]);
-    const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    const READERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
     ctx.tool("connectors.connection.create", {
       effect: "write",
       description: "Connect any app that has an API, from a key already in the Vault: { label, base_url (one https host), send: { how: bearer | header | basic | query, name? (the header or query parameter) }, credential: { item, field? }, headers? (fixed, such as an API version), vars? (fixed values a {name} in headers or the check path takes), check: { path } }. Makes the Connection and its vault credential; run connectors.connection.check next.",

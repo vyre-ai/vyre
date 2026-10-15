@@ -6,7 +6,7 @@ const f = list => Object.freeze([...list]);
 export const CONTRACTS_VERSION = "0.1.0";
 
 export const ACTOR_KINDS = f(["person", "agent", "device", "service", "automation"]);
-export const SURFACES = f(["deck", "capsule", "cli", "mobile", "local", "mcp", "harness", "hook", "onboard", "link", "relay"]);
+export const SURFACES = f(["deck", "capsule", "cli", "local", "mcp", "harness", "hook", "onboard", "link", "relay"]);
 export const PRESENCE_SIGNERS = f(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 
 export const TRUST_ORDER = f(["untrusted", "external", "member", "system"]);

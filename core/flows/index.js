@@ -98,7 +98,7 @@ export default {
       if (!first || !first.actor || first.actor.kind !== "person") throw refuse("a Flow is changed or run under a person's own chain or an assistant's session; this call carries neither", "denied");
       return chain;
     };
-    const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"];
     for (const [name, description] of Object.entries(LIBRARY)) {
       ctx.tool(name, { description, input: { type: "object", additionalProperties: true, properties: { id: str } }, callers: CALLERS,
         run: async (/** @type {any} */ input) => {
@@ -108,7 +108,7 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {

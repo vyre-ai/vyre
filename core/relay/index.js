@@ -880,7 +880,7 @@ export default {
       input: obj(),
       // The same presence gate it always had, so the stored decisions (kernel/golden) do not move: a person at the surface is asked first, then the handler refuses in words.
       presence: { summary: async () => "Pair a new device with this box" },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "module"],
       run: async () => { throw classicGone("The pairing code from relay.pair.start"); },
     });
 
@@ -1500,7 +1500,7 @@ export default {
 
     ctx.tool("relay.setup.status", {
       // the four check words of a pairing in progress: the person's surfaces, the owner's devices (the setup page) and modules; never a model session
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
       description: "Where the setup session is: none, waiting for the page, paired, or contested (another server used the code first), whether the relay holds the offer, whether the one pairing ticket is made, when the hour ends, and the four check words the page shows too.",
       input: obj(),
       run: async (_, meta = {}) => { owner(meta.caller, meta, "the setup status"); return setupStatus(); },
