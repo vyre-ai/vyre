@@ -176,7 +176,7 @@ export const OWNERS = [
     ["gate.*", (t, p) => (t === "gate.released" ? [`gate:${p && p.id}`, "sent"] : t === "gate.rejected" ? [`gate:${p && p.id}`, "refused"] : t === "gate.settled" ? [`gate:${p && p.id}`, one(p && p.outcome) || "sent"] : t === "gate.failed" ? [`gate:${p && p.id}`, "failed"] : null)]] },
   { name: "flows", tool: "flows.attention", map: d => [...fromAttention(d && Array.isArray(d.runs) ? d.runs : []), ...fromStuckTasks(d && Array.isArray(d.tasks) ? d.tasks : [])], watch: [
     ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
-    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
+    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" || t === "task.withdrawn" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
     ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
   { name: "documents", tool: "documents.signing.waiting", map: d => fromSigning(d && Array.isArray(d.requests) ? d.requests : []), quiet: true, watch: [
     ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },

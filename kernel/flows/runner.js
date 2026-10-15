@@ -1833,8 +1833,10 @@ export class FlowRunner {
    * @param {any} ctx @param {string} task @param {string} reason
    */
   async #withdraw(ctx, task, reason) {
-    if (!task || !this.k.ask || typeof this.k.ask.withdraw !== "function") return;
-    try { await this.k.ask.withdraw(this.#chain(ctx), task, { reason }); } catch { /* it had already ended, or is not this Flow's to end */ }
+    if (!task || !this.k.ask || typeof this.k.ask.withdraw !== "function" || !this.chains.forDoer) return;
+    // under the Flows service's own chain: the kernel refuses a withdrawal from anything else
+    const run = ctx.run;
+    try { await this.k.ask.withdraw(this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); } catch { /* it had already ended, or is not this Flow's to end */ }
   }
 
   /**

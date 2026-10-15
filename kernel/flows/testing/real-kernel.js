@@ -70,7 +70,7 @@ export class RealKernel {
 
     this.chains = createChainBuilder({ space: this.space, owner: this.owner, owner_uid: 501, key: KEY, clock: this.clock, is_person: p => self.members.has(`person:${p}`) });
     this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries({ "email.send": { risk: "outward.send", label: "Send an email" }, ...(o.actions || {}) }).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
-    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.propose", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
+    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "tasks.withdraw", "flows.run", "kits.propose", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
 
     this.store = createMemoryStore({ clock: this.clock });
     this.gw = createGateway({
@@ -145,6 +145,7 @@ export class RealKernel {
       stuck: (c, id, i) => this.tasksApi.stuck(c, id, i),
       unblock: (c, id, o) => this.tasksApi.unblock(c, id, o),
       skip: (c, id, r) => this.tasksApi.skip(c, id, r),
+      withdraw: (c, id, o) => this.tasksApi.withdraw(c, id, o),
       revise: (c, id, r) => this.tasksApi.revise(c, id, r),
       needsYou: c => this.tasksApi.needsYou(c),
     };

@@ -51,6 +51,11 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "stuck", to: "ready", by: "responsible_person_or_person_with_presence" },
   { from: "stuck", to: "skipped", by: "proposal_for_person_with_presence", guarded: true },
   { from: "stuck", to: "skipped", by: "doer_or_person", guarded: false },
+  // A Flow step's due time passed (ADR 0054): the Flows service withdraws the task, whatever its state, so nobody hands it in late. It ends as skipped, marked `withdrawn`, and is never reopened.
+  { from: "ready", to: "skipped", by: "flow_deadline" },
+  { from: "working", to: "skipped", by: "flow_deadline" },
+  { from: "needs_check", to: "skipped", by: "flow_deadline" },
+  { from: "stuck", to: "skipped", by: "flow_deadline" },
 ].map(r => Object.freeze(r)));
 
 /**

@@ -50,7 +50,8 @@ const blank = (/** @type {any} */ v) => v === undefined || v === null || (typeof
 // ---------------------------------------------------------------------------------------------------------------------------- the table
 
 /** Every rule that moves a task from one state to another (there can be two: a guarded one and an unguarded one). @param {TaskState} from @param {TaskState} to @returns {readonly TransitionRule[]} */
-export const rulesFor = (from, to) => TASK_TRANSITIONS.filter(r => r.from === from && r.to === to);
+// (a withdrawal at a Flow's due time is the Flows service's, never a person's or an assistant's move: it is not offered here)
+export const rulesFor = (from, to) => TASK_TRANSITIONS.filter(r => r.from === from && r.to === to && r.by !== "flow_deadline");
 
 /** Does the table have any rule for this move? @param {TaskState} from @param {TaskState} to */
 export const canMove = (from, to) => rulesFor(from, to).length > 0;

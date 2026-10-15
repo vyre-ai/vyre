@@ -82,3 +82,79 @@ test("a due time on a step that waits for an agent may be days, on other steps i
   const bad = checkFlow(flow([{ id: "f", kind: "create", type: "matter", set: { client: "x" }, timeout_ms: 2 * HOUR }]));
   assert.match(JSON.stringify(bad), /timeout_ms/);
 });
+
+// ------------------------------------------------------------------ the kernel part (ADR 0054)
+
+const taskOf = (r) => r.steps.go.task;
+
+test("past the due time the task is withdrawn: skipped and marked, and a late hand-in, start and reopen are refused", async () => {
+  const { w, run, pass } = await start([agent({ timeout_ms: HOUR })]);
+  const task = taskOf(await run());
+  await pass(HOUR + 1000);
+  const t = await w.kernel.tasksApi.get(w.kernel.sysChain(), task);
+  assert.equal(t.state, "skipped");
+  assert.equal(t.withdrawn.reason, "timeout");
+  await assert.rejects(() => w.kernel.completeTask(task), /./, "no late hand-in");
+  await assert.rejects(() => w.kernel.tasksApi.start(w.kernel.as({ kind: "agent", id: "research" }), task), /./, "no late start");
+  await assert.rejects(() => w.kernel.tasksApi.reopen(w.kernel.as(ALEX), task), /withdrawn/, "a person cannot reopen it either");
+});
+
+test("a task already being worked on is withdrawn too", async () => {
+  const { w, run, pass } = await start([agent({ timeout_ms: HOUR })]);
+  const task = taskOf(await run());
+  await w.kernel.tasksApi.start(w.kernel.as(ALEX), task).catch(() => {});
+  await pass(HOUR + 1000);
+  assert.equal((await w.kernel.tasksApi.get(w.kernel.sysChain(), task)).state, "skipped");
+});
+
+test("only the Flows service withdraws: an agent, a person, another module and the runner's own run chain are refused", async () => {
+  const { w, run } = await start([agent({ timeout_ms: 100 * HOUR })]);
+  const task = taskOf(await run());
+  const refused = [
+    ["an agent", w.kernel.as({ kind: "agent", id: "research" })],
+    ["a person (a member's key rides this)", w.kernel.as(ALEX)],
+    ["another module", w.kernel.moduleChain({ module: "wink", approver: ALEX })],
+    ["the run's own chain", w.kernel.chainFor({ flow: "t", approver: ALEX, run: "run_x" })],
+  ];
+  for (const [who, chain] of refused) await assert.rejects(() => w.kernel.tasksApi.withdraw(chain, task, {}), /./, who);
+  assert.equal((await w.kernel.tasksApi.get(w.kernel.sysChain(), task)).state, "ready", "nothing changed");
+  const done = await w.kernel.tasksApi.withdraw(w.kernel.moduleChain({ module: "flows", approver: ALEX }), task, { reason: "test" });
+  assert.equal(done.state, "skipped");
+});
+
+test("a withdrawal is safe to repeat and changes nothing the second time", async () => {
+  const { w, run } = await start([agent({ timeout_ms: 100 * HOUR })]);
+  const task = taskOf(await run());
+  const flows = w.kernel.moduleChain({ module: "flows", approver: ALEX });
+  const first = await w.kernel.tasksApi.withdraw(flows, task, {});
+  await assert.rejects(() => w.kernel.tasksApi.withdraw(flows, task, {}), /skipped/);
+  assert.equal((await w.kernel.tasksApi.get(w.kernel.sysChain(), task)).withdrawn.at, first.withdrawn.at);
+});
+
+test("the agent's session ends from the durable event, and a replay after a crash ends it again and ends the lend once more", async () => {
+  const { createAgentWake } = await import("../../core/daemon/agent-wake.js");
+  const { w, run, pass } = await start([agent({ timeout_ms: HOUR })]);
+  const task = taskOf(await run());
+  await w.kernel.tasksApi.edit(w.kernel.as(ALEX), task, { form: { thread: "thr-1" } }).catch(() => {});
+  await pass(HOUR + 1000);
+  const stopped = [], reclaimed = [];
+  const onEvent = createAgentWake({ space: w.cat.space, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i) } }, chain: () => w.kernel.sysChain(), reclaim: async (id) => { reclaimed.push(id); },
+    clock: () => w.clock.t, callModule: async (tool, input) => { if (tool === "threads.stop") stopped.push(input.thread); return {}; }, log: () => {} });
+  const events = [...w.kernel.rawLog.read({ type: "task.withdrawn" })];
+  assert.equal(events.length, 1, "one durable event says it");
+  await onEvent(events[0]);
+  await onEvent(events[0]);   // the host restarted before it was marked handled: the same event comes again
+  assert.deepEqual(reclaimed, [task, task]);
+  assert.ok(stopped.every((t) => t === "thr-1"));
+  assert.ok(stopped.length >= 1);
+});
+
+test("a run that crashed after the withdrawal and before it failed the step ends up failed once, not twice", async () => {
+  const { w, run, pass } = await start([agent({ timeout_ms: HOUR, on_fail: { then: "continue", steps: [make("late", "late")] } })]);
+  const task = taskOf(await run());
+  // the crash: the kernel ended the task, but the runner did not get to write the result
+  await w.kernel.tasksApi.withdraw(w.kernel.moduleChain({ module: "flows", approver: ALEX }), task, {});
+  const r = await pass(HOUR + 1000);
+  assert.equal(r.state, "done", JSON.stringify(r.error));
+  assert.equal(matters(w).filter((m) => m === "late").length, 1, "its failure steps ran exactly once");
+});

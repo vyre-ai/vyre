@@ -9,7 +9,7 @@
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
 const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthori[sz]ed|api key/i;
-const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
+const ENDS = /^task\.(completed|approved|rejected|skipped|voided|withdrawn)$/;
 
 /**
  * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
@@ -46,10 +46,22 @@ export function createAgentWake(o) {
     } catch (err) { log(`agent wake ${o.space}: thread ${thread} ended and its task was not checked (${/** @type {Error} */ (err).message})`); }
   }
 
+  /** End the job thread an agent was woken in for a task (the thread is written on the task as form.thread). @param {string} taskId */
+  async function stopThread(taskId) {
+    try {
+      const t = await o.gw.ask.get(o.chain(), taskId);
+      const thread = t && t.form && typeof t.form.thread === "string" ? t.form.thread : null;
+      if (thread) await o.callModule("threads.stop", { thread }, o.space);
+    } catch (err) { log(`agent wake ${o.space}: the session for withdrawn task ${taskId} was not ended (${/** @type {Error} */ (err).message})`); }
+  }
+
   async function onEvent(e) {
-    if (e && ENDS.test(String(e.type)) && typeof o.reclaim === "function" && e.data && e.data.task && typeof e.data.task.id === "string") {
+    if (e && ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") {
+      const id = e.data.task.id;
       // the task is over: the use of it lent to the agent ends with it
-      try { await o.reclaim(e.data.task.id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${e.data.task.id} was not ended (${/** @type {Error} */ (err).message})`); }
+      if (typeof o.reclaim === "function") { try { await o.reclaim(id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${id} was not ended (${/** @type {Error} */ (err).message})`); } }
+      // withdrawn at its due time: the agent's session for it ends too (a thread already stopped is the same answer). Every step is safe to repeat, so a replay of this event after a restart finishes what a crash left.
+      if (e.type === "task.withdrawn") await stopThread(id);
       return;
     }
     if (!e || !TYPES.test(String(e.type))) return;
