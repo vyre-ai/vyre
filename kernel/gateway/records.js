@@ -453,6 +453,8 @@ export function createRecords(cfg) {
         if (f.group !== undefined && (!groupName(f.group) || !(t.groups || []).some((/** @type {any} */ g) => g.name === f.group))) throw bad(`${f.name}.group is one of the type's groups`);
         if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
         if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
+        if (f.write_once !== undefined && typeof f.write_once !== "boolean") throw bad(`${f.name}: write_once is true or false`);
+        if (f.write_once === true && (f.computed !== undefined || f.kind === "stage")) throw bad(`${f.name}: a ${f.computed !== undefined ? "computed" : "stage"} field cannot be write-once`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
         if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
         if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);
@@ -728,6 +730,12 @@ export function createRecords(cfg) {
     }
     // a link names live records of its type: the gateway checks, so every store holds only links that stand
     if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
+    // a write-once field holds the first value it was given: a later write that changes or clears it is refused, by name (a write of the same value changes nothing and passes)
+    if (op === "update" && before) for (const f of linkFields) {
+      if (f.write_once !== true || !input || !Object.prototype.hasOwnProperty.call(input, f.name)) continue;
+      const was = before.data ? before.data[f.name] : undefined;
+      if (!isEmpty(was) && JSON.stringify(was) !== JSON.stringify(input[f.name])) throw new KernelError("field_locked", `${f.label || f.name} can only be set once, and this ${type} already has it. Leave it as it is.`);
+    }
     let stage = {};
     if (op === "create" || op === "update") await conditionGate(type, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input), input, op === "create");
     if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));

@@ -25,7 +25,10 @@ export const FLOW_VERBS = ["find", "create", "update", "remove", "decide", "repe
 export const ROLE_KINDS = ["teammate", "role"];
 export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 export const VIEW_TYPES = ["list", "board", "calendar", "page", "dashboard"];
-const COMMON = ["label", "description", "required", "unique", "visible_if", "required_if"];
+const COMMON = ["label", "description", "required", "unique", "visible_if", "required_if", "write_once", "computed"];
+/** The kinds a computed field may have (the kernel's). */
+const COMPUTED_KINDS = ["number", "text", "boolean", "date", "datetime"];
+const OVER_FNS = ["count", "sum", "min", "max", "avg"];
 /** Options each field kind takes besides the common ones. Exactly what the kernel's FieldDefinition can say. */
 const FIELD_OPTS = { choice: [], multi_choice: [], link: ["to", "many", "inverse"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
 
@@ -53,7 +56,7 @@ const strList = (v, path, max = 100) => { if (!Array.isArray(v) || v.length > ma
 const expr = (v, path) => { const s = str(v, path, { max: 2000 }); try { parseExpr(/** @type {string} */ (s)); } catch (e) { bad(path, /** @type {Error} */ (e).message); } return s; };
 /** Copy defined keys in the given order. @param {Record<string, any>} o @param {string[]} order */
 /** the order a stored field is written in */
-export const FIELD_ORDER = ["kind", "label", "description", "required", "required_if", "visible_if", "unique", "options", "to", "many", "inverse", "seal"];
+export const FIELD_ORDER = ["kind", "label", "description", "required", "required_if", "visible_if", "unique", "write_once", "computed", "options", "to", "many", "inverse", "seal"];
 const ordered = (o, order) => { /** @type {Record<string, any>} */ const out = {}; for (const k of order) if (o[k] !== undefined) out[k] = o[k]; return out; };
 /** "full_name" -> "Full name" */
 export const labelOf = (/** @type {string} */ n) => { const w = n.replace(/_/g, " "); return w[0].toUpperCase() + w.slice(1); };
@@ -66,6 +69,21 @@ function fieldBuilder(kind) {
     else { opts = args[0] ?? {}; }
     onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
     /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`), unique: opts.unique === undefined ? undefined : bool(opts.unique, `defineField.${kind}.unique`), visible_if: opts.visible_if === undefined ? undefined : expr(opts.visible_if, `defineField.${kind}.visible_if`), required_if: opts.required_if === undefined ? undefined : expr(opts.required_if, `defineField.${kind}.required_if`) };
+    if (opts.write_once !== undefined) { if (bool(opts.write_once, `defineField.${kind}.write_once`)) f.write_once = true; }
+    if (opts.computed !== undefined) {
+      if (!COMPUTED_KINDS.includes(kind)) bad(`defineField.${kind}.computed`, `A computed field is one of ${COMPUTED_KINDS.join(", ")}`);
+      const c = opts.computed; onlyKeys(c, ["expr", "over"], `defineField.${kind}.computed`);
+      if ((c.expr === undefined) === (c.over === undefined)) bad(`defineField.${kind}.computed`, "Give either expr (an Expression over this type's other fields) or over (a total over the records that link here)");
+      if (c.expr !== undefined) f.computed = { expr: expr(c.expr, `defineField.${kind}.computed.expr`) };
+      else {
+        const o = c.over; onlyKeys(o, ["type", "via", "fn", "field", "where"], `defineField.${kind}.computed.over`);
+        if (!OVER_FNS.includes(o.fn)) bad(`defineField.${kind}.computed.over.fn`, `fn is one of ${OVER_FNS.join(", ")}`);
+        if (o.fn === "count" ? o.field !== undefined : o.field === undefined) bad(`defineField.${kind}.computed.over.field`, o.fn === "count" ? "A count takes no field" : "Name the field to total");
+        if (o.where !== undefined && !isObj(o.where)) bad(`defineField.${kind}.computed.over.where`, "where is a filter object");
+        f.computed = ordered({ over: ordered({ type: name(o.type, `defineField.${kind}.computed.over.type`), via: name(o.via, `defineField.${kind}.computed.over.via`), fn: o.fn, field: o.field === undefined ? undefined : str(o.field, `defineField.${kind}.computed.over.field`, { max: 80 }), where: o.where }, ["type", "via", "fn", "field", "where"]) }, ["over"]);
+      }
+      if (f.required || f.unique || f.write_once) bad(`defineField.${kind}.computed`, "A computed field is worked out, never written: it cannot be required, unique or write-once");
+    }
     if (f.required_if !== undefined && f.required) bad(`defineField.${kind}`, "A field is required, or required_if something, not both");
     if (f.visible_if !== undefined && f.required) bad(`defineField.${kind}`, "A field that is only sometimes shown cannot be required always: use required_if");
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }

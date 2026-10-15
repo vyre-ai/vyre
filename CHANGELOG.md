@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(records): write-once fields and computed totals in the Kit language. A field takes `write_once: true` (kernel: the first value stays; a later change or clear is refused with `field_locked` and the field's name; not on a computed or stage field), and `computed` (an Expression, or a total over the records that link here) is now written in a Kit, checked by `compile` against the kit's own types. kernel/contracts/fields.d.ts, kernel/gateway/records.js, records/language/sdk.js and compile.js, kernel/gateway/write-once.test.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
