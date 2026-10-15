@@ -25,6 +25,7 @@ A failed call returns a `code` (stable, lowercase) and a message. The message ne
 | `denied` | Refused by a rule. Read the message; ask the person if you need it. |
 | `draft_only` | This connection or tool only drafts. Make a draft; a person sends it. |
 | `expired` | It ran out of time (a proof, an approval, a code). Ask for a new one. |
+| `field_locked` | The field is write-once and already holds a value. Leave it as it is. |
 | `field_not_allowed` | That field may not be set by you. Leave it out. |
 | `field_not_shown` | The field is not shown to this caller. Leave it out. |
 | `field_required` | A required field is missing. Fill it or ask the person. |
