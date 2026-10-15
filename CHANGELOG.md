@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
+## 0.6
+
+- test(door gate): the team-server rigs of core/modules/door-gate.test.js and door-gate-roles.test.js write a box config (role box) before they start, because the computers and publish tools exist only for that role and a Mac's default is not it: the two files failed on the macOS job (vault-mac) for that reason.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
