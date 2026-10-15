@@ -40,3 +40,28 @@ test("Something else happens lists the plain-worded events, then every event the
   assert.ok(eventChoices(o, "gone.event").some(([v]) => v === "gone.event"), "a stored event stays choosable");
   assert.deepEqual(eventChoices({ ...O, events: undefined }), EVENT_CHOICES, "a person the catalog refuses sees the plain-worded events");
 });
+
+const typed = { ...O, types: [{ name: "matter", label: "Matter", fields: [{ name: "client", label: "Client", kind: "text" }, { name: "amount", label: "Amount", kind: "number" }, { name: "stage", label: "Stage", kind: "stage", options: ["Intake", "Drafting", "Signed"] }] }] };
+
+test("Create, Update and the stage step pick from the object's own fields and stages, and keep a stored one that is gone", async () => {
+  const { fieldChoices, fieldValue, stagesOf, stageChoices } = await import("./logic.js");
+  assert.deepEqual(fieldChoices(typed, "matter").map(([n]) => n), ["client", "amount", "stage"]);
+  assert.equal(fieldValue(typed, "matter", "Amount"), "amount", "a label typed before is the field it names");
+  assert.equal(fieldValue(typed, "matter", "amount"), "amount");
+  assert.equal(fieldValue(typed, "matter", "Amoutn"), "Amoutn", "a typo stays as written, so it can be seen and fixed");
+  assert.deepEqual(fieldChoices(typed, "matter", "Amoutn").at(-1), ["Amoutn", "Amoutn (not an object field)"]);
+  assert.deepEqual(fieldChoices(typed, "nothing"), []);
+  assert.deepEqual(stagesOf(typed, "matter"), ["Intake", "Drafting", "Signed"]);
+  assert.deepEqual(stagesOf(typed, "nothing"), []);
+  assert.deepEqual(stageChoices(typed, "matter", "Closed").at(-1), ["Closed", "Closed (not a stage of this object)"]);
+});
+
+test("the renamed words: a record moves to a stage, I press Run, At a set time, Look up records, Run another Flow", async () => {
+  const { TRIGGERS, STEP_CHOICES } = await import("./logic.js");
+  const label = (list, k, key) => list.find((x) => x[key] === k)?.label;
+  assert.equal(label(TRIGGERS, "stage", "id"), "A record moves to a stage");
+  assert.equal(label(TRIGGERS, "manual", "id"), "I press Run");
+  assert.equal(label(TRIGGERS, "schedule", "id"), "At a set time");
+  assert.equal(label(STEP_CHOICES, "find", "kind"), "Look up records");
+  assert.equal(label(STEP_CHOICES, "subflow", "kind"), "Run another Flow");
+});

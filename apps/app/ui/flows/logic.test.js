@@ -420,6 +420,6 @@ test("Look up one record and Keep only some of a list are in the palette and rou
   assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
   const tokens = valueSources(d, "update4", o).map(([t]) => t);
   assert.ok(tokens.includes("{steps.filter2.rows}") && tokens.includes("{steps.pick3.found}") && tokens.includes("{steps.pick3.record.data.email}"));
-  assert.equal(stepProblem({ id: "filter2", kind: "filter", from: "", where: "" }, o), "Choose the list to narrow. Add a Find records step first.");
+  assert.equal(stepProblem({ id: "filter2", kind: "filter", from: "", where: "" }, o), "Choose the list to narrow. Add a Look up records step first.");
   assert.equal(newStep("filter", { ...d, steps: d.steps.slice(0, 1) }, o).from, "steps.find1.rows");
 });

@@ -4,7 +4,7 @@
 // Send an email is `call comms.send`, Wait for a yes is `ask`, Update a record is `update`.
 
 /** @typedef {{ name: string, label: string }} Named */
-/** @typedef {{ name: string, label: string, kind?: string }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
+/** @typedef {{ name: string, label: string, kind?: string, options?: string[] }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
 /** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
@@ -24,13 +24,13 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
   { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
   { id: "removed", icon: "trash", label: "A record is removed", hint: "For example a client is deleted" },
-  { id: "stage", icon: "board", label: "A record enters a stage", hint: "For example a matter enters Drafting" },
+  { id: "stage", icon: "board", label: "A record moves to a stage", hint: "For example a matter enters Drafting" },
   { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
   { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
-  { id: "schedule", icon: "clock", label: "On a schedule", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
+  { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
   { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
-  { id: "manual", icon: "play", label: "Someone runs it", hint: "A person or an agent presses Run" },
+  { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
 
 /** The step palette, grouped. `soon` ones are shown and cannot be picked yet. Words are what a person searches for. */
@@ -43,7 +43,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer", words: "ask approve approval question decision" },
   ] },
   { name: "Records", items: [
-    { kind: "find", icon: "search", label: "Find records", hint: "Look records up in an object", words: "search lookup query fetch get" },
+    { kind: "find", icon: "search", label: "Look up records", hint: "Look records up in an object", words: "search lookup query fetch get" },
     { kind: "pick", icon: "search", label: "Look up one record", hint: "The first record that matches, or none", words: "find one first single lookup get match" },
     { kind: "filter", icon: "filter", label: "Keep only some of a list", hint: "Narrow records you found to those that match", words: "filter narrow keep where subset" },
     { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects", words: "add new insert" },
@@ -70,7 +70,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
   { name: "Work", items: [
     { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent", words: "todo give delegate" },
     { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
-    { kind: "subflow", icon: "flows", label: "Run another flow", hint: "Use a flow you already made", words: "subflow call nested" },
+    { kind: "subflow", icon: "flows", label: "Run another Flow", hint: "Use a Flow you already made", words: "subflow call nested" },
   ] },
 ]);
 
@@ -194,7 +194,7 @@ function kindProblem(s, o) {
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : String(s.to).startsWith("agent:") ? "A question goes to a person or a team or role. Choose one, or use Assign a task for an agent." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
-    case "filter": return !s.from ? "Choose the list to narrow. Add a Find records step first." : !(s.where || "").trim() ? "Say which ones to keep." : null;
+    case "filter": return !s.from ? "Choose the list to narrow. Add a Look up records step first." : !(s.where || "").trim() ? "Say which ones to keep." : null;
     case "find": case "pick": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
@@ -246,6 +246,34 @@ export const TIMED = new Set(["Every day", "Every weekday", "Every Monday", "Eve
 const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at || "09:00")) || ["", "9", "00"]; return /** @type {string} */ (EVERY[every].cron).replace("{m}", String(Number(m[2]))).replace("{h}", String(Number(m[1]))); };
 /** Things Vyre's own modules announce that a Flow can start from. */
 export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
+
+/** The stages an object has, from its stage field, or an empty list when it has none or the box did not say. @param {Options} o @param {string | undefined} type @returns {string[]} */
+export function stagesOf(o, type) {
+  const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.kind === "stage" && Array.isArray(x.options));
+  return f && f.options ? f.options.map(String) : [];
+}
+/** The fields of an object a Create or Update step may set, as [stored name, label], a stored one that is no longer there kept so opening a Flow shows what it says. Fields the kernel computes or owns are not offered. @param {Options} o @param {string | undefined} type @param {string} [current] @returns {[string, string][]} */
+export function fieldChoices(o, type, current) {
+  const fs = ((o.types.find((x) => x.name === type) || {}).fields || []);
+  const out = /** @type {[string, string][]} */ (fs.map((f) => [f.name, f.label || f.name]));
+  const cur = slug(current || "");
+  if (current && current.trim() && !out.some(([n]) => n === cur) && !out.some(([, l]) => l === current)) out.push([current, `${current} (not an object field)`]);
+  return out;
+}
+
+/** The stages as [value, label] for a Select, a stored one the object no longer has kept. @param {Options} o @param {string | undefined} type @param {string} [current] @returns {[string, string][]} */
+export function stageChoices(o, type, current) {
+  const out = /** @type {[string, string][]} */ (stagesOf(o, type).map((s) => [s, s]));
+  if (current && !out.some(([v]) => v === current)) out.push([current, `${current} (not a stage of this object)`]);
+  return out;
+}
+
+/** Which choice a typed field name is: its stored name when it is one of the object's fields (by name or by label), else what was typed. @param {Options} o @param {string | undefined} type @param {string | undefined} current */
+export function fieldValue(o, type, current) {
+  const cur = current || "";
+  const hit = fieldChoices(o, type).find(([n, l]) => n === slug(cur) || l === cur);
+  return hit ? hit[0] : cur;
+}
 
 /** Every event a Flow can start from: the plain-worded ones first, then every other event the running modules announce (the event catalog), named as the module says it; a stored event the catalog no longer lists stays choosable. @param {Options} o @param {string} [current] @returns {[string, string][]} */
 export function eventChoices(o, current) {

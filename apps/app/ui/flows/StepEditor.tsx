@@ -14,7 +14,7 @@ import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { FailurePanel } from "./FailurePanel";
-import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -28,7 +28,7 @@ export function recordSources(d: Draft, stepId: string, o: Options): [string, st
   return [...(isRecordTrigger(d.trigger) ? [["trigger", "The record that started the Flow"] as [string, string]] : []), ...made];
 }
 
-/** Rows of field and value, for Create a record, Create or update and Run another flow. */
+/** Rows of field and value, for Create a record, Create or update and Run another Flow. */
 function Rows({ rows, onChange, draft, stepId, options, fieldLabel = "Field", help, title }: { rows: { field: string; value: string }[]; onChange: (r: { field: string; value: string }[]) => void; draft: Draft; stepId: string; options: Options; fieldLabel?: string; help?: string; title?: string }) {
   return (
     <View className="gap-s2">
@@ -89,7 +89,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     <Text size="caption" strong tone="label">Fields</Text>
                     {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
                       <View key={fi} className="flex-row items-end gap-s2">
-                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" /></View>
+                        <View className="min-w-0 flex-1">{fieldChoices(options, s.type).length ? <Select label={fi ? undefined : "Field"} value={fieldValue(options, s.type, f.field)} options={fieldChoices(options, s.type, f.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} /> : <Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" />}</View>
                         <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" /></View>
                         <Button kind="ghost" size="sm" icon="x" label="Remove field" onPress={() => setStep(s.id, { fields: s.fields.filter((_: any, k: number) => k !== fi) })} />
                       </View>
@@ -156,7 +156,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                 <>
                   <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
-                  <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />
+                  {fieldChoices(options, s.type).length ? <Select label="Field" value={fieldValue(options, s.type, s.field)} options={fieldChoices(options, s.type, s.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { field })} /> : <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />}
                   <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
                 </>
               ) : null}
@@ -220,7 +220,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
         <>
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
           <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => set({ record })} />
-          <Field label="Move it to the stage" value={s.to ?? ""} onChangeText={(to) => set({ to })} placeholder="For example Drafting" />
+          {stagesOf(options, s.type).length ? <Select label="Move it to the stage" value={s.to ?? ""} options={stageChoices(options, s.type, s.to)} placeholder="Choose a stage" onChange={(to) => set({ to })} /> : <Field label="Move it to the stage" value={s.to ?? ""} onChangeText={(to) => set({ to })} placeholder="For example Drafting" />}
         </>
       ) : null}
       {s.kind === "wait" ? (

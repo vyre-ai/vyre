@@ -62,7 +62,7 @@ export function useFlowOptions(): FlowOptions | null {
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    const types = defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name), kind: String(f.kind || "") })) }));
+    const types = defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name), kind: String(f.kind || ""), ...(Array.isArray(f.options) ? { options: f.options.map((o: any) => String(typeof o === "string" ? o : o?.name ?? o?.label ?? o)) } : {}) })) }));
     realOptions(types, space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
     return () => { live = false; };
   }, [defs, space, tick]);
