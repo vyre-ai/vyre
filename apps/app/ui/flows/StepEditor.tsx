@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { HOWS, OUTPUTS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -146,6 +146,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
               ) : null}
               {s.kind === "agent" || s.kind === "assign" ? (
                 <View className="gap-s3 border-t border-edge pt-s3">
+                  <Select label="What comes back" value={s.output ?? "note"} options={OUTPUTS} onChange={(output) => setStep(s.id, { output })} />
+                  {s.output && s.output !== "note" ? <Field label="What it is for (optional)" value={s.outputTarget ?? ""} onChangeText={(outputTarget) => setStep(s.id, { outputTarget })} placeholder="For example welcome" /> : null}
                   <Text strong>Who checks it and who follows it</Text>
                   <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
                   {s.checker ? <ContextBox label="Note for the approver" value={s.approverNote ?? ""} onChange={(approverNote) => setStep(s.id, { approverNote })} options={options} placeholder="What to check" /> : null}

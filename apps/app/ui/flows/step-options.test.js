@@ -184,3 +184,16 @@ test("a send can always ask a person, and a web call can send or save a Drive fi
   const versioned = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "POST", path: "/up", drive: { upload: { path: "a", version: 2 } } }]), options);
   assert.equal(versioned.steps[0].kind, "advanced", "a pinned version stays as it was");
 });
+
+test("an agent or assign step says what comes back, not only a note", () => {
+  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Draft", instructions: "Write it", output: { kind: "draft", target: "welcome" }, record: { expr: "event.subject" }, await: true }, { id: "t1", kind: "assign", to: "role:intake", title: "Sign", output: { kind: "file" } }]);
+  const draft = fromDefinition(d, options);
+  assert.deepEqual([draft.steps[0].kind, draft.steps[0].output, draft.steps[0].outputTarget, draft.steps[1].output], ["agent", "draft", "welcome", "file"]);
+  const out = toDefinition(draft, options);
+  assert.deepEqual([out.steps[0].output, out.steps[1].output], [{ kind: "draft", target: "welcome" }, { kind: "file" }]);
+  assert.deepEqual(checkFlow(out), []);
+  draft.steps[0].output = "note";
+  assert.deepEqual(toDefinition(draft, options).steps[0].output, { kind: "note" });
+  const odd = fromDefinition(flow([{ id: "t1", kind: "assign", to: "role:intake", title: "Sign", output: { kind: "file", extra: 1 } }]), options);
+  assert.equal(odd.steps[0].kind, "advanced");
+});
