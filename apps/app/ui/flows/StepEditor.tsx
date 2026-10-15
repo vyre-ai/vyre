@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -126,6 +126,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
                   <ContextBox label="Brief for them" value={s.brief ?? ""} onChange={(brief) => setStep(s.id, { brief })} options={options} placeholder="What they need to know" />
                   <Select label="The record to attach (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
+                  <Select label="How they do it (optional)" value={s.how ?? ""} options={[["", "The usual way"], ...HOWS]} onChange={(how) => setStep(s.id, { how: how || undefined })} />
+                  {s.how === "template" || s.how === "tailor" ? <ContextBox label="Template" value={s.template ?? ""} onChange={(template) => setStep(s.id, { template })} options={options} placeholder="The text they start from" /> : null}
                   <Switch label="The Flow waits until the task is done" on={s.await === true} onChange={(on) => setStep(s.id, { await: on ? true : undefined })} />
                   <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
                   <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
@@ -155,6 +157,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                 <>
                   <Select label="Who is asked" value={s.to ?? ""} options={askChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The question" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Approve this refund" />
+                  <Select label="The record to show them (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
                   <Text size="caption" tone="label">The Flow stops here until they answer.</Text>
                 </>
               ) : null}

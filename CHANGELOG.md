@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(flows): an Ask step can show a record with the question, and an Assign step says how the work is done (a template, a tailored template, an assistant, or the person) with the template text.
 - feat(flows): "Do something else in Vyre", a step for any module action (written module.action, with the address it acts on and named inputs), stored as the same call step the engine runs. Calls the editor has a step of its own for (text, email, document, project) stay those steps.
 - feat(flows): the editor has a settings card for the whole Flow: a description, how many runs go at once (1 to 32), a key that keeps runs with the same key apart, and how long a run may sit before it is called stuck. Each is optional and drops when emptied.
 - feat(flows): the editor shows the step options the engine already had: an agent step's wait switch and skills, an assign step's record, wait switch and skills, a sort on Find records, a description per pulled-out fact, and the group or facts of an earlier AI step in the value list. Fix: an agent step saved with the wait switched off no longer turns it back on when the Flow is saved again.

@@ -93,3 +93,13 @@ test("any other module action is a step of its own that stores as the same call,
   const text = fromDefinition({ ...d, steps: [{ id: "x", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "carrier-pigeon" } }] }, options);
   assert.equal(text.steps[0].kind, "advanced", "a text or email call the editor cannot show stays advanced");
 });
+
+test("an ask step keeps its record and an assign step keeps how and template", () => {
+  const d = flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", record: { expr: "event.subject" } }, { id: "t1", kind: "assign", to: "role:intake", title: "Reply", output: { kind: "note" }, how: "tailor", template: "Dear client" }]);
+  const out = round(d);
+  assert.deepEqual([out.steps[0].kind, out.steps[0].record], ["ask", { expr: "event.subject" }]);
+  assert.deepEqual([out.steps[1].how, out.steps[1].template], ["tailor", "Dear client"]);
+  assert.deepEqual(checkFlow(out), []);
+  const odd = fromDefinition(flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "reason" }] }]), options);
+  assert.equal(odd.steps[0].kind, "advanced", "a question with a form of its own stays as it was");
+});
