@@ -153,7 +153,7 @@ test("search never shows or counts a hit the reader may not see, and a query wit
   for (let i = 0; i < 6; i++) await asset(`Zebra ${i}`, 1, { project: { urn: rivera.urn } });
   const page = await R.search(dev(EVE), { text: "Zebra", types: ["asset"], page: { limit: 1 } });
   assert.equal(page.rows.length, 0);
-  assert.equal(page.next_cursor, undefined, "no cursor to count the hidden hits by");
+  assert.equal(page.next_cursor, undefined, "no cursor when nothing readable follows");
   const wide = await R.search(dev(EVE), { text: "Zebra", page: { limit: 1 } });
   assert.equal(wide.rows.length, 0); assert.equal(wide.next_cursor, undefined, "a search over every type too");
   assert.equal(await code(R.query(dev(EVE), "asset", {})), "bad_input", "a query with no page is a bad request, not a crash");
@@ -179,12 +179,12 @@ test("a merge needs the team of every project either row links to, in both direc
   assert.equal(await code(R.unmerge(dev(EVE), joined.merge_id)), null, "undoing her own");
 });
 
-test("a built-in private type pages the same way: no cursor and no search cursor that counts rows the reader may not see", async () => {
+test("a built-in private type pages the same way: a cursor only when a readable row follows", async () => {
   const { R, owner, dev, rivera, person } = await rig();
   for (let i = 0; i < 6; i++) await R.create(owner, "team-member", { name: `Seat ${i}`, actor: person(BOB), kind: "person", project: { urn: rivera.urn } });
   const first = await R.query(dev(EVE), "team-member", { page: { limit: 1 } });
   assert.equal(first.rows.length, 0, "EVE is on no team: she reads none of the seats");
-  assert.equal(first.next_cursor, undefined, "and is given no cursor to count them by");
+  assert.equal(first.next_cursor, undefined, "and is given no cursor");
   const found = await R.search(dev(EVE), { text: "Seat", types: ["team-member"], page: { limit: 1 } });
   assert.equal(found.rows.length, 0); assert.equal(found.next_cursor, undefined, "search likewise");
   const some = await R.query(dev(BOB), "team-member", { page: { limit: 2 } });

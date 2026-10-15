@@ -648,7 +648,9 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env);
+    // the person whose change fired the Flow (the event's verified actor), when there is one: a linked record is read only if they may read it too; a schedule or a web call has none
+    const by = typeof env.actor === "string" && env.actor.startsWith("person:") ? env.actor.slice(7) : null;
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...(by ? { by } : {}) }, env);
   }
 
   /**

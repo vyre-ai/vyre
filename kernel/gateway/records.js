@@ -1554,7 +1554,7 @@ export function createRecords(cfg) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
       if (!(await privateType(type))) return api.query(chain, type, spec);
       spec = checkPage(spec);
-      // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (it would otherwise count the others)
+      // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
       let cursor = spec.page.cursor, rows = [], next;
       for (let pages = 0; pages < 10; pages++) {
         const p = await api.query(chain, type, { ...spec, page: { ...spec.page, ...(cursor ? { cursor } : {}) } });
@@ -1586,7 +1586,7 @@ export function createRecords(cfg) {
         const keep = []; for (const h of r.rows) keep.push(await hitOk(h));
         return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
       }
-      // a search that can reach rows private by their project: pages are cut to the hits she may read, and a cursor is given only when a hit she may read is still ahead (it would otherwise count the others)
+      // a search that can reach rows private by their project: pages are cut to the hits she may read, and a cursor is given only when a hit she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
       spec = checkPage(spec);
       let cursor = spec.page.cursor, rows = [], next;
       for (let pages = 0; pages < 10; pages++) {
