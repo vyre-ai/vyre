@@ -12,6 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
+import { createStageDeadlines } from "./stage-deadlines.js";
 import { createAgentWake } from "./agent-wake.js";
 import { teammateNames } from "./teammate-names.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
@@ -397,7 +398,9 @@ export function createFlowsHost(o) {
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // The timer sleeps until the next wake and is woken by events (core/daemon/wake-timer.js): an idle box makes no records query between them.
-    const wake = createWakeTimer({ nextWake: () => flows.nextWake(), tick: () => flows.tick(), now: clock, log: m => log(`flows ${space}: ${m}`) });
+    // A stage task an agent holds is withdrawn when its due offset passes (core/daemon/stage-deadlines.js): the same withdrawal as an agent step's due time, run on this timer.
+    const stageDeadlines = createStageDeadlines({ gw, chain: flowsChain, withdrawChain: flowsChain, now: clock, log: m => log(`flows ${space}: ${m}`) });
+    const wake = createWakeTimer({ nextWake: async () => { const a = await flows.nextWake(), b = stageDeadlines.next(); return a === null || a === undefined ? (b ?? null) : b === null ? a : Math.min(a, b); }, tick: async () => { const r = await flows.tick(); await stageDeadlines.tick(); return r; }, now: clock, log: m => log(`flows ${space}: ${m}`) });
     // One subscription feeds triggers, waits, Kit approvals and stages.
     // (while the Space's own record store is still starting there is nothing to match an event against, and each one would fail and log the same line: they are skipped, and the store's join starts the Flows)
     const storeAway = () => storeIsAway(k.store);
