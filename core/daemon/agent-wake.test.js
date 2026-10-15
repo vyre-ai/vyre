@@ -158,3 +158,12 @@ test("the agent chain stays inside the Flows host: it is built in one place, han
   assert.ok(uses.some(l => /createAgentWake\(/.test(l)), "handed to the wake");
   assert.ok(!/\bagentChain\b\s*[,:}]/.test(src.slice(src.indexOf("return {", src.indexOf("createAgentWake(")))), "it is not part of anything the host returns");
 });
+
+test("a task an agent handed on wakes the agent for the person the kernel recorded, and never for one the task merely names", async () => {
+  const r = rig([task({ id: "h1", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, requested_for: "ana", form: undefined, note: "Do it" }), task({ id: "h2", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, form: undefined, note: "Do it" }),
+    task({ id: "h3", assigned_by: { kind: "person", id: "ben" }, requested_for: "ana" })]);
+  for (const id of ["h1", "h2", "h3"]) await r.onEvent(created(id));
+  assert.equal(r.woke.find(w => w.task === "h1").approver, "ana", "the person the request began with");
+  assert.equal(r.woke.find(w => w.task === "h2").approver, undefined, "no person, no approver");
+  assert.equal(r.woke.find(w => w.task === "h3").approver, "ben", "a person who assigned it stays the approver");
+});

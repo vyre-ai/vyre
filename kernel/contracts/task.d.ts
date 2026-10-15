@@ -67,6 +67,8 @@ export interface Task {
   readonly payload?: { readonly payload_hash: string; readonly decision: string; readonly draft_hash?: string };
   /** Who assigned it: part of the chain a teammate works under, so an assigner cannot borrow a broader teammate. */
   readonly assigned_by: Actor;
+  /** The first person on the verified chain that made the task (null or absent when there was none): set by the kernel, never by the request. An agent that hands a task on keeps the person it began with. */
+  readonly requested_for?: string;
   /** The task this one is a part of (a sub-item). Set when it is made or by `edit`. */
   readonly parent?: Uuid;
   /** The Project record of this Space the task belongs to (a link). Set when it is made or by `edit`; `list` takes `{ project }`. */

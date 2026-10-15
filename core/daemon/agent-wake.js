@@ -12,7 +12,7 @@ const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthor
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, bind?: (task: any, thread: string) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
  * @returns {((e: any) => Promise<void>) & { threadEnded: (thread: string, reason?: string) => Promise<void> }}
  */
 export function createAgentWake(o) {
@@ -61,10 +61,13 @@ export function createAgentWake(o) {
       if (!wakes(t, clock())) return;
       // A named agent holds no standing right on a task, so it may start and hand in this one task and nothing else, for as long as the task lives
       if (typeof o.lend === "function") await o.lend(t);
-      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : undefined;
+      // a task an agent handed on has the person it began with (the kernel records it from the verified chain), so the woken agent works within that person's limits
+      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
       const instructions = [t.form && typeof t.form.instructions === "string" ? t.form.instructions : "", t.note || ""].filter(Boolean).join("\n\n");
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
       const r = await o.callModule("agents.wake", { task: t.id, agent: t.doer.id, title: t.title, ...(instructions ? { instructions } : {}), ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}), ...(t.flow ? { flow: t.flow } : {}), ...(t.form && t.form.origin && typeof t.form.origin === "object" ? { origin: t.form.origin } : {}) }, o.space);
+      // the lend of the task was made before the job existed; now that it has a thread, the lend is held to that thread (the old one ends in the same step the bound one begins)
+      if (r && typeof r.thread === "string" && typeof o.bind === "function") { try { await o.bind(t, r.thread); } catch (err) { log(`agent wake ${o.space}: the lend of task ${t.id} was not held to its thread (${/** @type {Error} */ (err).message})`); } }
       if (r && typeof r.thread === "string" && !(t.form && t.form.thread === r.thread)) {
         try { await o.gw.ask.edit((o.editChain || o.chain)(t), t.id, { form: { ...(t.form || {}), thread: r.thread } }); }
         catch (err) { log(`agent wake ${o.space}: task ${t.id} woke ${t.doer.id} in ${r.thread} but the thread was not written on it (${/** @type {Error} */ (err).message})`); }

@@ -414,8 +414,13 @@ export function createFlowsHost(o) {
         if ((await sh.mint.list({ source: lendSource(t.id) })).some((/** @type {any} */ g) => g.subject && g.subject.actor && g.subject.actor.id === t.doer.id)) return;
         await sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(t.doer.id), space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 } }, source: lendSource(t.id), reason: "the agent was given this task" });
       };
+      // the lend, held to the job's thread: the unbound one ends and the bound one begins in the same step, so no other session of the agent ever holds the task and the thread never holds two
+      const bind = async (/** @type {any} */ t, /** @type {string} */ thread) => {
+        await sh.mint.end({ source: lendSource(t.id), reason: "held to the job's thread" });
+        await sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(t.doer.id), space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 }, where: { sessions: [String(thread)] } }, source: lendSource(t.id), reason: "the agent was given this task, for this job" });
+      };
       const reclaim = (/** @type {string} */ id) => sh.mint.end({ source: lendSource(id), reason: "the task is over" });
-      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
+      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend, bind, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
       k.log.subscribe("agent-wake", {}, wakeUp);
       // A job that ends with its task still open is not left in silence (core/daemon/agent-wake.js).
       if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });
