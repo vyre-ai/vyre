@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- docs(git): the branch model is written down: `main` is the release, `release/<x.y>` holds each version being built, `work/<x.y>/<who>/<item>` holds one item and merges into its release branch, and a patch is x.y.z cut from the release tag. Branches whose work was not in main were kept under `refs/archive/` and listed on the `archive` branch before the rest were deleted.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
@@ -18,7 +22,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(ci): main goes green again: the feature docs name the built-in network instead of another VPN product, and the reads-are-reads test ignores memory_runs, the Memory curator's log of its own background passes.
 - docs(site): vyre.run header redesign: sentence-case Product, Solutions and Resources mega-menu panels (icon, title and one line per entry, a featured block), Docs and GitHub links, Log in as a text link, one Set up Vyre button, sticky blur bar with a hairline after scrolling, a full-screen accordion menu on phones, and the theme toggle moved to the footer (scripts/site/nav.mjs, site/v2.css, site/v2.js).
 - docs(site): /map/ becomes a guided experience: a five-step stepper with industry presets, a live SVG diagram of the business (people, agents, linked records, Playbooks, Flows with the Gate hold, tool connections), a generated result with counts, a day in the life and what Vyre does for each tool, and a copyable prompt, build prompt and share link (URL hash only, no network, no storage); script in site/map.js.
-- perf(memory): vyred collects garbage between the curator's batches and after a heavy pass, the curator keeps a turn's time in a nested map instead of a joined string key, and a session capture indexes only the lines it just kept; the startup RSS peak and the memory reducer's CPU burst at the start of idle drop. Every line is still scrubbed exactly as before.
+- perf(memory): vyred collects garbage between the curator's batches and after a heavy pass, the curator keeps a turn's time in a nested map instead of a joined string key, and a session capture indexes only the lines it just kept. Every line is still scrubbed exactly as before. The curator's derive pass is back to its 0.5.0 form (the rework of it was reverted), so the drop in startup memory comes from the startup flags in the lines above, not from the curator.
 - fix(app-out): the hosted app's manifest and Worker also accept + in a file path (the web export's `+not-found-<hash>.js`); a full export uses no other characters beyond [ ] and +.
 - docs(site): a /downloads page (Mac Apple silicon and Intel, Windows, Android, iPhone steps, Linux and Mac server line, web app, signature note), a Log in button in the nav, and a 404 with the halftone V drifting back and a Needs you card of links; built by scripts/site/pages.mjs.
 - docs(site): vyre.run alignment pass: one content grid on every page (FAQ and the agent note span the grid, text-only rows align to the top, mirrored feature rows keep the same copy width, direction and prose pages fill the grid), CSS only.
