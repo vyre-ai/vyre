@@ -56,3 +56,27 @@ test("write_once is refused on a computed field and on a stage field", async () 
   assert.match((await bad({ name: "s", kind: "stage", label: "S", options: ["A"], write_once: true })).message, /stage field cannot be write-once/);
   assert.match((await bad({ name: "w", kind: "text", label: "W", write_once: "yes" })).message, /write_once is true or false/);
 });
+
+test("merge, unmerge and restore never change a write-once value that is set", async () => {
+  const { R, owner } = await rig();
+  const a = await R.create(owner, "estate", { title: "A", valued_on: "2026-03-01", tags: ["a"] });
+  const b = await R.create(owner, "estate", { title: "B", valued_on: "2026-05-05", tags: ["b"] });
+  const m = await R.merge(owner, "estate", a.id, b.id);
+  const kept = (await R.get(owner, "estate", a.id)).data;
+  assert.equal(kept.valued_on, "2026-03-01", "the kept value stands");
+  assert.deepEqual(kept.tags, ["a"], "a write-once list is not joined");
+  assert.equal(m.conflicts.valued_on, "2026-05-05", "the other value is reported, not applied");
+  await R.unmerge(owner, m.merge_id);
+  assert.equal((await R.get(owner, "estate", a.id)).data.valued_on, "2026-03-01");
+  assert.equal((await R.get(owner, "estate", b.id)).data.valued_on, "2026-05-05", "the dropped record is back as it was");
+  // a value the merge filled into an empty write-once field stays when the merge is undone
+  const c = await R.create(owner, "estate", { title: "C" }), d = await R.create(owner, "estate", { title: "D", valued_on: "2026-07-07" });
+  const m2 = await R.merge(owner, "estate", c.id, d.id);
+  assert.equal((await R.get(owner, "estate", c.id)).data.valued_on, "2026-07-07");
+  await R.unmerge(owner, m2.merge_id);
+  assert.equal((await R.get(owner, "estate", c.id)).data.valued_on, "2026-07-07", "undoing a merge does not clear a write-once value");
+  const gone = await R.create(owner, "estate", { title: "E", valued_on: "2026-08-08" });
+  await R.remove(owner, "estate", gone.id, gone.version);
+  await R.restore(owner, "estate", gone.id);
+  assert.equal((await R.get(owner, "estate", gone.id)).data.valued_on, "2026-08-08", "restore brings it back as it was");
+});
