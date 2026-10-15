@@ -45,10 +45,11 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   const def = await ok("flows.define", { flow });
   assert.ok(def.ok, JSON.stringify(def));
   await ok("flows.approve", { id: def.id, version: def.version, hash: def.hash });
-  await ok("flows.start", { id: def.id });
+  const heldItem = async (/** @type {string[]} */ seen) => until(async () => { const l = await ok("gate.held"); return Array.isArray(l) ? l.find((/** @type {any} */ x) => !seen.includes(x.id)) || null : null; }, "the held email");
 
-  // the real Gate holds the message: nothing has gone out
-  const held = await until(async () => { const l = await ok("gate.held"); return Array.isArray(l) && l.length ? l[0] : null; }, "the held email");
+  // run one: the real Gate holds the message, nothing has gone out
+  await ok("flows.start", { id: def.id });
+  const held = await heldItem([]);
   assert.equal(posted.length, 0, "nothing is sent before the person approves");
   const item = await ok("gate.get", { id: held.id });
   const c = item.content;
@@ -61,9 +62,22 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   assert.equal(fromDocs.sha256, crypto.createHash("sha256").update(docBytes).digest("hex"), "its hash is of the filed bytes");
   assert.ok(!JSON.stringify(item).includes(b64(rota)) && !JSON.stringify(item).includes("%PDF-ROTA"), "no file bytes in the held message");
 
-  // a file that changed after the person looked stops the send, and says so
-  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-1-EDITED")), base: 1 });
-  const stopped = await owner("gate.approve", { id: held.id });
+  // the person approves: the send carries CC, BCC and both files, and the log shows them
+  const out = await ok("gate.approve", { id: held.id });
+  assert.equal(out.state, "sent", JSON.stringify(out));
+  assert.equal(posted.length, 1);
+  const body = posted[0].body;
+  assert.deepEqual([body.cc, body.bcc], [["ops@harlow.example"], ["alex@harlow.example", "files@harlow.example"]], "CC and BCC go out");
+  assert.deepEqual(body.attachments, [{ filename: "Rota week 1.pdf", content: b64(rota) }, { filename: fromDocs.name, content: b64(docBytes) }], "both files go out, byte for byte");
+  const logged = d.registry.deps.events.since(0, { limit: 5000 }).find((/** @type {any} */ e) => e.type === "comms.sent");
+  assert.ok(logged && logged.payload.cc === 1 && logged.payload.bcc === 2 && logged.payload.files.length === 2, "the log shows them: " + JSON.stringify(logged));
+
+  // run two: a file that changed after the message was held stops the send, and says so
+  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2")), base: 1 });
+  await ok("flows.start", { id: def.id });
+  const second = await heldItem([held.id]);
+  await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2-EDITED")), base: 2 });
+  const stopped = await owner("gate.approve", { id: second.id });
   assert.ok(stopped.error && /Rota week 1\.pdf changed after you approved this message, so nothing was sent\. Approve it again\./.test(stopped.error.message), JSON.stringify(stopped));
-  assert.equal(posted.length, 0, "nothing went out");
+  assert.equal(posted.length, 1, "nothing more went out");
 });
