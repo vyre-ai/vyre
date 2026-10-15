@@ -1,0 +1,30 @@
+# Where vyred's startup memory goes, by module (scripts/startup-breakdown.mjs), on Node 22 and 24. Manual, and on the branch that built it. The numbers are for a person deciding what to trim; nothing here gates.
+name: rss-breakdown
+on:
+  push:
+    branches: ["work/0.6/rel6/rss"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rss-breakdown-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  breakdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --no-audit --no-fund
+      - name: Startup memory by module
+        shell: bash
+        run: |
+          for i in 1 2 3; do echo "::group::run $i"; node scripts/startup-breakdown.mjs --seconds 12 --top 15 | tee -a breakdown.txt; echo "::endgroup::"; done
+          { echo "### Startup memory by module (Node ${{ matrix.node }})"; echo '```'; cat breakdown.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
+## 0.6
+
+- test(perf): scripts/startup-breakdown.mjs and the manual rss-breakdown workflow say where vyred's startup memory goes by module (growth in each module's start, the peak against the settled floor), on Node 22 and 24, so the 200 MB startup budget is trimmed by cause.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
