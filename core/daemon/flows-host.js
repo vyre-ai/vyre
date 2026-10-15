@@ -174,8 +174,9 @@ export function createFlowsHost(o) {
       names: async (/** @type {{ space?: string, person?: string }} */ q) => {
         if (typeof o.callModule !== "function") return null;
         try {
-          if (q.person) { const r = await o.callModule("spaces.members.list", { space }); const m = r && Array.isArray(r.members) ? r.members.find((/** @type {any} */ x) => String(x.person) === String(q.person)) : null; return m && typeof m.name === "string" ? m.name : null; }
-          const l = await o.callModule("spaces.label", { space }); return l && typeof l.name === "string" ? l.name : null;
+          const r = await o.callModule("spaces.names", { space, ...(q.person ? { person: q.person } : {}) });
+          const v = q.person ? r && r.person : r && r.space;
+          return typeof v === "string" && v ? v : null;
         } catch { return null; }
       },
       // A pool is the team members (people and assistants) whose `role` is the pool's name, on any project: the same records the team screen shows. A member's skills are the words in its
