@@ -73,7 +73,7 @@ export function createEventLog(cfg) {
   }
   /** The seq of the first event kept in memory (everything before it is on disk). */
   const base = () => (log.length ? log[0].seq : count + 1);
-  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
+  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, drain?: Promise<void>, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
 
   /** One event by seq: from the window, else from the database. */
   function get(/** @type {number} */ seq) {
@@ -241,10 +241,19 @@ export function createEventLog(cfg) {
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
   const MAX_ATTEMPTS = 8;
   const nextFor = (/** @type {any} */ c) => { for (const e of iterate({ since: c.cursor, ...(c.filter && c.filter.type ? { type: c.filter.type } : {}), limit: 1 })) return e; return undefined; };
+  // A backlog is drained by awaiting handlers that answer at once, so the whole of it can run as one chain of microtasks, with a synchronous cursor write after each event, and nothing else on the loop (timers,
+  // sockets, a session's first tools listing) runs until it is done (live 10 Oct, and nine sessions started together in CI: 1 to 2.5 s stalls). The pump hands the loop back every SLICE_MS of work; the order of
+  // events, and when a cursor is written, do not change.
+  const SLICE_MS = 20;
   async function pump(/** @type {boolean} */ batched = false) {
+    let sliceFrom = Date.now();
     for (const [name, c] of consumers) {
-      if (c.busy) continue;
+      // A drain already running for this consumer: a caller who awaits pump() is told the consumers are caught up, so it waits for that drain (which reads on until nothing is left, events appended meanwhile
+      // included) instead of returning while the backlog is still being handled. The pumps the log starts itself (batched) leave a busy consumer to its drain.
+      if (c.busy) { if (!batched && c.drain) await c.drain; continue; }
       c.busy = true;
+      /** @type {() => void} */ let drained = () => {};
+      c.drain = new Promise(r => { drained = () => r(undefined); });
       try {
         for (;;) {
           const upto = count;
@@ -254,6 +263,7 @@ export function createEventLog(cfg) {
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
           if (cfg.persist) { if (c.batch) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); } else cfg.persist.cursor(name, c.cursor); }
+          if (Date.now() - sliceFrom > SLICE_MS) { await new Promise(r => setImmediate(r)); sliceFrom = Date.now(); if (consumers.get(name) !== c) break; } // left while the loop was ours: no more events for it
         }
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
@@ -265,7 +275,7 @@ export function createEventLog(cfg) {
           else setTimeout(() => pump(true), Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
         }
       }
-      finally { c.busy = false; }
+      finally { c.busy = false; c.drain = undefined; drained(); }
     }
     if (!batched) flush(); // a caller who awaits pump() is told the consumers are caught up and stored
   }

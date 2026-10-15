@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- fix(kernel): the event log's `pump()` waits for a drain already running for a consumer instead of skipping it, and a drain hands the loop back every 20 ms of backlog (a timer, a socket or a session's first tools listing no longer waits out the whole backlog: the stall behind nine sessions started together). Order, and when a cursor is written, do not change. Tests in kernel/core/core.test.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
