@@ -18,6 +18,8 @@
       { "name": "vault.approve", "effect": "write", "reach": "person" },
       { "name": "vault.release", "reach": "modules" },
       { "name": "vault.me.release", "reach": "modules" },
+      { "name": "vault.me.has", "reach": "modules" },
+      { "name": "vault.me.lend", "reach": "modules" },
       { "name": "vault.granted", "reach": "modules" },
       { "name": "vault.inject", "effect": "write", "reach": "anyone" },
       { "name": "vault.totp", "effect": "write", "reach": "anyone" },

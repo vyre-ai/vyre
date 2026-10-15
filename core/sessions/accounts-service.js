@@ -7,8 +7,9 @@
 //   signin({ provider, label? })      start a sign-in the provider runs as a new account of theirs; poll it with { flow }, give it a pasted code with { flow, code }; { account } signs one of theirs in again
 //   remove({ id })                    take one of their accounts away
 //   default({ id })                   make one of their accounts their pick on its provider
+//   add({ provider, kind, label, vault_item })   a key or setup token they keep in their OWN vault (vault.me.*): the item is named, never sent; it is read only at the start of their own turns
 //
-// A member does not add an API key here: a key names an item in a Vault, and the server has one Vault, the owner's. A member's key needs a Vault of their own (0.3.4). Each call runs the sessions module's internal
+// A member's key lives in their own vault, not the owner's: `add` names an item of it. Each call runs the sessions module's internal
 // tool `sessions.accounts.serve`, so the rules and the storage are the module's, once.
 
 import { KernelError } from "../../kernel/core/errors.js";
@@ -36,5 +37,5 @@ export function createAccountsService(o) {
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };
-  return { list: run("list"), signin: run("signin"), remove: run("remove"), default: run("default") };
+  return { list: run("list"), signin: run("signin"), remove: run("remove"), default: run("default"), add: run("add") };
 }

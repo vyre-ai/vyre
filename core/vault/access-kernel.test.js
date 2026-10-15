@@ -44,3 +44,30 @@ test("a grant to project:<id> names a project record that exists", { timeout: 12
   await assert.rejects(() => give("project:nope"), { code: "bad_input" });
   assert.equal((await give(`project:${proj.id}`)).status, "active");
 });
+
+test("personMay: only the vault's handle answers whether a member may use a credential, and only allow or deny", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const h = d.kernel.kernelFor(VAULT), owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const vid = await h.vault.personalVault();
+  const res = `vyre://${space}/vault/${vid}/connection/harlow-drive`;
+  assert.equal(await h.vault.personMay(owner, "vault.call", res), true, "the owner holds it");
+  assert.equal(await h.vault.personMay("per_nobody1234567890abcdefgh", "vault.call", res), false, "a stranger does not");
+  await assert.rejects(() => h.vault.personMay(owner, "records.update", res), { code: "bad_input" }, "only the use of a credential is asked");
+  for (const m of [{ name: "mail", needs: { kernel: { reach: true } } }, { name: "flows", needs: { kernel: { reach: true } } }, { name: "sessions", needs: { kernel: {} } }]) {
+    const other = d.kernel.kernelFor(m);
+    assert.equal(other.vault, undefined, `${m.name} has no vault handle`);
+    assert.equal(other.personMay, undefined, `${m.name} cannot ask`);
+  }
+});
+
+test("vault.connections.lend and .end answer only the flows module and the Space's own host, never another module, an agent or a person's surface", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const input = { task: "task-1", agent: "kit", connections: ["cn1"], until: Date.now() + 60_000, approver: d.kernel.id.owner };
+  for (const tool of ["vault.connections.lend", "vault.connections.end"]) {
+    for (const caller of ["module:mail", "module:sessions", "module:agents", "cli", "mcp", "mcp:agent:kit", "device:abcdefghijklmnop"]) {
+      const r = await d.registry.call(tool, tool.endsWith("end") ? { task: "task-1" } : input, caller, {});
+      assert.ok(r.error, `${tool} refuses ${caller}`);
+      assert.ok(/only the flows module|not allowed|denied|no such|reach/i.test(String(r.error.message || r.error.code)), `${caller}: ${JSON.stringify(r.error).slice(0, 120)}`);
+    }
+  }
+});
