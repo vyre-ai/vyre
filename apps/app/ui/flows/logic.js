@@ -373,6 +373,9 @@ const doer = (who) => (who.startsWith("agent:") ? `teammate:${who.slice(6)}` : w
 /** How many a For each goes through: what the author set, 50 by default, at most 1000 (the engine's own limit). @param {any} v */
 export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 1 ? Math.min(n, 1000) : 50; };
 
+/** The kind ("date" or "datetime") of a field a Create or Update step sets, when the object says so, else null. The field is named as typed: it is matched by the name the engine stores it under. @param {Options} o @param {string | undefined} type @param {string | undefined} field */
+export const dateKindOf = (o, type, field) => { if (!(field || "").trim()) return null; const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.name === slug(field || "")); return f && (f.kind === "date" || f.kind === "datetime") ? f.kind : null; };
+
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
   if (s.kind === "advanced") return s.raw;

@@ -56,3 +56,12 @@ test("a wait until a date and time I pick is a stored instant, reads back as the
   assert.equal(stepSummary(back.steps[0], { ...options, zone: "Asia/Karachi" }, back), "Wait until 2026-10-28 at 14:30");
   assert.equal(stepProblem({ id: "w", kind: "wait", mode: "on", on: "" }, options), "Pick the date and time to wait for.");
 });
+
+test("Create and Update know which fields are dates, from the object, by the name the engine stores", async () => {
+  const { dateKindOf } = await import("./logic.js");
+  assert.equal(dateKindOf(options, "matter", "Due"), "date");
+  assert.equal(dateKindOf(options, "matter", "due"), "date");
+  assert.equal(dateKindOf(options, "matter", "Title"), null);
+  assert.equal(dateKindOf(options, "matter", ""), null, "no field named: no picker");
+  assert.equal(dateKindOf(options, "nothing", "due"), null);
+});
