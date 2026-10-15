@@ -158,3 +158,23 @@ test("search never shows or counts a hit the reader may not see, and a query wit
   assert.equal(wide.rows.length, 0); assert.equal(wide.next_cursor, undefined, "a search over every type too");
   assert.equal(await code(R.query(dev(EVE), "asset", {})), "bad_input", "a query with no page is a bad request, not a crash");
 });
+
+test("a merge needs the team of every project either row links to, in both directions, and so does undoing it", async () => {
+  const { R, owner, dev, rivera, other, person } = await rig();
+  // EVE is on Rivera only
+  await R.create(owner, "team-member", { name: "eve", actor: person(EVE), kind: "person", project: { urn: rivera.urn } });
+  const k = await R.create(dev(EVE), "asset", { name: "Keep", project: { urn: rivera.urn } });
+  const d = await R.create(owner, "asset", { name: "Drop", project: { urn: rivera.urn } });
+  const both = await R.create(owner, "deal", { name: "Both", projects: [{ urn: rivera.urn }, { urn: other.urn }] });
+  assert.equal((await R.get(dev(EVE), "deal", both.id)).data.name, "Both", "she reads a row on Rivera and Other");
+  const dealKeep = await R.create(dev(EVE), "deal", { name: "Keep deal", projects: [{ urn: rivera.urn }] });
+  assert.equal(await code(R.merge(dev(EVE), "deal", dealKeep.id, both.id)), "not_allowed", "dropping a row that also sits on Other");
+  assert.equal(await code(R.merge(dev(EVE), "deal", both.id, dealKeep.id)), "not_allowed", "keeping a row that also sits on Other");
+  assert.equal((await R.get(owner, "deal", both.id)).data.name, "Both", "nothing was removed");
+  const joined = await R.merge(dev(EVE), "asset", k.id, d.id);
+  assert.ok(joined.merge_id, "two rows on her own project join");
+  // an owner joins the two-project rows; she cannot undo that, she is not on Other
+  const m = await R.merge(owner, "deal", both.id, dealKeep.id);
+  assert.equal(await code(R.unmerge(dev(EVE), m.merge_id)), "not_allowed", "undoing a merge of rows on Other");
+  assert.equal(await code(R.unmerge(dev(EVE), joined.merge_id)), null, "undoing her own");
+});

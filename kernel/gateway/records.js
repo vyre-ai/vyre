@@ -728,6 +728,15 @@ export function createRecords(cfg) {
   const roleFor = (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined);
   /** The kernel attributes a create carries (owner, project, sensitivity), judged for every type and by every route that creates (kernel/gateway/ownership.js). A gateway with no membership at all, as a store test rig is, cannot tell who is a member; the Space's own kernel always has it. @param {any} chain @param {any} attrs */
   const attrsGate = async (chain, attrs) => { if (members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted: isTrustedChain(chain, roleFor), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)) }); };
+  /** The writer is on the team of EVERY project any of these row datas links to, and is not a Viewer there (a chain with no person, or a trusted one, passes). */
+  async function projectLinkGate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any[]} */ ...datas) {
+    if (!(members && typeof members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"))) return;
+    for (const l of await projectLinksOf(type)) {
+      const refs = new Set();
+      for (const d of datas) for (const one of Array.isArray(d && d[l.name]) ? d[l.name] : [d && d[l.name]]) { const ref = one && (typeof one === "string" ? one : one.urn); if (ref) refs.add(String(ref)); }
+      for (const ref of refs) await mayAttrs(chain, { project: ref }, { trusted: isTrustedChain(chain, roleFor), project: (/** @type {string} */ r) => seatOfWork(r, l.to) });
+    }
+  }
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
@@ -770,14 +779,7 @@ export function createRecords(cfg) {
     if ((op === "update" || op === "remove" || op === "restore") && before && !OWNED_TYPES.includes(type) && await privateType(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
     // a row of a custom type is filed, edited, moved and unfiled only by someone on the team of EVERY project it links to, before and after the write, and not as a Viewer there: so a link can never be
     // changed or cleared by someone outside the row's own team, and a row can be moved out of privacy only by its team (the same words as a record's `project` attribute)
-    if (members && typeof members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person")) {
-      for (const l of await projectLinksOf(type)) {
-        const refs = new Set();
-        for (const side of [before && before.data ? before.data[l.name] : undefined, (op === "create" || op === "update") && input ? input[l.name] : undefined])
-          for (const one of Array.isArray(side) ? side : [side]) { const ref = one && (typeof one === "string" ? one : one.urn); if (ref) refs.add(String(ref)); }
-        for (const ref of refs) await mayAttrs(chain, { project: ref }, { trusted: isTrustedChain(chain, roleFor), project: (/** @type {string} */ r) => seatOfWork(r, l.to) });
-      }
-    }
+    await projectLinkGate(chain, type, before && before.data, (op === "create" || op === "update") ? input : undefined);
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
       // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
@@ -1478,7 +1480,10 @@ export function createRecords(cfg) {
     const def = defs.find((/** @type {any} */ t) => t.name === type);
     if (def && (def.kind === "project" || type === "project")) throw new KernelError("not_allowed", `Only an owner or an admin joins ${def.label || type} records: the records that link to them would follow. Ask one of them.`);
     if (!(await privateType(type))) return;
-    for (const id of ids) { const raw = await store.get(type, id, { include_deleted: true }).catch(() => null); if (!raw || !(await mayView(chain, type, { ...raw, urn: urn(type, id) }))) throw new KernelError("not_found", "no such record"); }
+    const datas = [];
+    for (const id of ids) { const raw = await store.get(type, id, { include_deleted: true }).catch(() => null); if (!raw || !(await mayView(chain, type, { ...raw, urn: urn(type, id) }))) throw new KernelError("not_found", "no such record"); datas.push(raw.data); }
+    // the merge removes one row and puts its links on the other: she must be on the team of every project either row links to, as for a plain change or removal
+    await projectLinkGate(chain, type, ...datas);
   };
   const TASK_MAP = new Set(["title", "note", "due", "parent", "project"]);
   /** A link arrives as { urn } (the contract) or, from a module, as plain text: a task keeps its parent as an id and its project as a urn. */
