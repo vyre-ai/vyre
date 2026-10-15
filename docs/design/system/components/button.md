@@ -61,7 +61,7 @@ and Cancel is ghost; there may be no primary at all. Never make Delete, Remove o
 | 44 | `--control-touch` | 0 16 | `--radius-button-touch` (10) | phone read 17/24 | Phone default |
 | 54 | `--control-touch-lg` | 0 16 | `--radius-card` (12) | phone read 17/24 | Phone sheet actions, stacked, full width |
 
-Touch targets are 44 minimum. On the phone, a card's actions stack full width at 54, primary on
+Touch targets are 44 minimum, and the box itself is the target, not a hit slop: on a phone the small size is 44 high, and a Chip that can be pressed has a 44 high tap area with the chip centred in it. On the phone, a card's actions stack full width at 54, primary on
 top. Width is the content's, or 100% in a stack; never a fixed pixel width.
 
 ## States
