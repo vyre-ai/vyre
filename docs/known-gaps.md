@@ -37,11 +37,9 @@ Renaming a project changes its short name, which keys the project's folder group
 
 The admin Audit screen reads the signed event log forward from its last 100,000 events and says when it stopped short. A busier Space sees the recent past first; the older events are in the log itself.
 
-### Preview isolation on Linux
+### Preview isolation
 
-On macOS a preview's process can reach its own loopback port and no other address. A Linux box runs a preview with shell limits only (no core files, a file size, processes and open files capped) and the preview's log says there is no network wall. Bubblewrap cannot let one port through, so the wall there is planned with the box's spawner.
-
-What to do today: build previews of pages you trust on a Linux box; a preview that runs code from outside content belongs on a Mac server for now.
+A preview's process can reach its own loopback port and no other network address: on macOS through the sandbox profile, on Linux through a private network with the page carried out on a unix socket. Unix sockets that live in the filesystem under the same account (not the network) stay reachable to it, as before. Where bubblewrap cannot make a private network on a Linux box, the preview runs with shell limits only and its log says there is no network wall.
 
 ### Standing permissions
 
