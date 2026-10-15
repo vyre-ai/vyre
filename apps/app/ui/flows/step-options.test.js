@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, valueSources } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, valueSources, flowSettings, setFlowSetting } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -56,4 +56,21 @@ test("later steps can pick a group or a pulled-out fact from the value list", ()
   const draft = fromDefinition(d, options);
   const found = valueSources(draft, "n1", options).map((x) => x[0]);
   for (const want of ["{steps.c1.label}", "{steps.e1.fields.amount}"]) assert.ok(found.includes(want), want);
+});
+
+test("Flow settings read from a stored Flow, write back inside the engine's ranges and drop when emptied", () => {
+  const stored = { ...flow([]), description: "Welcome new contacts", concurrency: 2, lock: "trigger.after.id", stuck_after_ms: 600_000 };
+  let d = fromDefinition(stored, options);
+  assert.deepEqual(flowSettings(d), { description: "Welcome new contacts", concurrency: "2", lock: "trigger.after.id", stuckMinutes: "10" });
+  assert.deepEqual(toDefinition(d, options).stuck_after_ms, 600_000, "an untouched setting is saved as it was");
+  d = setFlowSetting(d, "concurrency", "99");
+  d = setFlowSetting(d, "stuckMinutes", "5000");
+  d = setFlowSetting(d, "lock", "  ");
+  d = setFlowSetting(d, "description", "");
+  const out = toDefinition(d, options);
+  assert.equal(out.concurrency, 32);
+  assert.equal(out.stuck_after_ms, 86_400_000);
+  assert.ok(!("lock" in out) && !("description" in out));
+  assert.deepEqual(checkFlow(out), []);
+  assert.equal(setFlowSetting(d, "stuckMinutes", "0").rest.stuck_after_ms, undefined, "zero means the default");
 });

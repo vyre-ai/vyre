@@ -827,3 +827,21 @@ export function valueSources(d, stepId, o) {
   out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);
   return out;
 }
+
+/** The Flow-level settings the editor shows, as the words typed: a description, how many runs go at once, a key that keeps runs with the same key apart, and how long a run may sit before it is called stuck (in minutes). @param {Draft} d */
+export function flowSettings(d) {
+  const r = d.rest || {};
+  return { description: typeof r.description === "string" ? r.description : "", concurrency: Number.isInteger(r.concurrency) ? String(r.concurrency) : "", lock: typeof r.lock === "string" ? r.lock : "", stuckMinutes: Number.isInteger(r.stuck_after_ms) ? String(Math.round(r.stuck_after_ms / 60_000)) : "" };
+}
+
+/** A copy of the draft with one setting changed; an empty value removes the key so the engine's own default applies. Numbers are held to the engine's range. @param {Draft} d @param {"description" | "concurrency" | "lock" | "stuckMinutes"} key @param {string} value @returns {Draft} */
+export function setFlowSetting(d, key, value) {
+  const rest = { ...(d.rest || {}) };
+  const text = String(value ?? "");
+  const num = Math.floor(Number(text));
+  if (key === "description") { if (text.trim()) rest.description = text; else delete rest.description; }
+  else if (key === "lock") { if (text.trim()) rest.lock = text.trim(); else delete rest.lock; }
+  else if (key === "concurrency") { if (text.trim() && num > 0) rest.concurrency = Math.min(32, num); else delete rest.concurrency; }
+  else if (text.trim() && num > 0) rest.stuck_after_ms = Math.min(86_400_000, Math.max(10_000, num * 60_000)); else delete rest.stuck_after_ms;
+  return { ...d, rest };
+}

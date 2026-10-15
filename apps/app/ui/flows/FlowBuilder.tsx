@@ -11,6 +11,7 @@ import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { FormulaBox } from "./FormulaBox";
 import { StepCard } from "./StepCard";
+import { FlowSettings } from "./FlowSettings";
 import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
 import { ContextBox } from "./ContextBox";
@@ -70,6 +71,8 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
 
         <Lane lane={{ parent: null, key: "" }} steps={draft.steps} root="steps" ctx={ctx} />
       </View>
+
+      <FlowSettings draft={draft} onChange={onChange} readOnly={readOnly} />
 
       {readOnly && !(draft.onFailure ?? []).length ? null : (
         <View className="gap-s2">
