@@ -814,7 +814,7 @@ export class FlowRunner {
     return (top || runs.length) + 1;
   }
 
-  /** The display names a run can print (the approver, the starter, the Space), from the host's `names` port; a name it cannot find is left out, and prints as nothing. @param {any} f @param {string} [starter] */
+  /** The display names a run can print (the approver, the starter, the Space), from the host's `names` port; one it cannot find is left out here and the scope says "a team member" or "this Space" in its place. @param {any} f @param {string} [starter] */
   async #namesFor(f, starter) {
     const get = /** @type {any} */ (this.ports).names;
     if (typeof get !== "function") return {};
@@ -1148,7 +1148,7 @@ export class FlowRunner {
     const run = ctx.run, t = run.trigger;
     const inh = run.inherit;                                 // a lane of a parallel step reads what its parent had read when it split
     const trigger = inh ? inh.trigger : t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
-    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow, number: run.number ?? null, flow_name: run.label || run.flow, approver_name: (run.names && run.names.approver) || "", starter_name: (run.names && (run.names.starter || run.names.approver)) || "", space_name: (run.names && run.names.space) || "" }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
+    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow, number: run.number ?? null, flow_name: run.label || run.flow, approver_name: (run.names && run.names.approver) || NAME_FALLBACK.person, starter_name: (run.names && (run.names.starter || run.names.approver)) || NAME_FALLBACK.person, space_name: (run.names && run.names.space) || NAME_FALLBACK.space }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
   }
 
   /** @param {any} ctx @param {string} key @param {Partial<import('./store.js').Run['steps'][string]>} patch */
@@ -2091,6 +2091,8 @@ function deviceOffline(r) {
 const SERVICE_BODY_CAP = 64 * 1024;
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
+/** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
+const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
 const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
 
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }

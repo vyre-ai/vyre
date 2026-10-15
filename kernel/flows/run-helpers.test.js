@@ -18,12 +18,12 @@ test("a run prints its number, the Flow's name, the approver, the starter and th
   assert.deepEqual(matters(w), ["Run 1 of Refund requests for Alex Rivera, started by Alex Rivera, in Harlow Legal", "Run 2 of Refund requests for Alex Rivera, started by Alex Rivera, in Harlow Legal"]);
 });
 
-test("a name the host cannot find prints as nothing, and a host with no names still gives the number and the Flow's name", async () => {
+test("a name the host cannot find prints as words, never as nothing: a team member, this Space", async () => {
   const w = await world({ kernel: "real" });
   const { id } = await install(w, flow);
   await w.runner.start(id, {}, w.kernel.as(ALEX));
   await settle(w);
-  assert.deepEqual(matters(w), ["Run 1 of Refund requests for , started by , in "]);
+  assert.deepEqual(matters(w), ["Run 1 of Refund requests for a team member, started by a team member, in this Space"]);
 });
 
 for (const kind of ["memory", "records"]) {
