@@ -35,7 +35,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // [kernel +57: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; includes one import of lib/roles/staff.js] (flows-ux)
 // 9690 on the stage tip 9633: 9633 + 57.
 // 9691 (fail-closed, 13 Oct 2026): one line in kernel/index.js, the chain() throw that refuses an unenrolled device and a refused fact.
-const CAP = 9691;
+// 9701 (rel6, 16 Oct 2026, [kernel +10: lead ruling, #173] kernel/core/events.js: pump() waits for a drain already running for a consumer, and a drain hands the loop back every 20 ms of backlog; measured 13 added, 3 removed).
+const CAP = 9701;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
