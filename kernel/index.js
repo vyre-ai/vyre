@@ -160,6 +160,8 @@ export async function createKernel(cfg) {
    */
   const personMayFor = (allowed) => async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
     if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !allowed.includes(action)) throw new KernelError("bad_input", "name one person and an action this handle may ask about");
+    // the vault is the owner's: the owner holds every credential of it (no role bundle carries vault.call; what others hold is a grant)
+    if (action.startsWith("vault.") && grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner") return true;
     try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "may-check", person, path: "direct", session: "may-check" }), action, resource })).effect === "allow"; } catch { return false; }
   };
   const kernelFor = (/** @type {any} */ m) => {
