@@ -210,3 +210,35 @@ test("the law firm kit: stages carry an owner and tasks, and the text round-trip
   assert.deepEqual(compile(print(kit)), kit);
   assert.deepEqual(JSON.parse(fs.readFileSync(new URL("../kits/law-firm/kit.json", import.meta.url), "utf8")), kit, "kit.json is the compiled kit.ts");
 });
+
+test("write-once fields and computed totals compile, print and read back, and are checked against the kit", () => {
+  const src = wrap(`export const Client = defineType({ name: "client", fields: {
+  name: defineField.text({ required: true }),
+  valued_on: defineField.date({ write_once: true, label: "Valuation date" }),
+  fees: defineField.number({ computed: { over: { type: "matter", via: "client", fn: "sum", field: "fee" } }, label: "Fees" }),
+  fee_tax: defineField.number({ label: "Fee tax" }),
+} });
+export const Matter = defineType({ name: "matter", fields: {
+  title: defineField.text(),
+  client: defineField.link({ to: "client" }),
+  fee: defineField.number(),
+  gross: defineField.number({ computed: { expr: "fee + 1" } }),
+} });
+export default defineKit({ id: "k", version: 1, includes: [Client, Matter] });`);
+  const kit = compile(src);
+  const client = kit.types.find((t) => t.name === "client"), matter = kit.types.find((t) => t.name === "matter");
+  assert.equal(client.fields.find((f) => f.name === "valued_on").write_once, true);
+  assert.deepEqual(client.fields.find((f) => f.name === "fees").computed, { over: { type: "matter", via: "client", fn: "sum", field: "fee" } });
+  assert.deepEqual(matter.fields.find((f) => f.name === "gross").computed, { expr: "fee + 1" });
+  const text = print(kit);
+  assert.deepEqual(compile(text), kit);
+  assert.equal(print(compile(text)), text);
+  const one = (extra) => kitOf("", extra);
+  fails(one("a: defineField.choice(['x'], { computed: { expr: 'b' } }), b: defineField.text()"), "invalid_definition", /Computed field is one of/);
+  fails(one("a: defineField.number({ computed: { expr: 'nope + 1' } })"), "invalid_definition", /not a field of/);
+  fails(one("a: defineField.number({ computed: { expr: 'a + 1' } })"), "invalid_definition", /cannot read itself/);
+  fails(one("a: defineField.number({ computed: { expr: 'b' }, required: true }), b: defineField.number()"), "invalid_definition", /never written/);
+  fails(one("a: defineField.number({ computed: { expr: 'b' }, write_once: true }), b: defineField.number()"), "invalid_definition", /never written/);
+  fails(one("a: defineField.number({ computed: { over: { type: 'ghost', via: 'x', fn: 'count' } } })"), "invalid_definition", /neither defined/);
+  fails(one("a: defineField.number({ computed: { over: { type: 'matter', via: 'client', fn: 'sum' } } })"), "invalid_definition", /Name the field/);
+});

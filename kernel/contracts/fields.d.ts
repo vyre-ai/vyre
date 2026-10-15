@@ -61,6 +61,8 @@ export interface FieldDefinition {
   readonly seal?: SealConfig;
   /** Among the type's live records no two hold the same non-null value. Kinds text, number, url, choice, date, datetime. A store enforces it atomically (store error `unique_violation`). */
   readonly unique?: boolean;
+  /** The first value written stays: once the record holds a value here, a later write that changes or clears it is refused with `field_locked`. For a value the record itself must fix (a valuation date). Not on a computed or stage field. */
+  readonly write_once?: boolean;
   /** Removed from view, data kept: nothing reads, writes, filters or searches it, and it is never required. Set it back to false and the data is there again. Deleting for good is a migration. */
   readonly hidden?: boolean;
   /** Roles (owner, admin, manager, member, temp, or a Kit's own) that never see this field: not on a read, a list, a filter, a total or a search, and not writable by them. */

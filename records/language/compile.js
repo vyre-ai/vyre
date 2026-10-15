@@ -125,6 +125,22 @@ export function checkKit(kit) {
       if (exprNames(parseExpr(f[k])).has(f.name)) err(`type ${t.name}.${f.name}.${k}`, `${k} cannot name the field it is on`);
       if (f.required && k === "required_if") err(`type ${t.name}.${f.name}`, "A field is required, or required_if something, not both");
     }
+    for (const f of t.fields) {
+      if (!f.computed) continue;
+      const at = `type ${t.name}.${f.name}.computed`;
+      if (f.computed.expr !== undefined) {
+        checkExpr(at, f.computed.expr, t);
+        for (const nm of exprNames(parseExpr(f.computed.expr))) if (t.fields.find((/** @type {any} */ x) => x.name === nm)?.computed) err(at, `The expression names "${nm}", which is computed too: a computed field reads stored fields only`);
+        if (exprNames(parseExpr(f.computed.expr)).has(f.name)) err(at, "A computed field cannot read itself");
+      } else {
+        const o = f.computed.over, other = kit.types.find((/** @type {any} */ x) => x.name === o.type);
+        if (other) {
+          const via = other.fields.find((/** @type {any} */ x) => x.name === o.via);
+          if (!via || via.kind !== "link" || (via.to !== undefined && via.to !== t.name)) err(at, `${o.type}.${o.via} must be a link to ${t.name}`);
+          if (o.field && !other.fields.some((/** @type {any} */ x) => x.name === String(o.field).split(".")[0])) err(at, `${o.type} has no field ${o.field}`);
+        } else if (!CORE_TYPES.includes(o.type)) err(at, `Totals "${o.type}", which is neither defined in this kit nor a core type`);
+      }
+    }
     if (stageField && JSON.stringify(stageNamesOf(t)) !== JSON.stringify(stageField.options)) err(`type ${t.name}`, "The stage field's options must be the stages of the type and of its stage sets, each name once");
     for (const [i, set] of (t.stage_sets ?? []).entries()) {
       if (!stageField) err(`type ${t.name}.stage_sets[${i}]`, "stage_sets need a stage field");
