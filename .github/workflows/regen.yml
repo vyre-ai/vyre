@@ -1,0 +1,47 @@
+# Generated files (the docs reference and index, the agent docs, the architecture map, the golden allow list) are never edited by hand (DEVELOPMENT-RULES, preflight G1). On a pull request into
+# a release branch this runs scripts/team/regen.mjs on Linux. When a generated file is stale it commits the regenerated files to the PR branch, then starts node.yml on the new commit (a push made with
+# the workflow token does not start workflows by itself, but a dispatch does), so the checks on the PR are for what will merge. A pull request from a fork gets no push: the run fails and says which
+# files are stale. It never touches any other file.
+name: regen
+on:
+  pull_request:
+    branches: ["release/**"]
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: regen-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Regenerate
+        run: node scripts/team/regen.mjs
+      - name: Commit what changed, or say what is stale
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -eu
+          stale="$(git status --porcelain | cut -c4-)"
+          if [ -z "$stale" ]; then echo "the generated files are current"; exit 0; fi
+          echo "stale generated files:"; echo "$stale"; git diff --stat
+          if [ "$SAME_REPO" != "true" ]; then echo "::error::this pull request comes from a fork: run node scripts/team/regen.mjs and commit the result"; exit 1; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- docs/index.json docs/reference docs/agents docs/architecture/map.md kernel/golden/allow.json kernel/golden/presence.json
+          if [ -n "$(git status --porcelain | grep -v '^[AMD] ' || true)" ]; then echo "::error::regeneration changed a file outside the generated list"; git status --short; exit 1; fi
+          git commit -m "docs: regenerate the generated files"
+          git push origin "HEAD:${BRANCH}"
+          gh workflow run node.yml --ref "$BRANCH"
