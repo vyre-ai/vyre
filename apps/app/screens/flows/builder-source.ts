@@ -43,7 +43,7 @@ export async function realOptions(types: { name: string; label: string; fields?:
     people: [],
     // the file picks: the names of files in the Space's Drive the person may read, by part of a name
     filesOf: async (q) => {
-      const r = await ask<any>("files.drive.space.list", { prefix: "", limit: 500 });
+      const r = await ask<any>("files.drive.space.list", { prefix: "", limit: 1000 });   // answers { prefix, entries: [{ path, size, version, at }], next }
       const needle = q.trim().toLowerCase();
       return list(r, "entries").map((e: any) => String(e.path ?? e.name ?? "")).filter((p) => p && (!needle || p.toLowerCase().includes(needle))).map((p) => ({ path: p, name: p.split("/").pop() || p }));
     },
