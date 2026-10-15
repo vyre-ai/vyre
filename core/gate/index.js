@@ -232,6 +232,21 @@ export default {
       },
     });
 
+    // The Flows host ends what an agent held for a task whose due time passed (ADR 0054): every item its session still holds is discarded with the reason in words (it shows in the item and in the queue's
+    // recent list). Nothing is sent. A repeat finds nothing held. Only the Space's own host calls it.
+    ctx.tool("gate.withdraw-thread", {
+      description: "Discard every item an agent session still holds: the task it worked on ran out of time. Nothing is sent. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: obj({ thread: str, why: str }, ["thread"]),
+      run: (input, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host discards what a session held"), { code: "denied" }); // internal-word: the caller label, not shown text
+        const why = String(input.why || "The task's due time passed, so this was cancelled and nothing was sent.").slice(0, 300);
+        const held = gate.held({ thread: String(input.thread) });
+        for (const it of held) { try { gate.reject({ id: it.id, reason: why, by: "flows:deadline" }); } catch { /* it was decided in the meantime */ } }
+        return { discarded: held.length };
+      },
+    });
+
     ctx.tool("gate.settle", {
       description: "An approved item whose send failed with its answer lost, found to have gone out after all (the app shows the words): mark it sent with the evidence, so it is never sent twice. Only outcome \"sent\", only for an item that was approved and failed. A person, or the module that offered the item's sender.",
       input: obj({ id: str, outcome: { type: "string", enum: ["sent"] }, evidence: { type: "object" }, by: str }, ["id", "outcome"]),

@@ -54,6 +54,7 @@ export function createAgentWake(o) {
       if (thread) {
         await o.callModule("threads.stop", { thread }, o.space);
         // what the session held for a yes meanwhile is cancelled, with the reason in plain words in the approvals queue
+        await o.callModule("gate.withdraw-thread", { thread, why: "The task's due time passed, so this was cancelled and nothing was sent." }, o.space);
         await o.callModule("approvals.withdraw-thread", { thread, why: "The task's due time passed, so this was cancelled and nothing was sent." }, o.space);
       }
     } catch (err) { log(`agent wake ${o.space}: the session for withdrawn task ${taskId} was not ended (${/** @type {Error} */ (err).message})`); }
