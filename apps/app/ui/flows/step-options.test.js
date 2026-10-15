@@ -2,7 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, condExpr, flowSettings, setFlowSetting } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, condExpr, SPECIAL_ACTIONS, flowSettings, setFlowSetting } from "./logic.js";
+
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -134,4 +135,12 @@ test("a web call keeps its query and headers and can check with HEAD", () => {
   assert.equal(out.steps[0].body, undefined, "a check carries no body");
   const guarded = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "GET", path: "/", drive: { saveTo: "files/x" } }]), options);
   assert.equal(guarded.steps[0].kind, "advanced", "a drive hand-off stays as it was");
+});
+
+test("every call a dedicated step writes is on the list the generic action step leaves alone", () => {
+  const d = { name: "All", trigger: { kind: "created", type: "contact" }, steps: [] };
+  for (const kind of ["sms", "email", "document", "project"]) { const s = newStep(kind, d, options); d.steps.push(s); }
+  const actions = toDefinition(d, options).steps.filter((x) => x.kind === "call").map((x) => x.action);
+  assert.equal(actions.length, 4, "each of the four dedicated steps writes one call");
+  for (const a of actions) assert.ok(SPECIAL_ACTIONS.has(a), a);
 });
