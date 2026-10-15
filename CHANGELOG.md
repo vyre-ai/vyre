@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6
 
 - fix(phone, security): the phone's Face ID or fingerprint key (vyre.human) signs only bytes the phone can read, and its prompt is the phone's own words for them, as the Mac and Windows shells already did (KP-3): an identity-list change, the server ownership proof, the paired session start and the relay sign-in, each by its exact shape (apps/app/modules/vyre-signer/sign-summary.js); a yes-moment proof is named from its own op and fields. Anything else is refused before any prompt (ERR_UNREADABLE, "Vyre cannot tell what this would sign, so it did not."), and no caller's caption reaches the prompt. Android shows the first line as the prompt's title and the fields as its description. Pinned by the byte vectors the Mac and Windows tests use.
+- fix(phone, security): the Face ID prompt's words drop every character that is not shown as itself (control, format such as U+202E and U+200B, the isolates U+2066 to U+2069, line and paragraph separators: the plainName set), and a held group's prompt cleans each op as one card's does (review of #189).
 - refactor(phone): approveAndSign (native/presence.ts and its web stand-in), which nothing called, is removed rather than guarded.
 
 ## 0.5.1

@@ -10,9 +10,12 @@
 
 const dec = new TextDecoder("utf-8", { fatal: true });
 
-/** A label as the person reads it: no control characters, trimmed, cut at `max` with "...". @param {unknown} s @param {number} [max] */
-function clean(s, max = 40) {
-  const t = Array.from(typeof s === "string" ? s : "").filter(ch => { const c = /** @type {number} */ (ch.codePointAt(0)); return c >= 0x20 && c !== 0x7f; }).join("").trim();
+/** No control, format (bidi overrides such as U+202E, zero widths such as U+200B, isolates U+2066 to U+2069) or line and paragraph separator character: the plainName set. */
+const UNSHOWN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/** A label as the person reads it: nothing that is not shown as itself (UNSHOWN), trimmed, cut at `max` with "...". @param {unknown} s @param {number} [max] */
+export function clean(s, max = 40) {
+  const t = (typeof s === "string" ? s : "").replace(UNSHOWN, "").trim();
   return Array.from(t).length > max ? Array.from(t).slice(0, max).join("") + "..." : t;
 }
 

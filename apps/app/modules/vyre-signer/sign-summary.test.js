@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { UNREADABLE, proofSummary, summaryOf } from "./sign-summary.js";
+import { UNREADABLE, clean, proofSummary, summaryOf } from "./sign-summary.js";
 import { pairToMessage } from "../../../../core/wink/pairing.js";
 import { pairedStart } from "../../../../core/presence/person.js";
 import { ticketTag } from "../../../../relay/client/pairwords.js";
@@ -69,4 +69,18 @@ test("every Face ID signature in the phone's signer goes through these words, an
   assert.doesNotMatch(src, /card\.prompt|cards\[0\]\.prompt/, "a card's caption is never the prompt");
   const humanSigns = src.match(/native\.(sign|signMany)\(HUMAN/g) || [];
   assert.equal(humanSigns.length, 4, "sign, enclaveSign, signPresence, signPresenceMany: each is listed above");
+});
+
+test("no invisible character reaches the prompt: a bidi override, a zero width, an isolate or a line separator in a label, a field or an op is dropped", () => {
+  const sneaky = "Ana\u202E\u200Benohp\u2066x\u2069\u2028y";
+  assert.equal(clean(sneaky), "Anaenohpxy");
+  assert.equal(summaryOf(chain(JSON.stringify({ type: "add", entry: { kind: "device", label: sneaky } }))), "Add a device: Anaenohpxy");
+  const p = proofSummary("vault\u202Ereveal", { name: "Stripe\u200B key", ["no\u2067te"]: "a\u2029b" });
+  assert.ok(!/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(p.replace(/\n/g, "")), JSON.stringify(p));
+  assert.deepEqual(p.split("\n"), ["Approve: vaultreveal", "name: Stripe key", "note: ab"]);
+});
+
+test("the one prompt for a held group cleans each op, as one card's prompt does", () => {
+  const src = fs.readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(src, /cards\.slice\(0, 4\)\.map\(\(c\) => clean\(String\(c\.op\)\.replace\(\/_\/g, " "\), 60\)\)/);
 });

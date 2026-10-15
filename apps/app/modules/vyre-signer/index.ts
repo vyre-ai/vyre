@@ -7,7 +7,7 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
 import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData, entryClientData, entryAndroidChallenge } from "./presence-proof.js";
-import { UNREADABLE, proofSummary, summaryOf } from "./sign-summary.js";
+import { UNREADABLE, clean, proofSummary, summaryOf } from "./sign-summary.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -213,7 +213,7 @@ export async function signPresenceMany(cards: PresenceCard[]): Promise<PresenceP
     return proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   }));
   // one prompt for the group: one card's own words, or how many acts it approves (never a card's caption)
-  const groupSay = cards.length === 1 ? proofSummary(cards[0].op, cards[0].fields as Record<string, unknown>) : `Approve ${cards.length} actions: ${cards.map((c) => String(c.op).replace(/_/g, " ")).slice(0, 4).join(", ")}${cards.length > 4 ? ", ..." : ""}`;
+  const groupSay = cards.length === 1 ? proofSummary(cards[0].op, cards[0].fields as Record<string, unknown>) : `Approve ${cards.length} actions: ${cards.slice(0, 4).map((c) => clean(String(c.op).replace(/_/g, " "), 60)).join(", ")}${cards.length > 4 ? ", ..." : ""}`;
   const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), { prompt: groupSay });
   const out: PresenceProof[] = [];
   for (let i = 0; i < cards.length; i++) {
