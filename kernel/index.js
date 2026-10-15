@@ -326,6 +326,8 @@ export async function createKernel(cfg) {
         // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
         personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
           if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !["vault.call", "vault.read", "vault.fill"].includes(action)) throw new KernelError("bad_input", "name one person and a credential action");
+          // the vault is the owner's: the owner holds every credential of it (no role bundle carries vault.call; what others hold is a grant)
+          if (grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner") return true;
           try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
         } }) } : {}),
       /**
