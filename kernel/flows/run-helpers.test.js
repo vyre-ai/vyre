@@ -25,3 +25,19 @@ test("a name the host cannot find prints as nothing, and a host with no names st
   await settle(w);
   assert.deepEqual(matters(w), ["Run 1 of Refund requests for , started by , in "]);
 });
+
+for (const kind of ["memory", "records"]) {
+  test(`run numbers only grow, in the ${kind} store: concurrent starts never share a number and a number is never given twice`, async () => {
+    const w = await world({ kernel: "real", ...(kind === "records" ? { store: "records" } : {}) });
+    const { id } = await install(w, flow);
+    const got = await Promise.all([1, 2, 3, 4, 5].map(() => w.store.nextRunNumber(id)));
+    assert.deepEqual([...got].sort((a, b) => a - b), [1, 2, 3, 4, 5], "five at once, five different numbers");
+    assert.equal(await w.store.nextRunNumber(id), 6);
+    assert.equal(await w.store.nextRunNumber("another_flow"), 1, "each Flow counts for itself");
+    // a run takes the next number whatever runs the Flow still holds: with every earlier run gone the count does not start over
+    await w.runner.start(id, {}, w.kernel.as(ALEX));
+    await settle(w);
+    const run = (await w.runner.listRuns({ flow: id }))[0];
+    assert.equal(run.number, 7);
+  });
+}

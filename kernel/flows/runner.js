@@ -806,8 +806,9 @@ export class FlowRunner {
     return this.#locked(id, () => this.#startLocked(id, f, trig, src));
   }
 
-  /** The next run number of a Flow: one more than the highest it has given, or the count of its runs when none has a number (older runs). @param {string} flow */
+  /** The next run number of a Flow, from the store's counter that only grows; a store with none falls back to one more than the highest a surviving run has. @param {string} flow */
   async #nextNumber(flow) {
+    if (typeof /** @type {any} */ (this.store).nextRunNumber === "function") return /** @type {any} */ (this.store).nextRunNumber(flow);
     const runs = await this.store.listRuns({ flow, limit: 1000 });
     const top = runs.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, Number(r.number) || 0), 0);
     return (top || runs.length) + 1;

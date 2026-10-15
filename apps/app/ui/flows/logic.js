@@ -248,7 +248,9 @@ const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at |
 export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
-const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
+const tokenExpr = (t) => (/^(steps|event|row|item|error|trigger)\./.test(t) ? t : `trigger.${t}`);
+/** A trigger field whose path is also a helper ({me.name}, {now}) stays reachable by its full path: the helper wins the short name, `{trigger.me.name}` is the field. */
+const viaTrigger = (/** @type {string} */ path) => (Object.hasOwn(HELPERS, path) ? `trigger.${path}` : path);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
@@ -314,7 +316,7 @@ const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, 
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
-const refToken = (n) => (PATH_TOKEN[n] ? PATH_TOKEN[n] : n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
+const refToken = (n) => (PATH_TOKEN[n] ? PATH_TOKEN[n] : n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? viaTrigger(n.slice(8)) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
@@ -338,9 +340,9 @@ function templateText(e) {
   return out;
 }
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
-const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
