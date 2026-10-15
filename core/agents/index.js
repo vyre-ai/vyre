@@ -870,8 +870,12 @@ export default {
         const as = { as: String(caller) };
         const d = await ctx.call("flows.describe", { id: String(i.flow) }, as);
         if (d.error) throw Object.assign(new Error(d.error.message || "that Flow cannot be read"), { code: d.error.code === "not_found" ? "not_found" : "denied" });
-        const r = await ctx.call("flows.runs", { id: String(i.flow), limit: 5 }, as);
-        const runs = !r.error && Array.isArray(r.data) ? r.data : [];
+        // the runs of THIS Flow, read as the person; a run she names must be one of them (so a run id of another Flow, or one she may not inspect, wakes nothing)
+        const r = await ctx.call("flows.runs", { id: String(i.flow), limit: 100 }, as);
+        if (r.error) throw Object.assign(new Error(r.error.message || "that Flow's runs cannot be read"), { code: r.error.code === "not_found" ? "not_found" : "denied" });
+        const all = Array.isArray(r.data) ? r.data : [];
+        if (i.run && !all.some((/** @type {any} */ x) => x && String(x.id) === String(i.run))) throw Object.assign(new Error("that run is not a recent run of this Flow"), { code: "not_found" });
+        const runs = all.slice(0, 5);
         const lines = (d.data && Array.isArray(d.data.lines) ? d.data.lines : []).map(String).slice(0, 40);
         const when = (/** @type {any} */ n) => (Number.isFinite(n) ? new Date(n).toISOString() : "?");
         const recent = runs.map((/** @type {any} */ x) => `- ${String(x.id)}: ${String(x.state)}, started ${when(x.started_at)}${x.finished_at ? `, finished ${when(x.finished_at)}` : ""}`);
