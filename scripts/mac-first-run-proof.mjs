@@ -44,6 +44,17 @@ async function check(/** @type {string} */ name, /** @type {() => Promise<string
   return ok;
 }
 
+/** What to read when the app does not find the server: the server's own log, the app's log, and whether this page can open a socket to the relay. */
+async function diagnose() {
+  const say = (/** @type {string} */ t) => console.log("  diag: " + t.replace(/\s+/g, " ").slice(0, 900));
+  try { say("server log: " + (srv ? srv.logs.slice(-25).join(" | ") : "no server")); } catch { /* none */ }
+  try { say("app log: " + fs.readFileSync(path.join(os.homedir(), "Library", "Logs", "Vyre", "app.log"), "utf8").slice(-1500)); } catch { say("no app log"); }
+  try {
+    const r = await /** @type {MacPage} */ (page).evaluate((url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (e) { return res("constructor threw " + e); } const t = setTimeout(() => res("no answer in 5 s, state " + ws.readyState), 5000); ws.onopen = () => { clearTimeout(t); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(t); res("error, state " + ws.readyState); }; ws.onclose = (ev) => { clearTimeout(t); res("closed " + ev.code); }; }), ins ? ins.relay : "");
+    say("page to relay socket: " + r);
+  } catch (e) { say("page probe failed: " + /** @type {Error} */ (e).message); }
+}
+
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-first-run-"));
 const person = "walker" + Math.random().toString(36).slice(2, 7);
 const spaceName = "Harlow Legal " + Math.random().toString(36).slice(2, 5);
@@ -139,7 +150,7 @@ try {
     try { const j = /** @type {any} */ (await (await fetch(`${names}/v1/ids/resolve?name=${person}`)).json()); ownerId = String(j?.data?.id || j?.data?.record?.id || j?.id || ""); } catch { /* none */ }
     srv = await startDaemonServer({ dir: path.join(OUT, "server"), code, relay: ins ? ins.relayForServer : "", directory: dirForServer, store: "plain", ...(ownerId ? { ownerId } : {}) });
     await p.click("I have the code");
-    await p.waitFor("Do the four words match?", 90_000);
+    try { await p.waitFor("Do the four words match?", 90_000); } catch (e) { await diagnose(); throw e; }
     return srv.kind;
   });
   await check("Create: the four words on the screen are the ones the server shows", async () => {
