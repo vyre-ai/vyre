@@ -61,3 +61,25 @@ test("the audit shows who changed what with before and after, to an admin and th
   assert.deepEqual(new Set(sealedChangersOf(await as(ANA, { record: c.urn }))), new Set([`person:${OWNER}`, `person:${ANA}`]), "by two people");
 });
 const sealedChangersOf = (/** @type {any} */ r) => r.data.changes.filter((/** @type {any} */ x) => x.changed.includes("ssn")).map((/** @type {any} */ x) => x.who);
+
+test("the audit pages through the whole log: a change after more than a page of unrelated events is found, and a window that stops early says truncated", { timeout: 150_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const K = d.kernel, OWNER = K.id.owner;
+  const owner = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await K.gateway.records.define(owner, { add_types: [CONTACT] });
+  const R = K.gateway.records;
+  const first = await R.create(owner, "contact", { name: "Oldest", age: 1 });
+  for (let i = 0; i < 130; i++) await R.create(owner, "contact", { name: `Filler ${i}`, age: 2 });
+  const last = await R.create(owner, "contact", { name: "Newest", age: 3 });
+  const call = async (/** @type {any} */ input) => d.registry.call("records.audit", input, "cli", { token: (await K.surfaces.open(owner, {})).token });
+  const all = (await call({ page: 10, limit: 200 })).data;
+  assert.equal(all.changes.length, 132, "every create, across thirteen pages of ten");
+  assert.equal(all.changes[0].record, last.urn, "the newest first");
+  assert.equal(all.changes.at(-1).record, first.urn, "and the oldest is reached");
+  assert.equal(all.truncated, undefined);
+  const recent = (await call({ page: 10, limit: 200, window: 40 })).data;
+  assert.equal(recent.truncated, true, "a window that does not reach the start says so");
+  assert.equal(recent.changes[0].record, last.urn, "and still holds the newest");
+  assert.ok(recent.changes.length < 132);
+});

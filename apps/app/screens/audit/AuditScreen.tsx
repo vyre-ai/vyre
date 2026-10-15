@@ -12,11 +12,12 @@ const when = (ms: number) => new Date(ms).toLocaleString(undefined, { dateStyle:
 export default function AuditScreen() {
   const [rows, setRows] = useState<Change[] | null>(null);
   const [more, setMore] = useState(false);
+  const [cut, setCut] = useState(false);
   const [err, setErr] = useState("");
   const [f, setF] = useState({ person: "", project: "", type: "", record: "" });
   const load = useCallback(() => {
     setErr("");
-    auditReal(f).then((r) => { setRows(r.changes); setMore(r.more); }).catch((e) => setErr(refusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
+    auditReal(f).then((r) => { setRows(r.changes); setMore(r.more); setCut(r.truncated); }).catch((e) => setErr(refusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
   }, [f]);
   useEffect(load, [load]);
   return (
@@ -40,6 +41,7 @@ export default function AuditScreen() {
           ))}
         </Card>
       ) : null}
+      {cut ? <Text size="caption" tone="muted">Only the most recent part of the log was searched. Changes older than that are not shown here.</Text> : null}
       {more ? <Text size="caption" tone="muted">There are older changes. Narrow the filters to reach them.</Text> : null}
     </Frame>
   );

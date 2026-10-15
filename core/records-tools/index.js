@@ -200,7 +200,7 @@ export default {
     // Who changed what, from the signed event log: an owner or an admin only. Each entry is one change to a record with the values before and after as the log keeps them (a sealed value is only ever a
     // placeholder there, so it stays sealed here), by whom and when. Filter by record, person, project or record type; newest first. The log is read through the caller's own chain, so an entry the
     // caller may not see is not in it.
-    tool("records.audit", "Who changed what on a record, with the values before and after, from the signed event log. Owners and admins only. { record?, person?, project?, type?, since?, limit? }.", obj({ space: str, record: str, person: str, project: str, type: str, since: { type: "integer" }, limit: { type: "integer" } }), async (i, d) => {
+    tool("records.audit", "Who changed what on a record, with the values before and after, from the signed event log. Owners and admins only. { record?, person?, project?, type?, since?, limit? }.", obj({ space: str, record: str, person: str, project: str, type: str, since: { type: "integer" }, limit: { type: "integer" }, page: { type: "integer" }, window: { type: "integer" } }), async (i, d) => {
       const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
       if (role !== "owner" && role !== "admin") throw refuse("only an owner or an admin opens the audit", "not_allowed");
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
@@ -208,7 +208,19 @@ export default {
       const person = typeof i.person === "string" && i.person ? `person:${i.person}` : null;
       const project = typeof i.project === "string" && i.project ? i.project.replace(/^.*\//, "") : null;
       const isChange = /** @type {(t: string) => boolean} */ (t => /^[a-z][a-z0-9-]*\.(created|updated|removed|restored)$/.test(t) && !/^(grant|member|actor|offer|invite|chat|rule|team|vault|task|team-member)\./.test(t));
-      const events = await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), ...(Number.isInteger(i.since) ? { since: i.since } : {}), limit: 5000 });
+      // The log is read forward in pages (the log has no backward read), from the start of a window that ends at its newest event: the newest `window` events (100,000 unless asked for less), or since `since`
+      // when that is later. When older events lie before the window the answer says `truncated`. A page is `page` events (1,000); the end is a page that comes back short.
+      const page = Number.isInteger(i.page) ? Math.min(Math.max(i.page, 10), 1000) : 1000;
+      const window = Number.isInteger(i.window) ? Math.max(i.window, 20) : 100_000;
+      const first = Math.max(Number.isInteger(i.since) ? i.since : 0, Number(d.gateway.events.latestSeq()) - window);
+      const truncated = first > (Number.isInteger(i.since) ? i.since : 0);
+      /** @type {any[]} */ const events = [];
+      for (let after = first; ;) {
+        const got = await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), since: after, limit: page });
+        events.push(...got.filter((/** @type {any} */ e) => isChange(String(e.type))));
+        if (got.length < page) break;
+        after = Number(got[got.length - 1].seq);
+      }
       const link = (/** @type {any} */ v) => (v && typeof v === "object" ? String(v.urn || "") : typeof v === "string" ? v : "");
       const rows = [];
       for (const e of events) {
@@ -226,7 +238,7 @@ export default {
         rows.push({ seq: e.seq, time: e.time, who: e.actor, ...(e.acted_via ? { via: e.acted_via } : {}), verb: String(e.type).split(".")[1], type: recType, record: e.subject, version: data.version, changed: data.changed || [], before: data.before ?? null, after: data.after ?? null });
       }
       rows.reverse();
-      return { changes: rows.slice(0, limit), more: rows.length > limit };
+      return { changes: rows.slice(0, limit), more: rows.length > limit, ...(truncated ? { truncated: true } : {}) };
     });
     // ---- the member door: a team member's daily work on records, run as her, in the team's Space (core/work/member-tools.js) ----
     // The input keys each call takes: anything else is dropped before the tool sees it, so a member's call cannot name a Space, a proof or a chain. The kernel judges every record under her chain.
