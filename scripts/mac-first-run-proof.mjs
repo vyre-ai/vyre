@@ -4,7 +4,7 @@
 //   node scripts/mac-first-run-proof.mjs --app /Applications/Vyre.app --out first-run-out
 //
 // The app is the real one, installed from its dmg onto an empty Mac, with the same sources a release builds. Only two build-time constants differ (EXPO_PUBLIC_VYRE_NAMES_DIRECTORY and
-// EXPO_PUBLIC_VYRE_RELAY, the seams the Windows proof uses): the names directory and the relay are stand-ins on this runner (nothing reaches vyre.run). The server is a real vyred on this runner,
+// EXPO_PUBLIC_VYRE_RELAY, the seams the Windows proof uses): the names directory and the relay are stand-ins on this runner (nothing reaches vyre.run). The server is a real Mac server on this runner (the Mac installer),
 // started the way the install line starts one (the one-time code the app prints), so the app's Create step has something real to pair with. The mouse is a real mouse event into the window and
 // the keys are typed into the focused field; only the window is driven, never the screen (local/capsule/native/Sources/Agent/AgentDrive.swift).
 //
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { MacPage } from "./lib/first-run/page.mjs";
 import { codeFromInstallLine, wordsFromPage } from "./lib/first-run/lines.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
-import { startDaemonServer } from "./lib/proof/server-daemon.mjs";
+import { startMacServer } from "./lib/proof/server-mac.mjs";
 
 if (process.platform !== "darwin" || process.env.GITHUB_ACTIONS !== "true") { console.error("mac-first-run-proof: only on a GitHub macOS runner (it opens the app and a server)"); process.exit(2); }
 
@@ -47,7 +47,7 @@ async function check(/** @type {string} */ name, /** @type {() => Promise<string
 /** What to read when the app does not find the server: the server's own log, the app's log, and whether this page can open a socket to the relay. */
 async function diagnose() {
   const say = (/** @type {string} */ t) => console.log("  diag: " + t.replace(/\s+/g, " ").slice(0, 900));
-  try { say("server log: " + (srv ? srv.logs.slice(-25).join(" | ") : "no server")); } catch { /* none */ }
+  try { const log = path.join(OUT, "server", "install.log"); say("server install log: " + (fs.existsSync(log) ? fs.readFileSync(log, "utf8").slice(-1200) : "none")); const vl = path.join(os.homedir(), ".vyre-proof", "logs"); for (const f of fs.existsSync(vl) ? fs.readdirSync(vl) : []) say(`vyred ${f}: ` + fs.readFileSync(path.join(vl, f), "utf8").slice(-1500)); } catch { /* none */ }
   try { say("app log: " + fs.readFileSync(path.join(os.homedir(), "Library", "Logs", "Vyre", "app.log"), "utf8").slice(-1500)); } catch { say("no app log"); }
   try {
     const r = await /** @type {MacPage} */ (page).evaluate((url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (e) { return res("constructor threw " + e); } const t = setTimeout(() => res("no answer in 5 s, state " + ws.readyState), 5000); ws.onopen = () => { clearTimeout(t); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(t); res("error, state " + ws.readyState); }; ws.onclose = (ev) => { clearTimeout(t); res("closed " + ev.code); }; }), ins ? ins.relay : "");
@@ -59,7 +59,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-first-run-"));
 const person = "walker" + Math.random().toString(36).slice(2, 7);
 const spaceName = "Harlow Legal " + Math.random().toString(36).slice(2, 5);
 let ins = /** @type {Awaited<ReturnType<typeof startStandins>> | null} */ (null);
-let srv = /** @type {Awaited<ReturnType<typeof startDaemonServer>> | null} */ (null);
+let srv = /** @type {Awaited<ReturnType<typeof startMacServer>> | null} */ (null);
 let stopped = false;
 const finish = async () => {
   if (stopped) return; stopped = true;
@@ -144,11 +144,8 @@ try {
     if (!code) throw new Error("no code in the install line");
     return "VYRE_CODE=<code>";
   });
-  await check("Create: the server starts from that code (a real vyred on this runner) and the app finds it", async () => {
-    const dirForServer = ins ? ins.namesForServer : names;
-    let ownerId = "";
-    try { const j = /** @type {any} */ (await (await fetch(`${names}/v1/ids/resolve?name=${person}`)).json()); ownerId = String(j?.data?.id || j?.data?.record?.id || j?.id || ""); } catch { /* none */ }
-    srv = await startDaemonServer({ dir: path.join(OUT, "server"), code, relay: ins ? ins.relayForServer : "", directory: dirForServer, store: "plain", ...(ownerId ? { ownerId } : {}) });
+  await check("Create: the server starts from that code (a real Mac server on this runner (the Mac installer)) and the app finds it", async () => {
+    srv = await startMacServer({ dir: path.join(OUT, "server"), repo: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), code, store: "plain", relayForServer: ins ? ins.relayForServer : "", namesForServer: ins ? ins.namesForServer : names });
     await p.click("I have the code");
     try { await p.waitFor("Do the four words match?", 90_000); } catch (e) { await diagnose(); throw e; }
     return srv.kind;
