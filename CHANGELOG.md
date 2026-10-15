@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- docs(app): the app's sample data reads as a design studio, not a law firm, in the three places the site captures draw it from (the chat demo, the chat stream and the sample store): no Matter, attorney, engagement letter, lease, court portal or estate-planning Kit; the sample names (alex, Harlow Legal, Northwind Bakery, Juniper Studio, Doe, Roe) stay. The sample record type is shown as Job (its internal name stays matter), its stages are Intake, Kickoff, Design, Review, Launch and Closed, and its plan choices are Brand, Site and Both. The pictures and the site captures are refreshed after this lands.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
