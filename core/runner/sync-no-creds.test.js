@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createSessionSync, localReaderFor } from "./sync.js";
-import { isCredentialFile } from "../../lib/credfiles/index.js";
+import { isCredentialFile } from "../../lib/drivers/credfiles.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "nocreds-"));
@@ -39,7 +39,7 @@ test("a checkpoint with .credentials.json in the agent home does not upload it, 
   assert.ok(stored.includes("readme.md") && stored.includes("abc.jsonl"), "ordinary files still sync: " + stored.slice(0, 300));
 });
 
-import { mayUpload } from "../../lib/credfiles/index.js";
+import { mayUpload } from "../../lib/drivers/credfiles.js";
 test("mayUpload: of the agent home only transcripts; the work files root is untouched", () => {
   assert.equal(mayUpload("home/.claude", "home/.claude/projects/p/abc-1.jsonl"), true);
   for (const rel of ["settings.json", "settings.local.json", ".netrc", ".config/gh/hosts.yml", "plugins/x/data.json", "projects/p/notes.md", "projects/p/q/abc.jsonl", "projects/p/.credentials.json", "projects/p/auth.json"])
