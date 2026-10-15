@@ -13,6 +13,6 @@ test("the reader's sandbox mounts lib/drivers for the credential names, never th
   assert.match(host, /const CREDFILES_DIR = path\.join\(path\.dirname\(fileURLToPath\(import\.meta\.url\)\), "\.\.", "\.\.", "lib", "drivers"\);/);
   assert.doesNotMatch(host, /"sessions", "drivers"/, "no session driver is readable in the reader's sandbox");
   assert.deepEqual(fs.readdirSync(new URL("../../lib/drivers/", import.meta.url)).sort(), ["credfiles.js"], "anything added to lib/drivers becomes readable inside every session's sandbox");
-  assert.match(read("./reader.js"), /import \{ isCredentialFile \} from "\.\.\/\.\.\/lib\/drivers\/credfiles\.js";/);
+  assert.match(read("./reader.js"), /import \{ (isCredentialFile|mayUpload) \} from "\.\.\/\.\.\/lib\/drivers\/credfiles\.js";/);
   assert.doesNotMatch(read("../../lib/drivers/credfiles.js"), /^import /m, "the reader's sandbox has nothing else to import from");
 });

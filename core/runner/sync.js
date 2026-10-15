@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { readInside, listInside, writeInside, parts, plantable } from "./safefs.js";
-import { isCredentialFile } from "../../lib/drivers/credfiles.js";
+import { mayUpload } from "../../lib/drivers/credfiles.js";
 
 /** The folders the sync carries, relative to the mounted workspace, and where each lands in the space. */
 export const ROOTS = [
@@ -88,7 +88,7 @@ function readTranscript(file, fsx = fs) {
  */
 export const localReaderFor = work => async ({ roots, have, maxBytes = 1e8 }, onFile) => {
   for (const root of roots) for (const rel of listInside(work, root.dir)) {
-    if (root.dir !== "files" && isCredentialFile(rel)) continue;
+    if (!mayUpload(root.dir, rel)) continue;
     const bytes = readInside(work, rel, maxBytes); if (!bytes) continue;
     const hash = sha(bytes), same = have[rel]?.hash === hash, st = fs.statSync(path.join(work, rel));
     await onFile({ rel, hash, size: same ? 0 : bytes.length, len: bytes.length, mtimeMs: st.mtimeMs, bytes: same ? null : bytes });
@@ -143,8 +143,8 @@ export function createSessionSync(o) {
     const { truncated } = await o.reader({ roots, have, maxBytes: MAX_FILE }, async f => {
       const root = roots.find(r => f.rel.startsWith(r.dir + "/"));
       if (!root) return;
-      // The authority, whatever the reader sent: an agent's sign-in (and the OAuth tokens of its MCP servers) never goes to the Space. Not marked seen, so a copy an older build uploaded is recorded as removed.
-      if (root.dir !== "files" && isCredentialFile(f.rel)) return;
+      // The authority, whatever the reader sent: of the agent's home only its transcripts go to the Space (what a restore accepts back), never a sign-in, a settings file or a token. Not marked seen, so a copy an older build uploaded is recorded as removed.
+      if (!mayUpload(root.dir, f.rel)) return;
       const remote = `${root.remote}/${f.rel.slice(root.dir.length + 1)}`;
       seen.add(remote);
       if (f.deferred) return;   // modified in the last second: next checkpoint (and not a deletion)
