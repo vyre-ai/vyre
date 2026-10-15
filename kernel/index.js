@@ -116,6 +116,23 @@ export async function createKernel(cfg) {
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
+  /**
+   * Whether an address belongs to a named list of a standing permission's `to` (kernel/core/authorize.js toAllows): `contact:<id>` is that contact's own addresses, `project:<id>:clients` the addresses of the
+   * contact the project is for. Read straight from the store, no gate (the rule's own question, as ownership.js does), and nothing here returns a row: only yes or no.
+   * @param {string} list @param {string} address
+   */
+  const listHas = async (list, address) => {
+    const addrsOf = async (/** @type {string} */ id) => { const c = await store.get("contact", id).catch(() => null); if (!c || !c.data) return []; return [c.data.email, ...(Array.isArray(c.data.other_emails) ? c.data.other_emails : [])].filter((/** @type {any} */ x) => typeof x === "string").map((/** @type {string} */ x) => x.toLowerCase()); };
+    const m = /^contact:([A-Za-z0-9_-]{1,80})$/.exec(list) || null, p = /^project:([A-Za-z0-9_-]{1,80}):clients$/.exec(list) || null;
+    if (m) return (await addrsOf(m[1])).includes(address.toLowerCase());
+    if (p) {
+      const pr = await store.get("project", p[1]).catch(() => null);
+      const link = pr && pr.data ? pr.data.client : null, urn = link && typeof link === "object" ? String(link.urn || "") : typeof link === "string" ? link : "";
+      const id = urn.split("/").pop();
+      return id ? (await addrsOf(id)).includes(address.toLowerCase()) : false;
+    }
+    return false;
+  };
   gateway = createGateway({
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
@@ -130,7 +147,7 @@ export async function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, listHas, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
   const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, port: roomPort, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;
