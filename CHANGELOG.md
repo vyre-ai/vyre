@@ -2,6 +2,9 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- test(flows): the Flows safety net. kernel/flows/safety-net.js has one scenario for every step kind and the compound shapes; crash-sweep.test.js kills each run at every write point and checks a new runner leaves exactly what an unbroken run leaves (one effect per step), and fails the build when a step kind has no scenario; golden-replay.test.js pins each scenario's ledger to kernel/flows/golden/replay.json (node kernel/flows/golden/write.mjs, or golden-refresh with [golden-update], writes it); roundtrip.test.js sends seeded generated Flows and expressions through the text and lines forms and back. The split of the Flows code moves to 0.7.
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
