@@ -4,6 +4,7 @@
 // it started itself: it holds that process's pid, nothing is found by name. The environment is a short list (a path, a home, a locale) plus what the caller gives; the person's own shell environment, with its keys,
 // never goes in. Pure of Vyre: spawn and the clock are injected so tests can run a real tiny server.
 import { spawn as realSpawn } from "node:child_process";
+import fs from "node:fs";
 import net from "node:net";
 import { previewWall } from "../../lib/sandbox/preview-wall.js";
 
@@ -32,6 +33,39 @@ export const free = port => new Promise(resolve => {
   s.once("error", () => resolve(false));
   s.listen(port, "127.0.0.1", () => s.close(() => resolve(true)));
 });
+
+/**
+ * The leased port on this machine, relayed to the unix socket a walled preview offers (lib/sandbox/preview-wall.js, Linux): the preview itself has no network, so Vyre listens on its port here, once the
+ * socket exists (the forwarder makes it only after the dev server answers, so "something answers on the port" still means the page is up), and hands each connection to the socket.
+ * @param {number} port @param {{ socket?: string, dir?: string }} wrap
+ */
+function startRelay(port, wrap) {
+  const sock = String(wrap.socket);
+  /** @type {net.Server | null} */ let server = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */ let timer = null;
+  let stopped = false;
+  const poll = () => {
+    if (stopped) return;
+    if (!fs.existsSync(sock)) { timer = setTimeout(poll, 200); return; }
+    server = net.createServer(c => {
+      const u = net.connect(sock);
+      c.pipe(u); u.pipe(c);
+      const end = () => { c.destroy(); u.destroy(); };
+      c.on("error", end); u.on("error", end); c.on("close", end); u.on("close", end);
+    });
+    server.on("error", () => { /* the port was taken: the preview then does not answer, and says so */ });
+    server.listen(port, "127.0.0.1");
+  };
+  timer = setTimeout(poll, 100);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      try { server?.close(); } catch { /* closed */ }
+      if (wrap.dir) { try { fs.rmSync(wrap.dir, { recursive: true, force: true }); } catch { /* gone */ } }
+    },
+  };
+}
 
 /**
  * @typedef {"starting"|"live"|"crashed"|"stopped"} State
@@ -76,13 +110,15 @@ export function createSupervisor(o = {}) {
     const wrap = wall(e.opts.port);
     if (!wrap) append(e, "[no network wall on this machine: this preview runs with limits only]\n");
     const run = wrap ? wrap(`${LIMITS}${e.opts.command}`) : { cmd: "/bin/sh", args: ["-c", `${LIMITS}${e.opts.command}`] };
+    const relay = wrap && wrap.socket ? startRelay(e.opts.port, wrap) : null;
     const child = spawn(run.cmd, run.args, { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    if (relay) child.on("exit", () => relay.stop());
     e.child = child;
     e.since = now();
     set(e, "starting");
     child.stdout?.on("data", d => append(e, d));
     child.stderr?.on("data", d => append(e, d));
-    child.on("error", err => { append(e, `\n[could not start: ${err.message}]\n`); });
+    child.on("error", err => { relay?.stop(); append(e, `\n[could not start: ${err.message}]\n`); });
     child.on("exit", (code, sig) => {
       if (e.child !== child) return;
       e.child = null;
