@@ -42,3 +42,12 @@ test("the Mac's device wipe also drops the shell's relay key, and the shell type
   assert.match(read("../shell/shell.ts"), /forget\(servers\?: string\[\]\): Promise<void>;/);
   assert.match(read("./forget-mac.ts"), /forget: \(servers\) => id\.forget\(servers\)/);
 });
+
+test("Settings has a Forget this Mac row in the Mac app only, beside Make this Mac a server, and it runs this forget", () => {
+  const read = f => fs.readFileSync(new URL(f, import.meta.url), "utf8");
+  const row = read("../../screens/settings/ForgetThisMac.tsx");
+  assert.match(row, /if \(!shell\(\)\?\.identity\?\.forget\) return null;/, "only where the shell can forget");
+  assert.match(row, /forgetThisMacHere\(\)/);
+  assert.match(row, /title="Forget this Mac"/);
+  assert.match(read("../../screens/settings/SettingsHome.tsx"), /at === "after:Devices"[^\n]*<ForgetThisMac \/>/);
+});
