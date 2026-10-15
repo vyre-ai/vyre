@@ -23,7 +23,7 @@ const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_conta
 /** Actions only a Flow run may ask (see `byRunner`). */
 const RUNNER_ONLY = new Set(["fn.run", "model.call"]);
 /** Actions only a grant that names them covers, whatever their risk: no wildcard (an owner's `*`) reaches them, so the limits on the grant that does is the only way in. */
-const NAMED_ONLY = new Set(["flows.act-standing"]);
+const NAMED_ONLY = new Set(["flows.act-standing", "gate.act-standing"]);
 export function patternCovers(pattern, action, since = 0, version = undefined, risk = undefined) {
   const a = action.split("."), p = pattern.split(".");
   const ok = pattern === "*" || (p.length === 2 && a.length === 2 && p.every((s, i) => s === "*" || s === a[i]));
