@@ -346,7 +346,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
-      {["email", "sms", "web", "action", "connection", "document", "project"].includes(s.kind) ? <Switch label="Always ask a person before this goes out" on={s.approve === true} onChange={(on) => set({ approve: on ? true : undefined })} /> : null}
+      {["email", "sms", "web", "action", "connection", "document", "project"].includes(s.kind) ? <View className="gap-s1"><Switch label="Always ask a person before this goes out" on={s.approve === true} onChange={(on) => set({ approve: on ? true : undefined })} /><Text size="caption" tone="label">Off unless you turn it on: once the Flow is switched on, this step runs without asking.</Text></View> : null}
       <FailurePanel s={s} setStep={set} inHandler={inHandler} />
     </>
   );
