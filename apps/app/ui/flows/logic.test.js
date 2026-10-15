@@ -451,3 +451,16 @@ test("files on an email step are saved as a list of paths (typed, or a value fro
   const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
   assert.equal("attachments" in none.steps[0].input, false, "left out when empty");
 });
+
+test("the file picks keep a list of paths and tokens as the step's text, and a Documents step's file is offered as a value", async () => {
+  const { attList, attText } = await import("./logic.js");
+  const { insertList } = await import("./template.js");
+  assert.deepEqual(attList("Rota/week1.pdf, {letter.path}\n"), ["Rota/week1.pdf", "{letter.path}"]);
+  assert.equal(attText(attList("a.pdf,b.pdf")), "a.pdf, b.pdf");
+  assert.equal(attList(Array.from({ length: 14 }, (_, i) => `f${i}.pdf`).join(",")).length, 10, "ten at most");
+  const doc = { id: "letter", kind: "advanced", raw: { id: "letter", kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: "engagement" } } };
+  const draft = { name: "F", trigger: { kind: "signup" }, steps: [doc, { id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] };
+  const groups = insertList(/** @type {any} */ (draft), "email1", /** @type {any} */ ({ types: [], agents: [], templates: [], roles: [], people: [] }));
+  const items = groups.flatMap((g) => g.items);
+  assert.ok(items.some((i) => i.token === "{steps.letter.path}" && i.known), "the document the step made can be inserted");
+});

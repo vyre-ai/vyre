@@ -12,7 +12,7 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]>, filesOf?: (query: string) => Promise<{ path: string, name: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat } from "./tree.js";
 
@@ -269,7 +269,11 @@ const partExpr = (t, sign, n, unit, fmt) => {
   return `format(${base}, "${f}", ${dateOnly ? '"UTC"' : "tz"}${sign ? `, ${sign === "-" ? "-" : ""}${Number(n)}, "${String(unit).toLowerCase()}"` : ""})`;
 };
 /** The files an email carries, from the box's text (paths of Files, or values from earlier steps, apart by commas or lines), as the call's `attachments`. @param {string} t */
-export const valAtt = (t) => String(t ?? "").split(/[\n,]/).map((x) => x.trim()).filter(Boolean).slice(0, 10).map((x) => ({ path: val(x) }));
+export const valAtt = (t) => attList(t).map((x) => ({ path: val(x) }));
+/** The files of an email step as a list (paths, or {tokens}), from the text the step keeps. @param {string} t @returns {string[]} */
+export const attList = (t) => String(t ?? "").split(/[\n,]/).map((x) => x.trim()).filter(Boolean).slice(0, 10);
+/** The step's text for a list of files. @param {string[]} l */
+export const attText = (l) => l.join(", ");
 /** The box's text for a saved `attachments` list, or null when it is not a plain list of paths. @param {any} v */
 const unvalAtt = (v) => { if (!Array.isArray(v) || !v.length) return null; const out = []; for (const a of v) { if (!a || typeof a !== "object" || Object.keys(a).some((k) => k !== "path")) return null; const p = unval(a.path); if (p === null) return null; out.push(p); } return out.join(", "); };
 /** An address or number for a send step: a whole {token} of an emails or phones field is its main address (the engine's `first`), anything else is a value as `val` has it. @param {string} t */

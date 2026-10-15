@@ -9,6 +9,7 @@ import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
+import { AttachmentsField } from "./AttachmentsField";
 import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
@@ -144,8 +145,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
                   <AddressField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
-                  <ValueField label="Files to attach (optional)" value={s.attachments ?? ""} onChange={(attachments) => setStep(s.id, { attachments: attachments || undefined })} placeholder="A file in your Files, or Insert a file an earlier step made" draft={draft} stepId={s.id} options={options}
-                    help="Separate several with commas. Up to 10 files and 25 MB in all. The file is read when you approve the message, and the message stops if it changed since." />
+                  <AttachmentsField value={s.attachments ?? ""} onChange={(attachments) => setStep(s.id, { attachments: attachments || undefined })} draft={draft} stepId={s.id} options={options} />
                 </>
               ) : null}
               {s.kind === "ask" ? (
