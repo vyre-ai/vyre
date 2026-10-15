@@ -35,6 +35,7 @@ import { addThisDevice } from "../relay/client/phonepair.js";
 import { enrolDevice } from "../apps/app/src/identity/enrol-device.js";
 import * as C from "../kernel/identity/chain.js";
 import { joinWithCode } from "../relay/client/join.js";
+import { shellRelayCrypto, shellRelayKeyStore } from "../apps/app/src/api/shell-relay-key.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
 import { openServerPeer } from "../relay/client/peerclient.js";
 import { deviceKey } from "../core/wink/devicekey.js";
@@ -270,6 +271,43 @@ test("typed code -> ack -> adopt from the Mac app, whose key store never gives t
   t.after(() => c.close());
   await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.ok(c.reply && c.reply.device === r.paired.device, `the reconnect is the paired device: ${JSON.stringify(c.reply)}`);
+});
+
+test("typed code -> ack -> adopt from the Mac app with its key in the shell's Keychain: the server is owned, and after a restart of the app the same key is still the paired device", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  // the shell's two calls (Host/MacRelayKey.swift) over a Keychain stand-in that outlives the page
+  const keychain = /** @type {{ key?: crypto.KeyObject }} */ ({});
+  const macShell = () => ({
+    async public(/** @type {boolean} */ create) {
+      if (!keychain.key) { if (!create) throw new Error("There is no relay key on this Mac."); keychain.key = crypto.generateKeyPairSync("x25519").privateKey; }
+      return String(crypto.createPublicKey(keychain.key).export({ format: "jwk" }).x);
+    },
+    async dh(/** @type {string} */ peer) {
+      const publicKey = crypto.createPublicKey({ key: { kty: "OKP", crv: "X25519", x: peer }, format: "jwk" });
+      return crypto.diffieHellman({ privateKey: /** @type {crypto.KeyObject} */ (keychain.key), publicKey }).toString("base64url");
+    },
+  });
+  const page = () => { const b = macShell(); return { keyStore: shellRelayKeyStore(b), crypto: shellRelayCrypto(b, webCrypto()) }; };
+  const first = page();
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Vyre on this phone", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, finishTimeoutMs: 20_000, waitMs: 20_000,
+    pairOptions: { crypto: first.crypto, keyStore: first.keyStore, about: { kind: "app" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: "Alex", vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: first.crypto, keyStore: first.keyStore } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, `the pairing finished: ${JSON.stringify(r)}`);
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.some(d => d.id === "self"), true, "the server is owned");
+  // the app quits and starts again: a new page, new store and crypto objects, nothing in memory; only the Keychain item is the same
+  const again = page();
+  const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Vyre on this phone", crypto: again.crypto, keyStore: again.keyStore });
+  t.after(() => c.close());
+  await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  assert.ok(c.reply && c.reply.device === r.paired.device, `after the restart the app is still the paired device: ${JSON.stringify(c.reply)}`);
+  assert.deepEqual(w.logs.filter(l => /not a paired device/.test(l)), [], "no dial of this app was refused");
 });
 
 test("--pair-to server: the long code finishes at once with the identity's proof, and a wrong identity is refused", async t => {
