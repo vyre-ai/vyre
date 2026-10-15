@@ -111,7 +111,8 @@ try {
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
-      if (got.missing) { row.status = "missing"; row.rules.push("the fixture did not render"); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
+      // a fixture that did not render says what the page threw or logged, so the cause is in the log and not only "missing"
+      if (got.missing) { row.status = "missing"; row.rules.push("the fixture did not render"); if (errors.length) row.rules.push(`console: ${errors.slice(0, 3).join(" | ").slice(0, 600)}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}${errors.length ? ` | ${errors.slice(0, 3).join(" | ").slice(0, 600)}` : " | no error on the page"}`); continue; }
       const { after } = got;
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
