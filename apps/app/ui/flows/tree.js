@@ -1,26 +1,29 @@
 // @ts-check
 // Steps in a tree: an If has a Then lane and an Else lane, a For each has one lane, Side by side has several. These are the pure helpers the builder uses to walk, change, move and remove steps at any depth.
-// A lane is named by its parent step's id and a key: "then", "else", "steps" (For each) or "lane:<n>" (Side by side). The top of the Flow is the lane with no parent.
+// A lane is named by its parent step's id and a key: "then", "else", "steps" (For each), "lane:<n>" (Side by side) or "on_fail" (the steps to run if the step fails). The top of the Flow is the lane with no parent.
 
 /** @typedef {{ id: string, kind: string, [k: string]: any }} Step */
 /** @typedef {{ parent: string | null, key: string }} LaneRef */
 
 /** The lanes a step holds, in the order they are drawn. @param {Step} s @returns {{ key: string, label: string }[]} */
 export function lanesOf(s) {
-  if (s.kind === "decide") return [{ key: "then", label: "Then" }, { key: "else", label: "Else" }];
-  if (s.kind === "repeat") return [{ key: "steps", label: "For each" }];
-  if (s.kind === "parallel") return (s.lanes || []).map((/** @type {any} */ _l, /** @type {number} */ i) => ({ key: `lane:${i}`, label: `Side ${i + 1}` }));
-  return [];
+  /** @type {{ key: string, label: string }[]} */ let own = [];
+  if (s.kind === "decide") own = [{ key: "then", label: "Then" }, { key: "else", label: "Else" }];
+  else if (s.kind === "repeat") own = [{ key: "steps", label: "For each" }];
+  else if (s.kind === "parallel") own = (s.lanes || []).map((/** @type {any} */ _l, /** @type {number} */ i) => ({ key: `lane:${i}`, label: `Side ${i + 1}` }));
+  return s.on_fail ? [...own, { key: "on_fail", label: "If this fails" }] : own;
 }
 
 /** @param {Step} s @param {string} key @returns {Step[]} */
 export function laneSteps(s, key) {
+  if (key === "on_fail") return (s.on_fail && s.on_fail.steps) || [];
   if (key.startsWith("lane:")) return (s.lanes && s.lanes[Number(key.slice(5))] && s.lanes[Number(key.slice(5))].steps) || [];
   return s[key] || [];
 }
 
 /** @param {Step} s @param {string} key @param {Step[]} steps @returns {Step} */
 export function withLane(s, key, steps) {
+  if (key === "on_fail") return { ...s, on_fail: { ...(s.on_fail || {}), steps } };
   if (key.startsWith("lane:")) { const i = Number(key.slice(5)); return { ...s, lanes: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ j) => (j === i ? { ...l, steps } : l)) }; }
   return { ...s, [key]: steps };
 }

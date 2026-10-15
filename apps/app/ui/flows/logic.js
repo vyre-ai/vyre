@@ -8,13 +8,17 @@
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
 /** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
-/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
+/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
 /** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
-import { findStep, flat } from "./tree.js";
+import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
+import { formulaProblem } from "./preview.js";
+import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
+
+export { policyWords };
 
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
@@ -176,6 +180,11 @@ export function flowSentence(d, o) {
 
 /** What a step still needs before the Flow can be saved, in words, or null. @param {DraftStep} s @param {Options} o */
 export function stepProblem(s, o) {
+  return kindProblem(s, o) || policyProblem(s, formulaProblem);
+}
+
+/** @param {DraftStep} s @param {Options} o */
+function kindProblem(s, o) {
   void o;
   switch (s.kind) {
     case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which object to create a record in.";
@@ -217,7 +226,7 @@ export function draftProblems(d, o) {
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
   if (!d.steps.length) out.push("Add a first step.");
-  flat(d.steps).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
+  flat([...d.steps, ...(d.onFailure || [])]).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
   return out;
 }
 
@@ -239,7 +248,7 @@ const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at |
 export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
-const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t}`);
+const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
@@ -297,7 +306,7 @@ const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, 
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
-const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item)\./.test(n) ? n : null);
+const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
@@ -321,9 +330,9 @@ function templateText(e) {
   return out;
 }
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
-const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -354,8 +363,14 @@ const rec = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `ste
 /** The doer string the kernel takes. @param {string} who */
 const doer = (who) => (who.startsWith("agent:") ? `teammate:${who.slice(6)}` : who);
 
-/** @param {DraftStep} s @param {Draft} d */
+/** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
+  if (s.kind === "advanced") return s.raw;
+  return { ...kindDefinition(s, d), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+}
+
+/** @param {DraftStep} s @param {Draft} d */
+function kindDefinition(s, d) {
   const label = s.label || undefined;
   void d;
   switch (s.kind) {
@@ -428,18 +443,18 @@ function dateTokens(d, o) {
   if (!o) return out;
   const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones") out.set(token(f.name), f.kind); };
   if (isRecordTrigger(d.trigger)) add(d.trigger.type, (f) => `after.${f}`);
-  for (const s of flat(d.steps)) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
+  for (const s of flat([...d.steps, ...(d.onFailure || [])])) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
   return out;
 }
 
 /** @param {Draft} d */
 function writeDefinition(d) {
-  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.rest || {}) };
+  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.onFailure && d.onFailure.length ? { on_failure: d.onFailure.map((s) => stepDefinition(s, d)) } : {}), ...(d.rest || {}) };
 }
 
 /** A fresh step with sensible choices from the others. @param {string} kind @param {Draft} d @param {Options} o @returns {DraftStep} */
 export function newStep(kind, d, o) {
-  const all = flat(d.steps);
+  const all = flat([...d.steps, ...(d.onFailure || [])]);
   let n = all.length + 1;
   while (all.some((s) => s.id === `${kind}${n}`)) n++;
   const id = `${kind}${n}`;
@@ -550,8 +565,15 @@ function condFrom(e) {
   return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
-/** @param {any} s @returns {DraftStep} */
+/** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
+  const { plain, policy } = splitPolicy(s);
+  const d = stepFromKind(plain);
+  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...policyDraft(policy, stepFrom) };
+}
+
+/** @param {any} s @returns {DraftStep} */
+function stepFromKind(s) {
   const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
@@ -620,8 +642,10 @@ function stepFrom(s) {
  * @param {any} flow @returns {Draft}
  */
 export function fromDefinition(flow) {
-  const { format: _f, name, label, authorship: _a, group, trigger, steps, ...rest } = flow;
-  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
+  const { format: _f, name, label, authorship: _a, group, trigger, steps, on_failure, ...rest } = flow;
+  const handler = Array.isArray(on_failure) && on_failure.length ? { onFailure: on_failure.map(stepFrom) } : {};
+  const kept = Array.isArray(on_failure) && on_failure.length ? rest : on_failure === undefined ? rest : { ...rest, on_failure };
+  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...handler, ...(Object.keys(kept).length ? { rest: kept } : {}) };
 }
 
 /** Who a question can go to: a person or a team or role. The engine refuses an agent for a question. @param {Options} o @returns {[string, string][]} */
@@ -662,13 +686,21 @@ export function condWords(c, t) {
 void fieldExpr;
 
 
+/** Whether a step runs only when something failed: it is in the Flow's "If the run fails" steps or in a step's "If this fails" steps (where `error` can be read). @param {Draft} d @param {string} id */
+export function inFailurePath(d, id) {
+  /** @param {DraftStep[]} list @param {boolean} inside @returns {boolean} */
+  const walk = (list, inside) => list.some((s) => s.id === id ? inside : [...lanesOf(s)].some((l) => walk(laneSteps(s, l.key), inside || l.key === "on_fail")));
+  return walk(d.steps, false) || walk(d.onFailure || [], true);
+}
+
 /** The values a box can insert from before this step: what started the Flow and what earlier steps made, as [token, words]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
 export function valueSources(d, stepId, o) {
   /** @type {[string, string][]} */ const out = [];
   const t = d.trigger;
   if (isRecordTrigger(t)) for (const f of o.types.find((x) => x.name === t.type)?.fields || []) out.push([`{after.${f.name}}`, `${f.label} of the record that started it`]);
   else if (t.kind === "form" || t.kind === "signup") for (const f of ["name", "email", "phone", "message"]) out.push([`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)} from the form`]);
-  for (const s of flat(d.steps)) {
+  if (inFailurePath(d, stepId)) out.push(["{error.message}", "What went wrong, in words"], ["{error.code}", "The short name of what went wrong"], ["{error.step}", "The step that failed"]);
+  for (const s of flat([...d.steps, ...(d.onFailure || [])])) {
     if (s.id === stepId) break;
     if (s.kind === "create" || s.kind === "upsert") out.push([`{steps.${s.id}.record.id}`, s.kind === "upsert" ? `The record found or made by ${s.id}` : `The record made by ${s.id}`]);
     if (s.kind === "upsert") out.push([`{steps.${s.id}.created}`, `Whether ${s.id} made a new record (true) or found one (false)`]);
