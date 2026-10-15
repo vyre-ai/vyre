@@ -1,0 +1,284 @@
+// @ts-check
+// The space vault (ADR 0054). One random key per generation, wrapped to each member and to a server key that never leaves this directory.
+// Agents and Flows open items with the server wrap while nobody is unlocked. Removing a member rotates the key. A crash keeps the last
+// committed generation readable; resume() finishes or discards the half-written one.
+
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { writePrivate, readJson, rmQuiet } from "./files.js";
+import { hkdf32, x25519Pair, sealTo, openSeal, aesWrap, aesUnwrap } from "./wrap.js";
+
+const ITEM_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const refuse = (message, code) => Object.assign(new Error(message), { code });
+
+const statePath = (/** @type {string} */ dir) => path.join(dir, "state.json");
+const journalPath = (/** @type {string} */ dir) => path.join(dir, "journal.json");
+const genDir = (/** @type {string} */ dir, /** @type {number} */ n) => path.join(dir, "gen", String(n));
+
+/** @param {number} generation @param {string} id @param {string} name */
+const itemAad = (generation, id, name) => `vyre:space-item:v1\n${generation}\n${id}\n${name}`;
+/** @param {number} generation */
+const wrapAad = generation => `vyre:space-vault:member:v1\n${generation}`;
+
+/** @param {string} dir */
+function generationOf(dir) {
+  const s = readJson(statePath(dir));
+  return s && Number.isInteger(s.generation) ? s.generation : 0;
+}
+
+/** @param {string} dir @param {number} n */
+function loadGen(dir, n) {
+  const g = readJson(path.join(genDir(dir, n), "wraps.json"));
+  const server = readJson(path.join(genDir(dir, n), "server.json"));
+  if (!g || !server || !server.priv) throw refuse("This space vault generation is incomplete.", "corrupt");
+  return { wraps: g, serverPriv: server.priv };
+}
+
+/** @param {string} dir @param {number} n */
+function serverSvk(dir, n) {
+  const g = loadGen(dir, n);
+  return { svk: openSeal(g.serverPriv, g.wraps.server, wrapAad(n)), wraps: g.wraps, serverPriv: g.serverPriv };
+}
+
+/** @param {Buffer} svk @param {string} id @param {string} name @param {Buffer} value @param {number} generation */
+function sealItem(svk, id, name, value, generation) {
+  const key = hkdf32(svk, id, "vyre:space-item:v1");
+  const box = aesWrap(key, value, itemAad(generation, id, name));
+  key.fill(0);
+  return { id, name, ...box };
+}
+
+/** @param {Buffer} svk @param {{ id: string, name: string, iv: string, ct: string, tag: string }} item @param {number} generation */
+function openItem(svk, item, generation) {
+  const key = hkdf32(svk, item.id, "vyre:space-item:v1");
+  try { return aesUnwrap(key, item, itemAad(generation, item.id, item.name)); }
+  finally { key.fill(0); }
+}
+
+/** @param {string} dir @param {number} n */
+function itemFiles(dir, n) {
+  const folder = path.join(genDir(dir, n), "items");
+  if (!fs.existsSync(folder)) return [];
+  return fs.readdirSync(folder).filter(f => f.endsWith(".json")).map(f => path.join(folder, f));
+}
+
+/**
+ * Make generation 1 with a server wrap and no members yet.
+ * @param {string} dir
+ */
+export function create(dir) {
+  if (generationOf(dir)) throw refuse("This space already has a vault.", "exists");
+  const svk = crypto.randomBytes(32);
+  const server = x25519Pair();
+  const generation = 1;
+  const base = genDir(dir, generation);
+  fs.mkdirSync(path.join(base, "items"), { recursive: true, mode: 0o700 });
+  writePrivate(path.join(base, "server.json"), JSON.stringify({ priv: server.priv }) + "\n");
+  writePrivate(path.join(base, "wraps.json"), JSON.stringify({ server: sealTo(server.pub, svk, wrapAad(generation)), members: {} }) + "\n");
+  writePrivate(statePath(dir), JSON.stringify({ v: 1, generation }) + "\n");
+  svk.fill(0);
+  return { generation, serverPub: server.pub };
+}
+
+/** @param {string} dir */
+export function status(dir) {
+  const generation = generationOf(dir);
+  if (!generation) return { exists: false, generation: 0, members: [] };
+  const g = loadGen(dir, generation);
+  return { exists: true, generation, members: Object.keys(g.wraps.members || {}) };
+}
+
+/**
+ * Wrap the current key to a member. The server wrap opens the key; the member does not need to be unlocked.
+ * @param {string} dir @param {string} personId @param {string} pubB64
+ */
+export function grant(dir, personId, pubB64) {
+  const generation = generationOf(dir);
+  if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
+  const id = String(personId || "");
+  if (!/^per_[a-z2-7]{10,}$/.test(id) && !/^per_test_[a-z0-9_-]{1,40}$/.test(id)) throw refuse("Name the member by their person id.", "bad_input");
+  const opened = serverSvk(dir, generation);
+  opened.wraps.members[id] = { pub: pubB64, wrap: sealTo(pubB64, opened.svk, wrapAad(generation)) };
+  writePrivate(path.join(genDir(dir, generation), "wraps.json"), JSON.stringify(opened.wraps) + "\n");
+  opened.svk.fill(0);
+  return { person: id, generation };
+}
+
+/**
+ * Seal an item. The value is not returned.
+ * @param {string} dir @param {{ id: string, name: string, value: string }} item
+ */
+export function put(dir, item) {
+  const generation = generationOf(dir);
+  if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
+  const id = String(item.id || "");
+  const name = String(item.name || "").slice(0, 80);
+  if (!ITEM_RE.test(id) || !name) throw refuse("Give the item an id of letters, digits, dot, underscore or hyphen, and a name.", "bad_input");
+  const value = Buffer.from(String(item.value ?? ""), "utf8");
+  if (!value.length) throw refuse("Give the item a value.", "bad_input");
+  const opened = serverSvk(dir, generation);
+  const sealed = sealItem(opened.svk, id, name, value, generation);
+  opened.svk.fill(0);
+  value.fill(0);
+  writePrivate(path.join(genDir(dir, generation), "items", `${id}.json`), JSON.stringify(sealed) + "\n");
+  return { id, name, generation };
+}
+
+/** Names only. @param {string} dir */
+export function list(dir) {
+  const generation = generationOf(dir);
+  if (!generation) return { items: [] };
+  const items = itemFiles(dir, generation).map(f => {
+    const row = readJson(f);
+    return row ? { id: row.id, name: row.name } : null;
+  }).filter(Boolean);
+  return { items };
+}
+
+/**
+ * @param {string} dir
+ * @param {{ remove?: string[], crash?: (at: string) => void }} [opts]
+ */
+export function rotate(dir, opts = {}) {
+  const crash = opts.crash || (() => {});
+  const remove = new Set(opts.remove || []);
+  const generation = generationOf(dir);
+  if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
+  const next = generation + 1;
+  writePrivate(journalPath(dir), JSON.stringify({ phase: "copying", from: generation, next }) + "\n");
+  crash("after-journal");
+  const opened = serverSvk(dir, generation);
+  const svk = crypto.randomBytes(32);
+  const server = x25519Pair();
+  /** @type {Record<string, { pub: string, wrap: any }>} */
+  const members = {};
+  for (const [id, row] of Object.entries(opened.wraps.members || {})) {
+    if (remove.has(id)) continue;
+    const pub = /** @type {any} */ (row).pub;
+    members[id] = { pub, wrap: sealTo(pub, svk, wrapAad(next)) };
+  }
+  const base = genDir(dir, next);
+  fs.mkdirSync(path.join(base, "items"), { recursive: true, mode: 0o700 });
+  for (const f of itemFiles(dir, generation)) {
+    const row = readJson(f);
+    if (!row) continue;
+    const plain = openItem(opened.svk, row, generation);
+    const sealed = sealItem(svk, row.id, row.name, plain, next);
+    plain.fill(0);
+    writePrivate(path.join(base, "items", `${row.id}.json`), JSON.stringify(sealed) + "\n");
+  }
+  writePrivate(path.join(base, "server.json"), JSON.stringify({ priv: server.priv }) + "\n");
+  writePrivate(path.join(base, "wraps.json"), JSON.stringify({ server: sealTo(server.pub, svk, wrapAad(next)), members }) + "\n");
+  opened.svk.fill(0);
+  svk.fill(0);
+  writePrivate(journalPath(dir), JSON.stringify({ phase: "committing", from: generation, next }) + "\n");
+  crash("before-commit");
+  writePrivate(statePath(dir), JSON.stringify({ v: 1, generation: next }) + "\n");
+  crash("after-commit");
+  rmQuiet(genDir(dir, generation));
+  rmQuiet(journalPath(dir));
+  return { generation: next, removed: [...remove] };
+}
+
+/** Drop one member when a space vault exists. A home with none is unchanged. @param {string} dir @param {string} personId */
+export function rotateIfPresent(dir, personId) {
+  if (!generationOf(dir)) return { rotated: false };
+  return { rotated: true, ...rotate(dir, { remove: [String(personId || "")] }) };
+}
+
+/** Finish a rotation that crashed, or discard a copy that never committed. @param {string} dir */
+export function resume(dir) {
+  const j = readJson(journalPath(dir));
+  if (!j) return { resumed: false };
+  const generation = generationOf(dir);
+  if (j.phase === "copying" || (j.phase === "committing" && generation !== j.next)) {
+    rmQuiet(genDir(dir, j.next));
+    rmQuiet(journalPath(dir));
+    return { resumed: true, generation, discarded: j.next };
+  }
+  if (generation === j.next) {
+    rmQuiet(genDir(dir, j.from));
+    rmQuiet(journalPath(dir));
+    return { resumed: true, generation, cleaned: j.from };
+  }
+  return { resumed: false, generation };
+}
+
+/**
+ * Open an item with the server wrap and place the value on the outbound request. The returned result never contains the value.
+ * @param {string} dir
+ * @param {{ id: string, request: { url?: string, method?: string, headers?: Record<string, string>, body?: string }, transport: (req: any) => Promise<{ status?: number, body?: any }> }} o
+ */
+export async function use(dir, o) {
+  const generation = generationOf(dir);
+  if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
+  const id = String(o.id || "");
+  const row = readJson(path.join(genDir(dir, generation), "items", `${id}.json`));
+  if (!row) throw refuse("That space vault item is not here.", "not_found");
+  const opened = serverSvk(dir, generation);
+  const secretBuf = openItem(opened.svk, row, generation);
+  opened.svk.fill(0);
+  const secret = secretBuf.toString("utf8");
+  secretBuf.fill(0);
+  const req = inject(o.request || {}, secret);
+  let res;
+  try { res = await o.transport(req); }
+  finally { /* the secret lives only on the request the transport already received */ }
+  const status = Number(res && res.status) || 0;
+  return { ok: status >= 200 && status < 300, status, body: scrub(res && res.body, secret) };
+}
+
+/** @param {{ url?: string, method?: string, headers?: Record<string, string>, body?: string }} request @param {string} secret */
+function inject(request, secret) {
+  const headers = { ...(request.headers || {}) };
+  const existing = Object.keys(headers).find(k => k.toLowerCase() === "authorization");
+  if (existing) headers[existing] = String(headers[existing]).split("{{secret}}").join(secret);
+  else headers.authorization = `Bearer ${secret}`;
+  let body = request.body;
+  if (typeof body === "string" && body.includes("{{secret}}")) body = body.split("{{secret}}").join(secret);
+  return { url: request.url, method: request.method || "GET", headers, body };
+}
+
+/** @param {any} body @param {string} secret */
+function scrub(body, secret) {
+  if (secret.length < 8) return body;
+  const text = typeof body === "string" ? body : JSON.stringify(body === undefined ? null : body);
+  if (!text.includes(secret)) return body;
+  const cleaned = text.split(secret).join("[redacted]");
+  if (typeof body === "string") return cleaned;
+  try { return JSON.parse(cleaned); } catch { return { redacted: true }; }
+}
+
+/**
+ * The external MCP door for one space vault: tools/call of vault_space_request. The result text is the response, never the value.
+ * @param {string} dir
+ * @param {any} rpc
+ * @param {(req: any) => Promise<{ status?: number, body?: any }>} transport
+ */
+export async function externalMcp(dir, rpc, transport) {
+  const id = rpc && rpc.id !== undefined ? rpc.id : null;
+  if (!rpc || rpc.method !== "tools/call" || !rpc.params || rpc.params.name !== "vault_space_request") {
+    return { jsonrpc: "2.0", id, error: { code: -32601, message: "unknown tool" } };
+  }
+  const args = rpc.params.arguments || {};
+  const result = await use(dir, { id: args.id, request: { url: args.url, method: args.method, headers: args.headers, body: args.body }, transport });
+  const text = JSON.stringify({ ok: result.ok, status: result.status, body: result.body });
+  return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text }], isError: false } };
+}
+
+/**
+ * Open an item with a member's own key. Tools do not call this; tests prove a removed member's wrap no longer works.
+ * @param {string} dir @param {string} personId @param {string} privB64 @param {string} itemId
+ */
+export function openAsMember(dir, personId, privB64, itemId) {
+  const generation = generationOf(dir);
+  const g = loadGen(dir, generation);
+  const row = g.wraps.members && g.wraps.members[personId];
+  if (!row) throw refuse("That member has no wrap on this generation.", "not_found");
+  const svk = openSeal(privB64, row.wrap, wrapAad(generation));
+  const item = readJson(path.join(genDir(dir, generation), "items", `${itemId}.json`));
+  if (!item) throw refuse("That space vault item is not here.", "not_found");
+  try { return openItem(svk, item, generation).toString("utf8"); }
+  finally { svk.fill(0); }
+}

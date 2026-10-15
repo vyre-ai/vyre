@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(identity): one username at https://vyre.run/u/<name> (private by default; <name>.vyre.run redirects, infrastructure hosts excluded), one master password (Argon2id) that unlocks the identity and wraps a copy of the personal vault key, and a one-screen recovery key. Login with GitHub links the username and still asks for the master password. Another computer signs in with the space server, the username and the master password, or with GitHub and the master password. The personal vault key file stays, so lending does not wait for an unlock. A space vault key is wrapped to each member and to the server, so agents and Flows use items while nobody is online, and the key rotates when a member leaves. Ownership transfer is the existing kernel grant, under spaces.owner.transfer, and is audited. An agent proposes people, devices, ownership and vault access through MCP; the person's one tap applies it. The agent never receives a vault value, the master password or the recovery key. See ADR 0054.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

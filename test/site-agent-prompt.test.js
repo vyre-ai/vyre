@@ -39,7 +39,8 @@ test("every file START-HERE links exists in the repo, on the hosted docs or as a
 
 test("START-HERE carries the reading list, the questions, the mapping, Get started, Next and Stay in the loop, and no gaps link", () => {
   for (const h of ["## What Vyre is", "## How to operate", "## A map of everything", "## 2. Ask", "## 3. Map", "## 4. Get started", "## Next", "## Stay in the loop"]) assert.ok(START.includes(h), h);
-  for (const w of ["DigitalOcean", "Hetzner", "8 GB", "2 GB", "cloud-init", "vyre mcp connect", "tools_find", "Engineer", "https://vyre.run/setup", "https://vyre.run/updates/", "Same", "four words"]) assert.ok(START.includes(w), w);
+  for (const w of ["DigitalOcean", "Hetzner", "8 GB", "2 GB", "cloud-init", "vyre mcp connect", "tools_find", "Engineer", "https://vyre.run/setup", "https://vyre.run/updates/", "https://vyre.run/u/", "master password", "Needs you"]) assert.ok(START.includes(w), w);
+  assert.ok(!START.includes("four words"), "the word comparison is retired from the setup steps");
   assert.ok(!/known-gaps/i.test(START));
   assert.ok(!/[\u2014\u00a7]/.test(START), "no em dash or section sign");
 });

@@ -40,6 +40,8 @@ a delete. Reading a list of names asks for nothing. Unlocking your personal vaul
 asks for the password itself and nothing else, and Touch ID unlock asks for Touch ID; either one
 only opens the vault, and a secret still needs its own proof to be released.
 
+Your master password unlocks your identity and wraps a copy of this vault's key. Lending does not wait for that unlock: an agent still uses an item by name, the value goes into the request, and the agent gets the response. A space has its own vault on the same rule, including while you are away. See [Master password](master-password.md).
+
 ## Store an item
 
 1. Run `put` with the item's name, kind and the origins it may be sent to:
