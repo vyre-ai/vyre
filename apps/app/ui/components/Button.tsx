@@ -17,7 +17,8 @@ function boxFor(ctx: UiCtx, kind: string, size: string, phone: boolean) {
   const c = ctx.color;
   const fill = kind === "primary" ? c.primary : kind === "danger" || kind === "hold" ? c["err-wash"] : kind === "secondary" && phone ? c["surface-3"] : "transparent";
   const edge = kind === "secondary" && !phone ? c["edge-strong"] : "transparent";
-  const height = size === "lg" ? px(ctx, "--s-12") : size === "md" ? px(ctx, "--control") : px(ctx, "--control-sm");
+  // a small button is 36 on a computer and a real 44 on a phone: the box itself is the touch target (a hitSlop is invisible to the picture checker and to a person reading the page)
+  const height = size === "lg" ? px(ctx, "--s-12") : size === "md" ? px(ctx, "--control") : phone ? Math.max(px(ctx, "--control-sm"), px(ctx, "--touch")) : px(ctx, "--control-sm");
   const pad = size === "lg" ? px(ctx, "--s-5") : size === "md" ? px(ctx, "--s-4") : px(ctx, "--s-3");
   return { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: px(ctx, "--s-2"), borderRadius: px(ctx, "--r-button"), borderWidth: 1, borderColor: edge, backgroundColor: fill, height, paddingHorizontal: pad, overflow: "hidden" } as const;
 }
@@ -90,8 +91,8 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       accessibilityHint={hold ? "Hold to confirm" : undefined}
       accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       disabled={disabled || loading}
-      // A small button is 36 tall on a phone; the target stays 44.
-      hitSlop={phone ? slop(px(ctx, size === "lg" ? "--s-12" : size === "md" ? "--control" : "--control-sm")) : undefined}
+      // A small button is 44 tall on a phone (36 on a computer).
+      hitSlop={phone ? slop(px(ctx, size === "lg" ? "--s-12" : size === "md" ? "--control" : "--touch")) : undefined}
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}

@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- fix(ui): touch targets on a phone are real boxes: the small Button is 44 high on a phone (36 on a computer) and a pressed Chip has a 44 high tap area, so the picture rules stop flagging them (issue 183: Add a group, the field-kind chips, Add a rule). The pictures of those fixtures change and are refreshed after the baseline PR.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
