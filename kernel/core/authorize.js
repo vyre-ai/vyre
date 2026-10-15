@@ -207,6 +207,8 @@ export function matchGrant(g, action, resource, o) {
     if (c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
   }
   if (c.where && c.where.origins && !(typeof o.origin === "string" && c.where.origins.includes(o.origin))) return { ok: false, reason: "wrong_node" };
+  // a grant lent to one job thread (a task lent to the agent a wake started) is the use of that thread alone: another session of the same agent holds nothing of it
+  if (c.where && c.where.sessions && !(typeof o.thread === "string" && c.where.sessions.includes(o.thread))) return { ok: false, reason: "wrong_session" };
   return { ok: true };
 }
 
@@ -399,7 +401,7 @@ export function createAuthorizer(cfg) {
     if (!subjectOk) return { ok: false, reason: "no_grant" };
     // An assistant reaches a team's grant only by association with a person in the team, and by it holds use and nothing that changes who has access or shows a value: no admin, grant or sharing act.
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
-    const m = matchGrant(g, action, resource, { attrs, now, probe, origin, since: since(action), risk: riskOf(action) });
+    const m = matchGrant(g, action, resource, { attrs, now, probe, origin, thread: h.actor.kind === "agent" && h.via && typeof h.via.thread === "string" ? h.via.thread : undefined, since: since(action), risk: riskOf(action) });
     if (!m.ok) return m;
     const c = g.conditions || {};
     let obsUnknownSchedule = false;

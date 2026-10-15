@@ -138,3 +138,55 @@ test("a job that stopped with a bare reason but whose thread says the sign-in ex
   assert.match(stuck[0].reason, /^juno's AI sign-in has expired\./);
   assert.equal(stuck[0].suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
 });
+
+test("a stuck reason hides a key of any shape: letters, digits, dashes, dots, slashes, plus and equals", async () => {
+  const { sayWhy } = await import("./agent-wake.js");
+  for (const key of ["QWxhZGRpbjpvcGVuIHNlc2FtZQ+/AbCdEfGh==", "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", "AbCdEfGhIjKl/MnOpQrStUvWxYz0123", "abc+def+ghi+jkl+mno+pqr+stu"]) {
+    const r = sayWhy("juno", `the model said ${key} was refused`);
+    assert.ok(!r.reason.includes(key.slice(4, 18)), `${key} is not in the reason: ${r.reason}`);
+    assert.match(r.reason, /\[removed\]/);
+  }
+  assert.match(sayWhy("juno", "plain words about a stop").reason, /plain words about a stop/, "ordinary words stay");
+});
+
+test("the agent chain stays inside the Flows host: it is built in one place, handed to the wake and nowhere else", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./flows-host.js", import.meta.url), "utf8");
+  const uses = src.split("\n").filter(l => /\bagentChain\b/.test(l));
+  assert.ok(uses.length <= 2, `agentChain is built once and handed to createAgentWake once: ${uses.length} lines`);
+  assert.ok(uses.some(l => /const agentChain = /.test(l)), "built here");
+  assert.ok(uses.some(l => /createAgentWake\(/.test(l)), "handed to the wake");
+  assert.ok(!/\bagentChain\b\s*[,:}]/.test(src.slice(src.indexOf("return {", src.indexOf("createAgentWake(")))), "it is not part of anything the host returns");
+});
+
+test("a task an agent handed on wakes the agent for the person the kernel recorded, and never for one the task merely names", async () => {
+  const r = rig([task({ id: "h1", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, requested_for: "ana", form: undefined, note: "Do it" }), task({ id: "h2", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, form: undefined, note: "Do it" }),
+    task({ id: "h3", assigned_by: { kind: "person", id: "ben" }, requested_for: "ana" })]);
+  for (const id of ["h1", "h2", "h3"]) await r.onEvent(created(id));
+  assert.equal(r.woke.find(w => w.task === "h1").approver, "ana", "the person the request began with");
+  assert.equal(r.woke.find(w => w.task === "h2").approver, undefined, "no person, no approver");
+  assert.equal(r.woke.find(w => w.task === "h3").approver, "ben", "a person who assigned it stays the approver");
+});
+
+test("a job that ends before its agent started the task is woken once more, quietly; the second time the task is stuck", async () => {
+  const woke = /** @type {any[]} */ ([]), marked = /** @type {any[]} */ ([]), stuck = /** @type {any[]} */ ([]);
+  const t = task({ id: "r1" });
+  const gw = { ask: { get: async () => t, edit: async () => {}, stuck: async (/** @type {any} */ c, /** @type {string} */ id, /** @type {any} */ info) => { stuck.push({ id, info }); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: x => ({ for: x.doer.id }), clock: () => NOW, log: () => {},
+    callModule: async (tool, input) => {
+      if (tool === "agents.wake") { woke.push(input); return { thread: `job${woke.length}`, already: false }; }
+      if (tool === "agents.woken") return { task: "r1", agent: "juno", failed: false, tries: 0 };
+      if (tool === "agents.wake-failed") { marked.push(input); return {}; }
+      return {};
+    } });
+  await onEvent(created("r1"));
+  assert.equal(woke.length, 1);
+  await onEvent.threadEnded("job1", "stopped");
+  assert.equal(woke.length, 2, "woken again once, the task still ready");
+  assert.deepEqual(marked, [{ task: "r1", agent: "juno" }], "the first wake's claim was freed for the retry");
+  assert.deepEqual(stuck, [], "not stuck after the first end");
+  await onEvent.threadEnded("job2", "stopped");
+  assert.equal(woke.length, 2, "and not a third time");
+  assert.equal(stuck.length, 1, "the second end marks it stuck, in words");
+  assert.match(stuck[0].info.reason, /juno stopped before it finished/);
+});

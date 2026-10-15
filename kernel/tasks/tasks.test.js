@@ -81,7 +81,7 @@ async function toNeedsCheck(r, spec = draftTask(), ev = evidenceSent()) {
 
 test("request: only the allowed fields; the kernel writes state, outcome, payload and who assigned it", async () => {
   const r = rig();
-  for (const k of ["state", "outcome", "payload", "labels", "assigned_by", "id", "stuck"]) await assert.rejects(() => r.tasks.request(owner(), { ...draftTask(), [k]: "x" }), { code: "bad_input" }, k);
+  for (const k of ["state", "outcome", "payload", "labels", "assigned_by", "id", "stuck", "requested_for"]) await assert.rejects(() => r.tasks.request(owner(), { ...draftTask(), [k]: "x" }), { code: "bad_input" }, k);
   await assert.rejects(() => r.tasks.request(owner(), { ...draftTask(), source: "gate_hold" }), { code: "bad_input" });
   await assert.rejects(() => r.tasks.request(owner(), draftTask({ doer: actor("agent", "ghost") })), { code: "not_a_member" });
   await assert.rejects(() => r.tasks.request(owner(), draftTask({ output: { kind: "wish" } })), { code: "bad_input" });
@@ -873,4 +873,16 @@ test("agent checker: only while the person who made it is an owner or an admin, 
   await assert.rejects(() => none.tasks.request(owner(), internal()), { code: "not_allowed" });
   const nomaker = rig({ agentDecide: ["research"], agentMaker: () => null, roleOf: () => "admin" });
   await assert.rejects(() => nomaker.tasks.request(owner(), internal()), { code: "not_allowed" });
+});
+
+test("request: the kernel records the first person on the verified chain as requested_for, a request cannot name one, and a chain with no person has none", async () => {
+  const r = rig();
+  const mine = await r.tasks.request(owner(), draftTask());
+  assert.equal(mine.requested_for, OWNER, "a person's own request");
+  const viaAlice = await r.tasks.request(alice(), draftTask({ checker: actor("person", OWNER) }));
+  assert.equal(viaAlice.requested_for, ALICE);
+  await assert.rejects(() => r.tasks.request(alice(), { ...draftTask(), requested_for: OWNER }), { code: "bad_input" }, "an agent or person cannot plant another person");
+  const bySvc = await r.tasks.request(kernelSvc(), draftTask());
+  assert.equal(bySvc.requested_for, undefined, "no person on the chain, no requested_for");
+  assert.ok(Object.isFrozen(mine));
 });

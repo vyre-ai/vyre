@@ -12,12 +12,14 @@ const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthor
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, bind?: (task: any, thread: string) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
  * @returns {((e: any) => Promise<void>) & { threadEnded: (thread: string, reason?: string) => Promise<void> }}
  */
 export function createAgentWake(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
+  /** @type {Set<string>} tasks whose job already ended unstarted once: the second time the task is stuck, in words */
+  const retried = new Set();
   /**
    * A task the agent could not start or did not finish is never left open in silence: it is marked stuck, as the agent itself (the assigner on the chain, the one shape the kernel takes for the doer's own
    * flag), with what happened in plain words and what to do. It surfaces in Needs you for the assigner and approver, and the run shows it. The wake is marked failed so one retry may start it again.
@@ -39,6 +41,13 @@ export function createAgentWake(o) {
       if (!w || !w.task) return;
       const t = await o.gw.ask.get(o.chain(), w.task);
       if (!t || !["ready", "working"].includes(t.state)) return;
+      // A job that ended before the agent ever started its task (the moment the lend is held to the job's thread, a refusal there, a crash at launch) is woken once more, quietly: the task is not stuck yet.
+      if (t.state === "ready" && !retried.has(t.id)) {
+        retried.add(t.id);
+        await o.callModule("agents.wake-failed", { task: t.id, agent: t.doer.id }, o.space).catch(() => null);
+        await onEvent({ type: "task.readied", data: { task: { id: t.id } } });
+        return;
+      }
       // the stop reason is often bare; what the thread itself said last (an expired sign-in says so there) is the better words
       let said = reason || "";
       if (!AUTH.test(said)) { try { const g = await o.callModule("threads.get", { thread, limit: 1 }, o.space); const th = g && (g.thread || g.data && g.data.thread); const line = th && (th.last_line || th.stopped_reason); if (line) said = `${said} ${String(line)}`.trim(); } catch { /* the thread could not be read: the reason given stands */ } }
@@ -49,6 +58,7 @@ export function createAgentWake(o) {
   async function onEvent(e) {
     if (e && ENDS.test(String(e.type)) && typeof o.reclaim === "function" && e.data && e.data.task && typeof e.data.task.id === "string") {
       // the task is over: the use of it lent to the agent ends with it
+      await o.callModule("agents.wake-done", { task: e.data.task.id }, o.space).catch(() => null);
       try { await o.reclaim(e.data.task.id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${e.data.task.id} was not ended (${/** @type {Error} */ (err).message})`); }
       return;
     }
@@ -60,10 +70,13 @@ export function createAgentWake(o) {
       if (!wakes(t, clock())) return;
       // A named agent holds no standing right on a task, so it may start and hand in this one task and nothing else, for as long as the task lives
       if (typeof o.lend === "function") await o.lend(t);
-      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : undefined;
+      // a task an agent handed on has the person it began with (the kernel records it from the verified chain), so the woken agent works within that person's limits
+      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
       const instructions = [t.form && typeof t.form.instructions === "string" ? t.form.instructions : "", t.note || ""].filter(Boolean).join("\n\n");
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
       const r = await o.callModule("agents.wake", { task: t.id, agent: t.doer.id, title: t.title, ...(instructions ? { instructions } : {}), ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}), ...(t.flow ? { flow: t.flow } : {}), ...(t.form && t.form.origin && typeof t.form.origin === "object" ? { origin: t.form.origin } : {}) }, o.space);
+      // the lend of the task was made before the job existed; now that it has a thread, the lend is held to that thread (the old one ends in the same step the bound one begins)
+      if (r && typeof r.thread === "string" && typeof o.bind === "function") { try { await o.bind(t, r.thread); } catch (err) { log(`agent wake ${o.space}: the lend of task ${t.id} was not held to its thread (${/** @type {Error} */ (err).message})`); } }
       if (r && typeof r.thread === "string" && !(t.form && t.form.thread === r.thread)) {
         try { await o.gw.ask.edit((o.editChain || o.chain)(t), t.id, { form: { ...(t.form || {}), thread: r.thread } }); }
         catch (err) { log(`agent wake ${o.space}: task ${t.id} woke ${t.doer.id} in ${r.thread} but the thread was not written on it (${/** @type {Error} */ (err).message})`); }
@@ -78,7 +91,7 @@ export function createAgentWake(o) {
 
 /** The words a person reads when an agent's job failed: what happened, cut short and free of anything that looks like a secret, and the next step. @param {string} agent @param {string} why */
 export function sayWhy(agent, why) {
-  const clean = String(why || "").replace(/[A-Za-z0-9_\-.]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
+  const clean = String(why || "").replace(/[A-Za-z0-9_\-./+=]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
   const auth = AUTH.test(clean);
   if (auth) return { reason: `${agent}'s AI sign-in has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
   return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };

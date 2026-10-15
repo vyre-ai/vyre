@@ -33,3 +33,27 @@ test("a named agent can start its lent task, not another, and not after the lend
   await flows.mint.end({ source: `flows:task:${mine2.id}`, reason: "the task is over" });
   await assert.rejects(() => k.gateway.ask.start(asAgent(), mine2.id), /./, "after the lend ends it holds nothing again");
 });
+
+test("a lend held to one job thread: that thread starts the task, another session of the same agent does not, and re-binding leaves no window with both", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const flows = k.kernelFor({ name: "flows", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const asAgent = (/** @type {string} */ thread) => k.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: `s-${thread}`, thread, person: OWNER, vouched: true });
+  const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  const lend = (/** @type {any} */ where) => flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 }, ...(where ? { where } : {}) }, source: `flows:task:${task.id}`, reason: "the agent was given this task" });
+  const can = async (/** @type {string} */ thread) => k.gateway.authorize({ chain: asAgent(thread), action: "tasks.work", resource: `vyre://${S}/task/${task.id}` }).then(d => d.effect === "allow");
+  await lend();
+  assert.equal(await can("job-1"), true, "the first lend, before the thread is known, is the agent's");
+  assert.equal(await can("job-2"), true);
+  // held to job-1: the unbound lend ends in the same step the bound one begins
+  await flows.mint.end({ source: `flows:task:${task.id}`, reason: "held to the job's thread" });
+  await lend({ sessions: ["job-1"] });
+  assert.equal((await flows.mint.list({ source: `flows:task:${task.id}` })).length, 1, "one lend, never two");
+  assert.equal(await can("job-1"), true, "the woken job holds it");
+  assert.equal(await can("job-2"), false, "another session of the same agent does not");
+  const started = await k.gateway.ask.start(asAgent("job-1"), task.id);
+  assert.equal(started.state, "working");
+  await assert.rejects(() => k.gateway.ask.complete(asAgent("job-2"), task.id, { note: "x", sources: [] }), /./, "and cannot hand it in");
+});

@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(kernel,flows): the person a task began with, and the lend held to its job thread (roadmap 15, rulings of 17 Oct). The kernel records `requested_for`, the first person on the verified chain, on every task (a request cannot name one; none when the chain has no person), and the agent wake uses it as the approver when an agent handed the task on. The lend of a task to a woken agent is re-made with `where.sessions: [thread]` once the job's thread exists (the unbound lend ends in the same step the bound one begins), and an agent chain now carries its thread on its hop so another session of the same agent holds nothing of it. kernel/tasks/tasks.js, kernel/core/chain.js, kernel/core/authorize.js, core/daemon/agent-wake.js, core/daemon/flows-host.js.
+- fix(sessions,switchboard): mentions follow-ups (roadmap 17, part 1). The Switchboard passes the verified person of the thread to `sessions.prompt.compose`, so project references in an AGENTS.md resolve under that person's access instead of staying plain names; one instructions file has at most 50 distinct references looked up, the rest keep their names and the prompt says how many. core/switchboard/index.js, core/sessions/prompts.js.
+- fix(memory,test): `memory.heard` files the agent's lesson in the project the CHAT is in (read from the thread's own record), never one the agent names in its input or room; a guard test pins that only the daemon's door builder sets the `wink` path fact (test/wink-path-fact.test.js). core/memory/index.js.
+- feat(agents): agent wake hardening (roadmap 15, part 1). One agent runs at most five jobs at once and starts at most forty in an hour (`agents.wake_max_concurrent`, `agents.wake_max_hourly` in the Space's config change them); an extra wake is refused with words and the task is marked stuck with them so a person can retry it (`agents.wake` code `busy`, new `agents.wake-done` called by the Flows host when the task ends). A stuck reason hides a key of any shape (slashes, plus and equals signs included). A test pins that the agent chain stays inside the Flows host. core/agents/index.js, core/daemon/agent-wake.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.

@@ -108,3 +108,27 @@ test("agents.wake: a failed launch keeps the claim as failed and allows one retr
   assert.equal(third.data.already, true);
   assert.equal(globalThis.__launched.length, 2, "after the retry there is no third start");
 });
+
+test("agents.wake: one agent runs at most five jobs at once and starts at most forty an hour, with words; an ended task frees a place, and a repeat or a retry never counts twice", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "juno", kind: "agent" });
+  const wake = (/** @type {string} */ id) => call("agents.wake", { task: id, agent: "juno", title: id }, "module:vyred");
+  for (let i = 1; i <= 5; i++) assert.equal((await wake(`c${i}`)).error, undefined, `job ${i}`);
+  const sixth = await wake("c6");
+  assert.equal(sixth.error && sixth.error.code, "busy");
+  assert.match(sixth.error.message, /juno already has 5 jobs running, the most it takes at once\. This task waits: retry it when one finishes\./);
+  assert.equal(globalThis.__launched.length, 5, "nothing started for the sixth");
+  assert.equal((await wake("c1")).data.already, true, "a repeat of a wake that is running is not a new job");
+  assert.equal((await call("agents.wake-done", { task: "c1" }, "module:vyred")).data.ended, 1);
+  assert.equal((await wake("c6")).error, undefined, "a finished task frees a place");
+  for (const caller of ["local", "cli", "module:planner", "mcp:agent:juno"]) assert.ok((await call("agents.wake-done", { task: "c2" }, caller)).error, `${caller} cannot mark a wake over`);
+});
+
+test("agents.wake: the hourly cap counts what was started in the last hour, finished or not", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "kit", kind: "agent" });
+  for (let i = 1; i <= 40; i++) { const r = await call("agents.wake", { task: `h${i}`, agent: "kit", title: "x" }, "module:vyred"); assert.equal(r.error, undefined, `job ${i}: ${JSON.stringify(r.error)}`); await call("agents.wake-done", { task: `h${i}` }, "module:vyred"); }
+  const over = await call("agents.wake", { task: "h41", agent: "kit", title: "x" }, "module:vyred");
+  assert.equal(over.error && over.error.code, "busy");
+  assert.match(over.error.message, /kit has started 40 jobs in the last hour/);
+});
