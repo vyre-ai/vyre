@@ -47,4 +47,17 @@ test("the audit shows who changed what with before and after, to an admin and th
   // a member cannot open it, and no grant of the member role reaches it
   const refused = await as(BEN, {});
   assert.equal(refused.error && refused.error.code, "not_allowed");
+  // a sealed field changed by two people: the audit shows only placeholders, to the owner and to an admin alike
+  const seal = async (/** @type {string} */ p, /** @type {string} */ value) => d.registry.call("records.seal-put", { urn: c.urn, field: "ssn", value, class: "us-ssn" }, "cli", { token: (await K.surfaces.open(dev(p), {})).token });
+  const s1 = await seal(OWNER, "123-45-6789"), s2 = await seal(ANA, "987-65-4321");
+  assert.ok(!s1.error && !s2.error, JSON.stringify([s1.error, s2.error]));
+  for (const who of [OWNER, ANA]) {
+    const text = JSON.stringify((await as(who, { record: c.urn })).data);
+    for (const secret of ["123-45-6789", "987-65-4321", "123456789", "987654321"]) assert.ok(!text.includes(secret), `${who}: the audit never carries a sealed value`);
+    const sealedChanges = (await as(who, { record: c.urn })).data.changes.filter((/** @type {any} */ x) => x.changed.includes("ssn"));
+    assert.ok(sealedChanges.length >= 2, "both seals are in the audit");
+    for (const x of sealedChanges) for (const side of [x.before, x.after]) if (side && side.ssn !== undefined) assert.ok(side.ssn === null || typeof side.ssn !== "string" && !side.ssn.value, "a placeholder, never the value");
+  }
+  assert.deepEqual(new Set(sealedChangersOf(await as(ANA, { record: c.urn }))), new Set([`person:${OWNER}`, `person:${ANA}`]), "by two people");
 });
+const sealedChangersOf = (/** @type {any} */ r) => r.data.changes.filter((/** @type {any} */ x) => x.changed.includes("ssn")).map((/** @type {any} */ x) => x.who);
