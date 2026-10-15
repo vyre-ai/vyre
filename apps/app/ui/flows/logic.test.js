@@ -423,3 +423,15 @@ test("Look up one record and Keep only some of a list are in the palette and rou
   assert.equal(stepProblem({ id: "filter2", kind: "filter", from: "", where: "" }, o), "Choose the list to narrow. Add a Find records step first.");
   assert.equal(newStep("filter", { ...d, steps: d.steps.slice(0, 1) }, o).from, "steps.find1.rows");
 });
+
+test("cc and bcc on an email step are saved in the definition and read back, on both ways of sending", () => {
+  for (const sendStep of [undefined, "comms.email"]) {
+    const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", ...(sendStep ? { sendStep } : {}), to: "{email}", cc: "ops@harlow.example", bcc: "{owner}", subject: "Hello", body: "Hi" }] };
+    const def = toDefinition(d);
+    assert.ok(def.steps[0].input.cc && def.steps[0].input.bcc, "both are in the step's input");
+    const back = fromDefinition(def).steps[0];
+    assert.equal(back.cc, "ops@harlow.example"); assert.equal(back.bcc, "{owner}"); assert.equal(back.kind, "email");
+  }
+  const none = toDefinition({ name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "a@b.co", subject: "s", body: "b" }] });
+  assert.equal("cc" in none.steps[0].input, false, "left out when empty");
+});
