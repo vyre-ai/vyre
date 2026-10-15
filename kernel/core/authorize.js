@@ -43,7 +43,7 @@ const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_ver
 /** Resource types only the person they belong to may read (the `owner` attribute names them): a session's lines. */
 export const OWNER_SCOPED_TYPES = new Set(["session"]);
 const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
-const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once", "to"]);
+const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount"]);
 /**
  * Does a grant's `to` condition allow every recipient of this act: each must match a pattern (an address, or `*@domain`, case-insensitive) or be a member of one of the named lists (read through `listHas`).
  * An act that names no recipients is never allowed by a `to` condition. @param {any} to @param {string[] | undefined} recipients @param {((list: string, address: string) => Promise<boolean> | boolean) | undefined} listHas
@@ -438,7 +438,7 @@ export function createAuthorizer(cfg) {
     if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, limit: c.budget.limit, amount: 1, grant: g.id });
     if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
     if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
-    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once", "to"].includes(k)) obs.push({ type: `unknown:${k}` });
+    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount"].includes(k)) obs.push({ type: `unknown:${k}` });
     if (obsUnknownSchedule) obs.push({ type: "unknown:schedule" });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.

@@ -16,7 +16,7 @@ import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { mayWrite, mayReadTask, judgeWriter, projectTeamOf } from "./gateway/ownership.js";
 import { sealerPresence } from "./core/presence.js";
-import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
+import { OWNER_SCOPED_TYPES, matchGrant, toAllows } from "./core/authorize.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
@@ -339,6 +339,34 @@ export async function createKernel(cfg) {
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
       ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
+      // The Gate only: may THIS agent send, post or pay this by itself (a person's standing permission). Read-only and answered from the kernel's own grants: the verified call chain must end in a named agent (never the
+      // default assistant or a model slot), the grant must name that agent, be live, cover the connection, hold every recipient (an address, `*@domain` or a list read now) and, for a payment, its per-act and daily amount. The
+      // issuer must still be an owner or admin, or the grant matches nothing. Counts the act against the grant's daily cap, and answers { grant } or null (the Gate then asks, as it always did).
+      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number }} */ q) => {
+        let chain; try { chain = await handle.chain(meta || {}); } catch { return null; }
+        const last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
+        if (!last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
+        if (!q || !["send", "spend"].includes(q.kind) || typeof q.via !== "string" || !Array.isArray(q.to) || !q.to.length) return null;
+        const resource = `vyre://${cfg.space}/outbox/${q.kind}/${q.via}`, now = clock();
+        for (const g of [...(await grantsStore.provider.forSubject(last.actor, undefined, { chain }))].filter((/** @type {any} */ x) => x.status === "active" && x.space === cfg.space && Array.isArray(x.actions) && x.actions.includes("gate.act-standing")).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.id < b.id ? -1 : 1))) {
+          if (!matchGrant(g, "gate.act-standing", resource, { attrs: {}, now, since: 0, risk: "write" }).ok) continue;
+          const c = g.conditions || {};
+          const issuer = g.issuer && g.issuer.kind === "person" ? g.issuer : null;
+          const role = issuer ? grantsStore.roleOf(issuer) : null;
+          if (role !== "owner" && role !== "admin") continue;
+          if (!(await toAllows(c.to, q.to, listHas))) continue;
+          if (q.kind === "spend") {
+            const amount = Number(q.amount);
+            if (!(amount > 0) || !(Number(c.max_amount) >= amount) || !(Number(c.daily_amount) > 0)) continue;
+            try { const id = limits.reserve(chain, { key: `${g.id}|${Math.floor(now / 86_400_000)}`, meter: "standing_pay", amount, limit: Number(c.daily_amount), grant: g.id }); limits.settle(chain, id, amount); } catch { continue; }
+          } else {
+            if (!c.rate || !(c.rate.n > 0)) continue;
+            try { limits.rate(chain, g.id, c.rate); } catch { continue; }
+          }
+          return { grant: g.id, source: g.source };
+        }
+        return null;
+      } } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
