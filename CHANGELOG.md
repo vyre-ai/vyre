@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(gate,kernel): standing permissions for agents (owner's rule, 17 Oct). An owner or admin lets one agent send or pay by itself, once: which kind, through which connection, to whom (addresses, `*@domain`, or the lists `contact:<id>` and `project:<id>:clients`, read when the act is made), a daily cap (acts a day, or for a payment a money limit per act and per day) and an optional expiry. It is a kernel grant (new named-only action `gate.act-standing`, new `to`, `max_amount` and `daily_amount` conditions, the existing rate counter), checked by a read-only `standingFor` on the Gate's kernel handle: the verified call chain must end in a named agent (never the default assistant or a model slot), every recipient must be in scope, and the issuer must still be an owner or admin or the grant matches nothing. Inside it the act goes out with no question and the log (`gate.released` `by: standing:<grant>`) names the permission; outside it, over the cap, expired or revoked it is held as before. `gate.standing.add`, `.list` (with each permission's use count and last acts) and `.revoke` are person-door tools; a model, an agent or a member cannot create one. kernel/core/authorize.js, kernel/index.js, kernel/grants/index.js, core/gate.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
