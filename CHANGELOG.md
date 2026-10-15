@@ -2,6 +2,22 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- feat(flows): "Use a connection's operation", a step that names a connection in the Vault and one of its operations with its inputs, stored as the same service step the engine runs.
+- feat(flows): a web call step has a query and headers (never the key: that stays in the Vault) and a HEAD check; a call that moves a file through Drive stays an advanced step.
+- feat(flows): a Repeat step takes any list written as a formula, not only the records a Find step returned.
+- feat(flows): an If step can compare with contains and with yes or no (true or false is a real value, not text); a condition that compared with quoted text that looks like a number now stays the formula it is instead of turning into a number.
+- feat(flows): an Ask step can show a record with the question, and an Assign step says how the work is done (a template, a tailored template, an assistant, or the person) with the template text.
+- feat(flows): "Do something else in Vyre", a step for any module action (written module.action, with the address it acts on and named inputs), stored as the same call step the engine runs. Calls the editor has a step of its own for (text, email, document, project) stay those steps.
+- feat(flows): the editor has a settings card for the whole Flow: a description, how many runs go at once (1 to 32), a key that keeps runs with the same key apart, and how long a run may sit before it is called stuck. Each is optional and drops when emptied.
+- feat(flows): the editor shows the step options the engine already had: an agent step's wait switch and skills, an assign step's record, wait switch and skills, a sort on Find records, a description per pulled-out fact, and the group or facts of an earlier AI step in the value list. Fix: an agent step saved with the wait switched off no longer turns it back on when the Flow is saved again.
+- feat(flows): Make a document, a step that fills a Word template from Documents: choose the template, and the panel lists what it asks for (documents.template.get): a value for each plain placeholder (typed or from the Flow) and the record each dotted placeholder reads. It stores as the documents.generate call, opens as the same step, and a later step can read where the document was filed.
+- feat(flows): Create, Update and Move to a stage pick the field or the stage from the object's own list (a typo no longer makes a bad field), the stage trigger picks from the object's stages, and some words follow the 13 Oct audit: "A record moves to a stage", "I press Run", "At a set time", "Look up records", "Run another Flow".
+- feat(flows): "Something else happens" lists every event the running modules announce (the event catalog) after the plain-worded ones, and a record, event or watcher trigger can carry an optional condition (`where`, a formula over what started it), which a stored Flow keeps and opens as the same editable trigger.
+- feat(flows): text and lists. A token written in doubled braces is a literal (`{{name}}` prints as {name} and fills nothing); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown doubled. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
+- feat(flows): the Flows editor has a failure panel on every step: "If something goes wrong" sets the time limit for one try, the number of tries and the wait between them, which errors are tried again, Check the work (with a read-back for record steps) and "If this fails, run other steps"; the steps of a failure path are drawn under the card like Then and Else, and the Flow has an "If the run fails" lane. A stored Flow with these settings opens as editable cards and saves back unchanged; a step with a setting the panel cannot show stays an Advanced step. Steps in a failure path read `{error.message}`, `{error.code}` and `{error.step}`.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
