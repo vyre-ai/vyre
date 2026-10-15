@@ -29,6 +29,7 @@
       { "name": "records.reveal", "effect": "write", "reach": "person" },
       { "name": "records.sees-as", "effect": "write", "reach": "person" },
       { "name": "records.events", "effect": "read", "reach": "person" },
+      { "name": "records.audit", "effect": "read", "reach": "person" },
       { "name": "records.dev-seed", "effect": "write", "reach": "person" },
       { "name": "records.serve", "effect": "read", "reach": "modules", "crossSpace": "records.read", "summary": "a team member's record reads on the team's server, as that member in that Space (the daemon's member door only)" },
       { "name": "records.serve-create", "effect": "write", "reach": "modules", "crossSpace": "records.create", "summary": "a team member makes a record on the team's server, as that member in that Space (the daemon's member door only)" },
