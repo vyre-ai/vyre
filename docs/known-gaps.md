@@ -16,12 +16,6 @@ The 0.6 plan is in [roadmap/0.6.md](../roadmap/0.6.md) and the 0.7 plan in [road
 
 ## Known gaps in 0.5
 
-### Members and custom record types
-
-A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.6.
-
-What to do today: keep sensitive rows in a built-in type, or in a Space the person is not a member of.
-
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.
