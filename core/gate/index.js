@@ -129,9 +129,10 @@ export default {
         const to = gate.recipients(input);
         if (!to || !to.length) return null;
         const amount = input.kind === "spend" && input.content && typeof input.content === "object" ? Number(input.content.amount) : undefined;
+        const currency = input.kind === "spend" && input.content && typeof input.content === "object" && typeof input.content.currency === "string" ? input.content.currency : undefined;
         const maker = agentName ? await ctx.call("agents.maker", { agent: String(agentName) }).catch(() => null) : null;
         const agentOwner = maker && !maker.error && maker.data && typeof maker.data.made_by === "string" ? maker.data.made_by : null;
-        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), agentOwner });
+        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
       } catch { return null; }
     };
     const said = async (input, thread, agent) => {
@@ -321,7 +322,7 @@ export default {
     };
     ctx.tool("gate.standing.add", {
       description: "Let one agent send, post or pay by itself, once you say so: which kind (send covers email and posts, spend a payment), through which connection (`via`, or any), to whom (`to`: addresses, *@domain, or lists contact:<id> and project:<id>:clients), and a daily cap (acts a day; for a payment a money limit per act and per day). Inside it the act goes out with no question; outside it asks once. An owner, an admin or the agent's own owner, with presence; a model never.",
-      input: obj({ agent: str, kind: { type: "string", enum: ["send", "spend"] }, via: str, to: obj({ patterns: { type: "array", items: str }, lists: { type: "array", items: str } }), daily_cap: { type: "integer" }, max_amount: { type: "number" }, daily_amount: { type: "number" }, expires: { type: "number" } }, ["agent", "kind", "to"]),
+      input: obj({ agent: str, kind: { type: "string", enum: ["send", "post", "spend"] }, via: str, to: obj({ patterns: { type: "array", items: str }, lists: { type: "array", items: str } }), follow_lists: { type: "boolean", description: "keep following the lists as they change; otherwise the addresses they hold now are what the permission means" }, daily_cap: { type: "integer" }, max_amount: { type: "number" }, daily_amount: { type: "number" }, currency: str, expires: { type: "number" } }, ["agent", "kind", "to"]),
       callers: PERSON_DOORS,
       presence: { summary: (/** @type {any} */ i) => `Let ${i && i.agent} ${i && i.kind === "spend" ? "pay" : "send"} by itself to ${[...(i && i.to && i.to.patterns || []), ...(i && i.to && i.to.lists || [])].join(", ") || "no one"}${i && i.daily_cap ? `, up to ${i.daily_cap} a day` : ""}${i && i.max_amount ? `, up to ${i.max_amount} each and ${i.daily_amount} a day` : ""}` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -329,14 +330,22 @@ export default {
         const agentName = String(i.agent || "");
         if (agentName === "assistant") throw Object.assign(new Error("the default assistant is the person's own delegate and takes no standing permission: name an agent"), { code: "bad_input" });
         const { person } = await grantor(K, meta, agentName);
-        const to = { patterns: (Array.isArray(i.to && i.to.patterns) ? i.to.patterns : []).map((/** @type {any} */ p) => String(p).trim().toLowerCase()).filter(Boolean).slice(0, 50), lists: (Array.isArray(i.to && i.to.lists) ? i.to.lists : []).map((/** @type {any} */ p) => String(p).trim()).filter(Boolean).slice(0, 20) };
-        if (!to.patterns.length && !to.lists.length) throw Object.assign(new Error("name who it may go to: an address, *@domain, or a list"), { code: "bad_input" });
-        for (const p of to.patterns) if (p === "*" || !/^(\*@)?[^\s@*]+(@[^\s@*]+)?$/.test(p) || (!p.startsWith("*@") && !p.includes("@"))) throw Object.assign(new Error(`${p.slice(0, 60)} is not an address or *@domain`), { code: "bad_input" });
-        for (const l of to.lists) if (!/^(contact:[A-Za-z0-9_-]{1,80}|project:[A-Za-z0-9_-]{1,80}:clients)$/.test(l)) throw Object.assign(new Error(`${l.slice(0, 60)} is not a list: use contact:<id> or project:<id>:clients`), { code: "bad_input" });
+        const explicit = (Array.isArray(i.to && i.to.patterns) ? i.to.patterns : []).map((/** @type {any} */ p) => String(p).trim().toLowerCase()).filter(Boolean).slice(0, 50);
+        const lists = (Array.isArray(i.to && i.to.lists) ? i.to.lists : []).map((/** @type {any} */ p) => String(p).trim()).filter(Boolean).slice(0, 20);
+        if (!explicit.length && !lists.length) throw Object.assign(new Error("name who it may go to: an address, *@domain, or a list"), { code: "bad_input" });
+        for (const p of explicit) if (!(/^\*@[^\s@*,;<>"'()\[\]\\]+$/.test(p) || /^[^\s@*,;<>"'()\[\]\\]+@[^\s@*,;<>"'()\[\]\\]+$/.test(p))) throw Object.assign(new Error(`${p.slice(0, 60)} is not one address or *@domain`), { code: "bad_input" });
+        // a list means the addresses it holds when the permission is made, unless the person chose to follow it as it changes
+        const patterns = [...explicit];
+        for (const l of lists) {
+          if (!/^(contact:[A-Za-z0-9_-]{1,80}|project:[A-Za-z0-9_-]{1,80}:clients)$/.test(l)) throw Object.assign(new Error(`${l.slice(0, 60)} is not a list: use contact:<id> or project:<id>:clients`), { code: "bad_input" });
+          if (i.follow_lists !== true) patterns.push(...(await K.snapshotList(person, l)).slice(0, 200));
+        }
+        const to = { patterns: [...new Set(patterns)], ...(i.follow_lists === true && lists.length ? { lists } : {}) };
+        if (!to.patterns.length && !(to.lists && to.lists.length)) throw Object.assign(new Error("that list holds no address yet, so the permission would cover no one"), { code: "bad_input" });
         const conditions = /** @type {any} */ ({ to });
         if (i.kind === "spend") {
-          if (!(Number(i.max_amount) > 0) || !(Number(i.daily_amount) >= Number(i.max_amount))) throw Object.assign(new Error("a payment needs a limit for one payment (max_amount) and a larger or equal one for a day (daily_amount)"), { code: "bad_input" });
-          conditions.max_amount = Number(i.max_amount); conditions.daily_amount = Number(i.daily_amount);
+          if (!(Number(i.max_amount) > 0) || !(Number(i.daily_amount) >= Number(i.max_amount)) || !/^[A-Za-z]{3}$/.test(String(i.currency || ""))) throw Object.assign(new Error("a payment needs a limit for one payment (max_amount), a larger or equal one for a day (daily_amount) and a currency such as USD"), { code: "bad_input" });
+          conditions.max_amount = Number(i.max_amount); conditions.daily_amount = Number(i.daily_amount); conditions.currency = String(i.currency).toUpperCase();
         } else {
           const cap = Number(i.daily_cap);
           if (!Number.isInteger(cap) || cap < 1 || cap > 1000) throw Object.assign(new Error("set a daily cap of 1 to 1000 acts"), { code: "bad_input" });
@@ -350,7 +359,7 @@ export default {
         const uid = u && !u.error && u.data && u.data.uid;
         if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });
         const id = await K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(uid), space: K.space } }, actions: ["gate.act-standing"], resource: { prefix: `vyre://${K.space}/outbox/${i.kind}${via ? `/${via}` : ""}` }, conditions, source: `gate:standing:${agentName}:${person}`, reason: "a person's standing permission for an agent" });
-        return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount }) };
+        return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount, currency: conditions.currency }), ...(i.follow_lists === true && lists.length ? { following: lists, warning: `Anyone who can edit these lists can change who ${agentName} sends to.` } : {}) };
       },
     });
     ctx.tool("gate.standing.list", {

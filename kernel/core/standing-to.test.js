@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toAllows, patternCovers } from "./authorize.js";
+import { toAllows, plainAddress, patternCovers } from "./authorize.js";
 
 test("toAllows: addresses, *@domain and lists; every recipient must match; no recipient matches nothing", async () => {
   const to = { patterns: ["dana@harlowlegal.com", "*@northwind-bakery.example"], lists: ["project:p1:clients"] };
@@ -24,4 +24,15 @@ test("the standing action is named-only: no wildcard grant covers it", () => {
   assert.equal(patternCovers("*", "gate.act-standing", 0, 1, "write"), null);
   assert.equal(patternCovers("gate.*", "gate.act-standing", 0, 1, "write"), null);
   assert.equal(patternCovers("gate.act-standing", "gate.act-standing", 0, 1, "write"), "covered");
+});
+
+test("an address is one plain address: a second @, a list, a display name or a bracket never matches, and a pattern compares the whole domain, case-folded", async () => {
+  const to = { patterns: ["*@example.com", "dana@harlowlegal.com"] };
+  for (const bad of ["attacker@evil.com@example.com", "a@example.com, b@evil.com", "a@example.com;b@evil.com", "Dana <dana@harlowlegal.com>", "<dana@harlowlegal.com>", "dana@harlowlegal.com ", "a b@example.com", "\"a\"@example.com", "@example.com", "a@"]) {
+    assert.equal(await toAllows(to, [bad], undefined), bad === "dana@harlowlegal.com " ? true : false, JSON.stringify(bad));
+  }
+  assert.equal(await toAllows(to, ["A@EXAMPLE.COM"], undefined), true, "the domain is case-folded");
+  assert.equal(await toAllows(to, ["a@notexample.com"], undefined), false, "a longer domain is not the domain");
+  assert.equal(plainAddress("Lee@Harlow.Example"), "lee@harlow.example");
+  assert.equal(plainAddress("lee@@x"), null);
 });

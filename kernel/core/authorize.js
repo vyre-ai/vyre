@@ -43,7 +43,7 @@ const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_ver
 /** Resource types only the person they belong to may read (the `owner` attribute names them): a session's lines. */
 export const OWNER_SCOPED_TYPES = new Set(["session"]);
 const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
-const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount"]);
+const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount", "currency"]);
 /**
  * Does a grant's `to` condition allow every recipient of this act: each must match a pattern (an address, or `*@domain`, case-insensitive) or be a member of one of the named lists (read through `listHas`).
  * An act that names no recipients is never allowed by a `to` condition. @param {any} to @param {string[] | undefined} recipients @param {((list: string, address: string) => Promise<boolean> | boolean) | undefined} listHas
@@ -52,12 +52,20 @@ export async function toAllows(to, recipients, listHas) {
   if (!to || typeof to !== "object" || !Array.isArray(recipients) || !recipients.length) return false;
   const patterns = Array.isArray(to.patterns) ? to.patterns.map((/** @type {any} */ p) => String(p).toLowerCase()) : [], lists = Array.isArray(to.lists) ? to.lists.map(String) : [];
   for (const r of recipients) {
-    const a = String(r).toLowerCase();
-    let ok = patterns.some((/** @type {string} */ p) => p === a || (p.startsWith("*@") && a.endsWith(p.slice(1)) && a.indexOf("@") > 0));
+    const a = plainAddress(r);
+    if (!a) return false;   // not one plain address: a display name, two addresses, a comma or a bracket never matches
+    let ok = patterns.some((/** @type {string} */ p) => (p.startsWith("*@") ? a.slice(a.indexOf("@") + 1) === p.slice(2) : p === a));
     for (let i = 0; !ok && i < lists.length && typeof listHas === "function"; i++) { try { ok = Boolean(await listHas(lists[i], a)); } catch { ok = false; } }
     if (!ok) return false;
   }
   return true;
+}
+/** One plain address, case-folded, or null: a single @, no spaces, commas, semicolons, quotes or brackets. @param {any} v @returns {string | null} */
+export function plainAddress(v) {
+  const s = String(v ?? "").trim();
+  if (!/^[^\s@,;<>"'()\[\]\\]+@[^\s@,;<>"'()\[\]\\]+$/.test(s)) return null;
+  const i = s.indexOf("@");
+  return `${s.slice(0, i).toLowerCase()}@${s.slice(i + 1).toLowerCase()}`;
 }
 const sameJson = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
 /** Is every member of `child` in `parent`? An absent child list is "no limit", which is wider than any parent list. @param {any[] | undefined} parent @param {any[] | undefined} child */
@@ -438,7 +446,7 @@ export function createAuthorizer(cfg) {
     if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, limit: c.budget.limit, amount: 1, grant: g.id });
     if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
     if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
-    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount"].includes(k)) obs.push({ type: `unknown:${k}` });
+    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount", "currency"].includes(k)) obs.push({ type: `unknown:${k}` });
     if (obsUnknownSchedule) obs.push({ type: "unknown:schedule" });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.
