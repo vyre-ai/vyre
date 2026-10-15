@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6
+
+- test(daemon): the 8 daemon tests of core/switchboard start through `startDaemonBounded`; 5 more there start the daemon another way and keep their own stop.
+- test(daemon): `stopDaemonBounded` ends only the children that appeared after it was called, not every child of the test process, so a file's own earlier children and the daemon's own start-up children are left to their owners; a file may pass a `keep` function for one it starts later on purpose. Tested in test/stop-daemon-bounded.test.js.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
