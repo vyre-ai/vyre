@@ -35,7 +35,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // [kernel +57: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; includes one import of lib/roles/staff.js] (flows-ux)
 // 9690 on the stage tip 9633: 9633 + 57.
 // 9691 (fail-closed, 13 Oct 2026): one line in kernel/index.js, the chain() throw that refuses an unenrolled device and a refused fact.
-const CAP = 9691;
+// 9722 (flow6, 16 Oct 2026, lead ruling for roadmap 0.6 item 3, measured +31 on 9691 in the trusted base: tasks.js +26 for tasks.withdraw, authorize.js +3 and index.js +2 for the use-time end of a task-scoped lend; ADR 0054).
+const CAP = 9722;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
