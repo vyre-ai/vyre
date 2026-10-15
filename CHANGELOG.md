@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(records): `records.audit`, who changed what on a record from the signed event log, with the values before and after (a sealed value is only ever its placeholder), filterable by record, person, project and record type, newest first. Owners and admins only; a member is refused. core/records-tools/index.js, core/records-tools/audit.test.js. The admin screen over it follows.
 - feat(records): per-record privacy for custom record types. A row of a type with a link field to a project, or to a type that holds work (a Matter), is read only by that project's team, its owner, and the Space's owners and admins, on every path: get, list and its cursor, search, totals, computed totals, the records that link here, references and the events about it. A member files such a row only under a project they are on. kernel/gateway/records.js, ownership.js (`workTeamOf`), kernel/gateway/project-private-rows.test.js; the known gap is closed.
 
 ## 0.5.1

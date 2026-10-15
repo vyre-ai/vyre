@@ -9287,6 +9287,20 @@ The people of a Space: who each is and the role they hold. Only what the caller'
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
+### `records.audit`
+
+Who changed what on a record, with the values before and after, from the signed event log. Owners and admins only. { record?, person?, project?, type?, since?, limit? }.
+
+- Input:
+  - `limit` integer
+  - `person` string
+  - `project` string
+  - `record` string
+  - `since` integer
+  - `space` string
+  - `type` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+
 ### `records.create`
 
 Make a record of a type.
