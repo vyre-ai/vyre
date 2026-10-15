@@ -50,3 +50,17 @@ test("a lend dies the moment its task is withdrawn, before anything takes the gr
   await assert.rejects(() => k.gateway.ask.get(asAgent(), task.id), /./, "reading the task with the lend is refused");
   await assert.rejects(() => k.gateway.ask.complete(asAgent(), task.id, { note: "late", sources: ["vyre://x/y/z"] }), /./, "handing it in is refused");
 });
+
+test("a lend that names a task the kernel does not hold is dead: an unknown task counts as closed", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const flows = k.kernelFor({ name: "flows", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const asAgent = () => k.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: "s1", thread: "t1", person: OWNER, vouched: true });
+  const real = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  // the lend covers the real task's address but is sourced from a task id that does not exist
+  await flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${real.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: "flows:task:ghost-task-id", reason: "a lend for nothing" });
+  await assert.rejects(() => k.gateway.ask.get(asAgent(), real.id), /./, "a lend for a task nobody holds reads nothing");
+  await assert.rejects(() => k.gateway.ask.start(asAgent(), real.id), /./, "and starts nothing");
+});

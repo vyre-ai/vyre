@@ -39,10 +39,10 @@ const DENIALS_TO_STUCK = 3;
 /** The kernel's own read of a record's stage tasks (the gateway's stage gate). Held beside the public api, not on it: a surface cannot reach it. */
 const VIEWS = new WeakMap();
 /** @param {any} api @param {string} record @param {string} stage @returns {{ title: string, state: string, required: boolean }[]} */
-/** Whether a task is still open (not done or skipped). A task the kernel does not hold counts as open: the grant check refuses nothing it cannot prove ended. Held beside the public api like the stage view. */
+/** Whether a task is still open (not done or skipped). A task the kernel does not hold counts as CLOSED: a grant lent for a task nobody can find holds nothing (fail closed). Held beside the public api like the stage view. */
 const LIVE = new WeakMap();
 /** @param {any} api @param {string} id */
-export const taskOpen = (api, id) => { const v = LIVE.get(api); return v ? v(id) : true; };
+export const taskOpen = (api, id) => { const v = LIVE.get(api); return v ? v(id) : false; };
 export const stageTasks = (api, record, stage) => { const v = VIEWS.get(api); return v ? v(record, stage) : []; };
 
 const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre://${space}/task/${id}`;
@@ -936,7 +936,7 @@ export function createTasks(cfg) {
   }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
-  LIVE.set(frozen, (/** @type {string} */ id) => { const t = tasks.get(id); return !t || !["done", "skipped"].includes(t.state); });
+  LIVE.set(frozen, (/** @type {string} */ id) => { const t = tasks.get(id); return Boolean(t) && !["done", "skipped"].includes(t.state); });
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));
   return frozen;
 }
