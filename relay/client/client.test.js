@@ -5,7 +5,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connect, parsePairUrl, keyFingerprint, resolveTicket } from "./client.js";
+import { connect, parsePairUrl, keyFingerprint, resolveTicket, deviceKey } from "./client.js";
 import { webCrypto, memoryKeyStore } from "./webcrypto.js";
 import { memoryBox, serveWith, reply, settle, ROUTE } from "./testing.js";
 import { pairUrl, parsePairUrl as boxParse } from "../../core/relay/pairing.js";
@@ -30,6 +30,27 @@ function setup(t, world, extra = {}) {
   t.after(() => conn.close());
   return { conn, vis, states };
 }
+
+test("client: one device key per store for the run, even when the store never gives it back (the Mac app's WKWebView) or two dials ask at once", async () => {
+  let made = 0;
+  const counting = { ...crypto, generateKeyPair: async () => { made++; return crypto.generateKeyPair(); } };
+  const forgets = { async get() { return null; }, async set() {} };
+  const [a, b] = await Promise.all([deviceKey({ keyStore: forgets, crypto: counting }), deviceKey({ keyStore: forgets, crypto: counting })]);
+  const c = await deviceKey({ keyStore: forgets, crypto: counting });
+  assert.equal(made, 1);
+  assert.deepEqual([b.publicKey, c.publicKey], [a.publicKey, a.publicKey]);
+  // a store that holds a key is the one that counts: a key it is given later is what the next dial uses
+  const kept = memoryKeyStore();
+  const first = await deviceKey({ keyStore: kept, crypto });
+  const other = await crypto.generateKeyPair();
+  await kept.set(other);
+  assert.deepEqual((await deviceKey({ keyStore: kept, crypto })).publicKey, other.publicKey);
+  assert.notDeepEqual(first.publicKey, other.publicKey);
+  // a make that failed is not kept: the next dial tries again
+  const broken = { async get() { return null; }, async set() { throw new Error("disk full"); } };
+  await assert.rejects(() => deviceKey({ keyStore: broken, crypto }), /disk full/);
+  await assert.rejects(() => deviceKey({ keyStore: broken, crypto }), /disk full/);
+});
 
 test("client: the pairing URL parses exactly as the box's parser does", () => {
   const box = Buffer.alloc(32, 9);
