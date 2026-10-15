@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- feat(flows): text and lists. A brace written as `\{` is a brace (`\{name}` prints as {name}); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown escaped. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
+- feat(flows): text and lists. A token written in doubled braces is a literal (`{{name}}` prints as {name} and fills nothing); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown doubled. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
 - feat(flows): the Flows editor has a failure panel on every step: "If something goes wrong" sets the time limit for one try, the number of tries and the wait between them, which errors are tried again, Check the work (with a read-back for record steps) and "If this fails, run other steps"; the steps of a failure path are drawn under the card like Then and Else, and the Flow has an "If the run fails" lane. A stored Flow with these settings opens as editable cards and saves back unchanged; a step with a setting the panel cannot show stays an Advanced step. Steps in a failure path read `{error.message}`, `{error.code}` and `{error.step}`.
 
 ## 0.5.1

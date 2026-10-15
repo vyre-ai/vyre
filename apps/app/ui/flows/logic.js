@@ -255,11 +255,12 @@ const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008
 const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
 const FORMATS = ["date", "time", "datetime", "weekday", "weekdaytime", "iso"];
 /** `{ref}`, `{ref + 2 hours}`, `{ref - 1 day}`, each optionally `as date`, `as time`, `as datetime`, `as weekday`, `as weekdaytime` or `as iso`. The ref is a field, `{now}` or `{today}`. */
-/** A brace written as `\{` is a brace and nothing else: `\{name}` prints as {name} and fills nothing. The one place that reads and writes it. */
-const unesc = (/** @type {string} */ s) => s.replace(/\\\{/g, "{");
-/** Text as the author sees it: a brace that would be read as a token is shown escaped, so what was stored as plain text stays plain text when the Flow is saved again. */
-const esc = (/** @type {string} */ s) => s.replace(/(?<!\\)\{(?=[a-z0-9_.]+(?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?\})/gi, "\\{");
-const TOKEN = /(?<!\\)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}/gi;
+/** Braces doubled are braces and nothing else: `{{name}}` prints as {name} and fills nothing. The one place that reads and writes it (the author's escape for a literal token). */
+const INNER = "[a-z0-9_.]+(?: [+-] \\d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?";
+const unesc = (/** @type {string} */ s) => s.replace(new RegExp(`\\{\\{(${INNER})\\}\\}`, "gi"), "{$1}");
+/** Text as the author sees it: a brace that would be read as a token is shown doubled, so what was stored as plain text stays plain text when the Flow is saved again. */
+const esc = (/** @type {string} */ s) => s.replace(new RegExp(`(?<!\\{)\\{(${INNER})\\}(?!\\})`, "gi"), "{{$1}}");
+const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}(?!\})/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
 const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
