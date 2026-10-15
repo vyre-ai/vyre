@@ -12,6 +12,7 @@
       { "name": "records.me", "effect": "read", "reach": "person" },
       { "name": "records.actors", "effect": "read", "reach": "person" },
       { "name": "records.types", "effect": "read", "reach": "person" },
+      { "name": "records.address-kind", "reach": "modules" },
       { "name": "records.define", "effect": "write", "reach": "person" },
       { "name": "records.list", "effect": "read", "reach": "person" },
       { "name": "records.get", "effect": "read", "reach": "person" },
