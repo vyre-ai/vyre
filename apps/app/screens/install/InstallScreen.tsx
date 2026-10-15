@@ -298,12 +298,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     const pick = (id: string) => () => {
       setWrong("");
       if (id === "join") return setStep("join");
-      if (id === "server") return setStep("mycloud");
-      // My Home: this Mac runs Vyre itself (the light login-only setup, no password); the Mac app does the install, then setup is done here.
-      const make = shell()?.identity?.makeServer;
-      if (MOCK || !make) return finish();
-      setBusy(true);
-      void make().then(finish).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+      return setStep("mycloud");
     };
     const rows = firstChoices(dk);
     body = (
@@ -311,12 +306,10 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Card flush>
           {rows.map((id, i) => {
-            const c = FIRST[id as "join" | "server" | "home"];
-            const extra = id === "server" ? (isWindowsShell() ? FIRST.server.upgrades.windows : dk === "mac" ? FIRST.server.upgrades.mac : "") : "";
-            return <View key={id}>{i ? <Divider /> : null}<Choice icon={id === "join" ? "share" : id === "server" ? "server" : "laptop"} title={c.title} sub={extra ? `${c.line} ${extra}` : c.line} onPress={pick(id)} /></View>;
+            const c = FIRST[id as "join" | "server"];
+            return <View key={id}>{i ? <Divider /> : null}<Choice icon={id === "join" ? "share" : "server"} title={c.title} sub={c.line} onPress={pick(id)} /></View>;
           })}
         </Card>
-        {isWindowsShell() ? <Text tone="muted">{FIRST.windows}</Text> : null}
       </Page>
     );
   } else if (step === "mycloud") {

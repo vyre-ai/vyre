@@ -867,12 +867,12 @@ async function startLocked(opts, root, p, release) {
     registry.deps.limitedGate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => { const r = /** @type {any} */ (await registry.call("relay.device.info", { id }, "module:vyred")); return Boolean(r && r.data && r.data.viaChain && r.data.viaChain.limited === true); } });
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
-  // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
+  // The eight box-only modules gate on cfg.machine (server or device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
   // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
-  // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
+  // A box's container is the server: a config that is not a server would switch off every box-only module without a word, so it stops here with the reason.
   if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
   // A Basic device holds no planner records (the planner and tasks need a server, records/basic-types.js), so the planner does not start there.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules, ...(basicDevice ? { disable: [...new Set([...((cfg.modules && cfg.modules.disable) || []), "planner"])] } : {}) });

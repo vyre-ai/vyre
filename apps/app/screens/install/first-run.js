@@ -42,16 +42,14 @@ export function installLine(version, vars = {}) {
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
 
-/** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */
+/** The first run after a name: how this device will be used. Join a team is first. Every computer offers the same two choices. */
 export const FIRST = {
   title: "How will you use Vyre?",
   join: { title: "Join a team", line: "Paste the invite your team sent you. You use their server, so you need none of your own." },
-  server: { title: "Add a server", line: "A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and teammates can reach it.", upgrades: { mac: "This upgrades My Home to My Cloud.", windows: "This sets up My Cloud." } },
-  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. You can add a server later and move everything across." },
-  windows: "Using Vyre on this PC alone is coming. For now, join a team or add a server.",
+  server: { title: "Add a server", line: "A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and teammates can reach it." },
 };
-/** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
-export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
+/** The choices in order: Join a team, then Add a server. The same on a Mac, a Windows PC and the web. @param {string} _kind */
+export const firstChoices = (_kind) => ["join", "server"];
 
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());

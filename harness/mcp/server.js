@@ -23,7 +23,7 @@ import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
-import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
+import { offeredTool } from "./offered.js";
 import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
@@ -76,11 +76,10 @@ function askOnce() {
   asked = true;
   call("pluginagent.ask", {}, { caller: CALLER }).catch(() => null);
 }
-const DRIVES = /^(threads|agents)\./;
 // Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
-// them from any session, so listing them only spends the model's context.
-const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name)
-  && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
+// them from any session, so listing them only spends the model's context. A surface tool the
+// person approves with one tap is listed, because the call waits and changes nothing until then.
+const offered = (/** @type {{ name: string, needsYou?: boolean, surface?: boolean }} */ t) => offeredTool(t);
 /** @param {string} tool @param {any} input */
 function scoped(tool, input) {
   const projects = process.env.VYRE_PROJECTS;

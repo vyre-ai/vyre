@@ -83,8 +83,8 @@ export function createWink(inject = {}) {
   /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
-    // A server runs all of this. A person's computer that belongs to a server (machine "device") runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
-    // lends itself to them, and holds the connection a storage drive on its network is reached through. A computer on its own (machine "solo") stays out: nothing here is for it.
+    // A server runs all of this. A person's computer (machine "device", including one that used to be solo) runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
+    // lends itself to them, and holds the connection a storage drive on its network is reached through.
     if (ctx.config.role !== "box" && ctx.config.machine !== "device") return { async stop() {} };
     const now = () => Date.now();
     ctx.store.migrate([
