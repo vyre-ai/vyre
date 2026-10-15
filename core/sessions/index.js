@@ -19,7 +19,7 @@ import { environmentOf } from "./environment.js";
 import { timeLine, zoneFrom } from "../../lib/time/index.js";
 import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION, ACCOUNTS_OWN_VAULT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
@@ -112,6 +112,7 @@ export default {
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
     try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
     try { db.prepare("SELECT person FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PERSON_MIGRATION); }
+    try { db.prepare("SELECT own_vault FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_OWN_VAULT_MIGRATION); }
     // A provider with exactly one account has it as its default (earlier installs left it unset).
     try { db.exec("UPDATE sessions_accounts SET is_default = 1 WHERE is_default = 0 AND provider IN (SELECT provider FROM sessions_accounts GROUP BY provider HAVING COUNT(*) = 1)"); } catch {}
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
@@ -471,7 +472,7 @@ export default {
           i = { ...i, scope: { projects: "*", agents: "*" } };
         }
         if (!who && i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
-        const added = accounts.add({ ...i, person: who });
+        const added = accounts.add({ ...i, person: who, own_vault: Boolean(who && wanted !== "login") });
         // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
         if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
         return added;
@@ -639,7 +640,7 @@ export default {
       run: async (i, meta = {}) => {
         if (String(meta.caller || "") !== "module:vault") throw Object.assign(new Error("only the vault asks which item an account names"), { code: "denied" });
         const row = accounts.row(String(i.account));
-        if (!row || !row.person || String(row.person) !== String(i.person) || row.kind === "login" || !row.vault_item) return null;
+        if (!row || !row.person || String(row.person) !== String(i.person) || row.kind === "login" || !row.vault_item || !row.own_vault) return null;
         return { item: String(row.vault_item), kind: String(row.kind), provider: String(row.provider) };
       },
     });

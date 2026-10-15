@@ -4031,9 +4031,9 @@ export default {
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
       let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
       // A member's own key or token is in THEIR vault and is lent for their own turn only: the vault finds the person from this turn's verified chain, and refuses an account that is not theirs or a locked vault.
-      if (v === undefined && a.person && a.kind !== "login") {
+      if (v === undefined && a.person && a.kind !== "login" && a.own_vault) {
         const lent = await ctx.call("vault.me.lend", { account: String(a.id) });
-        if (lent.error) throw Object.assign(new Error(lent.error.code === "locked" ? `unlock your own vault to use ${a.label}` : `${a.label} is not available to this turn: it is a key of one person, used in their own turns`), { code: "no_credential" });
+        if (lent.error) throw Object.assign(new Error(lent.error.code === "locked" ? `unlock your own vault to use ${a.label}` : `${a.label} is not available to this turn: it is a key of one person, used only in their own turns. Start the chat as that person, or choose an account of your own`), { code: "no_credential" });
         v = lent.data && lent.data.value;
       }
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
