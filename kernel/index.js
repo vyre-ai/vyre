@@ -123,6 +123,8 @@ export async function createKernel(cfg) {
   const mayUseVia = async (person, via) => {
     const m = /^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via));
     if (!m || !grantsStore) return true;
+    // the vault is the owner's: no role bundle carries vault.call (a connection is used by what the owner shared), so the owner holds every connection of it
+    if (grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) === "owner") return true;
     try {
       const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${m[1]}`;
       return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
