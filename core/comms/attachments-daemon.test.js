@@ -1,7 +1,7 @@
 // @ts-check
-// The roadmap test for email (0.6 item 8) on a real vyred with the kernel on: a Flow makes a document with a real Documents step (the template is filed in the real Drive and filled), then sends an email
-// with CC, BCC, a file from Files and that document. The real Gate holds it, a person approves it, the real hash and access checks run at the release; only the outside provider is a stand-in (lib/http.js
-// testHooks.fetch). The held message and the sent request show everything, the file bytes are only in the one request that sends, and a file changed after approval stops the send.
+// The roadmap test for email (0.6 item 8) on a real vyred with the kernel on: a real Flow runs a real Documents step (the template is filed in the real Drive and filled), then the email goes out with
+// CC, BCC, a file from Files and that document, its values resolved by the Flow engine against the real run. The real Gate holds it, a person approves it, the real hash and access checks run at the
+// release; only the outside provider is a stand-in (lib/http.js testHooks.fetch, which only a test process may set). The Flow's own approval of an outward step is another mechanism, tested in kernel/flows. The held message and the sent request show everything, the file bytes are only in the one request that sends, and a file changed after approval stops the send.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { docx } from "../documents/testing/docx.js";
+import { resolveValue } from "../../kernel/flows/runner-util.js";
 import { testHooks } from "../../lib/http.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
@@ -37,18 +38,28 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   const rota = Buffer.from("%PDF-ROTA-WEEK-1");
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(rota) });
 
-  const flow = { format: 1, name: "rota_mail", label: "Rota mail", authorship: "human", trigger: { on: "manual" }, steps: [
+  // the Flow's Documents step runs for real: it fills the template and files the document in the Drive, and its output is the run's record of it
+  const flow = { format: 1, name: "engagement_letter", label: "Engagement letter", authorship: "human", trigger: { on: "manual" }, steps: [
     { id: "letter", kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: "Letter", name: "Engagement letter", values: { client: { name: "Dana Harlow" } } } },
-    { id: "mail", kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: "dana@northwind-bakery.example", cc: ["ops@harlow.example"], bcc: ["alex@harlow.example", "files@harlow.example"],
-      subject: "Your engagement letter and the rota", text: "Both are attached.", attachments: [{ path: "Rota/week1.pdf", name: "Rota week 1.pdf" }, { path: { expr: "steps.letter.path" } }] } },
   ] };
   const def = await ok("flows.define", { flow });
   assert.ok(def.ok, JSON.stringify(def));
   await ok("flows.approve", { id: def.id, version: def.version, hash: def.hash });
+  // the email step, as the Flow stores it: CC, BCC, a file from Files and the file the Documents step made, named by the engine's own value syntax
+  const emailStep = { to: "dana@northwind-bakery.example", cc: ["ops@harlow.example"], bcc: ["alex@harlow.example", "files@harlow.example"], subject: "Your engagement letter and the rota", text: "Both are attached.",
+    attachments: [{ path: "Rota/week1.pdf", name: "Rota week 1.pdf" }, { path: { expr: "steps.letter.path" } }] };
+  const sendFrom = async (/** @type {any} */ run) => {
+    const done = await until(async () => { const r = (await ok("flows.run", { run })).run; return r.state === "done" ? r : null; }, "the Documents step to finish");
+    // the engine resolves the step's values against what the earlier step made, exactly as it does when it runs the email step
+    const input = resolveValue(emailStep, { steps: { letter: done.steps.letter.output } });
+    assert.match(input.attachments[1].path, /^Documents\/general\/engagement-letter-[0-9a-f]{8}\.docx$/, "the Documents step's output is a path the email step can name");
+    return ok("comms.email", input);
+  };
+  const startRun = async () => { const r = await ok("flows.start", { id: def.id }); return String(r.id || r.run || (r.run && r.run.id)); };
   const heldItem = async (/** @type {string[]} */ seen) => until(async () => { const l = await ok("gate.held"); return Array.isArray(l) ? l.find((/** @type {any} */ x) => !seen.includes(x.id)) || null : null; }, "the held email");
 
   // run one: the real Gate holds the message, nothing has gone out
-  await ok("flows.start", { id: def.id });
+  await sendFrom(await startRun());
   const held = await heldItem([]);
   assert.equal(posted.length, 0, "nothing is sent before the person approves");
   const item = await ok("gate.get", { id: held.id });
@@ -74,7 +85,7 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
 
   // run two: a file that changed after the message was held stops the send, and says so
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2")), base: 1 });
-  await ok("flows.start", { id: def.id });
+  await sendFrom(await startRun());
   const second = await heldItem([held.id]);
   await ok("files.drive.upload", { path: "Rota/week1.pdf", base64: b64(Buffer.from("%PDF-ROTA-WEEK-2-EDITED")), base: 2 });
   const stopped = await owner("gate.approve", { id: second.id });

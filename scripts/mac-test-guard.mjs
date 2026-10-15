@@ -7,3 +7,5 @@ if (macWithoutLeave()) {
   process.stderr.write(REFUSAL + "\n");
   process.exit(1);
 }
+// Every test file imports this one, so this is the one switch that says "this process is a test": the test seams in the product (lib/http.js testHooks) refuse to be set without it.
+/** @type {any} */ (globalThis)[Symbol.for("vyre.test-guard")] = true;

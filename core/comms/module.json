@@ -101,6 +101,9 @@
         "inputs": {
           "via": "string",
           "to": "string",
+          "cc": "string",
+          "bcc": "string",
+          "attachments": "object",
           "subject": "string",
           "body": "string"
         },
@@ -115,6 +118,9 @@
         "recipients": ["to"],
         "inputs": {
           "to": "string",
+          "cc": "string",
+          "bcc": "string",
+          "attachments": "object",
           "subject": "string",
           "text": "string",
           "html": "string"
