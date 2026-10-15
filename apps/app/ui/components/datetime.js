@@ -6,6 +6,8 @@ import { localParts, parseDate, parseWall, toUTC, dateString, wallString } from 
 /** @param {string | number | null | undefined} value an ISO instant (or ms) @param {string} zone @returns {{ date: string, time: string }} */
 export function partsOf(value, zone) {
   if (value === null || value === undefined || value === "") return { date: "", time: "" };
+  // a bare day is a day, not a moment: it has no zone to move it across midnight (Date.parse would read it as UTC and Los Angeles would show the day before)
+  if (typeof value === "string" && parseDate(value.trim())) return { date: value.trim(), time: "" };
   const ms = typeof value === "number" ? value : Date.parse(String(value));
   if (!Number.isFinite(ms)) return { date: "", time: "" };
   const p = localParts(ms, zone);
