@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, SPECIAL_ACTIONS, flowSettings, setFlowSetting } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, actionChoices, actionPick, SPECIAL_ACTIONS, flowSettings, setFlowSetting } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -100,4 +100,14 @@ test("every call a dedicated step writes is on the list the generic action step 
   const actions = toDefinition(d, options).steps.filter((x) => x.kind === "call").map((x) => x.action);
   assert.equal(actions.length, 4, "each of the four dedicated steps writes one call");
   for (const a of actions) assert.ok(SPECIAL_ACTIONS.has(a), a);
+});
+
+test("the action picker searches by name or words and picking one fills where it acts and a row for each plain input", () => {
+  const o = { ...options, actions: [{ action: "documents.generate", label: "Make a document from a template", risk: "read", inputs: { template: "string", values: "object", format: "string" } }, { action: "tasks.nudge", label: "Nudge a task", risk: "outward.send", inputs: { id: "string", days: "number" } }] };
+  assert.deepEqual(actionChoices(o, "").map((x) => x[0]), ["documents.generate", "tasks.nudge"]);
+  assert.deepEqual(actionChoices(o, "nudge").map((x) => x[0]), ["tasks.nudge"]);
+  assert.deepEqual(actionChoices(o, "TEMPLATE").map((x) => x[0]), ["documents.generate"]);
+  assert.match(actionChoices(o, "nudge")[0][1], /held for a yes/);
+  assert.deepEqual(actionPick(o, "documents.generate"), { action: "documents.generate", resource: "vyre://space/documents", fields: [{ field: "template", value: "" }, { field: "format", value: "" }] });
+  assert.deepEqual(actionPick(o, "gone.thing").fields, [{ field: "", value: "" }]);
 });
