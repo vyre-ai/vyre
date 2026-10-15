@@ -438,8 +438,6 @@ export function createFlowsHost(o) {
       authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
       /** The role the Space's kernel gives a person, or "" (the member door's rows judge a write by it). */
       roleOf: (/** @type {string} */ person) => { try { const r = gw.members.roleOf({ kind: "person", id: person, space }); return typeof r === "string" ? r : ""; } catch { return ""; } },
-      /** The people a Flow is shared with ({ subject, level }), for the check that lets a member inspect a Flow (core/flows/index.js). */
-      sharedWith: (/** @type {string} */ flow) => access.list(flow),
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
       stop: () => { stopping = true; for (const t of retryTimers) clearTimeout(t); retryTimers.clear(); wake.stop(); if (typeof offDevice === "function") offDevice(); } });
