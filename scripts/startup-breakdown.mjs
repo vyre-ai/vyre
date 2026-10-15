@@ -25,7 +25,7 @@ const child = spawn(process.execPath, ["--expose-gc", "--max-semi-space-size=5",
 const t0 = Date.now();
 /** @type {{ t: number, name: string }[]} */ const marks = [];
 let buf = "";
-const onData = d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); const m = /^module (\S+) \S+ running/.exec(line); if (m) marks.push({ t: Date.now() - t0, name: m[1] }); } };
+const onData = d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); const m = /module (\S+) \S+ running/.exec(line); if (m) marks.push({ t: Date.now() - t0, name: m[1] }); } };
 child.stdout.on("data", onData); child.stderr.on("data", onData);
 /** @type {{ t: number, mb: number }[]} */ const samples = [];
 while (Date.now() - t0 < SECONDS * 1000) { const mb = rssMB(child.pid); if (mb !== null) samples.push({ t: Date.now() - t0, mb }); await sleep(20); }
