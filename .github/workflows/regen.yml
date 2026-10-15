@@ -1,0 +1,93 @@
+# Generated files (the docs reference and index, the agent docs, the architecture map) are never edited by hand (DEVELOPMENT-RULES, preflight G1). On a pull request into a release branch this runs
+# scripts/team/regen.mjs on Linux. When one of them is stale, the workflow commits the regenerated files to the PR branch and starts the checks on the new commit.
+# Two jobs, so the write token never meets the pull request's code: `regenerate` runs the PR's scripts with a read-only token and no stored credentials, and hands over a patch; `commit` has the write token,
+# runs none of the PR's code, and applies the patch only if it touches the allowed paths and nothing else. The golden lists (kernel/golden/*.json) are not here: they change only through golden-refresh with
+# [golden-update], and a widening needs the lead's ruling. A pull request from a fork gets no commit: the run fails and names the stale files.
+name: regen
+on:
+  pull_request:
+    branches: ["release/**"]
+permissions:
+  contents: read
+concurrency:
+  group: regen-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      stale: ${{ steps.diff.outputs.stale }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Regenerate
+        run: node scripts/team/regen.mjs
+      - name: Keep only the allowed paths, as a patch
+        id: diff
+        run: |
+          set -eu
+          git checkout -- kernel/golden 2>/dev/null || true
+          git add -A -- docs/index.json docs/reference docs/agents docs/architecture/map.md
+          if git diff --cached --quiet; then echo "the generated files are current"; echo "stale=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          other="$(git status --porcelain | grep -v '^[AMD]  ' || true)"
+          if [ -n "$other" ]; then echo "::error::regeneration changed files outside the allowed paths:"; echo "$other"; exit 1; fi
+          git diff --cached --stat
+          git diff --cached --binary > "$RUNNER_TEMP/regen.patch"
+          echo "stale=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.diff.outputs.stale == 'true'
+        with:
+          name: regen-patch
+          path: ${{ runner.temp }}/regen.patch
+          retention-days: 1
+  commit:
+    needs: regenerate
+    if: needs.regenerate.outputs.stale == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: A fork's pull request gets no commit
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::this pull request comes from a fork and the generated files are stale, so run node scripts/team/regen.mjs and commit the result"
+          exit 1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: regen-patch
+          path: ${{ runner.temp }}/patch
+      - name: Apply the patch if it is only the allowed paths, and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -eu
+          [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] || { echo "the branch moved on since this run started; the next run will regenerate"; exit 0; }
+          p="$RUNNER_TEMP/patch/regen.patch"
+          # nothing but the allowed paths, no mode changes, no symlinks, no renames
+          git apply --numstat "$p" | cut -f3 | grep -v -E '^(docs/index\.json|docs/reference/.+|docs/agents/.+|docs/architecture/map\.md)$' && { echo "::error::the patch names a path outside the allowed list"; exit 1; } || true
+          if grep -E '^(old mode|new mode|rename |copy |new file mode 120000|deleted file mode 120000)' "$p"; then echo "::error::the patch changes modes, renames or links"; exit 1; fi
+          if git apply --numstat "$p" | cut -f3 | grep -q '\.\.'; then echo "::error::the patch names a path with .."; exit 1; fi
+          git apply --index "$p"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: regenerate the generated files"
+          git push origin "HEAD:${BRANCH}"
+          # a push made with the workflow token starts no workflow, a dispatch does: every check the pull request needs, on the new commit
+          for w in node.yml app.yml box-image.yml design-pictures.yml; do gh workflow run "$w" --ref "$BRANCH" || echo "could not start $w"; done
