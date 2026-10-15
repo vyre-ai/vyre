@@ -175,6 +175,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       {s.kind === "repeat" ? (
         <>
           <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find" || x.kind === "filter").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
+          <FormulaBox label="Or any list, as a formula (optional)" value={s.over ?? ""} onChange={(over) => set({ over })} placeholder="For example trigger.items or steps.read.fields.names" />
           <Field label="Call each one" value={s.as ?? "item"} onChangeText={(as) => set({ as })} help="Inside, read it as this name, for example item.id." />
           <Field label="Go through at most" kind="number" value={String(s.max ?? 50)} onChangeText={(max) => set({ max: max === "" ? "" : Number(max) })} help="The most items to handle: 50 unless you say, 1000 at the most. When the list is longer, the run page says it was cut." />
           <Text size="caption" tone="label">The steps inside run once for each.</Text>

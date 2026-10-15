@@ -114,3 +114,10 @@ test("a condition can say contains and compare to yes or no, and a quoted number
   const built = fromDefinition(flow([{ id: "d1", kind: "decide", if: 'trigger.after.name contains "harlow"', then: [], else: [] }]), options);
   assert.deepEqual([built.steps[0].cond.mode, built.steps[0].cond.op, built.steps[0].cond.value], ["build", "contains", "harlow"]);
 });
+
+test("a Repeat step goes through any list the engine can read, not only Find results", () => {
+  const d = flow([{ id: "r1", kind: "repeat", over: "trigger.after.items", as: "item", max: 10, steps: [] }]);
+  const out = round(d);
+  assert.deepEqual([out.steps[0].kind, out.steps[0].over, out.steps[0].max], ["repeat", "trigger.after.items", 10]);
+  assert.equal(stepProblem(fromDefinition(d, options).steps[0], options), null);
+});
