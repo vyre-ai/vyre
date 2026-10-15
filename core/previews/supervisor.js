@@ -5,12 +5,13 @@
 // never goes in. Pure of Vyre: spawn and the clock are injected so tests can run a real tiny server.
 import { spawn as realSpawn } from "node:child_process";
 import net from "node:net";
+import { previewWall } from "../../lib/sandbox/preview-wall.js";
 
 export const LOG_BYTES = 200 * 1024;
 /**
  * What a preview's own command may use, as shell limits set before it runs (an agent wrote it, or the code it builds): no core files, no file larger than 1 GiB, at most 1,024 processes of the Vyre user and
- * 4,096 open files. A limit the shell cannot set is skipped and the command still runs. Network egress is not limited here: a dev server must serve on its loopback port, which the wall in lib/sandbox
- * does not allow (it denies all network), so a wall that lets only that port through is the next step.
+ * 4,096 open files. A limit the shell cannot set is skipped and the command still runs. The network is limited by lib/sandbox/preview-wall.js: the one loopback port the preview serves on, nothing else
+ * (macOS; a Linux box has no such wall yet and the log says so).
  */
 export const LIMITS = "ulimit -c 0 2>/dev/null; ulimit -f 2097152 2>/dev/null; ulimit -u 1024 2>/dev/null; ulimit -n 4096 2>/dev/null; ";
 const SAFE_ENV = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "SHELL", "TERM", "TMPDIR"];
@@ -34,7 +35,7 @@ export const free = port => new Promise(resolve => {
 
 /**
  * @typedef {"starting"|"live"|"crashed"|"stopped"} State
- * @param {{ spawn?: typeof realSpawn, log?: (m: string) => void, onState?: (id: string, state: State, info: { error?: string }) => void, now?: () => number, pollMs?: number, giveUpMs?: number }} [o]
+ * @param {{ spawn?: typeof realSpawn, log?: (m: string) => void, onState?: (id: string, state: State, info: { error?: string }) => void, now?: () => number, pollMs?: number, giveUpMs?: number, wall?: typeof previewWall }} [o]
  */
 export function createSupervisor(o = {}) {
   const spawn = o.spawn || realSpawn;
@@ -42,6 +43,7 @@ export function createSupervisor(o = {}) {
   const now = o.now || Date.now;
   const pollMs = o.pollMs ?? 300;
   const giveUpMs = o.giveUpMs ?? 90_000;
+  const wall = o.wall || previewWall;
   /** @type {Map<string, { id: string, opts: { command: string, cwd: string, port: number, env: Record<string, string> }, child: import("node:child_process").ChildProcess | null, state: State, wanted: boolean, out: string, restarts: number[], timer: ReturnType<typeof setTimeout> | null, since: number }>} */
   const entries = new Map();
 
@@ -70,7 +72,11 @@ export function createSupervisor(o = {}) {
     /** @type {Record<string, string>} */ const env = {};
     for (const k of SAFE_ENV) if (process.env[k]) env[k] = /** @type {string} */ (process.env[k]);
     Object.assign(env, e.opts.env, { PORT: String(e.opts.port), HOST: "127.0.0.1", HOSTNAME: "127.0.0.1" });
-    const child = spawn("/bin/sh", ["-c", `${LIMITS}${e.opts.command}`], { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    // the process gets its own loopback port and no other address (lib/sandbox/preview-wall.js); where this machine has no wall it runs with the limits only, and the log says so
+    const wrap = wall(e.opts.port);
+    if (!wrap) append(e, "[no network wall on this machine: this preview runs with limits only]\n");
+    const run = wrap ? wrap(`${LIMITS}${e.opts.command}`) : { cmd: "/bin/sh", args: ["-c", `${LIMITS}${e.opts.command}`] };
+    const child = spawn(run.cmd, run.args, { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     e.child = child;
     e.since = now();
     set(e, "starting");
