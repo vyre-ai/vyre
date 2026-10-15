@@ -9,7 +9,7 @@ import { fromDefinition, toDefinition } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "matter", label: "Matter", fields: [{ name: "title", label: "Title", kind: "text" }] }] };
-const scope = { trigger: { after: { title: "Refund" }, name: "Jane" }, now: Date.UTC(2026, 9, 28, 9, 0), tz: "UTC", steps: {} };
+const scope = { trigger: { after: { title: "Refund" }, name: "Jane" }, now: Date.UTC(2026, 9, 28, 9, 0), tz: "UTC", steps: {}, run: { number: 7, flow_name: "Refunds", approver_name: "Alex", starter_name: "Alex", space_name: "Harlow Legal" } };
 
 // [what is typed, what the run prints]
 const CASES = [
@@ -17,6 +17,8 @@ const CASES = [
   ["{{after.title}}", "{after.title}"],
   ["Hello {name}", "Hello Jane"],
   ["Not a token: {not a token} or {\"a\": 1}", "Not a token: {not a token} or {\"a\": 1}"],
+  ["Run {run.number} of {flow.name}", "Run 7 of Refunds"],
+  ["{{run.number}} is the number, {run.number} is this run's", "{run.number} is the number, 7 is this run's"],
   ["Plain text, no braces", "Plain text, no braces"],
 ];
 
