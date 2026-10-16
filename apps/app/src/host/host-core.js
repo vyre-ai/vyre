@@ -8,7 +8,7 @@
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
-import { commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
+import { commandOk, inviteChainId, parseInvite, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { mintPairCode } from "../../../../relay/client/pair-install.js";
 import { createSetupKey, setupFingerprint } from "../../../../relay/client/setup.js";
 import { createAddServer } from "../real/add-server.js";
@@ -66,6 +66,28 @@ export function createHost(o) {
 
   /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean }>} */
   const waits = new Map();
+  /**
+   * The link the join reads. An invite link is either `https://<space>.vyre.run/join/<token>` (names its space) or the one the owner shares, `https://vyre.run/i/<token>`, which names no server: the token carries the
+   * space's chain id, and the names directory says which space has it. A directory that names the wrong space cannot send the person anywhere else, because the join checks the space's chain against the pin the
+   * token carries (join-team.js openInvite) and a record that does not match is refused.
+   * @param {string} text
+   */
+  async function joinLinkOf(text) {
+    const p = parseInvite(text);
+    if (!p) throw bad("That link does not open a space. Ask for a new invite.");
+    if (p.legacy) return p.link;
+    const chain = inviteChainId(p.token);
+    if (!chain) throw bad("This invite does not say which space it is for. Ask for a new one.");
+    let res;
+    try { res = await f(`${base}/v1/ids/resolve?id=${encodeURIComponent(chain)}`, { headers: { accept: "application/json" } }); } catch { throw bad("Cannot reach the names directory right now.", "unreachable"); }
+    /** @type {any} */ let body = null;
+    try { body = await res.json(); } catch { /* not JSON */ }
+    const d = body && body.data;
+    const name = d && d.kind === "space" && d.id === chain && typeof d.name === "string" ? d.name.replace(/\.vyre\.run$/, "") : "";
+    if (!name || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) throw bad("That invite could not be matched to a space. Ask for a new one.", "not_found");
+    return `https://${name}.vyre.run/join/${p.token}`;
+  }
+
   /** The join cards read and not yet accepted, by link: the open stream is kept for the accept that follows. @type {Map<string, { card: any, accept: () => Promise<any>, close: () => void }>} */
   const invites = new Map();
   const stopRuns = () => { for (const w of waits.values()) w.run.stop(); };
@@ -389,7 +411,7 @@ export function createHost(o) {
       if (!ports.join) throw unsupported();
       const text = String(link || "").trim();
       if (!text) throw bad("That link does not open a space. Ask for a new invite.");
-      const inv = await ports.join(text, { id: k.id, name: k.username, pin: k.pin, key });
+      const inv = await ports.join(await joinLinkOf(text), { id: k.id, name: k.username, pin: k.pin, key });
       const was = invites.get(text);
       if (was) was.close();
       invites.set(text, inv);
@@ -403,7 +425,7 @@ export function createHost(o) {
       if (!ports.join) throw unsupported();
       const text = String(link || "").trim();
       if (!text) throw bad("That link does not open a space. Ask for a new invite.");
-      const inv = invites.get(text) || await ports.join(text, { id: k.id, name: k.username, pin: k.pin, key });
+      const inv = invites.get(text) || await ports.join(await joinLinkOf(text), { id: k.id, name: k.username, pin: k.pin, key });
       invites.delete(text);
       /** @type {any} */ let r;
       try { r = await inv.accept(); } finally { inv.close(); }

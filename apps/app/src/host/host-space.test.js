@@ -76,9 +76,12 @@ async function ready(t, extra = {}) {
       if (pp.seen.directoryDown > 0) { pp.seen.directoryDown -= 1; return new Response("{}", { status: 503 }); }
       return new Response("{}", { status: 200 });
     }
+    // Which space has this chain id: answered here as the names Worker answers it; everything else is the real Worker.
+    if (u.pathname === "/v1/ids/resolve" && u.searchParams.get("id") && pp.seen.spaceById) { pp.seen.asked.push(u.searchParams.get("id")); const r = pp.seen.spaceById(u.searchParams.get("id")); return new Response(JSON.stringify(r ? { data: r } : { error: { code: "not_found" } }), { status: r ? 200 : 404 }); }
     return d.fetch(url, init);
   };
   pp.seen.posted = posted;
+  pp.seen.asked = [];
   const host = createHost({ store, directory: d.base, fetch: fetchSeen, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5, ...extra });
   const made = await host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
   return { d, store, pp, host, made };
@@ -281,4 +284,43 @@ test("the join steps need the unlocked identity and a page that can join; withou
   assert.equal(bare.has("onboard.join.read"), false);
   assert.equal(bare.has("onboard.space.join"), false);
   assert.equal(bare.has("onboard.person.create"), true);
+});
+
+const inviteToken = (chain) => `inv_${"ab".repeat(16)}.${Buffer.from(JSON.stringify({ chain: { id: chain, seq: 3, head: "headhead" }, rk: "rk1" })).toString("base64url")}`;
+
+test("the link the owner shares, vyre.run/i/<token>, names no server: the token's chain id finds the space in the directory and the same join path runs; the other form is unchanged", async (t) => {
+  const { pp, host, made } = await ready(t);
+  const token = inviteToken("chain-of-juniper");
+  pp.seen.spaceById = (id) => (id === "chain-of-juniper" ? { kind: "space", id, name: "juniper" } : null);
+  const link = `https://vyre.run/i/${token}`;
+  const card = await host.call("onboard.join.read", { link });
+  assert.deepEqual([card.link, card.space, card.role], [link, "juniper", "admin"]);
+  assert.deepEqual(pp.seen.asked, ["chain-of-juniper"]);
+  assert.equal(pp.seen.joins[0].link, `https://juniper.vyre.run/join/${token}`, "the join reads the space's own link, which carries the pin the chain is checked against");
+  const joined = await host.call("onboard.space.join", { link });
+  assert.equal(joined.joined, true);
+  assert.equal(joined.space, "juniper");
+  assert.equal(pp.seen.joins.length, 1, "the card read first is the one accepted");
+  assert.deepEqual(pp.seen.posted.map((p) => p.body.address), ["juniper.vyre.run"]);
+
+  // The <space>.vyre.run/join/<token> form needs no directory question.
+  pp.seen.asked.length = 0;
+  await host.call("onboard.join.read", { link: `https://juniper.vyre.run/join/${token}` });
+  assert.deepEqual(pp.seen.asked, []);
+  assert.equal(pp.seen.joins.at(-1).link, `https://juniper.vyre.run/join/${token}`);
+  assert.equal(pp.seen.joins.at(-1).who.id, made.id);
+});
+
+test("a vyre.run/i link whose space the directory cannot name, names another kind of record, or is not a join token is refused in plain words and nothing is joined", async (t) => {
+  const { pp, host } = await ready(t);
+  pp.seen.spaceById = (id) => (id === "chain-person" ? { kind: "person", id, name: "juniper" } : id === "chain-wrong" ? { kind: "space", id: "other", name: "juniper" } : null);
+  for (const [link, why] of [[`https://vyre.run/i/${inviteToken("chain-unknown")}`, /could not be matched/], [`https://vyre.run/i/${inviteToken("chain-person")}`, /could not be matched/], [`https://vyre.run/i/${inviteToken("chain-wrong")}`, /could not be matched/],
+    ["https://vyre.run/i/abcdefghij", /does not say which space/], ["https://vyre.run/x/abcdefghij", /does not open a space/], ["https://evil.example/join/abcdefgh.ijklmnop", /does not open a space/]]) {
+    await assert.rejects(() => host.call("onboard.join.read", { link }), why, link);
+    await assert.rejects(() => host.call("onboard.space.join", { link }), why, link);
+  }
+  assert.deepEqual(pp.seen.joins, []);
+  assert.deepEqual((await host.call("onboard.space.list")).spaces, []);
+  pp.seen.spaceById = () => { throw new Error("down"); };
+  await assert.rejects(() => host.call("onboard.join.read", { link: `https://vyre.run/i/${inviteToken("chain-x1234567")}` }));
 });
