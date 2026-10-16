@@ -167,8 +167,8 @@ export default {
         return publicCard({ name: rec.username, id: rec.id, discoverable: rec.discoverable === true, github: rec.github });
       });
 
-    // The sign-ins on a new device that wait on the person: read, vouch for or sign out, for the owner's own username (signins.js).
-    registerSignins(ctx, { username: () => { try { const r = M.readMaster(root); return r && typeof r.username === "string" ? r.username : null; } catch { return null; } } });
+    // The sign-ins on a new device that wait on each person: read, vouch for or sign out, for the person the call is (signins.js).
+    registerSignins(ctx, { fallbackPerson: () => { try { const r = M.readMaster(root); return r && typeof r.id === "string" ? r.id : null; } catch { return null; } } });
 
     let login = { async stop() {} };
     try { login = await startLogin(ctx); } catch (e) { ctx.log && ctx.log(`identity: no sign-in door (${/** @type {Error} */ (e).message})`); }

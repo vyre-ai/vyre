@@ -15,7 +15,7 @@
       { "name": "identity.github.link", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.discover", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.card", "effect": "read", "reach": "person" },
-      { "name": "identity.signins.pending", "effect": "read", "reach": "modules" },
+      { "name": "identity.signins.pending", "effect": "read", "reach": "person" },
       { "name": "identity.signin.revoke", "effect": "write", "reach": "person" },
       { "name": "identity.signin.ack", "effect": "write", "reach": "person" }
     ]

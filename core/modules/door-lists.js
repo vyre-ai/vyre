@@ -10,6 +10,8 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A person's own sign-ins on a new device (core/identity/signins.js): every person sees, vouches for and signs out their own, for the person the kernel chain says the call is, never an input.
+  "identity.signin.ack", "identity.signin.revoke", "identity.signins.pending",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
