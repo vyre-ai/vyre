@@ -17,19 +17,21 @@ const BOB = "per_bbbbbbbbbbbbbbbbbbbbbbbbbb";
 const STRANGER = "per_cccccccccccccccccccccccccc";
 const SECRET = "vyre-space-secret-5d1e8b";
 
-/** @param {{ members?: string[], owner?: string, noKernel?: boolean }} [o] */
+/** @param {{ members?: string[], owner?: string, noKernel?: boolean, fetch?: any }} [o] */
 function rig(o = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-sp-"));
   /** @type {Map<string, any>} */ const tools = new Map();
   const members = new Set(o.members || []);
+  const events = /** @type {any[]} */ ([]);
+  const logs = /** @type {string[]} */ ([]);
   const ctx = {
-    paths: { root },
+    paths: { root }, log: (/** @type {string} */ m) => { logs.push(String(m)); }, events: { emit: (/** @type {string} */ t, /** @type {any} */ p) => { events.push([t, p]); } },
     tool: (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def),
     ...(o.noKernel ? {} : { kernel: { space: SPACE, owner: o.owner, membership: async (/** @type {string} */ person, /** @type {string} */ space) => ({ member: space === SPACE && members.has(person) }) } }),
   };
-  registerSpaceTools(ctx);
+  registerSpaceTools(ctx, o.fetch ? { fetch: o.fetch } : {});
   const call = (/** @type {string} */ name, /** @type {any} */ input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { call, tools };
+  return { call, tools, events, logs };
 }
 
 test("the space vault key is shared only with a member of that space, and only one key per member", async () => {
@@ -73,4 +75,28 @@ test("an item is stored for its hosts, and use refuses any other host before a r
       await assert.rejects(() => r.call("vault.space.use", { space: SPACE, id: "stripe", url }, caller), (/** @type {any} */ e) => e.code === "host_refused" || e.code === "bad_input", `${caller} ${url}`);
     }
   }
+});
+
+test("a lent value never reaches the response, the audit line, the log or an error, and every use is audited with the agent, the item and the host", async () => {
+  /** @type {any[]} */ const sent = [];
+  const echo = async (/** @type {string} */ url, /** @type {any} */ init) => {
+    sent.push({ url, init });
+    if (/boom/.test(url)) throw Object.assign(new Error(`connect failed with Authorization: ${init.headers.authorization}`), { code: "network" });
+    return { status: 200, headers: { get: () => "" }, text: async () => `you sent ${init.headers.authorization} and ${JSON.stringify(init.headers)}` };
+  };
+  const r = rig({ fetch: echo });
+  await r.call("vault.space.create", { space: SPACE });
+  await r.call("vault.space.put", { space: SPACE, id: "stripe", name: "Stripe", value: SECRET, hosts: ["api.example.com"] });
+  const ok = await r.call("vault.space.use", { space: SPACE, id: "stripe", url: "https://api.example.com/v1/balance" }, "mcp:agent:kit");
+  assert.equal(sent[0].init.headers.authorization, `Bearer ${SECRET}`, "the value did go out on the request");
+  assert.equal(JSON.stringify(ok).includes(SECRET), false, "and never came back");
+  await assert.rejects(() => r.call("vault.space.use", { space: SPACE, id: "stripe", url: "https://api.example.com/boom" }, "mcp:agent:kit"), (/** @type {any} */ e) => !e.message.includes(SECRET) && e.code === "network");
+  await assert.rejects(() => r.call("vault.space.use", { space: SPACE, id: "stripe", url: "https://evil.example/x" }, "mcp:agent:kit"), (/** @type {any} */ e) => e.code === "host_refused");
+  const used = r.events.filter(e => e[0] === "vault.space.used");
+  assert.equal(used.length, 3, "a use, a failed use and a refused one are each audited");
+  assert.deepEqual(used[0][1], { space: SPACE, item: "Stripe", host: "api.example.com", by: "mcp:agent:kit", ok: true, status: 200 });
+  assert.equal(used[1][1].ok, false);
+  assert.equal(used[2][1].host, "evil.example");
+  assert.equal(JSON.stringify(r.events).includes(SECRET), false, "no event carries the value");
+  assert.equal(r.logs.join("\n").includes(SECRET), false, "no log line carries the value");
 });

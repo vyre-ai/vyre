@@ -418,7 +418,10 @@ export async function lend(dir, o) {
   let hops = 0;
   for (;;) {
     assertDestination(req.url, hosts);
-    const res = await o.transport(req);
+    /** @type {any} */ let res;
+    // A transport failure never carries the value: whatever the error says is scrubbed, and the error is the caller's to see without it.
+    try { res = await o.transport(req); }
+    catch (e) { throw refuse(scrub(String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "The request did not go through."), secret) || "The request did not go through.", String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed")); }
     const status = Number(res && res.status) || 0;
     const loc = locationOf(res);
     if (REDIRECT.has(status) && loc) {

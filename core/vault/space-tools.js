@@ -11,8 +11,9 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const str = { type: "string" };
 const refuse = (message, code) => Object.assign(new Error(message), { code });
 
-/** @param {any} ctx */
-export function registerSpaceTools(ctx) {
+/** @param {any} ctx @param {{ fetch?: typeof httpFetch }} [seam] */
+export function registerSpaceTools(ctx, seam = {}) {
+  const fetchOut = seam.fetch || httpFetch;
   const dirOf = (/** @type {any} */ input) => path.join(ctx.paths.root, "identity", "space-vaults", String(input.space || ""));
   const spaceOk = (/** @type {any} */ input) => {
     if (!/^spc_[a-z2-7]{8,}$/.test(String(input.space || "")) && !/^spc_test_[a-z0-9_-]{1,40}$/.test(String(input.space || ""))) throw refuse("Name the space by its id.", "bad_input");
@@ -82,18 +83,28 @@ export function registerSpaceTools(ctx) {
       headers: { type: "object" }, body: str,
     }, ["space", "id", "url"]),
     callers: ["cli", "local", "deck", "capsule", "module", "mcp", "harness"],
-    run: async (input) => {
+    run: async (input, meta) => {
       spaceOk(input);
-      return SV.lend(dirOf(input), {
-        id: input.id,
-        request: { url: input.url, method: input.method, headers: input.headers, body: input.body },
-        // The kernel's one HTTP path: https only, a public address pinned for the connection, a size cap and a timeout. A redirect is handed back to lend(), which follows it only to a saved host.
-        transport: async (req) => {
-          const r = await httpFetch(req.url, { method: req.method, headers: req.headers, body: req.body, redirect: "manual" });
-          const location = typeof r.headers?.get === "function" ? (r.headers.get("location") || "") : "";
-          return { status: r.status, headers: location ? { location } : {}, body: await r.text() };
-        },
-      });
+      let host = "";
+      try { host = new URL(String(input.url)).host.toLowerCase(); } catch { host = ""; }
+      const item = (SV.list(dirOf(input)).items.find((/** @type {any} */ i) => i.id === String(input.id)) || {}).name || String(input.id);
+      /** @param {boolean} ok @param {number} status */
+      const audit = (ok, status) => { try { ctx.events && ctx.events.emit("vault.space.used", { space: String(input.space), item: String(item), host, by: String((meta && meta.caller) || ""), ok, status }); } catch { /* the audit line never blocks the call */ } };
+      let result;
+      try {
+        result = await SV.lend(dirOf(input), {
+          id: input.id,
+          request: { url: input.url, method: input.method, headers: input.headers, body: input.body },
+          // The kernel's one HTTP path: https only, a public address pinned for the connection, a size cap and a timeout. A redirect is handed back to lend(), which follows it only to a saved host.
+          transport: async (req) => {
+            const r = await fetchOut(req.url, { method: req.method, headers: req.headers, body: req.body, redirect: "manual" });
+            const location = typeof r.headers?.get === "function" ? (r.headers.get("location") || "") : "";
+            return { status: r.status, headers: location ? { location } : {}, body: await r.text() };
+          },
+        });
+      } catch (e) { audit(false, 0); throw e; }
+      audit(result.ok, result.status);
+      return result;
     },
   });
 }
