@@ -17,42 +17,63 @@ import { start } from "../daemon/index.js";
 import { tempHome, present, mailFixture } from "../../test/helpers.js";
 import { canonical } from "../../kernel/core/canonical.js";
 import { allowLoopbackForTests } from "../../lib/http.js";
+import { configureYes } from "../../lib/one-yes.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
 const stubPresence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
+const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+const proofFor = (/** @type {any} */ card) => ({ ok: true, payload_hash: card.payload_hash, for: canon({ op: card.request.op, fields: canon(card.request.fields) }) });
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 20_000) => { const end = Date.now() + ms; for (;;) { const v = await f(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 50)); } };
 
 async function world(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ gateCfg = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, gate: gateCfg }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: stubPresence() });
+  configureYes({ softwareOk: () => true, verify: async () => null });
+  t.after(() => configureYes({ verify: null }));
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
   const dev = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
   const tokenOf = async (/** @type {any} */ c) => ({ token: (await K.surfaces.open(c, {})).token });
-  const as = async (/** @type {string} */ p, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await tokenOf(dev(p)));
+  const as = async (/** @type {string} */ p, /** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ extra = {}) => d.registry.call(tool, input, "cli", { ...(await tokenOf(dev(p))), ...extra });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(OWNER, tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
-  const agentCall = async (/** @type {string} */ name, /** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input) => {
+  const agentCall = async (/** @type {string} */ name, /** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ approval) => {
     const row = (await ok("agents.list")).find((/** @type {any} */ a) => a.name === name);
     const uid = row && row.uid;
     assert.ok(uid, `agent ${name} has a uid`);
     const personChain = K.chains.fromFacts({ kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "direct", session: "s" });
-    return d.registry.call(tool, input, `mcp:agent:${name}`, { token: (await K.surfaces.open(personChain, { agent: uid, session: `s-${name}-${person.slice(4, 8)}`, thread: `t-${name}-${person.slice(4, 8)}` })).token, thread: "t-1", agent: name });
+    return d.registry.call(tool, input, `mcp:agent:${name}`, { token: (await K.surfaces.open(personChain, { agent: uid, session: `s-${name}-${person.slice(4, 8)}`, thread: `t-${name}-${person.slice(4, 8)}` })).token, thread: "t-1", agent: name, ...(approval ? { approval } : {}) });
   };
-  return { d, K, OWNER, dev, as, ok, agentCall };
+  const answerHeld = async (/** @type {any} */ held) => {
+    const pending = (await as(OWNER, "approvals.pending", {})).data?.approvals || [];
+    const card = pending.find((/** @type {any} */ c) => c.id === held.approval);
+    assert.ok(card, `no card ${held.approval}`);
+    const ans = await as(OWNER, "approvals.answer", { id: held.approval, approve: true }, { kernel_proof: proofFor(card) });
+    assert.ok(!ans.error, `approvals.answer: ${JSON.stringify(ans.error)}`);
+    return held.approval;
+  };
+  const throughRegistryHold = async (/** @type {string} */ name, /** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input) => {
+    let r = await agentCall(name, person, tool, input);
+    if (r.error?.code === "held_for_approval") {
+      const approval = await answerHeld(r.error);
+      r = await agentCall(name, person, tool, input, approval);
+    }
+    return r;
+  };
+  return { d, K, OWNER, dev, as, ok, agentCall, throughRegistryHold };
 }
 
 test("a standing permission over a real mail connection: the owner's agent goes out, a member's chat and another agent are held, an expiry ends it, and a followed list ignores an address added by someone without the connection", { timeout: 300_000 }, async t => {
   const w = await world(t);
-  const { K, OWNER, ok, as, agentCall } = w;
+  const { K, OWNER, ok, as, throughRegistryHold } = w;
   const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
   const via = `mail:${mail.id}`;
   await ok("agents.create", { name: "juno", kind: "agent" });
   await ok("agents.create", { name: "kit", kind: "agent" });
   await K.gateway.grants.setRole(w.dev(OWNER), { person: BEN, role: "member" }, { presence: { op: "stand-in", fields: {}, n: 1 } }).catch(() => {});
   const send = async (/** @type {string} */ agent, /** @type {string} */ person, /** @type {string} */ to) => {
-    const r = await agentCall(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+    const r = await throughRegistryHold(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
     assert.ok(!r.error, `${agent} as ${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
     const id = r.data.held || r.data.id;
     return (await ok("gate.get", { id })).state;
@@ -121,14 +142,14 @@ test("a payment is held over its limit for one payment, over its day, and in ano
 
 test("over MCP, an agent is covered by its own permission only: naming another agent in the input does not borrow it", { timeout: 300_000 }, async t => {
   const w = await world(t);
-  const { OWNER, ok, as, agentCall } = w;
+  const { OWNER, ok, as, throughRegistryHold } = w;
   const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
   const via = `mail:${mail.id}`;
   await ok("agents.create", { name: "juno", kind: "agent" });
   await ok("agents.create", { name: "kit", kind: "agent" });
   await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
   const send = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
-    const r = await agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
+    const r = await throughRegistryHold(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
     assert.ok(!r.error, `${agent}: ${JSON.stringify(r.error)}`);
     return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
   };

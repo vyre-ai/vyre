@@ -382,7 +382,7 @@ export async function createKernel(cfg) {
       // The Gate only: may THIS agent send, post or pay this by itself (a person's standing permission). Read-only and answered from the kernel's own grants: the verified call chain must end in a named agent (never the
       // default assistant or a model slot), the grant must name that agent, be live, cover the connection, hold every recipient (an address, `*@domain` or a list read now) and, for a payment, its per-act and daily amount. The
       // issuer must still be an owner or admin, or the grant matches nothing. Counts the act against the grant's daily cap, and answers { grant } or null (the Gate then asks, as it always did).
-      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number, currency?: string, agentOwner?: string | null }} */ q) => {
+      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number, currency?: string, agentOwner?: string | null, peek?: boolean }} */ q) => {
         let chain; try { chain = await handle.chain(meta || {}); } catch { return null; }
         const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null, last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
         if (!first || first.actor.kind !== "person" || !last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
@@ -404,10 +404,14 @@ export async function createKernel(cfg) {
           if (q.kind === "spend") {
             const amount = Number(q.amount);
             if (!(amount > 0) || !(Number(c.max_amount) >= amount) || !(Number(c.daily_amount) > 0) || typeof c.currency !== "string" || String(q.currency || "").toUpperCase() !== c.currency) continue;
-            try { const id = limits.reserve(chain, { key: `${g.id}|${Math.floor(now / 86_400_000)}`, meter: "standing_pay", amount, limit: Number(c.daily_amount), grant: g.id }); limits.settle(chain, id, amount); } catch { continue; }
+            if (q.peek) {
+              const used = limits.used(`${g.id}|${Math.floor(now / 86_400_000)}`, "standing_pay");
+              if (used.settled + used.reserved + amount > Number(c.daily_amount)) continue;
+            } else { try { const id = limits.reserve(chain, { key: `${g.id}|${Math.floor(now / 86_400_000)}`, meter: "standing_pay", amount, limit: Number(c.daily_amount), grant: g.id }); limits.settle(chain, id, amount); } catch { continue; } }
           } else {
             if (!c.rate || !(c.rate.n > 0)) continue;
-            try { limits.rate(chain, g.id, c.rate); } catch { continue; }
+            if (q.peek) { if (!limits.rateAllows(chain, g.id, c.rate)) continue; }
+            else { try { limits.rate(chain, g.id, c.rate); } catch { continue; } }
           }
           return { grant: g.id, source: g.source };
         }

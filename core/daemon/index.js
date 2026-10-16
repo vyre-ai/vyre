@@ -766,6 +766,18 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    if (typeof kernel.kernelFor === "function") {
+      const standK = kernel.kernelFor({ name: "gate", needs: { kernel: { actions: [], mints: [{ prefix: "outbox", actions: ["gate.act-standing"] }] } } });
+      if (typeof standK.standingFor === "function") {
+        const { gateStandingQuery } = await import("../../lib/outward-standing.js");
+        registry.deps.standingCovers = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
+          const q = gateStandingQuery(tool, input);
+          if (!q) return false;
+          const r = await standK.standingFor(meta, { ...q, agentOwner: null, peek: true });
+          return Boolean(r);
+        };
+      }
+    }
     // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
     {
       const { createPeerDoor } = await import("./peer-door.js");
