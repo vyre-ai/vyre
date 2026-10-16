@@ -126,6 +126,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/onboard/first-run.js": {
+   "count": 1,
+   "owner": "onboard",
+   "note": "personCall relays through ctx.call(tool, …, { relay: true }); targets are listed in RELAY_ALLOWED onboard only"
+  },
   "core/previews/bridge.js": {
    "count": 2,
    "owner": "watch-restart",

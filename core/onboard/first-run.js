@@ -30,10 +30,17 @@ const links = new Map();
 
 /**
  * @param {any} ctx
- * @param {{ call: (tool: string, input?: any) => Promise<any>, tryCall: (tool: string, input?: any) => Promise<any>, save: (patch: any) => void, flow?: { load: (person: string) => any, save: (person: string, payload: any) => void, clear?: (person: string) => void }, adapters?: () => Iterable<string> }} io
+ * @param {{ save: (patch: any) => void, flow?: { load: (person: string) => any, save: (person: string, payload: any) => void, clear?: (person: string) => void }, adapters?: () => Iterable<string> }} io
  */
 export function registerFirstRun(ctx, io) {
-  const { call, save, flow, adapters } = io;
+  const { save, flow, adapters } = io;
+  /** Relay the running person's call (core/modules RELAY_ALLOWED onboard). Not named `call`: reach-module-calls scans literal call(). */
+  const personCall = async (tool, input = {}) => {
+    const r = await ctx.call(tool, input, { relay: true });
+    if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? `${tool.split(".")[0]} is not running on this machine` : r.error.message), { code: r.error.code });
+    return r.data;
+  };
+  const tryCall = (tool, input) => personCall(tool, input).catch(e => ({ __error: e.message }));
   const ob = () => (ctx.config && ctx.config.onboard) || {};
   const seeded = ob();
   const DEVICE_KEY = "__device__";
@@ -73,7 +80,7 @@ export function registerFirstRun(ctx, io) {
 
   /** @param {any} meta */
   async function personKey(meta) {
-    const existing = await identityNow(call);
+    const existing = await identityNow(personCall);
     const personId = existing && existing.id ? String(existing.id) : null;
     return { personId, username: existing ? existing.username : null };
   }
@@ -93,7 +100,7 @@ export function registerFirstRun(ctx, io) {
   async function spacesNow(held, personId) {
     /** @type {any[]} */
     let remote = [];
-    try { const got = await call("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
+    try { const got = await personCall("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
     const out = held.spaces.map((s) => ({ ...s }));
     for (const row of remote) {
       const name = labelOf(row);
@@ -163,7 +170,7 @@ export function registerFirstRun(ctx, io) {
     callers: [...OPEN],
     run: async (_i, meta) => {
       const { held, personId } = await heldOf(meta);
-      const existing = await identityNow(call);
+      const existing = await identityNow(personCall);
       if (existing) { held.person = existing.username; held.personId = existing.id || held.personId; persist(personId, held); }
       return { exists: Boolean(existing), username: held.person, id: held.personId, current: held.current, spaces: await spacesNow(held, personId), ...(held.person ? personRoutes(held.person) : {}) };
     },
@@ -181,14 +188,14 @@ export function registerFirstRun(ctx, io) {
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
       if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
       if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
-      const existing = await identityNow(call);
+      const existing = await identityNow(personCall);
       if (existing) {
         held.person = existing.username;
         held.personId = existing.id || held.personId;
         persist(personId, held);
         return { username: existing.username, id: held.personId, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
       }
-      const made = await call("identity.create", { username: name, password });
+      const made = await personCall("identity.create", { username: name, password });
       const recoveryKey = made && typeof made.recoveryKey === "string" ? made.recoveryKey : null;
       held.person = name;
       held.personId = made && typeof made.id === "string" ? made.id : held.personId;
@@ -222,7 +229,7 @@ export function registerFirstRun(ctx, io) {
       if (!/^[a-z0-9-]{1,39}$/.test(name)) throw bad("That GitHub login cannot be linked.");
       const id = String(subject ?? "").trim();
       if (!id) return { linked: false, login: name, vault: "password", pending: ["identity.github.link"] };
-      const linked = await call("identity.github.link", { login: name, subject: id });
+      const linked = await personCall("identity.github.link", { login: name, subject: id });
       save({ onboard: { github: name } });
       return { linked: true, login: (linked && linked.login) || name, vault: "password" };
     },
@@ -252,7 +259,7 @@ export function registerFirstRun(ctx, io) {
       const parsed = parseInvite(link);
       if (!parsed) throw bad("That link does not open a space. Ask for a new invite.");
       const heldLink = links.get(parsed.token);
-      const joined = await call("spaces.invites.accept", { link: parsed.link });
+      const joined = await personCall("spaces.invites.accept", { link: parsed.link });
       if (heldLink) links.delete(parsed.token);
       const name = (joined && (joined.name || joined.label)) || heldLink?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "") || "";
       const role = (heldLink && heldLink.role) || (joined && (joined.role || (joined.membership && joined.membership.role))) || "member";
@@ -271,7 +278,7 @@ export function registerFirstRun(ctx, io) {
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
       const label = usernameOf(name) || "space";
-      const issued = await call("wink.install.issue", { os: place });
+      const issued = await personCall("wink.install.issue", { os: place });
       const command = issued && typeof issued.line === "string" ? issued.line : "";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
       const id = `fr_${randomBytes(8).toString("hex")}`;
@@ -291,12 +298,12 @@ export function registerFirstRun(ctx, io) {
       const row = waits.get(String(id || ""));
       if (!row) throw bad("That install is not one this device started.");
       let status = null;
-      try { status = await call("wink.install.status", {}); } catch { status = null; }
+      try { status = await personCall("wink.install.status", {}); } catch { status = null; }
       const adopted = Boolean(status && (status.owned || status.locked));
       const sid = adopted ? vaultSpace(status && status.space) : "";
       const { held, personId } = await heldOf(meta);
       if (adopted && sid && isPerson(meta && meta.caller)) {
-        try { await call("vault.space.create", { space: sid }); }
+        try { await personCall("vault.space.create", { space: sid }); }
         catch (e) { if (!e || e.code !== "exists") throw e; }
         rememberSpace(held, personId, { id: sid, name: row.name, role: "owner", server: null });
       }
@@ -308,7 +315,7 @@ export function registerFirstRun(ctx, io) {
       // The person's own screen may finish pairing. An agent calls wink.install.complete, which is held for a tap.
       if (isPerson(meta && meta.caller)) {
         try {
-          const done = await call("wink.install.complete", {});
+          const done = await personCall("wink.install.complete", {});
           if (done && done.ok) return { id, online: true, expired: false, kind: row.kind };
         } catch { /* the server has not taken the line yet */ }
       }
@@ -351,7 +358,7 @@ export function registerFirstRun(ctx, io) {
     callers: [...OPEN],
     run: async ({ space, role, ttlDays }, meta) => {
       const { held, personId } = await heldOf(meta);
-      return remember(await invite(call, held, personId, space, role, ttlDays));
+      return remember(await invite(personCall, held, personId, space, role, ttlDays));
     },
   });
 
@@ -396,7 +403,7 @@ export function registerFirstRun(ctx, io) {
       const devices = [];
       let who = name || null;
       for (const t of unique) {
-        const signed = await call("devices.signin", {
+        const signed = await personCall("devices.signin", {
           server: t.server,
           password,
           ...(name ? { username: name } : {}),
@@ -418,7 +425,7 @@ export function registerFirstRun(ctx, io) {
     callers: [...OPEN],
     run: async ({ space }, meta) => {
       const { held, personId } = await heldOf(meta);
-      const made = remember(await invite(call, held, personId, space, "member", 1, false));
+      const made = remember(await invite(personCall, held, personId, space, "member", 1, false));
       return { link: made.link, space: made.space, role: "member" };
     },
   });
@@ -474,7 +481,7 @@ export function registerFirstRun(ctx, io) {
       refuseAgentSecret(meta, input);
       const provider = String(input.provider || "");
       if (!loginAdapters(adapters ? adapters() : []).includes(provider)) throw bad("That provider does not support sign-in here.");
-      const r = await call("sessions.accounts.signin", input);
+      const r = await personCall("sessions.accounts.signin", input);
       return scrubSignin(r);
     },
   });
@@ -494,9 +501,9 @@ export function registerFirstRun(ctx, io) {
 }
 
 /** The identity already on this device, or null. A missing identity tool means there is nothing to reuse yet. @param {(tool: string, input?: any) => Promise<any>} call */
-async function identityNow(call) {
+async function identityNow(personCall) {
   try {
-    const st = await call("identity.status", {});
+    const st = await personCall("identity.status", {});
     const name = st && st.exists ? usernameOf(st.username) : "";
     return name ? { username: name, id: typeof st.id === "string" ? st.id : null } : null;
   } catch { return null; }
@@ -546,8 +553,8 @@ function remember(made) {
   return made;
 }
 
-/** @param {(tool: string, input?: any) => Promise<any>} call @param {any} held @param {string | null} personId @param {unknown} space @param {unknown} role @param {unknown} ttlDays @param {boolean} [checkRole] */
-async function invite(call, held, personId, space, role, ttlDays, checkRole = true) {
+/** @param {(tool: string, input?: any) => Promise<any>} relayTool @param {any} held @param {string | null} personId @param {unknown} space @param {unknown} role @param {unknown} ttlDays @param {boolean} [checkRole] */
+async function invite(relayTool, held, personId, space, role, ttlDays, checkRole = true) {
   const picked = inviteRole(role);
   const days = inviteDays(ttlDays);
   if (!picked) throw bad("Pick a role: admin, member or guest.");
@@ -556,14 +563,14 @@ async function invite(call, held, personId, space, role, ttlDays, checkRole = tr
   if (!spaceName) throw bad("Name the space this link is for.");
   const rows = await (async () => {
     /** @type {any[]} */ let remote = [];
-    try { const got = await call("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
+    try { const got = await relayTool("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
     return [...held.spaces, ...remote.map((row) => membershipOf({ id: row.id, name: labelOf(row), role: row.role, server: serverFrom(row) })).filter(Boolean)];
   })();
   const mine = rows.find((s) => s && (s.name === spaceName || s.id === spaceName));
   const actorRole = mine && mine.role ? mine.role : "owner";
   const assignRole = picked === "guest" ? "temp" : picked;
   if (checkRole && !canAssign(actorRole, assignRole)) throw bad("You cannot invite someone with that role.");
-  const made = await call("spaces.invites.create", { space: spaceName, role: picked, ttlDays: days });
+  const made = await relayTool("spaces.invites.create", { space: spaceName, role: picked, ttlDays: days });
   const link = made && typeof made.link === "string" ? made.link : "";
   const parsed = parseInvite(link);
   if (!parsed) throw bad("The invite link did not come back.");

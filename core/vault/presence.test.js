@@ -80,6 +80,7 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     "vault.mcp.agent.tools", "vault.mcp.agent.call",
     // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
     "vault.space.use"]);
+  // Internal tools (vault.release, vault.master.install, …): modules-only plumbing, no presence card.
   for (const n of tools.keys()) {
     const def = tools.get(n);
     if (def && def.internal) continue;
@@ -87,6 +88,7 @@ test("presence: every value-out or access-giving tool declares it, with a summar
   }
 });
 
+// vault.master.install: identity.vault.install relays here after the person approved unlock; it takes no value out and is registered internal: true (see core/vault/index.js).
 test("vault.master.install is internal module plumbing for identity.vault.install and needs no presence", async t => {
   const { tools } = await recorded(t);
   const def = tools.get("vault.master.install");
