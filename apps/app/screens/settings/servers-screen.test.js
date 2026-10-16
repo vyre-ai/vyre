@@ -17,9 +17,9 @@ test("servers screen: the add door does not depend on there being a server or a 
   void beforeAdd;
 });
 
-test("servers screen: a device with no box answers 'no servers' instead of waiting, and the typed code is offered beside the door", () => {
+test("servers screen: a device with no box answers 'no servers' instead of waiting, and no typed code is offered beside the door", () => {
   assert.match(src, /tool<[^>]*>\("spaces\.servers"\)\.catch\(\(\) => null\)/, "a failed spaces.servers is an empty list");
-  assert.match(src, /<TypeCode redeem=\{redeemPairing\}/, "a code from another device pairs a server here too");
+  assert.doesNotMatch(src, /TypeCode|redeemPairing/, "a typed code from another device is not how a server is added: the door is the install line and its pair code");
 });
 
 test("settings lists Servers whether or not anything is paired", async () => {
