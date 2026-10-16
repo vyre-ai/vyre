@@ -21,7 +21,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | --- | --- | --- | --- |
 | `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set when the Vyre app adds this server to a space. |
 | `role` | `'box'\|'local'` | none | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
-| `machine` | `'solo'\|'server'\|'device'` | none | Not described yet. |
+| `machine` | `'server'\|'device'` | none | Not described yet. |
 | `projectsDir` | `string` | none | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |
 | `roots` | `string[]` | none | More folders to look in for projects. |
 | `me` | `object` | see below | Who you are, so memory can tell your own people and domains from everyone else's. |
@@ -206,9 +206,9 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_AGENT` | The agent a thread runs as. | `core/cli/session.js`, `core/mcpconn/index.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
+| `VYRE_AGENT` | The agent a thread runs as. | `core/cli/session.js`, `core/mcpconn/index.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/offered.js`, `harness/mcp/server.js` |
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
-| `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/cli/session.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
+| `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/cli/session.js`, `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/offered.js` |
 | `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CHROME_SOCK` | Not described yet. | `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/spike/host/host.js` |
 | `VYRE_CHROME_TEST` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js`, `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |

@@ -174,6 +174,9 @@ export const OPEN_NOTES = Object.freeze({
   "wink.code.status": "reads the code that is showing now, if any",
   "wink.offers": "reads what is waiting on a person right now, with no secret",
   "wink.pair.status": "reads where a pairing is: waiting, confirm, done, failed or expired",
+  "wink.install.status": "reads whether an install line is outstanding and whether this server is owned",
+  "wink.install.issue": "issues the one install line; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "wink.install.complete": "finishes pairing after the server adopted the person; the outward flag holds the call at the Gate, and the signing key stays on this device",
   "wink.storage.card": "builds the words a person reads before adding storage, no secret",
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
@@ -373,6 +376,7 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
   "vault.space.use": "0.5.3@15 Oct 2026",
+  "releases.info": "510141976@15 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -450,6 +454,7 @@ export const DECLARED_NOTES = Object.freeze({
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+  "releases.info": "reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value",
 });
 
 const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;

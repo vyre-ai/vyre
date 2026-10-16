@@ -37,14 +37,12 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
+import { surfaceAllows, holdNeedsYou, listingMarks } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
-// relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
-// presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
 /** The sign-in tools: they authenticate a person (a passkey or the device's own key) and open a person session; the presence verifier still checks that proof. */
 const SIGN_IN = new Set(["presence.person.start"]);
 export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status"]);
@@ -113,13 +111,14 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
- * with `config.machine` -- the person's actual choice, "solo", "server" or "device" -- and this
+ * with `config.machine` -- "server" or "device" (a stored "solo" loads as a device) -- and this
  * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
  * caller, mostly tests, that still passes one directly) passes straight through unchanged.
  * @param {string} role @returns {string[]}
  */
 export function roleBuckets(role, platform = process.platform) {
   if (role === "box" || role === "local") return [role];
+  if (role === "solo") return roleBuckets("device", platform);
   // Module API 1 (ADR 0047): a manifest's "mac" or "windows" is "local" on that OS only.
   if (role === "mac") return platform === "darwin" ? ["local"] : [];
   if (role === "windows") return platform === "win32" ? ["local"] : [];
@@ -558,7 +557,7 @@ const AGENT_SURFACES = new Set(["mcp", "harness", "cli", "local"]);
  * tool at all (reviewer-2 R-1), while the open and ask-first lists apply to a proven one.
  */
 const proven = (/** @type {any} */ meta) => Boolean(meta && typeof meta.thread === "string" && meta.thread);
-export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && (!proven(meta) || (!AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool)));
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && (!proven(meta) || (!AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool))) && !surfaceAllows(caller, tool);
 /** A person-reach tool that is open to this PROVEN assistant even though the surface label is not one of the person's own. */
 export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && proven(meta) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
 /** An open-but-ask-first tool called by an assistant (proven or not): held for a one-tap task, like an outward one, and never run unproven. */
@@ -594,7 +593,7 @@ export const classReach = (caller, tool, setupExtra) => {
 export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(caller, tool, setupExtra) ?? (!callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
-  || (callers.includes("device") && deviceLabel(caller)));
+  || (callers.includes("device") && deviceLabel(caller)) || surfaceAllows(caller, tool));
 
 /**
  * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
@@ -1403,7 +1402,7 @@ export class Registry {
         const effect = effectOf(name, declaredEffect, reach);
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect), needsYou: Boolean(def.needsYou),
           internal: Boolean(def.internal) || reach === "modules",
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
@@ -1721,6 +1720,7 @@ export class Registry {
     // The one yes (DESIGN-one-yes, inventory item 4 step B). A tool the floor guards is one of two kinds. One of the THREE MOMENTS (momentOf: pairing or widening reach, a vault secret, an outward send)
     // takes a yes, and nothing else: an approved card, a device's signed yes, a reuse window a yes opened, or a 0.3.0 client's old header turned into a card at the edge (admitLegacy). Every other tool the floor
     // used to guard needs the PERSON and no proof: the callers list and the person-session checks above are what judge that, and an agent, a module acting for one or a guest is refused here.
+    let presenceOff = false; { const h = await holdNeedsYou(this, { tool, def, caller, meta, input, approval }); if (h) { if (h.error) return h; input = h.input; meta = h.meta; presenceOff = true; } }
     const presence = this.deps.presence;
     const isOut = (/** @type {string} */ n) => Boolean((this.tools.get(n) || {}).outward);
     const moment = momentOf(tool, isOut);
@@ -1733,7 +1733,7 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && !switchedOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+    } else if (presence && !switchedOff && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
       if (SIGN_IN.has(tool)) {
         // Signing in is authentication, not one of the three moments: the passkey or device key that opens a person session is checked by the presence verifier, as before (BACKLOG 0.3.2: move sign-in to the yes form too).
         const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
@@ -2025,7 +2025,7 @@ export class Registry {
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
     return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((isViaMcp(meta) && mcpPersonMay(name) && (!isViaMcpHosted(meta) || hostedKeyMay(name))) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
-      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
+      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}), ...listingMarks(name, d),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));
   }

@@ -1011,6 +1011,11 @@
     <priority>0.4</priority>
   </url>
   <url>
+    <loc>https://vyre.run/docs/adr/0056-a-server-or-a-device</loc>
+    <lastmod>2026-10-16</lastmod>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://vyre.run/docs/adr/0041-github-everywhere</loc>
     <lastmod>2026-10-16</lastmod>
     <priority>0.4</priority>

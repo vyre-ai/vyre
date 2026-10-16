@@ -58,7 +58,7 @@ The same password unlocks your vault. You can also choose **Continue with GitHub
 The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
 
-On a Windows PC the key is made with Windows Hello, which asks for your face, fingerprint or PIN. If Windows Hello is not set up, Vyre keeps the key on this PC instead.
+On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the Mac app shows.
 
 
 ## 4. Choose how you will use Vyre
@@ -68,7 +68,7 @@ The app asks how you will use it. There are two choices:
 - **Join a space.** Paste the invite link you were sent (`vyre.run/i/...`). You are in. The link carries the route, so this path never asks you about a server.
 - **Create a space.** A Linux server, or a Mac that stays on. Go to step 5.
 
-On Windows the app offers the same two choices. This PC does not run Vyre on its own.
+A Mac, a Windows PC and the web app offer the same two choices. Vyre does not run only on this computer.
 
 ## 5. Add a server
 

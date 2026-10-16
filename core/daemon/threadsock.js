@@ -5,7 +5,7 @@
 // session's, whatever it says. vyred binds the caller ("mcp:thread:<id>", "harness:thread:<id>",
 // or "mcp:agent:<name>" for an agent's thread), never reads one from the call, checks with the
 // kernel that the connecting process belongs to the session (its process, group or session, or
-// a descendant), and refuses every person-only and human-only tool outright. It closes when the
+// a descendant), and refuses human-only tools and person-only tools that are not a one-tap surface. It closes when the
 // thread stops.
 
 import crypto from "node:crypto";
@@ -14,6 +14,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
+import { isSurface } from "../../lib/surface-tools.js";
 import { canonical } from "../../lib/tool-names.js";
 import { peerPid, processTable, ancestry } from "./peer.js";
 
@@ -72,7 +73,7 @@ export async function openThreadSocket(o) {
       // The module bus (every person's planner titles, approvals, project and task events) is the app's and the CLI's, on the main socket: a session, a member's included, reads tools, not the bus.
       if (url.pathname === "/v1/events" || url.pathname.startsWith("/v1/events/")) return send(res, 404, { error: { code: "not_found", message: "a session does not read the event bus; ask for what you need with a tool (GET /v1/tools lists them)" } });
       // A session never answers, approves, proves presence or signs a person in.
-      if (tool && (PERSON_ONLY.has(tool) || HUMAN_ONLY.has(tool))) return send(res, 403, { error: { code: "denied", message: `${tool} is the person's own; a session never runs it` } });
+      if (tool && (HUMAN_ONLY.has(tool) || (PERSON_ONLY.has(tool) && !isSurface(tool)))) return send(res, 403, { error: { code: "denied", message: `${tool} is the person's own; a session never runs it` } });
       if (url.pathname.startsWith("/v1/presence") || url.pathname.startsWith("/v1/person")) return send(res, 403, { error: { code: "denied", message: "presence is the person's" } });
       // Only the session's own processes: the kernel says which process connected.
       if (!lent) {

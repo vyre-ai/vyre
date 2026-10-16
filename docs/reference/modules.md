@@ -69,7 +69,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 25 | 3 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 26 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
@@ -82,7 +82,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 26 | capsule, cli, deck |
-| [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
@@ -721,7 +721,7 @@ The built-in network as the person sees it: whether this machine is signed in, p
 - Folder: `core/onboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [25](tools.md#onboard)
+- Tools: [26](tools.md#onboard)
 - Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 
@@ -871,7 +871,7 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Folder: `core/apps`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [2](tools.md#releases)
+- Tools: [3](tools.md#releases)
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`

@@ -54,11 +54,8 @@ const state = {
   name: "",
   assistant: "",
   host: "",
-  /** The "How will Vyre run?" step's choice, config.machine's three values ("solo"|"server"|
-   * "device", docs/design/anywhere.md, ADR 0039 — not config.role, which is unrelated and
-   * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
-   * (asked, team/archive/work-journals/launch-surfaces.md "Where should Vyre live?"). */
-  /** @type {"solo"|"server"|"device"|null} */ live: null,
+  /** The "How will Vyre run?" step's choice: server or device, or null before the person picks. */
+  /** @type {"server"|"device"|null} */ live: null,
   /** The Device choice's "same Tailscale network" input: the existing server's tailnet name,
    * for the `verify{node}` call once Tailscale connects (tailnet, team/archive/work-journals/launch-surfaces.md
    * "Two separate paths for 'I have a server'"). Client-only. */
@@ -394,7 +391,7 @@ const SCREENS = {
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
-      h("p", { class: "lead" }, "You can change this later without losing anything."));
+      h("p", { class: "lead" }, "Join a space, or run Vyre on a computer that stays on."));
     const body = h("div", { class: "ob-panel" });
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);
@@ -421,18 +418,6 @@ const SCREENS = {
     const label = () => choice !== "device" ? "Continue" : via === "relay" ? "Pair" : "Connect";
 
     const syncFoot = () => s.foot({ label: label(), disabled: !choice, run: async () => {
-      if (choice === "solo") {
-        // Order matters: onboard.skip's tailscale/name calls are boxOnly() (core/onboard/index.js),
-        // refused once the machine is actually "solo" (config.isServer("solo") is false, correctly,
-        // since neither step applies to a solo machine at all). Skip them first, while this
-        // machine still counts as a server for that check, then flip it to solo - the other order
-        // silently failed the skip server-side, leaving onboard.status().steps stuck at "todo"
-        // forever even though the page had already moved on to Claude sign-in.
-        await mark_("tailscale", "skipped"); await mark_("name", "skipped");
-        await attempt("onboard.machine", { machine: "solo" });
-        await mark_("live", "done"); toClaude();
-        return;
-      }
       if (choice === "server") {
         put(st, "Setting this computer up as your server.");
         const r = await attempt("onboard.machine", { machine: "server" });
@@ -474,8 +459,7 @@ const SCREENS = {
       h("span", { class: "t" }, h("b", null, title)),
       value === via ? h("div", { class: "more" }, more) : null);
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
-      opt("solo", "Just on this computer"),
-      opt("server", "This computer stays on for me, and I'll use other devices too"),
+      opt("server", "Add a server"),
       opt("device", "I already have a Vyre server",
         relay.allowed
           ? h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },

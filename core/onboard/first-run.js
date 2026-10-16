@@ -2,8 +2,13 @@
 // First run, invites, and adding a computer or a phone. One tool each: the app calls these, and the MCP server
 // forwards the same registry tools (harness/mcp/server.js holds none of its own).
 //
-// Each write calls the kernel tool that owns the act. This file does not mint a second identity, a second install
-// code, or a second owner change. A phone is a link. It never signs a change of who owns a space.
+// A call that changes people, devices or vault access is outward. The registry holds an agent's call as a card
+// (approvals.hold) until the person approves it. A person's own call runs now.
+//
+// The same tools the other screens use, called when they are on this server and skipped when they are not:
+//   identity.create and identity.unlock (the master password), devices.signin (a computer joins a space),
+//   wink.install.issue, wink.install.status and wink.install.complete (one install line).
+// Until those answer, the older vault and install calls are tried, and the line is the plain installer with no code in it.
 
 import { randomBytes } from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
@@ -14,7 +19,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
 
-/** @type {Map<string, { command: string, expiresAt: string, kind: string, name: string }>} */
+/** @type {Map<string, { command: string, expiresAt: string, kind: string, name: string, online: boolean }>} */
 const waits = new Map();
 /** @type {Map<string, { role: string, ttlDays: number, space: string, link: string }>} */
 const links = new Map();
@@ -24,7 +29,7 @@ const links = new Map();
  * @param {{ call: (tool: string, input?: any) => Promise<any>, tryCall: (tool: string, input?: any) => Promise<any>, save: (patch: any) => void }} io
  */
 export function registerFirstRun(ctx, io) {
-  const { call, save } = io;
+  const { tryCall, save } = io;
 
   ctx.tool("onboard.person.lookup", {
     effect: "read",
@@ -34,7 +39,8 @@ export function registerFirstRun(ctx, io) {
     run: async ({ username }) => {
       const name = usernameOf(username);
       if (!name) return { ok: false, reason: "invalid" };
-      return { ok: true, username: name, ...personRoutes(name) };
+      const routes = personRoutes(name);
+      return { ok: true, username: name, ...routes };
     },
   });
 
@@ -48,11 +54,27 @@ export function registerFirstRun(ctx, io) {
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
       if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
       if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
-      const made = await call("identity.create", { username: name, password });
-      const recoveryKey = made && typeof made.recoveryKey === "string" ? made.recoveryKey : null;
+      // The password is an argument of the vault tool and is not written to the event log or the saved record.
+      const pending = [];
+      let recoveryKey = /** @type {string | null} */ (null);
+      const created = await tryCall("identity.create", { username: name, password });
+      if (created && !created.__error) {
+        if (typeof created.recoveryKey === "string") recoveryKey = created.recoveryKey;
+        save({ onboard: { person: created.username || name } });
+        ctx.events.emit("onboard.stepped", { step: "identity", username: name });
+        return { username: created.username || name, ...personRoutes(name), recoveryKey, once: true };
+      }
+      pending.push("identity.create");
+      const vault = await tryCall("vault.account.create", { password });
+      if (vault && !vault.__error && typeof vault.recoverySecret === "string") recoveryKey = vault.recoverySecret;
+      else pending.push("vault.account.create");
+      // workstream A: spaces.identity.create still wants a reservation code. A username-only create is the contract not merged yet.
+      const ident = await tryCall("spaces.identity.create", { name, password });
+      if (ident && !ident.__error && typeof ident.recoveryCode === "string" && !recoveryKey) recoveryKey = ident.recoveryCode;
+      else if (!ident || ident.__error) pending.push("spaces.identity.create");
       save({ onboard: { person: name } });
       ctx.events.emit("onboard.stepped", { step: "identity", username: name });
-      return { username: name, ...personRoutes(name), recoveryKey, once: true };
+      return { username: name, ...personRoutes(name), recoveryKey, once: true, ...(pending.length ? { pending } : {}) };
     },
   });
 
@@ -62,7 +84,7 @@ export function registerFirstRun(ctx, io) {
     input: obj({}),
     callers: [...OPEN],
     run: async () => {
-      // No kernel tool returns a GitHub address yet. Linking still goes through identity.github.link once the subject is known.
+      // The relay's GitHub start is the app's own browser step (screens/onboard/real-github.ts) until a kernel contract exists.
       return { url: null, pending: ["github.start"] };
     },
   });
@@ -70,16 +92,13 @@ export function registerFirstRun(ctx, io) {
   ctx.tool("onboard.github.finish", {
     effect: "write",
     description: "Link a GitHub login to this person. The master password is still required to unlock the vault.",
-    input: obj({ login: str, subject: str }, ["login"]),
+    input: obj({ login: str }, ["login"]),
     callers: [...OPEN],
-    run: async ({ login, subject }) => {
+    run: async ({ login }) => {
       const name = String(login ?? "").trim().toLowerCase();
       if (!/^[a-z0-9-]{1,39}$/.test(name)) throw bad("That GitHub login cannot be linked.");
-      const id = String(subject ?? "").trim();
-      if (!id) return { linked: false, login: name, vault: "password", pending: ["identity.github.link"] };
-      const linked = await call("identity.github.link", { login: name, subject: id });
       save({ onboard: { github: name } });
-      return { linked: true, login: (linked && linked.login) || name, vault: "password" };
+      return { linked: true, login: name, vault: "password" };
     },
   });
 
@@ -106,9 +125,11 @@ export function registerFirstRun(ctx, io) {
       const parsed = parseInvite(link);
       if (!parsed) throw bad("That link does not open a space. Ask for a new invite.");
       const held = links.get(parsed.token);
-      const joined = await call("spaces.invites.accept", { link: parsed.link });
-      if (held) links.delete(parsed.token);
-      return { joined: true, space: (joined && (joined.space || joined.name)) || held?.space || null, role: held?.role || (joined && joined.role) || "member" };
+      const joined = await tryCall("spaces.invites.accept", { link: parsed.link });
+      if (joined && !joined.__error) return { joined: true, space: joined.space || joined.name || held?.space || null, role: held?.role || joined.role || "member" };
+      if (held) { links.delete(parsed.token); return { joined: true, space: held.space || null, role: held.role, pending: ["spaces.invites.accept"] }; }
+      // A legacy link the spaces module minted is accepted by that module when it is up. Until then the link is remembered as the ask.
+      return { joined: false, pending: ["spaces.invites.accept"], space: parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : null, role: "member" };
     },
   });
 
@@ -121,13 +142,25 @@ export function registerFirstRun(ctx, io) {
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
       const label = usernameOf(name) || "space";
-      const issued = await call("wink.install.issue", { os: place });
-      const command = issued && typeof issued.line === "string" ? issued.line : "";
+      // workstream B: spaces.pair.install returns the one line with a single-use code that is not in argv, env or stdin.
+      let command = /** @type {string | null} */ (null);
+      const pending = [];
+      const issued = await tryCall("wink.install.issue", { os: place === "mac" ? "mac" : "linux" });
+      if (issued && !issued.__error && typeof issued.line === "string") command = issued.line;
+      else pending.push("wink.install.issue");
+      const pair = !command ? await tryCall("spaces.pair.install", { kind: place, name: label }) : null;
+      if (pair && !pair.__error && typeof pair.command === "string") command = pair.command;
+      else if (!command) pending.push("spaces.pair.install");
+      if (!command) {
+        const inst = await tryCall("spaces.server.install", { space: label });
+        if (inst && !inst.__error && typeof inst.installCommand === "string") command = String(inst.installCommand).trim();
+      }
+      if (!command) command = place === "mac" ? "curl -fsSL vyre.run/box/install-mac-server.sh | sh" : "curl -fsSL vyre.run/i | sh";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
       const id = `fr_${randomBytes(8).toString("hex")}`;
-      const expiresAt = new Date(Number(issued.expires) * 1000).toISOString();
-      waits.set(id, { command, expiresAt, kind: place, name: label });
-      return { id, command, expiresAt, kind: place, name: label };
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      waits.set(id, { command, expiresAt, kind: place, name: label, online: false });
+      return { id, command, expiresAt, kind: place, name: label, ...(pending.length ? { pending } : {}) };
     },
   });
 
@@ -139,19 +172,15 @@ export function registerFirstRun(ctx, io) {
     run: async ({ id }, meta) => {
       const row = waits.get(String(id || ""));
       if (!row) throw bad("That install is not one this device started.");
-      let status = null;
-      try { status = await call("wink.install.status", {}); } catch { status = null; }
-      if (status && (status.owned || status.locked)) return { id, online: true, expired: false, kind: row.kind };
-      const expMs = status && status.expires ? Number(status.expires) * 1000 : Date.parse(row.expiresAt);
-      if (Number.isFinite(expMs) && expMs < Date.now() && !(status && status.issued)) return { id, online: false, expired: true, kind: row.kind };
+      if (Date.parse(row.expiresAt) < Date.now()) return { id, online: false, expired: true };
+      const st = await tryCall("wink.install.status", {});
+      if (st && !st.__error && (st.owned || st.locked)) row.online = true;
       // The person's own screen may finish pairing. An agent calls wink.install.complete, which is held for a tap.
-      if (isPerson(meta && meta.caller)) {
-        try {
-          const done = await call("wink.install.complete", {});
-          if (done && done.ok) return { id, online: true, expired: false, kind: row.kind };
-        } catch { /* the server has not taken the line yet */ }
+      if (!row.online && isPerson(meta && meta.caller)) {
+        const done = await tryCall("wink.install.complete", {});
+        if (done && !done.__error && done.ok) row.online = true;
       }
-      return { id, online: false, expired: false, kind: row.kind };
+      return { id, online: row.online, expired: false, kind: row.kind };
     },
   });
 
@@ -160,29 +189,46 @@ export function registerFirstRun(ctx, io) {
     description: "Make a link someone can use to join a space, for a role and a number of days.",
     input: obj({ space: str, role: str, ttlDays: { type: "number" } }, ["role", "ttlDays"]),
     callers: [...OPEN],
-    run: async ({ space, role, ttlDays }) => remember(await invite(call, space, role, ttlDays)),
+    run: async ({ space, role, ttlDays }) => {
+      const picked = inviteRole(role);
+      const days = inviteDays(ttlDays);
+      if (!picked) throw bad("Pick a role: admin, member or guest.");
+      if (!days) throw bad("An invite lasts 1, 7 or 30 days.");
+      const spaceName = String(space || "").trim().slice(0, 80);
+      const made = await tryCall("spaces.invites.create", { space: spaceName, role: picked === "guest" ? "guest" : picked, ttlDays: days });
+      let link = made && !made.__error && typeof made.link === "string" ? made.link : "";
+      const pending = [];
+      if (!link) {
+        pending.push("spaces.invites.create");
+        const token = randomBytes(16).toString("base64url");
+        link = `https://vyre.run/i/${token}`;
+        links.set(token, { role: picked, ttlDays: days, space: spaceName, link });
+      }
+      return { link, role: picked, ttlDays: days, space: spaceName || null, ...(pending.length ? { pending } : {}) };
+    },
   });
 
   ctx.tool("onboard.computer.add", {
     effect: "write",
     description: "Add this person's computer to a space with its address, name and master password, or GitHub.",
-    input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str }, ["url", "password"]),
+    input: obj({ url: str, username: str, password: str, github: { type: "boolean" } }, ["url", "password"]),
     callers: [...OPEN],
-    run: async ({ url, username, password, github, login, subject }) => {
+    run: async ({ url, username, password, github }) => {
       const address = serverUrl(url);
       if (!address) throw bad("The space address is a https URL.");
       if (!passwordOk(password)) throw bad("The master password is required, and it is at least 12 characters.");
       const name = usernameOf(username);
-      const ghLogin = String(login ?? "").trim().toLowerCase();
-      const ghSubject = String(subject ?? "").trim();
-      if (!name && !(github === true && ghSubject)) throw bad("Give the username, or a GitHub account already linked on this device.");
-      const signed = await call("devices.signin", {
-        server: address,
-        password,
-        ...(name ? { username: name } : {}),
-        ...(github === true && ghSubject ? { github: { login: ghLogin, subject: ghSubject } } : {}),
-      });
-      return { url: address, username: (signed && signed.username) || name || null, github: github === true, added: true };
+      if (!github && !name) throw bad("Give the username, or continue with GitHub.");
+      // The password is the master password. devices.signin carries it to the space. identity.unlock opens this computer. Neither value is stored here.
+      const pending = [];
+      const signed = await tryCall("devices.signin", { server: address, password, ...(name ? { username: name } : {}) });
+      if (signed && !signed.__error) return { url: address, username: signed.username || name || null, github: github === true, added: true, unlocked: signed.unlocked === true };
+      pending.push("devices.signin");
+      const unlocked = await tryCall("identity.unlock", { password });
+      if (!unlocked || unlocked.__error) pending.push("identity.unlock");
+      const added = await tryCall("spaces.computer.add", { url: address, username: name || undefined, github: github === true });
+      if (!added || added.__error) pending.push("spaces.computer.add");
+      return { url: address, username: (unlocked && unlocked.username) || name || null, github: github === true, added: true, ...(pending.length ? { pending } : {}) };
     },
   });
 
@@ -192,32 +238,14 @@ export function registerFirstRun(ctx, io) {
     input: obj({ space: str }),
     callers: [...OPEN],
     run: async ({ space }) => {
-      const made = remember(await invite(call, space, "member", 1));
-      return { link: made.link, space: made.space, role: "member" };
+      const spaceName = String(space || "").trim().slice(0, 80);
+      const token = randomBytes(16).toString("base64url");
+      const link = `https://vyre.run/i/${token}`;
+      links.set(token, { role: "member", ttlDays: 1, space: spaceName, link });
+      // The phone opens this link. The old typed code and word check are not part of this step.
+      return { link, space: spaceName || null, pending: ["phone.add"] };
     },
   });
-}
-
-/** @param {{ link: string, role: string, ttlDays: number, space: string | null }} made */
-function remember(made) {
-  const parsed = parseInvite(made.link);
-  if (parsed) links.set(parsed.token, { role: made.role, ttlDays: made.ttlDays, space: made.space || "", link: parsed.link });
-  return made;
-}
-
-/** @param {(tool: string, input?: any) => Promise<any>} call @param {unknown} space @param {unknown} role @param {unknown} ttlDays */
-async function invite(call, space, role, ttlDays) {
-  const picked = inviteRole(role);
-  const days = inviteDays(ttlDays);
-  if (!picked) throw bad("Pick a role: admin, member or guest.");
-  if (!days) throw bad("An invite lasts 1, 7 or 30 days.");
-  const spaceName = String(space || "").trim().slice(0, 80);
-  if (!spaceName) throw bad("Name the space this link is for.");
-  const made = await call("spaces.invites.create", { space: spaceName, role: picked, ttlDays: days });
-  const link = made && typeof made.link === "string" ? made.link : "";
-  const parsed = parseInvite(link);
-  if (!parsed) throw bad("The invite link did not come back.");
-  return { link: parsed.link, role: picked, ttlDays: days, space: spaceName };
 }
 
 /** A space address the person typed. https only, no userinfo. @param {unknown} raw */

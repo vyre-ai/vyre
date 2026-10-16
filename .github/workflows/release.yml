@@ -315,9 +315,10 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           retention-days: 7
 
-  # The Windows installer, built inside this run by the reusable lumen-win workflow (its own pinned toolchain, --locked, NSIS, unsigned for 0.2),
-  # so a release can never race it or ship without it: `release` needs this job and fails if the installer is not in the artifact. It holds no key;
-  # the installer is listed in SHA256SUMS and the signed manifest like every other file.
+  # The Windows installer, built inside this run by the reusable lumen-win workflow (its own pinned toolchain, --locked, NSIS).
+  # `release` needs this job and fails if the installer is not in the artifact. This job names no certificate secret.
+  # On a publish, lumen-win's sign job runs in the "windows" environment and Authenticode-signs when that environment
+  # has the certificate; otherwise the unsigned installer is still published and the status file names each missing secret.
   windows:
     needs: prepare
     uses: ./.github/workflows/lumen-win.yml
@@ -325,6 +326,7 @@ jobs:
       contents: read
     with:
       tag: ${{ needs.prepare.outputs.tag }}
+      sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
   # The Vyre Mac app, stable only: Vyre-aarch64.dmg and Vyre-x86_64.dmg (and their zips), built inside this run by the reusable
   # mac-app workflow. It holds no release key. On a publish it runs in the protected GitHub Environment "apple" (the same approver as the release
@@ -524,9 +526,25 @@ jobs:
           name: app-windows-${{ github.sha }}
           path: ${{ runner.temp }}/windows
       - name: Add the Windows installer to dist (required, never optional)
+        env:
+          WINDOWS_SIGNING: ${{ vars.WINDOWS_SIGNING }}
         run: |
           exe="Vyre_${VERSION}_x64-setup.exe"
           [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not $exe; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
+          # The sign job writes windows-sign.status: signed=authenticode, or signed=unsigned plus one missing= line per secret.
+          # The repo variable WINDOWS_SIGNING=required fails a publish that is still unsigned. The status is bound to the bytes.
+          st="$RUNNER_TEMP/windows/windows-sign.status"
+          [ -f "$st" ] || { echo "the Windows build has no signing status; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
+          sed "s/^/Windows: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
+          if grep -qx "signed=authenticode" "$st"; then :
+          elif grep -qx "signed=unsigned" "$st"; then
+            if [ "$PUBLISH" = true ] && [ "$WINDOWS_SIGNING" = required ]; then
+              echo "WINDOWS_SIGNING is required but the Windows installer is not Authenticode signed; failing the release"; exit 1
+            fi
+          else echo "the Windows status is neither Authenticode signed nor unsigned; refusing"; cat "$st"; exit 1; fi
+          want=$(sed -n "s/^sha256:$exe=//p" "$st" | head -n 1)
+          got=$(sha256sum "$RUNNER_TEMP/windows/$exe" | cut -d' ' -f1)
+          [ -n "$want" ] && [ "$want" = "$got" ] || { echo "the Windows status does not match $exe (status says '$want', the file is $got); refusing"; exit 1; }
           # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes. Both are in dist before
           # SHA256SUMS is made, so both are in the signed list.
           cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"

@@ -57,8 +57,11 @@ serves, at its address, and the app shows a notification for what needs you. It 
 logon, and it updates itself. It pairs with your server by a code shown as a QR and 13 words.
 There is no Windows version of the Mac's screen context, computer use or voice yet.
 
-The Windows app is not signed with a Windows certificate yet, so Windows may say it does not
-recognize the app. Choose More info, then Run anyway.
+The Windows app is Authenticode signed only when the release was built with a Windows certificate
+in place. Until then Windows may say it does not recognize the app. Choose More info, then Run anyway.
+The app tries Windows Hello for its device key, then the TPM, then Windows data protection. A Hello
+prompt on each signature has not been shown on a real PC, so the app asks in its own window first
+and that key cannot change who speaks for your name.
 
 The first install checks the installer against the release's `SHA256SUMS`, both fetched over
 https. Every update after that is checked by the app itself: it installs a newer version only
