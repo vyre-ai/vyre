@@ -45,10 +45,14 @@ export async function startGithub() {
   catch (e) { return fail(e); }
 }
 
-/** @param {string} login */
-export async function finishGithub(login) {
-  if (MOCK) return { ok: true, linked: true, login, vault: "password" };
-  try { return done(await tool("onboard.github.finish", { login })); }
+/** @param {string} [login] @param {string} [code] */
+export async function finishGithub(login, code) {
+  if (MOCK) return { ok: true, linked: true, login: login || "sam-builds", vault: "password" };
+  /** @type {Record<string, string>} */
+  const input = {};
+  if (login) input.login = login;
+  if (code) input.code = code;
+  try { return done(await tool("onboard.github.finish", input)); }
   catch (e) { return fail(e); }
 }
 

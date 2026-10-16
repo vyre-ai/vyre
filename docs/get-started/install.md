@@ -53,7 +53,7 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 ## 3. Create your identity
 
 Open the app. It asks for a username and a master password. The username is your page at `vyre.run/u/your-name`.
-The same password unlocks your vault. You can also choose **Continue with GitHub**. The address it opens is the one set for this computer. GitHub signs you in. The master password is still required.
+The same password unlocks your vault. You can also choose **Continue with GitHub**. The address it opens is the one set for this computer. GitHub signs you in, and the account id is read from GitHub. The master password is still required.
 
 The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.

@@ -120,6 +120,23 @@ export function FirstRun() {
     setBusy(false);
   }, [busy]);
 
+  const continueWithGithub = async (suggestName: boolean) => {
+    const r = await startGithub();
+    if (!r.ok) { setFailure(r.message); return; }
+    const login = r.user && r.user.login ? String(r.user.login) : "";
+    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (!login && !r.exchange) return;
+    const done = await finishGithub(login);
+    if (!done.ok) { setFailure(done.message); return; }
+    if (!done.linked) { setFailure("Approve GitHub in the window, then press Continue with GitHub again."); return; }
+    const who = String(done.login || login);
+    if (suggestName) {
+      const suggested = nameFromLogin(who);
+      if (suggested && !username) setUsername(suggested);
+    }
+    setGithub(true);
+  };
+
   const strength = passwordStrength(password);
   const nameOk = Boolean(usernameOf(username));
   const passOk = strength.score >= 3 && passwordOk(password) && password === confirm;
@@ -138,19 +155,7 @@ export function FirstRun() {
         <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
         <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
         <PasswordField label="Confirm master password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same master password again." : undefined} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await startGithub();
-          if (!r.ok) { setFailure(r.message); return; }
-          const login = r.user && r.user.login ? String(r.user.login) : "";
-          if (login) {
-            const done = await finishGithub(login);
-            if (!done.ok) { setFailure(done.message); return; }
-            const suggested = nameFromLogin(login);
-            if (suggested && !username) setUsername(suggested);
-            setGithub(true);
-          }
-          if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
-        })} />
+        <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />
       </FlowStep>
     );
   }
@@ -273,16 +278,7 @@ export function FirstRun() {
         <ServerUrlField value={url} onChangeText={setUrl} error={url && !urlOk ? "Use a https address, with no password in it." : undefined} />
         {github ? <Text tone="muted">GitHub will sign you in. Type the master password to unlock the vault.</Text> : <Field label="Username" value={username} onChangeText={setUsername} />}
         <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await startGithub();
-          if (!r.ok) { setFailure(r.message); return; }
-          const login = r.user && r.user.login ? String(r.user.login) : "";
-          if (login) {
-            const done = await finishGithub(login);
-            if (!done.ok) { setFailure(done.message); return; }
-            setGithub(true);
-          }
-        })} />
+        <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(false))} />
       </FlowStep>
     );
   }
