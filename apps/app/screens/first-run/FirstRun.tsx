@@ -8,11 +8,10 @@ import {
 import { JOIN_COPY, PHASES, afterIdentity, commandOk, entryScreen, passwordOk, phaseOf, usernameOf } from "../../../../lib/first-run-shape.js";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin } from "../onboard/flow-model.js";
-<<<<<<< HEAD
-import { addComputer, addPhone, chooseSpace, createPerson, finishGithub, joinSpace, listSpaces, makeInvite, openSpace, personStatus, pollSpace, readInvite, startGithub } from "./real.js";
-=======
-import { addComputer, addPhone, createPerson, finishFirstRun, finishGithub, joinSpace, makeInvite, openSpace, pollSpace, readInvite, startGithub } from "./real.js";
->>>>>>> origin/cursor/windows-onboarding-mcp-0651
+import {
+  addComputer, addPhone, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listSpaces,
+  makeInvite, openSpace, personStatus, pollSpace, readInvite, startGithub,
+} from "./real.js";
 
 type Screen = "id.create" | "id.recovery" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
 
@@ -304,17 +303,13 @@ export function FirstRun() {
 
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
-<<<<<<< HEAD
-    <FlowStep steps={steps} hero mark="done" title="You're in" lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
-      primary={{ label: "Open Vyre", onPress: () => router.replace("/u/now" as never) }}
-=======
-    <FlowStep steps={steps} hero mark="done" title="You're in" lead={space ? `${space} is ready.` : "Your identity is ready."}
+    <FlowStep steps={steps} hero mark="done" title="You're in"
+      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
       primary={{ label: "Open Vyre", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
         router.replace("/u/now" as never);
       }) }}
->>>>>>> origin/cursor/windows-onboarding-mcp-0651
       secondary={{ label: "Invite someone", onPress: () => go("invite.share") }}>
       {spaces.length > 1 ? (
         <SpaceSwitcherTitle spaces={spaces.map((s) => ({ id: s.id, name: s.name }))} space={showing?.id || spaces[0].id} onSpace={(id) => void run(async () => {
