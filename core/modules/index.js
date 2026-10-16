@@ -109,7 +109,9 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
-  term: (/** @type {string} */ as) => isPerson(as) };
+  term: (/** @type {string} */ as) => isPerson(as),
+  // threads replays the asking person to planner, recall and mentions on a composer's / line and on ingress tags, never the module's own chain.
+  threads: (/** @type {string} */ as) => isPerson(as) || /^link:[^\s:]+$/.test(String(as)) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -635,7 +637,7 @@ const inRepo = (dir, paths) => {
 };
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
-const IN_SPACE = Symbol("vyre.in_space");
+export const IN_SPACE = Symbol("vyre.in_space");
 /** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
 const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by the views and capsule modules, beside `asked`: the person's own confirmation of exactly these words (a fresh preview and its hash). A symbol key cannot come over the wire. */
@@ -662,6 +664,8 @@ const RELAY_ALLOWED = Object.freeze({
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
+  mentions: ["vault.mention.search", "vault.mention.resolve"],
 });
 
 export class Registry {
@@ -1272,7 +1276,9 @@ export class Registry {
         const relayed = m.name === "pluginagent" && tool === "agents.delete" && opts && opts.relay && typeof opts.relay === "object" ? { ...(opts.relay.kernelFacts ? { kernelFacts: opts.relay.kernelFacts } : {}), ...(opts.relay.kernel_proof ? { kernel_proof: opts.relay.kernel_proof } : {}) } : {};
         // agents relays the asking person to threads.send and threads.release WITH that person's own verified facts (the ones their agents.ask arrived with): the chat gate judges the person, and a
         // relay without them would be refused for every person who asks an agent from a device.
-        const cur = (m.name === "agents" && agentsMayRelay(tool)) || m.name === "mentions" ? currentCall() : null;   // mentions replays the asking person to a provider's search, so a provider answers for that person
+        const personAs = as && isPerson(String(as));
+        const mentionsRelay = m.name === "mentions" && (String(as) === "module:sessions" || String(as) === "module:assistant");
+        const cur = (personAs || mentionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.

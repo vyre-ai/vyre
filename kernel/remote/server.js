@@ -203,7 +203,8 @@ export function createRemoteServer(cfg) {
               joined = { person: peer.person, invite: String(callArgs[0]), key_id: bind.key_id };
             }
             let result;
-            try { result = await (request.call.startsWith("records.") ? guardRecordsCall(request.call.slice(8), target.fn, trustedChain) : target.fn)(who.chain, ...callArgs); }
+            const peerArg = request.call === "chat.open" ? peer : undefined;
+            try { result = await (request.call.startsWith("records.") ? guardRecordsCall(request.call.slice(8), target.fn, trustedChain) : target.fn)(who.chain, ...callArgs, ...(peerArg ? [peerArg] : [])); }
             catch (e) {
               // all or nothing: an accept that does not finish leaves no key behind (the person asks again with a fresh accept)
               if (joined && typeof k.unjoinKey === "function") { try { await k.unjoinKey({ chain: who.chain, ...joined }); } catch { /* the key stays only if the sealing process cannot be reached; it is a newcomer key for a valid invite */ } }

@@ -15,13 +15,14 @@ import { peerDuplex, peerWanted } from "../real/peer";
 import { showingJoined, teamCall, teamSession } from "../real/team-join";
 import { tool } from "../real/box";
 import { useSpaces } from "../../screens/shell/state";
-import { pollDuplex } from "./member-poll.js";
+import { liveDuplex } from "./member-live.js";
 import { AppState, Platform } from "react-native";
 import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
 import { replyInput } from "./reply.js";
 import { viewerZone } from "../time/show.js";
+import { routeComposerLine } from "../../../lib/thread-composer-route.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
@@ -35,7 +36,7 @@ export type SessionActions = {
   /** A new session with the conversation up to (not including) `at`; resolves with its id. */
   branch(at: string): Done;
   /** Send a message; resolves with why it was refused, or null. */
-  sendText(text: string, o?: { mentions?: Mention[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null>;
+  sendText(text: string, o?: { message?: string; mentions?: Mention[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null>;
   /** Tell the chat this person is typing (shown to the others for a few seconds; nothing is kept). */
   typing(): void;
   stopSession(): Promise<string | null>;
@@ -65,17 +66,16 @@ async function write(tool: string, input: Record<string, unknown>) {
 export function boxStream(session: string): BoxStream {
   let viewer: string | undefined;
   let head = 0;
-  // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read over the member door (chat.read, polled, src/chat/member-poll.js) and written through the door's
+  // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read live over the member door (`chat.open`, src/chat/member-live.js) and written through the door's
   // calls, never through her own home. Anything else, her own home's chats and the owner's, takes the paths below exactly as before.
-  let teamP: Promise<string | null> | null = null;
-  const teamSpace = (): Promise<string | null> => (teamP ??= (async () => {
+  const teamSpace = async (): Promise<string | null> => {
     try {
       if (!(await showingJoined())) return null;
       const sp = useSpaces.getState().space;
       await tool("work.chat.get", { chat: session });
       return sp;
     } catch { return null; }
-  })());
+  };
   const seen = () => (Platform.OS === "web" ? typeof document === "undefined" || document.visibilityState !== "hidden" : AppState.currentState === "active");
   const writeVia = async (name: string, input: Record<string, unknown>) => {
     if (!(await teamSpace())) return write(name, input);
@@ -89,7 +89,7 @@ export function boxStream(session: string): BoxStream {
       if (team) {
         const sess = await teamSession(team);
         try {
-          const d = await pollDuplex({ call: (n, a) => sess.call(n, a), chat: session, from, visible: seen, onEnd: () => sess.close() });
+          const d = await liveDuplex({ openChat: (chat, from, h) => sess.openChat(chat, from, h), chat: session, from, onEnd: () => sess.close() });
           if (typeof d.info.head === "number") head = d.info.head;
           if (d.info.viewer) viewer = d.info.viewer;
           return d;
@@ -150,12 +150,27 @@ export function boxStream(session: string): BoxStream {
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
-    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
+    sendText: async (text, o) => {
+      const message = o?.message ?? newUuid();
+      const route = routeComposerLine(text);
+      const chips = o?.mentions?.slice(0, 8).map((m) => ({ kind: m.kind, id: m.id, name: m.name }));
+      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+        const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(chips?.length ? { mentions: chips } : {}) });
+        return r.error ? reason(r.error) : null;
+      }
+      return note("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(chips?.length ? { chips } : {}) });
+    },
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
+      const route = routeComposerLine(text);
+      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+        const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(opts.mode ? { mode: opts.mode } : {}) });
+        if (r.error) return { ok: false, reason: reason(r.error) };
+        return { ok: true, message, answers: [] };
+      }
       const r = await writeVia("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.account ? { account: opts.account } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };

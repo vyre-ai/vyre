@@ -220,7 +220,12 @@ export default {
     ctx.tool("assistant.glance", {
       description: "The morning glance: {day, waiting, running, finished, next, lines}, three lines at most. Reads only, no model call.",
       input: { type: "object", properties: {} },
-      run: async (_, meta = {}) => { await gate(meta); return glance(asCall); },
+      run: async (_, meta = {}) => {
+        await gate(meta);
+        let person = null;
+        try { person = await personOf(meta, false); } catch { /* a call with no person: nothing is muted */ }
+        return glance(asCall, { person });
+      },
     });
 
     ctx.tool("assistant.capabilities", {

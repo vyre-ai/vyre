@@ -11,6 +11,7 @@ import { label } from "./brief.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
+import { ownerWideRead, isStaffPerson, memberReachProjects } from "../../lib/member-scope.js";
 import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
 import { backupSources } from "./backup.js";
@@ -538,16 +539,30 @@ export default {
     });
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
-      input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },
+      input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean", description: "deprecated: use person_id from lib/member-scope chainPerson" }, person_id: str } },
       callers: ["module"],
-      run: async ({ agent, caller, kind = "content", person, thread, claim }) => {
+      run: async ({ agent, caller, kind = "content", person, person_id, thread, claim }) => {
         const said = reachAgentOf(caller, claim);
         if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}; name the agent you are, or leave agent out`, "denied");
         const who = said || agent || null;
         if (!who) {
-          // The asking module passes `person` from the kernel's chain for the call (exactly one person hop): then that fact, never the label, decides the owner. Without it (no kernel) the labels do, as before.
-          if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; ask the person to do this`, "denied"); }
-          if (reachOwner(caller) || reachOwnSession(caller, thread, claim) || ownerDevice(caller)) return { all: true, agent: null };
+          const K = ctx.kernel;
+          const pid = typeof person_id === "string" && person_id ? String(person_id) : null;
+          if (pid && K) {
+            if (await isStaffPerson(K, pid)) return { all: true, agent: null };
+            return { all: false, agent: null, projects: await memberReachProjects(ctx, P, pid) };
+          }
+          // Legacy boolean: only staff when kernel forwards person_id; boolean true alone no longer means owner-wide for every person hop.
+          if (typeof person === "boolean" && person && !pid) {
+            if (String(caller || "").startsWith("module:")) return { all: true, agent: null };
+            throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; forward person_id from the kernel chain`, "denied");
+          }
+          const wide = await ownerWideRead(K, {}, caller, {
+            ownerDevice,
+            reachOwner,
+            reachOwnSession: c => reachOwnSession(c, thread, claim),
+          });
+          if (wide) return { all: true, agent: null };
           throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; ask the person to do this`, "denied");
         }
         const r = await ctx.call("agents.list", {});

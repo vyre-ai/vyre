@@ -143,9 +143,19 @@ test("adapter: an older switchboard without thread.status still gets turn and st
   assert.equal(a.event(ev("thread.stopped", { reason: "restart" }))[0].data.state, "paused");
 });
 
+test("adapter: thread.remembered is a notice naming the file", () => {
+  const a = createAdapter();
+  const n = a.event(ev("thread.remembered", { scope: "project", file: "/home/alex/work/juniper-studio/CLAUDE.md" }));
+  assert.deepEqual(kinds(n), ["text-delta", "text-done"]);
+  assert.equal(n[0].data.notice, true);
+  assert.match(n[0].data.text, /Remembered in CLAUDE\.md \(this project\)/);
+  const local = a.event(ev("thread.remembered", { scope: "local", file: "/work/northwind/CLAUDE.local.md" }));
+  assert.match(local[0].data.text, /CLAUDE\.local\.md \(this folder, not shared\)/);
+});
+
 test("adapter: header-only and unknown events map to nothing", () => {
   const a = createAdapter();
-  for (const t of ["thread.usage", "thread.limit", "mode.changed", "model.switched", "thinking.switched", "thread.remembered", "settings.changed"]) assert.deepEqual(a.event(ev(t, { x: 1 })), [], t);
+  for (const t of ["thread.usage", "thread.limit", "mode.changed", "model.switched", "thinking.switched", "settings.changed"]) assert.deepEqual(a.event(ev(t, { x: 1 })), [], t);
   assert.deepEqual(a.event(/** @type {any} */ (null)), []);
 });
 

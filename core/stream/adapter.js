@@ -200,6 +200,11 @@ export function createAdapter() {
           return typeof p.run === "string" && /^[0-9a-f]{12}$/.test(p.run) ? [spec("tool-finished", { tool_id: `op:${p.run}`, ok: true, result: { block: "operator", run: p.run, computer: String(p.computer || "").slice(0, 64), title: String(p.title || "A computer").slice(0, 120), state: String(p.state || "working"), line: String(p.line || "").slice(0, 160), ask: String(p.ask || "").slice(0, 120), steps: (Array.isArray(p.steps) ? p.steps : []).slice(-7).map((/** @type {any} */ x) => ({ line: String(x && x.line || "").slice(0, 160), state: String(x && x.state || "done") })) } })] : [];
         case "thread.signin":
           return typeof p.id === "string" && /^[0-9a-f]{12}$/.test(p.id) ? [spec("tool-finished", { tool_id: `signin:${p.id}`, ok: true, result: { block: "signin", id: p.id, computer: String(p.computer || "").slice(0, 64), site: String(p.site || "").slice(0, 80), why: String(p.why || "").slice(0, 200), state: String(p.state || "waiting") } })] : [];
+        case "thread.remembered": {
+          const file = String(p.file ?? "").split(/[\\/]/).pop() || "CLAUDE.md";
+          const where = p.scope === "user" ? "yours, every project" : p.scope === "local" ? "this folder, not shared" : "this project";
+          return text({ message: "vyre", text: `Remembered in ${file} (${where})`, done: true, notice: true });
+        }
         case "thread.artifact":
           return p.artifact ? [spec("tool-finished", { tool_id: `art:${p.artifact}:${p.version ?? 0}`, ok: true, result: { block: "text", text: `Artifact ${String(p.title || p.artifact).slice(0, 120)}`, ...(typeof p.mime === "string" && /^image\/(png|jpeg|webp|gif)$/.test(p.mime) ? { mime: p.mime } : {}) } })] : [];
         case "ask.raised":

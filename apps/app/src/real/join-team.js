@@ -144,6 +144,13 @@ export async function homeSession(d, channel, space, invite) {
       if (!reply.ok) throw refuse(String(reply.error && reply.error.code || "unavailable").slice(0, 40), String(reply.error && reply.error.message || "refused").slice(0, 300));
       return reply.result;
     },
+    /** A live chat stream over the member door (`chat.open` on the wire): frames arrive on `handlers` until the stream ends or `close()` is called. */
+    async openChat(chat, from, handlers) {
+      const result = await this.call("chat.open", [{ chat, from }]);
+      const sid = result && typeof result.stream === "string" ? result.stream : "";
+      if (!sid || typeof peer.attachStream !== "function") throw refuse("unavailable", "The home did not open a live chat stream.");
+      return peer.attachStream(sid, handlers, result);
+    },
     close() { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } },
   };
 }

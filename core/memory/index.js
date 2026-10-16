@@ -42,6 +42,7 @@ import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { chainPerson } from "../../lib/member-scope.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -65,6 +66,8 @@ export default {
     // so a tool never scopes by a filter the agent supplies. A via.agent with no granted is granted
     // nothing. The person's own surfaces (no via.agent) keep input.agent as a convenience.
     const callMeta = new AsyncLocalStorage();
+    /** Proven session meta for the running tool call (person_id on projects.reach). */
+    const callProof = new AsyncLocalStorage();
     // 0.3 minimum (CUTOVER section G): the kernel decides the room and whose memory this is, before the 0.2 rules below, which only narrow. No kernel, no change.
     const kernelGate = createKernelGate(rawCtx, { denied: message => Object.assign(new Error(message), { code: "denied" }) });
     const ctx = Object.assign(Object.create(rawCtx), {
@@ -74,12 +77,12 @@ export default {
           const gated = await kernelGate(name, extra);
           // The one Ask door: in a chat with more than one person it is answered from the Space's memory alone.
           if (gated && gated.group) return spaceOnlyAnswer((tool, i) => rawCtx.call(tool, i), String((input || {}).question || ""));
-          const exec = () => {
+          const exec = () => callProof.run(extra, () => {
             if (!extra || !extra.agent) return def.run(input, extra);
             const { agent: _a, project_cwds: _p, ...rest } = input || {};
             const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
             return callMeta.run({ granted }, () => def.run(rest, extra));
-          };
+          });
           // Who is calling, as the kernel's chain says it, is what the access predicates below read for the length of this call (core/memory/who.js).
           return gated && gated.who ? whoStore.run(gated.who, exec) : exec();
         },
@@ -341,7 +344,9 @@ export default {
     // `caller` is forwarded verbatim: projects.reach needs the ORIGINAL caller, since ctx.call
     // always relabels the caller it sees "module:memory".
     const reach = async (agent, caller) => {
-      const r = await ctx.call("projects.reach", { ...(agent ? { agent } : {}), caller, kind: "content" });
+      const proof = callProof.getStore() || {};
+      const person_id = await chainPerson(ctx.kernel, proof);
+      const r = await ctx.call("projects.reach", { ...(agent ? { agent } : {}), caller, kind: "content", ...(person_id ? { person_id } : {}) });
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
       const { all, agent: who, projects } = r.data;
       const held = callMeta.getStore();
@@ -355,7 +360,7 @@ export default {
       // granted. The facts-kind reply answers exactly that question instead ({ all: true } only
       // for the assistant, docs on projects.reach itself), so ask it that way rather than opening
       // a second door onto agents.list for one bit this door does not need to answer.
-      const f = await ctx.call("projects.reach", { agent: who, caller, kind: "facts" });
+      const f = await ctx.call("projects.reach", { agent: who, caller, kind: "facts", ...(person_id ? { person_id } : {}) });
       const assistant = Boolean(!f.error && f.data && f.data.all === true);
       const granted = (projects || []).filter(p => !limit || limit.has(p.slug));
       return { all: false, ...(assistant ? { assistant: true } : {}), agent: who, folders: granted.flatMap(p => p.folders), slugs: new Set(granted.map(p => p.slug)) };

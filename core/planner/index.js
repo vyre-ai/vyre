@@ -18,6 +18,7 @@ import { validZone, systemZone, parseDate, parseWall, dateString, wallString, lo
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
 import { isPerson } from "../../lib/caller.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: a fake clock and timer. Anything left
@@ -350,7 +351,7 @@ export default {
     const mayUseThread = async (thread, w) => {
       if (!thread || !w || !w.chain || !w.callerLabel || w.thread === thread || (await mayScheduleJobs(w))) return;
       let r;
-      try { r = await ctx.call("threads.get", { thread: String(thread), limit: 1 }, { as: w.callerLabel }); } catch { r = null; }
+      try { r = await ctx.call("threads.get", { thread: String(thread), limit: 1 }, w.callerRelay || { as: w.callerLabel }); } catch { r = null; }
       if (!r || r.error || !r.data) throw fail("You can attach an item only to a chat you are in. Pick one of your chats, or leave the chat out.", "denied");
     };
     const memberRefusal = () => fail("Scheduling a task that starts an AI session is for this Space's owner and its admins. Add a reminder or a to-do instead, or ask the owner to schedule it.", "denied");
@@ -1076,6 +1077,7 @@ export default {
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
         if (!local) w.chain = await K.chain(meta).catch(() => null);
         w.callerLabel = meta.caller;
+        w.callerRelay = personCallOpts(meta.caller, meta);
         // A personal reminder follows the person: a device they are using says which zone it is in (lib/time), and the planner's zone (which floating alarms are read in) moves to it, unless they turned that off.
         if (!local && K && w.person && FOLLOWS.has(callerKind(meta.caller)) && meta.zone && (role === "local" || callerKind(meta.caller) !== "cli")) {
           const here = zoneFrom(meta.zone, "");

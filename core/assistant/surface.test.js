@@ -76,6 +76,21 @@ test("glance: a source that fails is left out, nothing invented", async () => {
   assert.equal(g.day, null);
 });
 
+test("glance: muted threads are left out of running and finished", async () => {
+  const at = Date.UTC(2026, 9, 1, 8, 10);
+  const call = bare({
+    "context.now": () => ({ day: "2026-10-01", localTime: "08:10" }),
+    "waiting.list": () => ({ count: 0, rows: [] }),
+    "threads.list": () => [
+      { id: "t-quiet", name: "quiet", canonical_status: "working", started: 1 },
+      { id: "t-live", name: "live", canonical_status: "working", started: 2 }],
+    "work.chat.prefs.muted": ({ chat }) => ({ muted: chat === "t-quiet" }),
+  });
+  const g = await glance(call, { at, person: "person:alex" });
+  assert.equal(g.running.length, 1);
+  assert.equal(g.running[0].thread, "t-live");
+});
+
 test("capabilities: working things only, a broken connector becomes a say-this line", async () => {
   const call = bare({
     "mcp.servers": () => [{ name: "gmail", state: "running", tools: 9 }, { name: "slack", state: "failed" }],

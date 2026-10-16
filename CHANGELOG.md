@@ -901,6 +901,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(presence): a device that lost its session token signs in again with its own confirmed key (#112). Asking for a challenge renews the device's grant without ending the session it holds; answering it with the device's own key replaces that session, the old token is dead at once, and a presence.session-replaced event is logged. Another key, or a removed device, stays refused, and the refusal now says in plain words how to get back (sign in again with its own key; if the owner removed it, pair it again from the owner's device).
 
 ## Unreleased
+- fix(chat): composer `/` and `!` lines route through the kernel (`threads.slash`, lib/thread-composer-route.js) from the app and the CLI, so `/remember`, `/model`, `/effort`, `/later`, `/find`, and session slashes like `/compact` no longer go to the model as plain text. `stream.send` carries picked `#` tags as `chips` into `threads.send` so vault and record grants are recorded.
+- fix(chat): mute and list-pin sync through `work.chat.prefs` on the box (not only localStorage). Push holds for asks and drafts are per push device, so one screen in use does not delay notifications on your other devices. The chat panel loads effort, mode and thinking from `threads.get`; Carry on here follows `runner.places`. Stream cursor gaps resync the socket from the last good frame.
+- fix(chat): the chat panel and composer "Runs on" controls call `runner.move` (placement chip) instead of flipping a local label only.
 - fix(site): assemble-site.sh survives a release download that breaks mid-stream: up to five rounds, each keeping complete files and removing any that do not match SHA256SUMS.
 - site: the pages regenerated for 0.3.0 (what is live on vyre.run).
 
