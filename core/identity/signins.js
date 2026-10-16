@@ -7,6 +7,8 @@
 // Everything is in memory, like the sessions: a restart or the one-hour expiry ends the sessions, so the card only ever shows live ones, and a card that outlives its session answers "already signed out".
 import { loginService } from "../../lib/login-door.js";
 
+/** The owner's own local surfaces: the only callers the no-kernel fallback serves. */
+const LOCAL_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const DEVICE = /^[A-Za-z0-9_-]{8,64}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -28,7 +30,13 @@ export function registerSignins(ctx, o) {
 
   /** The person this call is, from the kernel's chain for it: exactly one hop that is a person. Never a label, never an input. */
   const personOf = async (/** @type {any} */ meta) => {
-    if (!ctx.kernel || typeof ctx.kernel.chain !== "function") { const f = o.fallbackPerson && o.fallbackPerson(); if (f) return f; throw refuse("This is for a signed-in person.", "person_required"); }
+    if (!ctx.kernel || typeof ctx.kernel.chain !== "function") {
+      // development builds only (production has the kernel): the home's person answers for the owner's own local surfaces, exactly these labels and nothing a network caller can carry
+      const local = meta && typeof meta === "object" && LOCAL_SURFACES.has(String(meta.caller)) && meta.person === undefined;
+      const f = local && o.fallbackPerson && o.fallbackPerson();
+      if (f) return f;
+      throw refuse("This is for a signed-in person.", "person_required");
+    }
     const chain = await ctx.kernel.chain(meta).catch(() => null);
     const hop = chain && Array.isArray(chain.hops) && chain.hops.length === 1 ? chain.hops[0] : null;
     if (!hop || !hop.actor || hop.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(hop.actor.id))) throw refuse("This is for a signed-in person.", "person_required");
