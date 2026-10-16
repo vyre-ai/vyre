@@ -10,7 +10,7 @@ import { writeTranscripts } from "../../test/fixtures/corpus.js";
 import { composerPersonRelayTargets, listAllPersonRelayEntryPoints, listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 import { CAROL, BOB, relayDaemon, twoMembers, groupChat, scratchWork, tokenMeta, FAKE_SESSION_PROVIDERS } from "./member-relay-harness.js";
 import { threadStartProviderFields } from "../sessions/testing/fake-agent-harness.js";
-import { indexCorpusTranscripts } from "../sessions/testing/recall-live.js";
+import { indexCorpusTranscripts, waitForThreadsFirstTurn } from "../sessions/testing/recall-live.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -117,6 +117,7 @@ for (const provider of FAKE_SESSION_PROVIDERS) {
     const thC = await d.registry.call("threads.start", { cwd: work, prompt: tagC, surface: "cli", ...threadStartProviderFields(provider) }, "cli", carolMeta);
     const thB = await d.registry.call("threads.start", { cwd: work, prompt: tagB, surface: "cli", ...threadStartProviderFields(provider) }, "cli", bobMeta);
     assert.ok(thC.data?.id && thB.data?.id, JSON.stringify({ thC: thC.error, thB: thB.error }));
+    await waitForThreadsFirstTurn(d, [thC.data.id, thB.data.id]);
     await indexCorpusTranscripts(d);
 
     const slashEps = listPersonRelayEntryPoints(d.registry).filter((e) => e.tool === "threads.slash");
