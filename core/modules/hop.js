@@ -31,3 +31,19 @@ export function mayHop(def, call) {
  * @param {unknown} caller
  */
 export function onPersonSurface(caller) { return isPerson(String(caller)) && !modelCaller(String(caller)); }
+
+/**
+ * ctx.events.origin and ctx.events.withOrigin for one module. A module may replay an origin it was handed (it keeps ctx.events.origin() beside work it stores for later), but only Vyre's own modules may
+ * name any caller class: an added module that could would have the gate judge its call as the person's own surface.
+ * @param {() => boolean} firstParty @param {() => string | undefined} capture @param {(o: string | undefined, f: () => any) => any} run
+ */
+export function originApi(firstParty, capture, run) {
+  const handed = new Set();
+  return {
+    origin: () => { const o = capture(); if (o && handed.size < 1000) handed.add(o); return o; },
+    withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => {
+      if (o && !firstParty() && !handed.has(o)) throw Object.assign(new Error(`withOrigin: this module was never handed the origin ${o}`), { code: "denied" });
+      return run(o, f);
+    },
+  };
+}

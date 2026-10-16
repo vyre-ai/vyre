@@ -36,7 +36,7 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
-import { mayHop, FLOW_RUN, FLOW_ACT, onPersonSurface } from "./hop.js";
+import { mayHop, originApi, FLOW_RUN, FLOW_ACT, onPersonSurface } from "./hop.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
@@ -1169,8 +1169,7 @@ export class Registry {
         },
         // A handler hears the event as the call that raised it was made (RG-2): a model-originated call that emits an event does not become the module's own authority in the handler.
         on: (pattern, fn) => events.on(pattern, (/** @type {any} */ ev) => { const o = captureOrigin(); if (!o) return fn(ev); const r = withOrigin(o, () => fn(ev)); if (r && typeof r.catch === "function") r.catch(() => {}); }),
-        origin: () => captureOrigin(),
-        withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => withOrigin(o, f),
+        ...originApi(firstPartyRec, captureOrigin, withOrigin),
         since: (id, opts) => events.since(id, opts),
         // One thread's own events, oldest first (an indexed read of the log).
         ofThread: (thread, opts) => events.ofThread(thread, opts),
