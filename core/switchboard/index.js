@@ -45,7 +45,9 @@ import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOf
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
-import { memberThreadAllowSet, chainPerson, isStaffPerson } from "../../lib/member-scope.js";
+import { pruneInbox } from "./inbox-prune.js";
+import { memberListFilter, launchPersonOf, startedBy } from "./member-list.js";
+import { registerRecallSessions } from "./recall-sessions.js";
 import { ingressProviderCall, personCallOpts } from "../../lib/person-relay.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -518,19 +520,6 @@ export class Switchboard {
     this.prunes.add(job);
   }
 
-  /** Drop old delivered inbox rows (retention); safe to call often. */
-  pruneInbox(now = Date.now()) {
-    const cutoff = now - 30 * 86400_000;
-    const keep = 200;
-    try {
-      this.db.prepare("DELETE FROM threads_inbox WHERE delivered_at IS NOT NULL AND delivered_at < ?").run(cutoff);
-      for (const { thread } of /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NOT NULL").all())) {
-        const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC").all(thread));
-        for (const r of rows.slice(keep)) this.db.prepare("DELETE FROM threads_inbox WHERE id = ?").run(r.id);
-      }
-    } catch (e) { this.deps.log(`pruning threads_inbox failed: ${/** @type {Error} */ (e).message}`); }
-  }
-
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
     // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
@@ -989,8 +978,7 @@ export class Switchboard {
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
-      if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // verified chat turn (never a caller's word)
-      else if (o.person) kept.person = String(o.person);   // member's own session token on cli
+      if (startedBy(o)) kept.person = startedBy(o);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -3100,7 +3088,7 @@ export class Switchboard {
       mark.run(now, via, m.id);
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
-    this.pruneInbox(now);
+    pruneInbox(this.db, this.deps.log, now);
     return { messages: rows.map(m => ({ id: m.id, text: m.note ? `${m.text}\n\n${m.note}` : m.text, surface: m.surface, at: m.at })) };
   }
 
@@ -3112,9 +3100,8 @@ export class Switchboard {
   replied(id, text) {
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { replied: 0 };
-    const now = Date.now();
-    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(now, id);
-    this.pruneInbox(now);
+    const now = Date.now(); this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(now, id);
+    pruneInbox(this.db, this.deps.log, now);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (text) this.emit("thread.text", { message: `inbox-${rows.at(-1).id}`, text: String(text), done: true }, id, project);
@@ -4300,8 +4287,6 @@ export default {
         guard(caller, "start sessions");
         if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
-        const sessionPerson = ctx.kernel ? await chainPerson(ctx.kernel, meta) : null;
-        const sessionStaff = !sessionPerson || !ctx.kernel || await isStaffPerson(ctx.kernel, sessionPerson);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
@@ -4331,7 +4316,7 @@ export default {
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
         const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
-        const launchPerson = (kturn && kturn.asker) || (!sessionStaff && sessionPerson ? sessionPerson : undefined);
+        const launchPerson = await launchPersonOf(ctx, meta, kturn);
         return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(launchPerson ? { person: launchPerson } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromAsker);
       });
 
@@ -4563,14 +4548,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        const callMeta = meta;
-        const filterMember = async (/** @type {any[]} */ rows) => {
-          if (!Array.isArray(rows)) return rows;
-          const allow = await memberThreadAllowSet(ctx, ctx.kernel, callMeta);
-          const scoped = allow ? rows.filter(r => r && allow.has(String(r.id))) : rows;
-          const ok = await Promise.all(scoped.map(r => sessionMay(callMeta, r && r.id, false)));
-          return scoped.filter((_, k) => ok[k]);
-        };
+        const filterMember = rows => memberListFilter(ctx, rows, meta, sessionMay);
         if (!(await wantsMacs(ctx, i, caller, meta))) return filterMember(sb.list(q));
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
@@ -5080,29 +5058,7 @@ export default {
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
     }); registerTranscriptTools(ctx, sb, str);
-    ctx.tool("threads.recall-sessions", {
-      description: "Session ids Recall may attribute to one person: their threads, each thread's rollover windows, and nothing else. For recall.search member scoping only.", internal: true, callers: ["module"],
-      input: { type: "object", required: ["person"], properties: { person: str } },
-      run: async i => {
-        const want = sb.canon(String(i.person));
-        /** @type {string[]} */
-        const threads = [];
-        for (const row of /** @type {any[]} */ (sb.db.prepare("SELECT id, opts FROM threads_runs").all())) {
-          const o = optsOf(row);
-          if (o.person && sb.canon(String(o.person)) === want) threads.push(String(row.id));
-        }
-        const sessions = new Set(threads);
-        for (const tid of threads) {
-          sessions.add(tid);
-          sessions.add(sb.mirrorId(tid));
-          for (const r of /** @type {any[]} */ (sb.db.prepare("SELECT native_to, native_from FROM threads_rolls WHERE thread = ?").all(tid))) {
-            if (r.native_to) sessions.add(String(r.native_to));
-            if (r.native_from) sessions.add(String(r.native_from));
-          }
-        }
-        return { sessions: [...sessions] };
-      },
-    });
+    registerRecallSessions(ctx, sb, str, optsOf);
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
