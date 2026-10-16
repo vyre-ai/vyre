@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { actionChoices, actionPick, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
+import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -126,6 +126,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
                   <ContextBox label="Brief for them" value={s.brief ?? ""} onChange={(brief) => setStep(s.id, { brief })} options={options} placeholder="What they need to know" />
                   <Select label="The record to attach (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
+                  <Select label="How they do it (optional)" value={s.how ?? ""} options={[["", "The usual way"], ...HOWS]} onChange={(how) => setStep(s.id, { how: how || undefined })} />
+                  {s.how === "template" || s.how === "tailor" ? <ContextBox label="Template" value={s.template ?? ""} onChange={(template) => setStep(s.id, { template })} options={options} placeholder="The text they start from" /> : null}
                   <Switch label="The Flow waits until the task is done" on={s.await === true} onChange={(on) => setStep(s.id, { await: on ? true : undefined })} />
                   <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
                   <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
@@ -155,6 +157,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                 <>
                   <Select label="Who is asked" value={s.to ?? ""} options={askChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The question" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Approve this refund" />
+                  <Select label="The record to show them (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
                   <Text size="caption" tone="label">The Flow stops here until they answer.</Text>
                 </>
               ) : null}
@@ -172,6 +175,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       {s.kind === "repeat" ? (
         <>
           <Select label="Go through" value={s.over ?? ""} options={[...flat(draft.steps).filter((x) => x.kind === "find" || x.kind === "filter").map((x): [string, string] => [`steps.${x.id}.rows`, `The records found by ${x.id}`]), ...(s.over && !flat(draft.steps).some((x) => `steps.${x.id}.rows` === s.over) ? [[s.over, s.over] as [string, string]] : [])]} placeholder="Choose a list (add a Find records step first)" onChange={(over) => set({ over })} />
+          <FormulaBox label="Or any list, as a formula (optional)" value={s.over ?? ""} onChange={(over) => set({ over })} placeholder="For example trigger.items or steps.read.fields.names" />
           <Field label="Call each one" value={s.as ?? "item"} onChangeText={(as) => set({ as })} help="Inside, read it as this name, for example item.id." />
           <Field label="Go through at most" kind="number" value={String(s.max ?? 50)} onChangeText={(max) => set({ max: max === "" ? "" : Number(max) })} help="The most items to handle: 50 unless you say, 1000 at the most. When the list is longer, the run page says it was cut." />
           <Text size="caption" tone="label">The steps inside run once for each.</Text>
@@ -272,9 +276,11 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       {s.kind === "web" ? (
         <>
           <Select label="Send with (a connection)" value={s.connector ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connector) => set({ connector })} />
-          <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
+          <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["HEAD", "Check it is there (HEAD)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
           <ValueField label="Path" value={s.path ?? "/"} onChange={(path) => set({ path })} placeholder="For example /v1/customers" draft={draft} stepId={s.id} options={options} />
-          {(s.method ?? "GET") !== "GET" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <Rows rows={s.query ?? []} onChange={(query) => set({ query })} draft={draft} stepId={s.id} options={options} fieldLabel="Name" title="Query (optional)" help="Added to the address as ?name=value." />
+          <Rows rows={s.headers ?? []} onChange={(headers) => set({ headers })} draft={draft} stepId={s.id} options={options} fieldLabel="Header" title="Headers (optional)" help="The key stays in the Vault: a header such as Authorization is never set here." />
+          {(s.method ?? "GET") !== "GET" && (s.method ?? "GET") !== "HEAD" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
           <NewConnection options={options} onAdded={(connector) => set({ connector })} />
           <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>

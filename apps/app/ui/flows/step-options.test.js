@@ -2,7 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, actionChoices, actionPick, SPECIAL_ACTIONS, flowSettings, setFlowSetting } from "./logic.js";
+import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, condExpr, SPECIAL_ACTIONS, flowSettings, setFlowSetting, actionChoices, actionPick } from "./logic.js";
+
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
@@ -92,6 +93,48 @@ test("any other module action is a step of its own that stores as the same call,
   assert.deepEqual(toDefinition(back, options), stored);
   const text = fromDefinition({ ...d, steps: [{ id: "x", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "carrier-pigeon" } }] }, options);
   assert.equal(text.steps[0].kind, "advanced", "a text or email call the editor cannot show stays advanced");
+});
+
+test("an ask step keeps its record and an assign step keeps how and template", () => {
+  const d = flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", record: { expr: "event.subject" } }, { id: "t1", kind: "assign", to: "role:intake", title: "Reply", output: { kind: "note" }, how: "tailor", template: "Dear client" }]);
+  const out = round(d);
+  assert.deepEqual([out.steps[0].kind, out.steps[0].record], ["ask", { expr: "event.subject" }]);
+  assert.deepEqual([out.steps[1].how, out.steps[1].template], ["tailor", "Dear client"]);
+  assert.deepEqual(checkFlow(out), []);
+  const odd = fromDefinition(flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "reason" }] }]), options);
+  assert.equal(odd.steps[0].kind, "advanced", "a question with a form of its own stays as it was");
+});
+
+test("a condition can say contains and compare to yes or no, and a quoted number stays the text it was", () => {
+  const trig = { kind: "created", type: "contact" };
+  assert.equal(condExpr({ mode: "build", source: "trigger", field: "name", op: "contains", value: "harlow" }, trig), 'trigger.after.name contains "harlow"');
+  assert.equal(condExpr({ mode: "build", source: "trigger", field: "vip", op: "==", value: "true" }, trig), "trigger.after.vip == true");
+  const kept = fromDefinition(flow([{ id: "d1", kind: "decide", if: 'trigger.after.code == "007"', then: [], else: [] }]), options);
+  assert.equal(kept.steps[0].cond.mode, "formula");
+  assert.equal(toDefinition(kept, options).steps[0].if, 'trigger.after.code == "007"');
+  const built = fromDefinition(flow([{ id: "d1", kind: "decide", if: 'trigger.after.name contains "harlow"', then: [], else: [] }]), options);
+  assert.deepEqual([built.steps[0].cond.mode, built.steps[0].cond.op, built.steps[0].cond.value], ["build", "contains", "harlow"]);
+});
+
+test("a Repeat step goes through any list the engine can read, not only Find results", () => {
+  const d = flow([{ id: "r1", kind: "repeat", over: "trigger.after.items", as: "item", max: 10, steps: [] }]);
+  const out = round(d);
+  assert.deepEqual([out.steps[0].kind, out.steps[0].over, out.steps[0].max], ["repeat", "trigger.after.items", 10]);
+  assert.equal(stepProblem(fromDefinition(d, options).steps[0], options), null);
+});
+
+test("a web call keeps its query and headers and can check with HEAD", () => {
+  const d = flow([{ id: "w1", kind: "service", connector: "crm", method: "HEAD", path: "/v1/ping", query: { page: "2", q: "{after.name}" }, headers: { "x-trace": "run" } }]);
+  const draft = fromDefinition(d, options);
+  assert.equal(draft.steps[0].kind, "web");
+  assert.deepEqual(draft.steps[0].query.map((x) => x.field), ["page", "q"]);
+  const out = toDefinition(draft, options);
+  assert.equal(out.steps[0].method, "HEAD");
+  assert.deepEqual(Object.keys(out.steps[0].query), ["page", "q"]);
+  assert.deepEqual(out.steps[0].headers, { "x-trace": "run" });
+  assert.equal(out.steps[0].body, undefined, "a check carries no body");
+  const guarded = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "GET", path: "/", drive: { saveTo: "files/x" } }]), options);
+  assert.equal(guarded.steps[0].kind, "advanced", "a drive hand-off stays as it was");
 });
 
 test("every call a dedicated step writes is on the list the generic action step leaves alone", () => {

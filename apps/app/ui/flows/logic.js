@@ -437,6 +437,12 @@ function triggerBase(t) {
 
 /** The reference a record urn expression stands for: what started the Flow, or a record an earlier step made; null for anything else. @param {any} v @returns {string | null} */
 const urnRef = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.urn$/i.exec(e); return m ? m[1] : null; };
+/** How the person doing an assigned task is helped with the work (the engine's `how`). */
+export const HOWS = /** @type {[string, string][]} */ ([["template", "Fill in a template"], ["tailor", "Tailor a template to the case"], ["assistant", "An assistant does it for them to check"], ["person", "They do it themselves"]]);
+/** Named values the way a step stores them (the query and the headers of a web call): the rows with a name, as an object, or null when there is none. @param {any} rows */
+const namedRows = (rows) => { const o = Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return Object.keys(o).length ? o : null; };
+/** The stored object as rows to edit; null when a value is not one the rows can show. @param {any} o */
+const namedRowsFrom = (o) => { if (!o || typeof o !== "object" || Array.isArray(o)) return null; const rows = Object.entries(o).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? rows : null; };
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
 /** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
@@ -476,7 +482,7 @@ function kindDefinition(s, d) {
     case "wait":
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
-    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
+    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
@@ -490,11 +496,11 @@ function kindDefinition(s, d) {
     case "document": return { id: s.id, kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: s.template, ...(s.format === "pdf" ? { format: "pdf" } : {}), ...(placeholderRows(s.fields).length ? { values: Object.fromEntries(placeholderRows(s.fields).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])) } : {}), ...((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).length ? { records: Object.fromEntries((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).map((/** @type {any} */ r) => [r.alias, recUrn(r.ref)])) } : {}) } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
-    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
+    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(HOWS.some((x) => x[0] === s.how) ? { how: s.how } : {}), ...(HOWS.some((x) => x[0] === s.how) && typeof s.template === "string" && s.template.trim() ? { template: s.template } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
-    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title) };
+    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title), ...(s.record ? { record: rec(s.record) } : {}) };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || ""), ...Object.fromEntries((s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) } };
     default: throw new Error(`no step kind ${s.kind}`);
   }
@@ -680,8 +686,9 @@ const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("te
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
-  const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<) (-?\d+(?:\.\d+)?|"[^"]*")$/.exec(e || "");
-  if (!m) return { mode: "formula", formula: e || "" };
+  const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<|contains) (-?\d+(?:\.\d+)?|true|false|"[^"]*")$/.exec(e || "");
+  // A quoted text that looks like a number or a yes/no would come back unquoted, which is a different value: keep it as the formula it is.
+  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return { mode: "formula", formula: e || "" };
   return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
@@ -715,7 +722,11 @@ function stepFromKind(s) {
       const u = Object.entries(UNITS).reverse().find(([, ms]) => s.for_ms % ms === 0);
       return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
     }
-    case "service": return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body) } : adv;
+    case "service": {
+      const q = s.query === undefined ? [] : namedRowsFrom(s.query), h = s.headers === undefined ? [] : namedRowsFrom(s.headers);
+      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null
+        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}) } : adv;
+    }
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
     case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
@@ -755,8 +766,8 @@ function stepFromKind(s) {
       return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
         ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "brief", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
-    case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "record"]) && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
       return rec && f.length >= 1 && f.every((k) => unval(s.set[k]) !== null) && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]), ...(f.length > 1 ? { more: f.slice(1).map((k) => ({ field: k, value: unval(s.set[k]) })) } : {}) } : adv;
@@ -785,7 +796,7 @@ export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter((
 
 
 /** The operators of a condition, as [symbol, words]. */
-export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!=", "is not"], [">", "is more than"], ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"]]);
+export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!=", "is not"], [">", "is more than"], ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"], ["contains", "contains"]]);
 
 /** What a condition field reads: where it comes from and its name. `source` is "trigger" or an earlier step's id. @param {{ source?: string, field?: string }} c @param {Trigger} t */
 export function fieldExpr(c, t) {
@@ -802,7 +813,7 @@ export function condExpr(c, t) {
   const left = fieldExpr(c, t);
   if (!left || c.value === undefined || String(c.value).trim() === "") return "";
   const v = String(c.value).trim();
-  return `${left} ${c.op || "=="} ${/^-?\d+(\.\d+)?$/.test(v) ? v : JSON.stringify(v)}`;
+  return `${left} ${c.op || "=="} ${/^(-?\d+(\.\d+)?|true|false)$/.test(v) ? v : JSON.stringify(v)}`;
 }
 
 /** A condition in words for a collapsed card. @param {any} c @param {Trigger} t */
