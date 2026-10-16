@@ -2568,6 +2568,90 @@
   "google.find": {
    "module": "google",
    "reason": "a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
+  },
+  "onboard.agent.list": {
+   "module": "onboard",
+   "reason": "read-only: lists assistants the onboarding page may offer; ownerWrite refuses mcp and agent callers"
+  },
+  "onboard.agent.signin": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp, agents and anonymous callers; presence when the server is owned"
+  },
+  "onboard.computer.add": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
+  },
+  "onboard.first.progress": {
+   "module": "onboard",
+   "reason": "read-only: onboarding step progress for the setup page; ownerWrite refuses models"
+  },
+  "onboard.github.start": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; begins GitHub device flow on the setup page only"
+  },
+  "onboard.github.finish": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; outward GitHub token exchange is the person's setup act"
+  },
+  "onboard.join.read": {
+   "module": "onboard",
+   "reason": "read-only: join card the setup page shows; ownerWrite refuses models"
+  },
+  "onboard.member.link": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
+  },
+  "onboard.person.create": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; outward identity claim is the person's setup act"
+  },
+  "onboard.person.lookup": {
+   "module": "onboard",
+   "reason": "read-only: resolves a name for the setup page; ownerWrite refuses models"
+  },
+  "onboard.person.status": {
+   "module": "onboard",
+   "reason": "read-only: whether this device already has an identity; ownerWrite refuses models"
+  },
+  "onboard.phone.add": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
+  },
+  "onboard.space.current": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; chooses the active space during setup"
+  },
+  "onboard.space.join": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; outward join is the person's setup act"
+  },
+  "onboard.space.list": {
+   "module": "onboard",
+   "reason": "read-only: spaces visible during setup; ownerWrite refuses models"
+  },
+  "onboard.space.open": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; opens a space during setup"
+  },
+  "onboard.space.poll": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; polls a space setup job for the setup page only"
+  },
+  "onboard.windows": {
+   "module": "onboard",
+   "reason": "ownerWrite refuses mcp and agents; outward Windows enrolment is the person's setup act"
+  },
+  "releases.info": {
+   "module": "apps",
+   "reason": "read-only: public build metadata for update checks"
+  },
+  "threads.slash": {
+   "module": "switchboard",
+   "reason": "caller guard: only the person's own surfaces and a verified session reach composer slash routing; plain mcp is refused"
+  },
+  "work.chat.prefs": {
+   "module": "work",
+   "reason": "read-only: chat preferences for the signed-in person; kernelOf refuses when no kernel is attached"
   }
  }
 }

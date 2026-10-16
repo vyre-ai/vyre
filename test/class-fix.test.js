@@ -74,4 +74,6 @@ test("every name in the secret-key table is hidden on a timeline and in a browse
   assert.equal(jsonHasSecretField(JSON.stringify({ recoveryWrap: PLANTED })), true);
   assert.equal(jsonHasSecretField(JSON.stringify({ session: PLANTED })), false);
   assert.equal(jsonHasSecretField(JSON.stringify({ name: "alex" })), false);
+  assert.equal(jsonHasSecretField(JSON.stringify({ pass: "p_abc123def", holder: "teammate", mode: "relayed" })), false);
+  assert.equal(jsonHasSecretField(JSON.stringify({ pass: "hunter2hunter2" })), true);
 });

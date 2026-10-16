@@ -79,10 +79,20 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // The outside-agents module serves the pass's own tools to a registered agent (module-only; the pass was made with the person's yes).
     "vault.mcp.agent.tools", "vault.mcp.agent.call",
     // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
-    "vault.space.use",
-    // Identity installs the held master key into the running vault (module:identity only); it takes no value out.
-    "vault.master.install"]);
-  for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
+    "vault.space.use"]);
+  for (const n of tools.keys()) {
+    const def = tools.get(n);
+    if (def && def.internal) continue;
+    assert.ok(known.has(n) || def.presence, `${n} is new: decide whether it needs presence`);
+  }
+});
+
+test("vault.master.install is internal module plumbing for identity.vault.install and needs no presence", async t => {
+  const { tools } = await recorded(t);
+  const def = tools.get("vault.master.install");
+  assert.ok(def, "registered");
+  assert.equal(def.internal, true);
+  assert.ok(!def.presence, "installs a held key already approved elsewhere; it takes no value out");
 });
 
 test("presence: summaries name items and destinations and never a value, and never throw", async t => {
