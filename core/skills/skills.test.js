@@ -36,9 +36,10 @@ async function world(t) {
       if (name === "sessions.harness.get") return { data: { harnesses: harnesses[input.provider] ? [{ provider: input.provider, caps: harnesses[input.provider] }] : [] } };
       if (name === "projects.list") return { data: { projects: [{ slug: "harlow", home: folder }, { slug: "secret-case", home: path.join(base, "other") }] } };
       if (name !== "projects.reach") return { error: { code: "no_such_tool" } };
-      if (input.person) return { data: { all: true, agent: null } };
+      if (input.person || input.person_id) return { data: { all: true, agent: null } };
       if (input.agent === "juno") return { data: { all: false, agent: "juno", projects: [{ slug: "harlow", name: "Harlow", folders: [folder] }] } };
       if (input.agent === "kit") return { data: { all: false, agent: "kit", projects: [] } };
+      if (["cli", "local", "deck", "capsule"].includes(String(input.caller || ""))) return { data: { all: true, agent: null } };
       throw Object.assign(new Error("refused"), { code: "denied" });
     },
   };

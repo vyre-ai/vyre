@@ -10,7 +10,8 @@
 // marked cache of "the spaces I am in" for drawing the screen offline, and never reads it for a decision.
 
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
-import { ownerWideRead } from "../../lib/member-scope.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
+import { callerKind } from "../../core/modules/index.js";
 
 /** What a kernel refusal says to a person, by its code. */
 const WORDS = Object.freeze({
@@ -144,8 +145,10 @@ export async function actingPerson(K, meta, home) {
 export async function listCaller(K, meta) {
   const p = await firstPerson(K, meta);
   if (p) return p;
-  const wide = await ownerWideRead(K, meta || {}, String(meta?.caller || "cli"));
-  return wide && typeof K.owner === "string" ? K.owner : null;
+  if (meta && (meta.token || meta.kernelFacts)) return null;
+  const caller = String(meta?.caller || "cli");
+  if (!PERSON_SURFACES.includes(callerKind(caller))) return null;
+  return typeof K.owner === "string" ? K.owner : null;
 }
 
 /**
