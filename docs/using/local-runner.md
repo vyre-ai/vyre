@@ -32,8 +32,7 @@ nothing, so no turn is ever run twice. When the lid opens or the computer is plu
 You choose what an allowed computer does on its own: Always allow, or Ask. Under Always allow a new chat starts here, and a session that left because the lid closed, the computer slept, went on battery or lost its network comes back at your next message, once this computer has stayed ready for a minute and two minutes have passed since the move. A computer that keeps coming and going never gets a session back. Under Ask, only what you put on this computer runs here. Never is the switch off.
 
 "Move to the server" in the chat hands a session over after its current turn. Pin a session to the server to keep it
-running when you close the laptop. Settings, Computer, holds this computer's name and one choice for running here: Always allow, Ask or Never, with a line saying what that means and what is running now. It is offered only where a space lets members run sessions on their own computers. A processor or memory limit is not yours to manage: past the box's defaults a session moves to the server. "Pause all"
-freezes everything running on this computer without losing anything.
+running when you close the laptop. Settings, Computer, holds this computer's name and one choice for running here: Always allow, Ask or Never, with a line saying what that means and what is running now. It is offered only where a space lets members run sessions on their own computers. A processor or memory limit is not yours to manage: past the box's defaults a session moves to the server. An assistant can pause every session on this computer with `runner.pause-all`; nothing is lost.
 
 ## What protects the space
 
