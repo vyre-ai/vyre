@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { x25519Pair } from "./wrap.js";
-import { create, grant, put, list, rotate, resume, use, externalMcp, openAsMember, status, rotateOnRemove, pumpRetries, needsYou, cancelRetries, attention } from "./space-vault.js";
+import { create, grant, put, list, rotate, resume, lend, externalMcp, openAsMember, status, rotateOnRemove, pumpRetries, needsYou, cancelRetries, attention } from "./space-vault.js";
 
 const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), "vyre-sv-"));
 const SECRET = "vyre-space-secret-9f3a7c";
@@ -57,7 +57,7 @@ test("an external MCP agent uses a space vault credential and never receives the
   assert.equal(text.includes(SECRET), false);
   assert.match(text, /ch_1/);
   assert.equal(mcp.result.isError, false);
-  const echoed = await use(dir, {
+  const echoed = await lend(dir, {
     id: "stripe",
     request: { url: "https://example.com/echo", method: "POST" },
     transport: async () => ({ status: 200, body: { echoed: SECRET } }),

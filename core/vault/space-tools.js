@@ -74,7 +74,7 @@ export function registerSpaceTools(ctx) {
     callers: ["cli", "local", "deck", "capsule", "module", "mcp", "harness"],
     run: async (input) => {
       spaceOk(input);
-      return SV.use(dirOf(input), {
+      return SV.lend(dirOf(input), {
         id: input.id,
         request: { url: input.url, method: input.method, headers: input.headers, body: input.body },
         transport: async (req) => {

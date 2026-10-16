@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { scrub as conceal } from "../../lib/scrub.js";
 import { writePrivate, readJson, rmQuiet } from "./files.js";
 import { hkdf32, x25519Pair, sealTo, openSeal, aesWrap, aesUnwrap } from "./wrap.js";
 
@@ -303,7 +304,7 @@ export function resume(dir) {
  * @param {string} dir
  * @param {{ id: string, request: { url?: string, method?: string, headers?: Record<string, string>, body?: string }, transport: (req: any) => Promise<{ status?: number, body?: any }> }} o
  */
-export async function use(dir, o) {
+export async function lend(dir, o) {
   const generation = generationOf(dir);
   if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
   const id = String(o.id || "");
@@ -338,7 +339,7 @@ function scrub(body, secret) {
   if (secret.length < 8) return body;
   const text = typeof body === "string" ? body : JSON.stringify(body === undefined ? null : body);
   if (!text.includes(secret)) return body;
-  const cleaned = text.split(secret).join("[redacted]");
+  const cleaned = conceal(text, [secret], { marker: "[redacted]", min: 8 });
   if (typeof body === "string") return cleaned;
   try { return JSON.parse(cleaned); } catch { return { redacted: true }; }
 }
@@ -355,7 +356,7 @@ export async function externalMcp(dir, rpc, transport) {
     return { jsonrpc: "2.0", id, error: { code: -32601, message: "unknown tool" } };
   }
   const args = rpc.params.arguments || {};
-  const result = await use(dir, { id: args.id, request: { url: args.url, method: args.method, headers: args.headers, body: args.body }, transport });
+  const result = await lend(dir, { id: args.id, request: { url: args.url, method: args.method, headers: args.headers, body: args.body }, transport });
   const text = JSON.stringify({ ok: result.ok, status: result.status, body: result.body });
   return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text }], isError: false } };
 }
