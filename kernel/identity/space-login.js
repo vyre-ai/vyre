@@ -147,7 +147,7 @@ export function createLoginService(o) {
   const secret = o.secret || rnd(32);
   const dummy = deriveDummy(secret);
   /** @type {Map<string, { username: string, address: string, exp: number }>} */ const challenges = new Map();
-  /** @type {Map<string, { username: string, exp: number }>} */ const sessions = new Map();
+  /** @type {Map<string, { username: string, exp: number, device: string, label: string, at: number }>} */ const sessions = new Map();
   const lim = limiter(now);
   const PER_ADDR = 20, PER_NAME = 5, BURST = 120, WINDOW = 60_000, NAME_WINDOW = 15 * 60_000;
   const burst = (/** @type {string} */ address) => lim.wait(`b:${address}`, BURST, WINDOW);
@@ -159,13 +159,18 @@ export function createLoginService(o) {
 
   /** The new-device notice, once per device id. A device sends a stable id (`device.id`); one we have seen before rings nobody. No id means each sign-in is a new device. */
   function seen(/** @type {any} */ rec, /** @type {string} */ username, /** @type {any} */ input, /** @type {string} */ label, /** @type {string} */ address) {
-    const raw = input && input.device && typeof input.device.id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(input.device.id) ? input.device.id : "";
-    const id = raw || b64(crypto.createHash("sha256").update(`${username}\n${address}\n${now()}`).digest()).slice(0, 16);
+    const id = deviceIdOf(username, input, address);
+    const raw = clientDeviceId(input);
     const known = Array.isArray(rec.devices) ? rec.devices : [];
-    if (raw && known.includes(raw)) return;
+    if (raw && known.includes(raw)) return id;
     if (raw) { try { o.store.set(`login:${username}`, { ...rec, devices: [...known, raw].slice(-50) }); } catch { /* the notice still goes */ } }
     try { o.onNewDevice && o.onNewDevice({ username, device: id, label, address, at: now() }); } catch { /* the notice failing never blocks the person */ }
+    return id;
   }
+  /** The client's own stable id, or empty. @param {any} input */
+  const clientDeviceId = input => (input && input.device && typeof input.device.id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(input.device.id) ? input.device.id : "");
+  /** The device id a sign-in is known by: the client's own, else a hash that is new each time. */
+  const deviceIdOf = (/** @type {string} */ username, /** @type {any} */ input, /** @type {string} */ address) => clientDeviceId(input) || b64(crypto.createHash("sha256").update(`${username}\n${address}\n${now()}`).digest()).slice(0, 16);
 
   return {
     /** Step 1. Always the same shape, whether or not the name exists. */
@@ -202,9 +207,9 @@ export function createLoginService(o) {
       lim.clear(`n:${username}`);
       sweep();
       const session = b64(rnd(32));
-      sessions.set(session, { username, exp: now() + SESSION_TTL_MS });
-      const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
-      seen(rec, username, input, label, address);
+      const label0 = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
+      const dev = seen(rec, username, input, label0, address);
+      sessions.set(session, { username, exp: now() + SESSION_TTL_MS, device: dev, label: label0, at: now() });
       const more = o.describe ? await Promise.resolve(o.describe(username, rec)).catch(() => ({})) : {};
       return { ok: true, session, expires: now() + SESSION_TTL_MS, bundle: rec.bundle, ...more };
     },
@@ -240,9 +245,9 @@ export function createLoginService(o) {
       const rec = typeof username === "string" ? record(username) : null;
       if (!who || !rec) { lim.hit(`a:${address}`, PER_ADDR, WINDOW); return { error: { code: "bad_login", message: BAD_LOGIN } }; }
       const session = b64(rnd(32));
-      sessions.set(session, { username: String(username), exp: now() + SESSION_TTL_MS });
-      const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
-      seen(rec, String(username), input, label, address);
+      const label0 = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
+      const dev = seen(rec, String(username), input, label0, address);
+      sessions.set(session, { username: String(username), exp: now() + SESSION_TTL_MS, device: dev, label: label0, at: now() });
       const more = o.describe ? await Promise.resolve(o.describe(String(username), rec)).catch(() => ({})) : {};
       return { ok: true, session, expires: now() + SESSION_TTL_MS, salt: rec.salt, kdf: { ...LOGIN_KDF }, bundle: rec.bundle, ...more };
     },
@@ -267,6 +272,25 @@ export function createLoginService(o) {
       o.store.set(`gh:${who.id}`, username);
       o.store.set(`login:${username}`, { ...rec, github: who.id });
       return { ok: true, username, login: who.login };
+    },
+    /** A person's live sign-in sessions, newest first, last 20: a device id, its label and when. Never the session secret. @param {string} username */
+    sessionsOf(username) {
+      sweep();
+      const u = String(username || "").toLowerCase();
+      return [...sessions.values()].filter(x => x.username === u).sort((a, b) => b.at - a.at).slice(0, 20).map(x => ({ device: x.device, label: x.label, at: x.at }));
+    },
+    /**
+     * "Not me": drop every live session of that device id for that username, and forget the id, so its next sign-in is a new device again and rings the others. A session of that device that comes back is
+     * unknown. Returns how many sessions ended.
+     * @param {string} username @param {string} device
+     */
+    revokeDevice(username, device) {
+      const u = String(username || "").toLowerCase(), d = String(device || "");
+      let n = 0;
+      for (const [k, x] of sessions) if (x.username === u && x.device === d) { sessions.delete(k); n += 1; }
+      const rec = record(u);
+      if (rec && Array.isArray(rec.devices) && rec.devices.includes(d)) o.store.set(`login:${u}`, { ...rec, devices: rec.devices.filter((/** @type {string} */ x) => x !== d) });
+      return { revoked: n > 0, ended: n };
     },
     /** The username a session belongs to, or null. @param {string} session */
     sessionUser(session) { sweep(); const s = sessions.get(String(session)); return s ? s.username : null; },

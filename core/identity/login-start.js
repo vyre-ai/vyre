@@ -7,7 +7,7 @@ import { createLoginStore } from "./login-store.js";
 import { createLoginService } from "../../kernel/identity/space-login.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { assertPublishedKey } from "../../lib/identity/published-key.js";
-import { setLoginPort } from "../../lib/login-door.js";
+import { setLoginPort, setLoginService } from "../../lib/login-door.js";
 import { RELAY_ASSERT_KEY } from "../../lib/relay-keys.js";
 import { listen } from "./login-listener.js";
 
@@ -55,6 +55,7 @@ export async function startLogin(ctx, seam = {}) {
   });
   const l = await (seam.listen || listen)({ origins: () => hostedOrigins(cfg.network), handle: (q, source) => loginHandle(q, svc, source) });
   setLoginPort(l.port);
+  setLoginService(svc);
   ctx.log && ctx.log(`identity: POST /login listening on ${l.url}`);
-  return { async stop() { setLoginPort(null); await l.close(); } };
+  return { async stop() { setLoginPort(null); setLoginService(null); await l.close(); } };
 }

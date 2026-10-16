@@ -219,3 +219,25 @@ test("GitHub sign-in: linked only by the relay's assertion plus the identity's s
   // one username, one GitHub account; one GitHub account, one username
   await assert.rejects(() => r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts: r.clock.t, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "5555", r.clock.t)), assertion: assertion({ id: "5555" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied" && /different GitHub/.test(e.message));
 });
+
+test("a person can list their live sign-ins and sign one device out; the device must sign in again and rings the others", async () => {
+  const r = await rig();
+  const go = async (/** @type {any} */ device, address) => {
+    const b = r.svc.begin({ username: "alex" }, address);
+    const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
+    return r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)), device }, address);
+  };
+  await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.80");
+  r.clock.t += 1000;
+  await go({ id: "browser-bbbbbbbb", label: "A phone" }, "203.0.113.81");
+  const list = r.svc.sessionsOf("alex");
+  assert.deepEqual(list.map(x => [x.device, x.label]), [["browser-bbbbbbbb", "A phone"], ["browser-aaaaaaaa", "Aina's laptop"]], "newest first");
+  assert.equal(JSON.stringify(list).includes("session"), false, "no session secret is listed");
+  assert.equal(r.svc.revokeDevice("alex", "browser-aaaaaaaa").revoked, true);
+  assert.deepEqual(r.svc.sessionsOf("alex").map(x => x.device), ["browser-bbbbbbbb"]);
+  assert.equal(r.svc.revokeDevice("blair", "browser-bbbbbbbb").revoked, false, "another person's device is not touched");
+  assert.equal(r.svc.sessionsOf("alex").length, 1);
+  const before = r.events.length;
+  await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.82");
+  assert.equal(r.events.length, before + 1, "the signed-out device is new again and rings the others");
+});
