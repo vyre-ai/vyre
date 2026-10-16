@@ -313,7 +313,7 @@ export function createLentHome(o) {
       // Nothing of a session that is running well elsewhere is touched until the book has said this computer may have it: the refusals above and the book's own (a second computer, a session on the server) leave its
       // credentials and its row as they were.
       const before = book.get(String(i.session));
-      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null, ...(asked && asked.folder ? { folder: asked.folder } : {}) });
+      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null, own: !asked, ...(asked && asked.folder ? { folder: asked.folder } : {}) });
       if (asked) pipes.claimed(String(i.session), w.device);
       if (o.leases && i.lease) {
         try { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
@@ -362,6 +362,9 @@ export function createLentHome(o) {
       // steadily well: well now and at the last beat, with no gap longer than a lapse between them (a computer that vanished and came back starts over)
       const wellSince = !well ? null : was && was.well && was.wellSince !== null && now() - was.at <= LAPSE_MS ? was.wellSince : now();
       lenders.set(w.device, { person: w.person, at: now(), well, auto: !(i && i.auto === false), wellSince, folders });
+      // A session the person started on this computer themselves (no chat's process: runner.start) comes back by the same standing choice as a chat's, with no tap: the home tells the computer to start it again from its checkpoint.
+      // A chat's own session goes through the person's next message instead (it has a process on the server to settle first).
+      for (const r of book.all()) if (r.own === true && r.device === w.device && r.person === w.person && mayReturn(r, w.person)) { try { book.bringBack(r.session, w.person); } catch { /* pinned or gone: the person's tap stays */ } }
       return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: directivesFor(w.device) };
     },
     /**

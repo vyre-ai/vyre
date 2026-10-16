@@ -28,7 +28,7 @@ const bad = (/** @type {string} */ message, /** @type {string} */ code) => Objec
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
- * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating" | "paused",
+ * @typedef {{ own?: boolean, session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating" | "paused",
  *   reason: string | null, resume?: boolean, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, folder?: string | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
  *   facts?: { cpuPercent?: number, memoryMb?: number, turn?: number } }} Row
  * @typedef {{ load(): { rows: Row[], owners: Record<string, string> }, save(state: { rows: Row[], owners: Record<string, string> }): void }} Store
@@ -109,7 +109,8 @@ export function createPlacementBook(o = {}) {
       if (had && had.where === "server" && !had.allowMac) throw bad("this session runs on the server now: bring it back to the computer from its chat first", "conflict");
       const t = now();
       /** @type {Row} */ const r = { session, chat: i.chat || (had && had.chat) || null, person: i.person, device: i.device, key: i.key || null, where: "mac", state: "here", reason: null, since: t, epoch: (had ? had.epoch : 0) + 1,
-        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false, ask: null, folder: i.folder || (had ? had.folder : null) || null };
+        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false, ask: null, folder: i.folder || (had ? had.folder : null) || null,
+        ...(i.own === true || (had && had.own === true && i.own !== false) ? { own: true } : {}) };
       rows.set(session, r); save();
       if (had && had.where === "server") moved(r, "server", "mac", "you");
       return copy(r);
