@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(mcp): `onboard.person.create` and `onboard.computer.add` leave MCP and take only the person's own surfaces, because they take the master password and a model must never see that field. An agent asks the person to finish on their own device instead.
 - fix(chat): a member's turn in a chat hears only a picked record (the kernel checks it under that member's own chain) and an account chip. A #Name in the words, and a vault, Drive or GitHub chip, are no longer resolved under the owner's access on the stream's delivery path.
 - fix(mcp): `wink.phone.pair.answer` and `wink.code.ack` leave the MCP list. The words pick and the typed code are the person's own, and a held card cannot name a device that is not paired yet, so an agent that supplied them was pairing a device it controls. A model's call is refused, not held.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
