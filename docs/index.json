@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":353,"tool":1792,"event":546,"config":305,"env":304,"screen":0,"concept":39},
+  "counts": {"command":353,"tool":1792,"event":546,"config":305,"env":305,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -3073,6 +3073,7 @@
     {"kind":"env","name":"VYRE_TEST_FILE_LIMIT_MS","definedIn":"scripts/team/preflight.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_TEST_HOST","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_HOSTED","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
+    {"kind":"env","name":"VYRE_TEST_OMIT","definedIn":"scripts/test-counts.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_TEST_PAIR_NO_PROOF","definedIn":"core/wink/pairing.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_REAL_TAILSCALE","definedIn":"core/link/transport.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_SELF_RESERVE","definedIn":"core/spaces/index.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
