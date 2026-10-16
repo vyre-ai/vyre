@@ -40,6 +40,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(phone, security): the Face ID prompt's words drop every character that is not shown as itself (control, format such as U+202E and U+200B, the isolates U+2066 to U+2069, line and paragraph separators: the plainName set), and a held group's prompt cleans each op as one card's does (review of #189).
 - refactor(phone): approveAndSign (native/presence.ts and its web stand-in), which nothing called, is removed rather than guarded.
 - docs(app): the app's sample data reads as a design studio, not a law firm, in the three places the site captures draw it from (the chat demo, the chat stream and the sample store): no Matter, attorney, engagement letter, lease, court portal or estate-planning Kit; the sample names (alex, Harlow Legal, Northwind Bakery, Juniper Studio, Doe, Roe) stay. The sample record type is shown as Job (its internal name stays matter), its stages are Intake, Kickoff, Design, Review, Launch and Closed, and its plan choices are Brand, Site and Both. The pictures and the site captures are refreshed after this lands.
+- fix(ui): touch targets on a phone are real boxes: the small Button is 44 high on a phone (36 on a computer) and a pressed Chip has a 44 high tap area, so the picture rules stop flagging them (issue 183: Add a group, the field-kind chips, Add a rule). The pictures of those fixtures change and are refreshed after the baseline PR.
 
 ## 0.5.1
 
