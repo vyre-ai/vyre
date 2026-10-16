@@ -5522,7 +5522,7 @@ Wrap this device's existing keys under a new master password. The recovery key i
 
 ### `identity.signin.ack`
 
-Say a sign-in on a new device was you: it stops waiting on you. The owner's own act.
+Say a sign-in on a new device was you: it stops waiting on you. Your own act.
 
 - Input:
   - `device` string, required
@@ -5530,7 +5530,7 @@ Say a sign-in on a new device was you: it stops waiting on you. The owner's own 
 
 ### `identity.signin.revoke`
 
-Sign a device out: end every live session of that device id and forget it, so its next sign-in is a new device again. The owner's own act.
+Sign one of your devices out: end every live session of that device id and forget it, so its next sign-in is a new device again. Your own act.
 
 - Input:
   - `device` string, required
@@ -5538,7 +5538,7 @@ Sign a device out: end every live session of that device id and forget it, so it
 
 ### `identity.signins.pending`
 
-The devices that signed in to this space for the first time and are still signed in, which the owner has not said were them. For the Needs you list.
+Your sign-ins on a new device that are still signed in and that you have not said were you. For the card on Now. Each person sees their own.
 
 - Input: none
 - Callers: any caller
