@@ -59,8 +59,6 @@
     "local/capsule/native/Sources/Vyred/Glass.swift",
     "local/capsule/native/Tests/CapsuleModelTests.swift",
     "names/worker/index.js",
-    "relay/app/README.md",
-    "relay/app/worker.js",
     "relay/client/setup.test.js",
     "scripts/capsule-daemon-check.mjs",
     "scripts/computers-proof/proof.mjs",
