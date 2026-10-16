@@ -124,6 +124,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           const rep = path.join(dir, `rep-${i}`);
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
+          // docs-check harvest is heavy; run its subtests serially (Node has no test.configure on our version).
           const serial = f === "test/docs-check.test.js" ? ["--test-concurrency=1"] : [];
           const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", ...serial, "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
             { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f, VYRE_TEST_SKIPS_OUT: `${out}.skips` } });
