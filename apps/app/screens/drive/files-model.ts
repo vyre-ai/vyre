@@ -1,22 +1,24 @@
-// The pure half of the Files screen: the roots of the tree, one row shape for every source (the Space, a linked folder), sorting, filtering, breadcrumbs, selection, the keyboard,
-// and what each source lets you do. Nothing here talks to the box or draws; the screens and the tests use it alike. The Space and Linked folders are the existing files.* tools.
+// The pure half of the Files screen: the roots of the tree, one row shape for every source (the Space, a linked folder, a box share), sorting, filtering, breadcrumbs, selection, the keyboard,
+// and what each source lets you do. Nothing here talks to the box or draws; the screens and the tests use it alike. The Space, Linked and Box folders are the existing files.* tools.
 import { pathIn } from "./linked-model.ts";
 import type { LinkedEntry } from "./linked-model.ts";
 import type { Item } from "./space-model.ts";
+import type { Entry } from "./real-model.ts";
 
-export type Root = "space" | "shared" | "linked";
-export type Place = { root: Root; path: string; link?: string };
+export type Root = "space" | "shared" | "linked" | "box";
+export type Place = { root: Root; path: string; link?: string; share?: string };
 export type Kind = "folder" | "pdf" | "doc" | "sheet" | "image" | "video" | "audio" | "archive" | "text" | "file";
-export type FileRow = { key: string; place: string; root: Root; name: string; dir: boolean; kind: Kind; size: number; modified: number; by?: string; ver?: number; rev?: string | null; link?: string; path: string };
+export type FileRow = { key: string; place: string; root: Root; name: string; dir: boolean; kind: Kind; size: number; modified: number; by?: string; ver?: number; rev?: string | null; link?: string; share?: string; path: string };
 export type TreeNode = { id: string; label: string; root: Root; kids?: TreeNode[] };
 
-const ROOTS: [Root, string][] = [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"]];
+const ROOTS: [Root, string][] = [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "On your server"]];
 export const rootLabel = (r: Root): string => ROOTS.find((x) => x[0] === r)![1];
 
-/** The roots, with a child per linked folder. A root with nothing in it is still there (it says so when opened); the Space's own folders load when it is opened. */
-export function rootsOf(o: { linked: readonly { id: string; name: string }[] }): TreeNode[] {
+/** The roots, with a child per linked folder and per box share. A root with nothing in it is still there (it says so when opened); the Space's own folders load when it is opened. */
+export function rootsOf(o: { linked: readonly { id: string; name: string }[]; shares: readonly { name: string }[] }): TreeNode[] {
   return ROOTS.map(([root, label]) => {
     if (root === "linked") return { id: root, label, root, kids: o.linked.map((l) => ({ id: `linked:${l.id}`, label: l.name, root })) };
+    if (root === "box") return { id: root, label, root, kids: o.shares.map((s) => ({ id: `box:${s.name}`, label: s.name, root })) };
     return { id: root, label, root };
   });
 }
@@ -24,15 +26,16 @@ export function rootsOf(o: { linked: readonly { id: string; name: string }[] }):
 const tail = (path: string) => (path ? `:${path}` : "");
 export function placeId(p: Place): string {
   if (p.root === "linked") return p.link ? `linked:${p.link}${tail(p.path)}` : "linked";
+  if (p.root === "box") return p.share ? `box:${p.share}${tail(p.path)}` : "box";
   return `${p.root}${tail(p.path)}`;
 }
 export function parsePlace(id: string): Place | null {
   const i = id.indexOf(":"), head = (i < 0 ? id : id.slice(0, i)) as Root, rest = i < 0 ? "" : id.slice(i + 1);
   if (!ROOTS.some((r) => r[0] === head)) return null;
-  if (head === "linked") {
+  if (head === "linked" || head === "box") {
     if (!rest) return { root: head, path: "" };
     const j = rest.indexOf(":"), first = j < 0 ? rest : rest.slice(0, j), path = j < 0 ? "" : rest.slice(j + 1);
-    return { root: head, link: first, path };
+    return head === "linked" ? { root: head, link: first, path } : { root: head, share: first, path };
   }
   return { root: head, path: rest };
 }
@@ -56,6 +59,13 @@ export function rowsFromLinked(link: string, linkName: string, entries: readonly
     return { key: id, place: id, root: "linked", name: e.name, dir: e.dir, kind: kindOf(e.name, e.dir), size: e.size, modified: ms(e.modified), rev: e.rev, link, path: rel };
   });
 }
+export function rowsFromBox(share: string, path: string, entries: readonly Entry[]): FileRow[] {
+  const base = path.replace(/\/+$/, "");
+  return entries.map((e) => {
+    const p = `${base}/${e.name}`, id = `box:${share}:${p}`;
+    return { key: id, place: id, root: "box", name: e.name, dir: e.dir, kind: kindOf(e.name, e.dir), size: e.size, modified: ms(e.mtime), share, path: p };
+  });
+}
 
 export type SortKey = "name" | "kind" | "modified" | "size";
 export type Sort = { key: SortKey; dir: "asc" | "desc" };
@@ -75,10 +85,12 @@ export function filterRows<T extends { name: string }>(rows: readonly T[], q: st
 /** Each step from the root to the place, with the place id tapping it opens. `names.linked` names a linked folder by id. */
 export function crumbsFor(p: Place, names: { linked?: Record<string, string> }): { name: string; place: string }[] {
   const out: { name: string; place: string }[] = [{ name: rootLabel(p.root), place: p.root }];
+  const slash = p.root === "box" && p.path.startsWith("/");
   if (p.root === "linked" && p.link) out.push({ name: names.linked?.[p.link] ?? p.link, place: `linked:${p.link}` });
+  if (p.root === "box" && p.share) out.push({ name: p.share, place: `box:${p.share}` });
   const parts = p.path.split("/").filter(Boolean);
   parts.forEach((seg, i) => {
-    const sub = parts.slice(0, i + 1).join("/");
+    const sub = (slash ? "/" : "") + parts.slice(0, i + 1).join("/");
     out.push({ name: seg, place: placeId({ ...p, path: sub }) });
   });
   return out;
@@ -91,18 +103,20 @@ export function parentPlace(id: string): string | null {
     const k = p.path.lastIndexOf("/");
     return placeId({ ...p, path: k <= 0 ? "" : p.path.slice(0, k) });
   }
-  if (p.root === "linked" && p.link) return p.root;
+  if ((p.root === "linked" && p.link) || (p.root === "box" && p.share)) return p.root;
   return null;
 }
 
 export type Abilities = { upload: boolean; versions: boolean; move: boolean; remove: boolean; download: boolean; share: boolean; edit: boolean };
-/** What each source offers, from the tools that exist: the Space's Drive has upload, versions, restore and links but no move or delete; a linked folder writes, renames and deletes at its source. */
+/** What each source offers, from the tools that exist: the Space's Drive has upload, versions, restore and links but no move or delete; a linked folder writes, renames and deletes at its source; box folders are read only. */
 export function abilities(root: string): Abilities {
   const none: Abilities = { upload: false, versions: false, move: false, remove: false, download: false, share: false, edit: false };
   // native-mount (work/rc4-native-mount) adds files.drive.space.move, .trash, a ranged read and chunked upload. When it lands: move and remove become true here, the Space's Move and Delete
   // call those tools in FilesManager.web.tsx (MoveDelete), and Download reads in ranges. Nothing of those tools is built here.
   if (root === "space") return { ...none, upload: true, versions: true, download: true, share: true };
   if (root === "linked") return { ...none, upload: true, versions: true, move: true, remove: true, download: true, edit: true };
+  // A box share is read in chunks (files.drive.read) and there is no whole-file download yet, so none is offered.
+  if (root === "box") return { ...none };
   if (root === "shared") return { ...none, remove: true };
   return none;
 }

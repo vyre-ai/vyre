@@ -540,6 +540,7 @@ export const OPEN = new Set([
   "chrome.voice",
   "computers.handback.status",
   "computers.rename",
+  "files.mentions.search",
   "files.receive",
   "github.mcp.sync",
   "github.project",

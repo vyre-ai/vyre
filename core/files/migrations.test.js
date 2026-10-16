@@ -50,7 +50,7 @@ test("running the list twice changes nothing", () => {
 });
 
 test("both parts of the module migrate that list and no list of their own", () => {
-  for (const f of ["linked.js", "space-links.js"]) {
+  for (const f of ["drive.js", "space-links.js"]) {
     const src = fs.readFileSync(new URL(`./${f}`, import.meta.url), "utf8");
     assert.match(src, /ctx\.store\.migrate\(filesMigrations\(\)\)/, f);
     assert.doesNotMatch(src, /ctx\.store\.migrate\((?!filesMigrations)/, f);

@@ -18,7 +18,7 @@ test("a screen's own space wins, and All spaces or no space adds nothing", () =>
 });
 
 test("a tool that does not take a space is left alone", () => {
-  for (const t of ["records.get", "records.update", "files.linked.list", "spaces.list", "vault.list"]) assert.deepEqual(withSpace(t, { id: "x" }, A), { id: "x" }, t);
+  for (const t of ["records.get", "records.update", "files.drive.list", "spaces.list", "vault.list"]) assert.deepEqual(withSpace(t, { id: "x" }, A), { id: "x" }, t);
   assert.equal(SPACE_TOOLS.size, 36, "the 34 the app named by hand, plus records.holders and files.drive.link.create, which the tool reference says take a space too");
 });
 
@@ -75,5 +75,5 @@ test("a member's daily Records and tasks go through the door under the same name
 test("a member's project files go through the door: list, read and upload, and nothing else of Drive", async () => {
   const { memberWire } = await import("./with-space.js");
   for (const t of ["files.list", "files.read", "files.upload"]) assert.equal(memberWire(t), t, t);
-  for (const t of ["files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
+  for (const t of ["files.drive.list", "files.drive.read", "files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
 });
