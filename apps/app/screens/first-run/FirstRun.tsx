@@ -165,7 +165,7 @@ export function FirstRun() {
     const addr = spaceAddressOf(signSpace);
     return (
       <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
-        primary={{ label: "Sign in", disabled: !addr || !usernameOf(username) || !password, loading: busy, onPress: () => void run(async () => {
+        primary={{ label: busy ? "Unlocking..." : "Sign in", disabled: !addr || !usernameOf(username) || !password || busy, loading: busy, onPress: () => void run(async () => {
           const r = await signInPassword({ space: addr ? addr.space : "", username: usernameOf(username), password });
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
@@ -191,7 +191,7 @@ export function FirstRun() {
   if (screen === "id.signin.spaces") {
     return (
       <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.spacesTitle} lead={SIGNIN_COPY.spacesLead} failure={failure}
-        primary={{ label: "Unlock", disabled: !password, loading: busy, onPress: () => void run(async () => {
+        primary={{ label: busy ? "Unlocking..." : "Unlock", disabled: !password || busy, loading: busy, onPress: () => void run(async () => {
           const r = await unlockGithub(password);
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
@@ -206,7 +206,7 @@ export function FirstRun() {
   if (screen === "id.create") {
     return (
       <FlowStep steps={steps} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
-        failure={failure} primary={{ label: "Create", disabled: !nameOk || !passOk, loading: busy, onPress: () => void run(async () => {
+        failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
           if (r.already) { setUsername(r.username || usernameOf(username)); go(afterRecovery({ path, heldInvite: review?.link })); return; }
