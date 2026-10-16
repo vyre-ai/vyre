@@ -47,7 +47,7 @@
       "computer.member-added", "computer.member-removed", "computer.member-rotated"
     ]
   },
-  "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
+  "shows": { "streams": ["glass", "browser-glass"], "cli": ["computers"], "deck": ["panel:glass"] },
   "needs": { "vault": ["tailscale-agent-authkey", "vyre-shared-computer-member-key"] },
   "teaches": {},
   "settings": [

@@ -39,12 +39,20 @@ export async function helper(pool, agent) {
  * @param {{ reason?: string, fill_token?: string }} [o]
  * @returns {Promise<boolean>} whether computerd was told
  */
-export async function tellComputerd(pool, agent, on, o = {}) {
+/**
+ * @param {import("./pool.js").Pool} pool
+ * @param {string} agent agent name (for thawing)
+ * @param {boolean} on
+ * @param {{ reason?: string, fill_token?: string, computerRow?: string }} [o] computerRow: pool row key when it differs from agent (shared browser)
+ * @param {(agent: string) => Promise<{ url: string, token: string }>} [getHelper]
+ */
+export async function tellComputerd(pool, agent, on, o = {}, getHelper) {
+  const row = o.computerRow || agent;
   let h = null;
-  if (on) h = await helper(pool, agent);
+  if (on) h = getHelper ? await getHelper(agent) : await helper(pool, agent);
   else {
-    const r = pool.row(agent);
-    if (r && r.state === "running" && pool.hosts.has(agent)) h = pool.endpoint(agent).helper;
+    const r = pool.row(row);
+    if (r && r.state === "running" && pool.hosts.has(row)) h = pool.endpoint(row).helper;
   }
   if (!h) return false;
   const res = await fetch(new URL("/shield", h.url), {

@@ -23,6 +23,8 @@ import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
 import { Fills } from "./fill.js";
 import { helper, tellComputerd } from "./helper.js";
+import { SharedBrowser } from "./shared-browser.js";
+import { BrowserGlass } from "./browser-glass.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
@@ -79,9 +81,19 @@ export default {
       memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
-    const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
-    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on, o) });
-    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: agent => helper(pool, agent) });
+    const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });
+    const keyboard = new Keyboard({ pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
+      { ...o, computerRow: shared.enabled() ? shared.computer() : agent }, a => helperFor(a)) });
+    const helperFor = async agent => {
+      if (shared.enabled()) {
+        await shared.touch(agent);
+        const h = (await shared.endpoint(agent)).helper;
+        return { url: h.url, token: h.token };
+      }
+      return helper(pool, agent);
+    };
+    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -93,12 +105,17 @@ export default {
     // or missing one costs the stream, never the pool or the hands.
     /** @type {any} */
     let glass = null;
+    /** @type {BrowserGlass|null} */
+    let browserGlass = null;
     try {
       const { Glass } = await import("./glass.js");
       glass = new Glass({ pool, keyboard, log: ctx.log });
       ctx.upgrade("glass", (req, socket, head, info) => glass.handle(req, socket, head, info));
+      browserGlass = new BrowserGlass({ pool, shared, keyboard, log: ctx.log });
+      ctx.upgrade("browser-glass", (req, socket, head, info) => browserGlass.handle(req, socket, head, info));
     } catch (e) {
       glass = null;
+      browserGlass = null;
       ctx.log(`glass not available: ${/** @type {Error} */ (e).message}`);
     }
 
@@ -221,12 +238,18 @@ export default {
         const claim = agentClaim(caller);
         const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const labels = (ctx.config.computerLabels && typeof ctx.config.computerLabels === "object") ? ctx.config.computerLabels : {};
-        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({ ...pool.view(n), label: labels[n] || null }));
-        return { driver: driver ? driver.name : "none", screens: pool.opts.screens, computers };
+        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({
+          ...(shared.enabled() ? shared.view(n) : pool.view(n)),
+          label: labels[n] || null,
+        }));
+        return { driver: driver ? driver.name : "none", screens: shared.enabled() ? 0 : pool.opts.screens, computers, browse: shared.enabled() ? "browser" : "desktop" };
       });
 
     tool("computers.get", "One agent's computer.", obj({ agent: str }),
-      async (i, { caller }) => pool.view(await resolve(i, caller)));
+      async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        return shared.enabled() ? shared.view(agent) : pool.view(agent);
+      });
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when screens are busy.",
       obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
@@ -234,7 +257,12 @@ export default {
         if (!driver) throw new Error(NO_DRIVER);
         // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
         const thread = agentClaim(caller) ? live : i.thread;
-        return pool.checkout(await resolve(i, caller), { thread, why: i.why });
+        const agent = await resolve(i, caller);
+        if (shared.enabled()) {
+          await shared.hold(agent, { thread, why: i.why });
+          return { agent, screen: null, thread };
+        }
+        return pool.checkout(agent, { thread, why: i.why });
       }, { callers: OWN });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
@@ -306,12 +334,19 @@ export default {
         if (pool.unknown.has(agent)) throw Object.assign(new Error(UNKNOWN), { code: "unavailable" });
         const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
         const { w, h } = pool.size(agent);
+        if (shared.enabled()) {
+          return { ticket, path: `/v1/streams/computers/browser-glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h, mode: "screencast" };
+        }
         return { ticket, path: `/v1/streams/computers/glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
       });
 
-    tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Checks out and thaws.",
+    tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
       obj({ agent: str, thread: str }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
+        if (shared.enabled()) {
+          await shared.hold(agent, { thread: i.thread, why: "hands" });
+          return shared.endpoint(agent);
+        }
         await pool.checkout(agent, { thread: i.thread, why: "hands" });
         return pool.endpoint(agent);
       }, { internal: true });
@@ -323,7 +358,7 @@ export default {
       }, { internal: true });
 
     tool("computers.helper", "Where computerd answers, and its token. Thaws and touches without taking a screen.",
-      obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
+      obj({ agent: str }), async (i, { caller }) => helperFor(await resolve(i, caller)), { internal: true });
 
     tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
       obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true, { reason: "person" }), { internal: true });

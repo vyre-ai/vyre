@@ -58,6 +58,8 @@ export class Keyboard extends EventEmitter {
   constructor(deps) {
     super();
     this.pool = deps.pool;
+    /** @type {import("./shared-browser.js").SharedBrowser|null} */
+    this.shared = deps.shared || null;
     this.call = deps.call;
     this.send = deps.emit;
     this.log = deps.log || (() => {});
@@ -114,6 +116,10 @@ export class Keyboard extends EventEmitter {
   async threadFor(agent) {
     const co = this.pool.checkouts.get(agent);
     if (co && co.thread) return co.thread;
+    if (this.shared && this.shared.enabled()) {
+      const h = this.shared.holder(agent);
+      if (h && h.thread) return h.thread;
+    }
     const r = await this.call("agents.threads", { agent });
     const list = r && Array.isArray(r.data) ? r.data : [];
     return list.length && list[0] && list[0].id ? String(list[0].id) : null;
@@ -133,8 +139,9 @@ export class Keyboard extends EventEmitter {
   async takeover(agent, surface, caller) {
     if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
     const before = this.holder(agent);
-    // A take-over needs the screen: it checks out (and thaws), and holds the checkout while it lasts.
-    await this.pool.checkout(agent, { why: "take-over" });
+    // A take-over needs the computer running: shared browser hold or a desktop checkout.
+    if (this.shared && this.shared.enabled()) await this.shared.hold(agent, { why: "take-over" });
+    else await this.pool.checkout(agent, { why: "take-over" });
     const thread = await this.threadFor(agent);
     let previous = before;
     let leased = thread;

@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(computers): shared headless browser is the default on a box (level 2): agents join `browser-shared` by `agents.uid`, `computers.endpoint` and Glass use CDP screencast at `/v1/streams/computers/browser-glass`, and desktop checkouts stay available when `computers.browse` is `desktop`.
+- feat(app): the operator card shows live Glass on web, Mac and Windows; the full-screen view uses `LiveScreen` with watch and take-over.
+- feat(hands-chrome): `chrome.net` on the box captures page traffic over CDP (`start` / `list`).
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
 ## 0.5.1
