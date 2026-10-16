@@ -32,7 +32,7 @@ async function rig(o = {}) {
   const events = /** @type {any[]} */ ([]);
   const idKey = identityKey();
   const svc = createLoginService({
-    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); }, keys: () => [...store.keys()] }, now: () => clock.t,
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
     verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex" || u === "blair",
     onNewDevice: e => events.push(e), ...o,
   });
@@ -240,12 +240,4 @@ test("a person can list their live sign-ins and sign one device out; the device 
   const before = r.events.length;
   await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.82");
   assert.equal(r.events.length, before + 1, "the signed-out device is new again and rings the others");
-});
-
-test("a person's usernames are found from the records, so each person sees and signs out their own devices", async () => {
-  const r = await rig();
-  assert.deepEqual(r.svc.usernamesOf(PERSON), ["alex"]);
-  assert.deepEqual(r.svc.usernamesOf("per_" + "b".repeat(26)), [], "another person has none here");
-  const noKeys = createLoginService({ space: SPACE, store: { get: () => undefined, set() {} } });
-  assert.deepEqual(noKeys.usernamesOf(PERSON), [], "a store that cannot list answers nothing, never a guess");
 });

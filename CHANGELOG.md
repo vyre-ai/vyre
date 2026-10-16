@@ -4,7 +4,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- feat(identity): the sign-in service finds the usernames registered for a person id (`usernamesOf`), so each person, not only the owner, sees and signs out their own new-device sign-ins.
 - feat(identity): the sign-in service lists a person's live sessions (`sessionsOf`: device id, label, time; never the secret) and signs a device out (`revokeDevice`), which also makes that device new again. The service is reachable to the identity module's own tools through `lib/login-door.js`.
 - feat(names): the directory keeps, per username, the space addresses a person belongs to. The identity adds and removes them with a signed act (`POST /v1/ids/spaces/add`, `/remove`); the list is not in the public record, and `POST /v1/ids/spaces {assertion}` returns it only for the person a relay GitHub assertion (audience `names`) names. The relay's assertion now carries the linked Vyre name. The directory verifies the assertion against the pinned relay key (`RELAY_ASSERT_KEY`, `lib/relay-keys.js`).
 - fix(identity): sign-in limits count only failed finishes against an address (begin has a high burst), strikes fall back after a clean day, and a device that sends a stable `device.id` rings the other devices once, not on every sign-in. The relay's public assertion key is pinned in the release (`lib/relay-keys.js`); nothing is configured per space, and an empty pin refuses GitHub sign-in.

@@ -138,7 +138,7 @@ export async function buildRegistration(o) {
 
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
- * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void, keys?: () => string[] }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
+ * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
  *   relayPub?: string, describe?: (username: string, rec: any) => Promise<Record<string, any>> | Record<string, any>, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, device: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
@@ -272,11 +272,6 @@ export function createLoginService(o) {
       o.store.set(`gh:${who.id}`, username);
       o.store.set(`login:${username}`, { ...rec, github: who.id });
       return { ok: true, username, login: who.login };
-    },
-    /** The usernames registered here for a person id (a person has one per space, but ask the records, not a guess). Empty when the store cannot list. @param {string} person */
-    usernamesOf(person) {
-      const keys = typeof o.store.keys === "function" ? o.store.keys() : [];
-      return keys.filter(k => k.startsWith("login:")).map(k => k.slice(6)).filter(u => { const r = record(u); return r && r.person === String(person); });
     },
     /** A person's live sign-in sessions, newest first, last 20: a device id, its label and when. Never the session secret. @param {string} username */
     sessionsOf(username) {
