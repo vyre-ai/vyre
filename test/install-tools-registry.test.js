@@ -1,5 +1,6 @@
 // @ts-check
 // Install pairing tools: names and reach come from module manifests and agent-reach, not a hand-maintained list.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
