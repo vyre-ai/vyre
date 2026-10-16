@@ -12,6 +12,7 @@
       "skills.list",
       "skills.find",
       "skills.get",
+      "skills.browse",
       "skills.versions"
     ],
     "tools": [
@@ -68,6 +69,11 @@
       },
       {
         "name": "skills.versions",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.browse",
         "effect": "read",
         "reach": "anyone"
       },
