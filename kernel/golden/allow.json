@@ -1268,6 +1268,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired device, a label"
  },
  {
+  "tool": "releases.info",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; releases.info opened to a model or a module in 510141976 (15 Oct 2026); the body decides: reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value"
+ },
+ {
   "tool": "roles.catalogue",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists what a role is made of: the built-in roles, the switches and the tools"
  },

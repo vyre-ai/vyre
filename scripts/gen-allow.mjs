@@ -368,6 +368,7 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
+  "releases.info": "510141976@15 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -445,6 +446,7 @@ export const DECLARED_NOTES = Object.freeze({
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+  "releases.info": "reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value",
 });
 
 const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;
