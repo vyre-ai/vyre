@@ -28,6 +28,8 @@ import { createPreviews } from "./preview-home.js";
 import { within, withinOrThrow } from "../../lib/within.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
+import { standsOffers, countMacSessions } from "../../lib/runner-consent.js";
+import { COMPUTE_TERMS_DEFAULT } from "../../lib/spaces/compute.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
 /** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
@@ -57,7 +59,8 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number,
  *   canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null,
- *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
+ *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any },
+ *   compute?: { status(person: string): Promise<{ active?: boolean, terms?: { maxSessions?: number } }> } }} o
  *   canResume: can the server carry a session on right now (the loader that turns a lent transcript into a chat exists)? When it cannot, the server takes no session from a lender: a move answers `unavailable` and the lender keeps
  *   running it, because a session taken with nothing to continue it is a session lost. Unset: yes.
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
@@ -96,13 +99,28 @@ export function createLentHome(o) {
   /** A chat that began on the server and is moving to a computer: its transcript is already in the store; the lender writes it into its own agent home before the program starts (spec.seed). session -> { native, count }. @type {Map<string, { native: string, count: number }>} */ const seeds = new Map();
   /** Sessions placed for a new chat that no lender has started yet. @type {Set<string>} */ const reserved = new Set();
   /** The ready computers waiting on the home for something to do (`wait`), one each. @type {Map<string, { t: any, res: (a: any) => void }>} */ const waiters = new Map();
+  /** spaces.compute.active per person, refreshed on status/beat/start (move, resume, spawn, and every lender path). */
+  /** @type {Map<string, boolean>} */ const computeActive = new Map();
+  /** @type {Map<string, number>} */ const maxSessionsPerPerson = new Map();
+  const refreshComputeFor = async (/** @type {string} */ person) => {
+    if (!o.compute || typeof o.compute.status !== "function") return null;
+    try {
+      const st = await o.compute.status(person);
+      computeActive.set(person, Boolean(st && st.active));
+      maxSessionsPerPerson.set(person, Number.isInteger(st?.terms?.maxSessions) ? Number(st.terms.maxSessions) : COMPUTE_TERMS_DEFAULT.maxSessions);
+      return st;
+    } catch { computeActive.set(person, false); return null; }
+  };
+  const sessionCap = (/** @type {string} */ person) => maxSessionsPerPerson.get(person) ?? COMPUTE_TERMS_DEFAULT.maxSessions;
+  const underSessionCap = (/** @type {string} */ person, /** @type {string} */ device, /** @type {string} */ session) =>
+    countMacSessions(book.all(), person, device, session) < sessionCap(person);
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
   const nudge = (/** @type {string} */ device) => { const x = waiters.get(device); if (!x) return; clearTimeout(x.t); waiters.delete(device); x.res({ directives: directivesFor(device) }); };
   /** The ready computer of this person's to start a session on, or null: it beat lately and said nothing holds it back, both Offers stand, and the server could take the session back if the lid closed. The computer already running the session wins. */
   const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null, /** @type {boolean} */ again = false) => {
     const row = SESSION.test(session) ? book.get(session) : null;
     // a chat given a folder of a computer runs on the computer that has that folder, and needs no server to carry it on: it never goes there
-    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && (!folder || (l.folders || []).some(f => f.id === folder)));
+    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && underSessionCap(person, device, session) && (!folder || (l.folders || []).some(f => f.id === folder)));
     if (folder) {
       if (!SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server")) return null;
       if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
@@ -122,7 +140,12 @@ export function createLentHome(o) {
     if (!device) throw err("not_found", "not found");
     return { person: String(h[0].actor.id), device };
   };
-  const stands = ({ person, device }, device_key) => { const a = o.offers.active({ member: person, device, ...(device_key ? { device_key } : {}) }); return Boolean(a && a.spaceAllows && a.memberAccepts); };
+  const stands = ({ person, device }, device_key) => {
+    const key = device_key || keys.get(device) || undefined;
+    if (!standsOffers(o.offers, person, device, key)) return false;
+    if (o.compute && computeActive.get(person) === false) return false;
+    return true;
+  };
   const mine = (chain, session) => {
     const w = who(chain);
     const l = lent.get(String(session));
@@ -224,13 +247,17 @@ export function createLentHome(o) {
     async status(chain, i = {}) {
       const w = who(chain); const a = o.offers.active({ member: w.person, device: w.device, ...(i && i.device_key ? { device_key: String(i.device_key) } : {}) });
       if (i && typeof i.device_key === "string" && i.device_key.length <= 200 && a && a.memberAccepts) keys.set(w.device, i.device_key);
-      return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null };
+      await refreshComputeFor(w.person);
+      const computeOn = o.compute ? computeActive.get(w.person) !== false : true;
+      return { spaceAllows: Boolean(a && a.spaceAllows) && computeOn, memberAccepts: Boolean(a && a.memberAccepts) && computeOn, lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null, maxSessions: sessionCap(w.person) };
     },
     /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string, cap?: "provider" | "internet" | null, chat?: string }} i */
     async start(chain, i) {
       const w = who(chain);
       if (!i || !SESSION.test(String(i.session))) throw err("bad_input", "name the session");
+      await refreshComputeFor(w.person);
       if (!stands(w, i.device_key)) throw err("not_allowed", "this computer is not allowed to run this Space's work");
+      if (!underSessionCap(w.person, w.device, String(i.session))) throw err("not_allowed", `That computer already runs ${sessionCap(w.person)} of this space's sessions.`);
       // a session id belongs to the first person who used it, for good: nobody else reads what it left in the store
       { const owner = book.ownerOf(String(i.session)); if (owner !== null && owner !== w.person) throw err("not_found", "not found"); }
       { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
@@ -295,6 +322,7 @@ export function createLentHome(o) {
      */
     async beat(chain, i = {}) {
       const w = who(chain);
+      await refreshComputeFor(w.person);
       const list = i && Array.isArray(i.sessions) ? i.sessions.slice(0, BEAT_MAX) : [];
       /** @type {string[]} */ const fencedList = [];
       for (const x of list) {
@@ -385,6 +413,7 @@ export function createLentHome(o) {
       const folder = i && typeof i.folder === "string" ? i.folder : null;
       const device = pickLender(person, session, folder);
       if (!device) { if (folder) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer"); return { where: "box" }; }
+      if (!underSessionCap(person, device, session)) return { where: "box" };
       const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null, ...(folder ? { folder } : {}) });
       reserved.add(session);
       const t = setTimeout(() => { if (reserved.delete(session) && !lent.has(session)) book.forget(session); }, RESERVE_MS); t.unref?.();
@@ -405,6 +434,7 @@ export function createLentHome(o) {
       if (had && (had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place: let it finish where it is, then move it");
       const device = pickLender(person, session, null, Boolean(had));
       if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
+      if (!underSessionCap(person, device, session)) throw err("not_allowed", `That computer already runs ${sessionCap(person)} of this space's sessions.`);
       const lines = Array.isArray(i.lines) ? i.lines : [];
       if (!lines.length) throw err("unavailable", "this chat has no whole turn to move yet");
       // the home's store already holds the turns the computer ran before the chat came back: only what the server added since goes in

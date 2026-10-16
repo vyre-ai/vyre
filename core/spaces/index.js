@@ -64,6 +64,8 @@ import { PASSWORD_MIN } from "./recovery.js";
 import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
+import { syncComputeSpaceAllow, syncComputeMemberAcceptForLend } from "../../lib/spaces/consent-sync.js";
+import { applySpaceAllowsOffer } from "./kernel-members.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson, kernelTeamSpaces, membersComputers } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
@@ -1132,10 +1134,17 @@ export default {
           const next = { lent: true, kernel: Boolean(viaKernel), ...(typeof viaKernel === "string" ? { kdevice: viaKernel } : {}), device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);
           emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
+          try { await syncComputeMemberAcceptForLend(computeFor(row.id), /** @type {string} */ (s.id)); } catch (e) { ctx.log.warn(`lend: compute accept could not be recorded: ${/** @type {Error} */ (e).message}`); }
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         });
       }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOrHome(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
-    tool("spaces.members.computers", "Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => { const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); return membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: await actingPerson(K, meta, /** @type {string} */ (s.id)), self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse }); });
+    tool("spaces.members.computers", "Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => {
+      const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      const actor = await actingPerson(K, meta, /** @type {string} */ (s.id));
+      const r = await membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: actor, self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse });
+      if (i.allow !== undefined) { try { await syncComputeSpaceAllow(computeFor(row.id), { actor, enabled: r.allowed }); } catch (e) { ctx.log.warn(`members.computers: compute mirror failed: ${/** @type {Error} */ (e).message}`); } }
+      return r;
+    });
     tool("spaces.devices.lend.status", "Whether a device of yours is lent to a space, when it was first lent and who allowed it. Only the device's person and the space's owners and admins can ask.", obj({ space: str, device: str }, ["space", "device"]), async (i, meta) => {
       const s = me();
       const row = spaceOrHome(i.space);
@@ -2538,10 +2547,15 @@ export default {
       return c;
     };
     tool("spaces.compute.allow", "As an owner or admin: allow (or stop allowing) this space's work to run on members' own computers. A member must still accept, and it covers only that member's own sessions on their own machine.",
-      obj({ space: str, enabled: { type: "boolean" }, maxSessions: { type: "number" } }, ["space", "enabled"]), async i => {
+      obj({ space: str, enabled: { type: "boolean" }, maxSessions: { type: "number" } }, ["space", "enabled"]), async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        return out(await computeFor(row.id).allowSpace({ actor: /** @type {string} */ (s.id), enabled: i.enabled === true, terms: i.maxSessions === undefined ? undefined : { maxSessions: Number(i.maxSessions) } }));
+        const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+        const body = await computeFor(row.id).allowSpace({ actor: /** @type {string} */ (s.id), enabled: i.enabled === true, terms: i.maxSessions === undefined ? undefined : { maxSessions: Number(i.maxSessions) } });
+        try {
+          await applySpaceAllowsOffer({ i: { space: row.id, allow: body.enabled }, meta, row, h: kernelHandle(row.id), caller: /** @type {string} */ (s.id), self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse }, body.enabled === true);
+        } catch (e) { ctx.log.warn(`compute.allow: offers mirror failed: ${/** @type {Error} */ (e).message}`); }
+        return out(body);
       });
     tool("spaces.compute.accept", "As a member: accept (or stop accepting) this space using your own computer for your own sessions. `terms` is the hash the space's terms show; if the space changed them you must look again.",
       obj({ space: str, enabled: { type: "boolean" }, terms: str }, ["space", "enabled"]), async i => {
@@ -2549,10 +2563,15 @@ export default {
         const s = await gate(row.id);
         return out(await computeFor(row.id).acceptMember({ person: /** @type {string} */ (s.id), enabled: i.enabled === true, terms: i.terms === undefined ? undefined : String(i.terms) }));
       });
-    tool("spaces.compute.status", "What the space and you have each said about running its work on your computer, and whether it is on.", obj({ space: str }, ["space"]), async i => {
+    tool("spaces.compute.status", "What the space and you have each said about running its work on your computer, and whether it is on.", obj({ space: str, person: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id);
-      return out(await computeFor(row.id).status({ person: /** @type {string} */ (s.id) }));
+      let person = /** @type {string} */ (s.id);
+      if (typeof i.person === "string" && i.person && i.person !== person) {
+        onlyModules(meta, ["vyred", "runner"]);
+        person = String(i.person);
+      }
+      return out(await computeFor(row.id).status({ person }));
     });
     tool("spaces.compute.may-run", "The scheduler asks: may this member's session run on this member's computer? Needs both grants and the same person on the session, the machine and the request.",
       obj({ space: str, session: obj({ owner: str, running: { type: "number" } }, ["owner"]), machine: obj({ owner: str }, ["owner"]) }, ["space", "session", "machine"]), async i => {

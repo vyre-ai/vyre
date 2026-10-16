@@ -172,12 +172,17 @@ export async function kernelTeamSpaces(K, person) {
  * @param {{ i: { space: string, allow?: boolean }, meta: any, row: { id: string }, h: any, caller: string, self: string, role: string | null, kctxOf: (meta: any, space: string) => Promise<{ chain: any, proof: any }>, answerChallenge: (ch: any, space: string) => Promise<any>, refuse: (message: string, code: string) => Error }} d
  * @returns {Promise<{ space: string, allowed: boolean }>}
  */
-export async function membersComputers(d) {
+/**
+ * Set or read the Space's kernel Offer for member "*" space_allows (G01). Used by `spaces.members.computers` and by `spaces.compute.allow` when mirroring into Offers.
+ * @param {typeof membersComputers extends (d: infer D) => any ? D : never} d
+ * @param {boolean} [allow] when omitted, only reads (no role check beyond read path)
+ */
+export async function applySpaceAllowsOffer(d, allow) {
   const { i, meta, row, h, caller, self, role, kctxOf, answerChallenge, refuse } = d;
   const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
   if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here: ask the owner of this server to update it.", "unavailable");
   const find = () => offers.find({ side: "space_allows", member: "*", device: null });
-  if (i.allow === undefined) { if (!role) throw refuse("You are not a member of this space.", "not_a_member"); return { space: row.id, allowed: Boolean(await find()) }; }
+  if (allow === undefined) return { space: row.id, allowed: Boolean(await find()) };
   if (caller !== self) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
   if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin of the Space says whether its members may run sessions on their own computers.", "forbidden");
   const withYes = async (/** @type {(k: any) => Promise<any>} */ run) => {
@@ -191,7 +196,17 @@ export async function membersComputers(d) {
     }
   };
   const have = await find();
-  if (i.allow === true && !have) await withYes(k => offers.offer(k.chain, { side: "space_allows", member: "*", device: null }, k.proof));
-  if (i.allow === false && have) await withYes(k => offers.unoffer(k.chain, have.id, k.proof));
+  if (allow === true && !have) await withYes(k => offers.offer(k.chain, { side: "space_allows", member: "*", device: null }, k.proof));
+  if (allow === false && have) await withYes(k => offers.unoffer(k.chain, have.id, k.proof));
   return { space: row.id, allowed: Boolean(await find()) };
+}
+
+export async function membersComputers(d) {
+  const { i, row, role, refuse } = d;
+  if (i.allow === undefined) {
+    const r = await applySpaceAllowsOffer(d, undefined);
+    if (!role) throw refuse("You are not a member of this space.", "not_a_member");
+    return r;
+  }
+  return applySpaceAllowsOffer(d, i.allow === true);
 }
