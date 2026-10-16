@@ -1,11 +1,13 @@
 // @ts-check
 // A model that drives onboarding, a device or an invite does not change anything until the person taps once.
-// The card is the same approvals queue an outward send already uses (approvals.hold). A module calling
-// another module is not held: onboard and the relay still set a machine to device themselves.
+// A person-only read of one of those (a vault value, a device list, a pairing) waits for the same tap, so the
+// value is not returned first. The card is the same approvals queue an outward send already uses (approvals.hold).
+// A module calling another module is not held: onboard and the relay still set a machine to device themselves.
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
 import { momentOf, yes } from "../../lib/one-yes.js";
 import { isSurface } from "../../lib/surface-tools.js";
+import { PERSON_ONLY as reachPersonOnly } from "./agent-reach.js";
 
 const AGENT_OR_THREAD = /(?:^|[\s:])(?:agent|thread):/;
 
@@ -42,7 +44,8 @@ export function surfaceAllows(caller, tool) {
  */
 export function listingMarks(name, d) {
   const surface = isSurface(name);
-  const needsYou = Boolean(d && d.needsYou) || (surface && d && d.effect === "write");
+  // A person-only surface read waits for the same tap. An agent does not receive the value first.
+  const needsYou = Boolean(d && d.needsYou) || (surface && ((d && d.effect === "write") || reachPersonOnly.has(name)));
   return { ...(surface ? { surface: true } : {}), ...(needsYou ? { needsYou: true } : {}) };
 }
 
@@ -58,7 +61,8 @@ export async function holdNeedsYou(registry, o) {
   if (!def || def.internal || def.hook || def.outward === true) return null;
   if (!modelCaller(caller)) return null;
   const write = def.effect === "write" || def.needsYou === true;
-  if (!((isSurface(tool) && write) || def.needsYou === true)) return null;
+  const personSurface = isSurface(tool) && reachPersonOnly.has(tool);
+  if (!((isSurface(tool) && write) || def.needsYou === true || personSurface)) return null;
   const meta = o.meta || {};
   const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
   const named = momentOf(tool, () => false);
