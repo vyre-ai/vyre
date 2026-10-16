@@ -26,6 +26,11 @@ on:
       - "design-refs/**"
       - ".github/workflows/design-pictures.yml"
   workflow_dispatch:
+    inputs:
+      update:
+        description: "Write the references instead of checking them (uploads design-refs as an artifact to commit after the owner's yes)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -40,7 +45,7 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
     env:
-      UPDATE: ${{ contains(github.event.head_commit.message, '[pictures-update]') }}
+      UPDATE: ${{ contains(github.event.head_commit.message, '[pictures-update]') || inputs.update == true }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
