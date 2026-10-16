@@ -147,7 +147,8 @@ test("MEMBER_MAY read tools: live calls as member leak no owner or other-member 
   const ownerPlan = await plannerAdd(ownerMeta, MARK_O);
   assert.ok(ownerPlan.data, JSON.stringify(ownerPlan.error));
   assert.ok((await plannerAdd(carolMeta, MARK_C)).data);
-  assert.ok((await plannerAdd(bobMeta, MARK_B)).data);
+  const bobPlan = await plannerAdd(bobMeta, MARK_B);
+  assert.ok(bobPlan.data, JSON.stringify(bobPlan.error));
 
   const seed = {
     carolThread: undefined,
