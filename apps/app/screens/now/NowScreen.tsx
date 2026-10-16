@@ -11,7 +11,6 @@ import { AwayCard } from "./AwayCard";
 import { SignInAgain } from "./SignInAgain";
 import { VaultHealthCard } from "./VaultHealthCard";
 import { useSpaces } from "../shell/state";
-import { PairingCards } from "../pairing/PairingCards";
 import { CreateAssistantCard } from "../assistants/CreateAssistantCard";
 import { createCardSource } from "../assistants/create-card-source";
 import { CREATE_ASSISTANT, shouldShow, type AgentRow } from "../assistants/create-card-model";
@@ -58,7 +57,6 @@ export default function NowScreen() {
       {real && !started ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}
       {real ? <VaultHealthCard /> : null}
-      {real ? <PairingCards /> : null}
       {real && !started && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
       {real ? <AwayCard /> : null}
       {real ? <SignInAgain /> : null}
