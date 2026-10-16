@@ -83,7 +83,7 @@ export const PROVIDER_GROUP = {
   "imap-smtp": "Email and sending", "sending-service": "Email and sending",
   twilio: "Phone and texts",
   "google-oauth": "Google and Microsoft", "google-dwd": "Google and Microsoft", "google-apps-script": "Google and Microsoft",
-  github: "Code and hosting", "github-oauth": "Code and hosting", cloudflare: "Code and hosting", tailscale: "Code and hosting", "mcp-bearer": "Code and hosting", dropbox: "Code and hosting",
+  github: "Code and hosting", "github-oauth": "Code and hosting", cloudflare: "Code and hosting", "mcp-bearer": "Code and hosting", dropbox: "Code and hosting",
   telegram: "Messaging",
 };
 
@@ -102,7 +102,7 @@ export function groupOf(kind, name = "", provider = "") {
   if (/resend|smtp|imap|sendgrid|mailgun|postmark|ses[-_.]|sending/.test(n)) return "Email and sending";
   if (/twilio|sms|phone|voip/.test(n)) return "Phone and texts";
   if (/google|gmail|apps-script|microsoft|outlook|office365/.test(n)) return "Google and Microsoft";
-  if (/github|cloudflare|tailscale|railway|vercel|mcp/.test(n)) return "Code and hosting";
+  if (/github|cloudflare|railway|vercel|mcp/.test(n)) return "Code and hosting";
   if (/telegram|slack|discord|whatsapp/.test(n)) return "Messaging";
   return "Any API key";
 }

@@ -58,6 +58,15 @@ const compare = (page, a, b) => page.evaluate(async ([x, y]) => {
   return { same: changed / (A.width * A.height) < 0.0005, changed, diff: c.toDataURL("image/png").split(",")[1] };
 }, [a.toString("base64"), b.toString("base64")]);
 
+/** In the page: is the picture one colour all over (nothing drawn)? */
+const blank = (page, png) => page.evaluate(async (b64) => {
+  const im = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+  const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, im.width, im.height).data;
+  for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) return false;
+  return true;
+}, png.toString("base64"));
+
 /** The rules, in the page: what a person would see broken. */
 const rules = (page, phone) => page.evaluate((phone) => {
   const bad = [];
@@ -96,7 +105,11 @@ const shoot = async (cur, s, t, id) => {
       await page.waitForTimeout(400);
       const el = page.locator("#fixture");
       if (!(await el.count())) return { missing: true };
-      return { after: await el.screenshot(), rules: await rules(page, s.name !== "app") };
+      // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same. A picture of a single colour is a blank render, never a baseline: it fails the run.
+      let after = await el.screenshot();
+      for (let i = 0; i < 20; i++) { await page.waitForTimeout(250); const next = await el.screenshot(); const still = next.equals(after); after = next; if (still) break; }
+      if (await blank(page, after)) throw Object.assign(new Error(`blank render: ${id} ${s.name} ${t.name}`), { blank: true });
+      return { after, rules: await rules(page, s.name !== "app") };
     } catch (e) {
       if (attempt >= 2) throw e;
       await cur.ctx.close().catch(() => {});

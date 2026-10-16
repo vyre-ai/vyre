@@ -81,7 +81,7 @@ let glassSuite = Suite("glass") { t in
     t.test("the URL is the box's origin, /glass/, then the encoded agent") {
         t.eq(Glass.url(box: BOX, target: "harper"), "https://alex.vyre.run/glass/harper")
         t.eq(Glass.url(box: BOX + "/", target: "box"), "https://alex.vyre.run/glass/box")
-        t.eq(Glass.url(box: "https://box.example.ts.net:8443", target: "harper"), "https://box.example.ts.net:8443/glass/harper")
+        t.eq(Glass.url(box: "https://box.example.wink.example:8443", target: "harper"), "https://box.example.wink.example:8443/glass/harper")
         t.eq(Glass.url(box: BOX, target: "night owl"), "https://alex.vyre.run/glass/night%20owl")
         t.eq(Glass.url(box: BOX, target: "a/../b?x#y"), "https://alex.vyre.run/glass/a%2F..%2Fb%3Fx%23y", "a name stays one path segment")
     }

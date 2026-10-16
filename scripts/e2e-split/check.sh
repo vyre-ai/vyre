@@ -1,6 +1,6 @@
 #!/bin/sh
 # The uid split in the box image (ADR 0032 part 3), checked in a throwaway container: no
-# tailscale, no network, its own volumes. Never /srv/vyre. Usage: check.sh <image>
+# VPN client, no network, its own volumes. Never /srv/vyre. Usage: check.sh <image>
 set -u
 IMG=${1:-vyre-e2e-split:local}
 C=vyre-e2e-split-$$

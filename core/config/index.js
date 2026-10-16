@@ -173,7 +173,7 @@ export function isDevice(machine) { return machine === "device" || machine === "
 
 /** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string },
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string, clientId?: string, clientSecret?: string, redirect?: string },
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
@@ -193,10 +193,10 @@ export function isDevice(machine) { return machine === "device" || machine === "
  * (roleBuckets, core/modules/index.js), presence and onboard read this one, not `role`. */
 
 /**
- * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
- * network.origins replaces the list; an empty list turns cross-origin calls off.
+ * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app (web.vyre.run, the Vyre app on the web; app.vyre.run only redirects to it and is dropped from this
+ * list once that redirect is live). Config network.origins replaces the list; an empty list turns cross-origin calls off.
  */
-export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+export const HOSTED_ORIGINS = Object.freeze(["https://web.vyre.run", "https://app.vyre.run"]);
 
 /** The origins in effect for this network config, lowercased, no trailing slash. @param {any} network @returns {string[]} */
 export function hostedOrigins(network) {

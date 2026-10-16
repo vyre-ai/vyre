@@ -2578,13 +2578,14 @@ export class Switchboard {
    * for a caller personTurn admits.
    * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access
    * @param {any} [relayMeta] the verified session on this send (token, kernelFacts), for personCallOpts
+   * @param {{ memberTurn?: boolean }} [turn] a member's chat turn (not staff): only a picked record (the kernel checks it under that member's chain) and an account chip are heard; a #Name, vault, Drive or GitHub chip would resolve under the owner's access.
    */
-  async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null, relayMeta = null) {
+  async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null, relayMeta = null, turn = {}) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     await this.hearActs(id, text, uuid, pasted, rec.project);
-    const names = mentionsOf(text, pasted);
+    if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
@@ -4542,7 +4543,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta) : [];
+        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta, { memberTurn: Boolean(kt && ctx.kernel && !(await isStaffPerson(ctx.kernel, String(kt.asker)))) }) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;

@@ -65,6 +65,6 @@ The app does not mark `reconnect.catchup` or `reconnect.jump` yet, so `chat.reco
 
 ## Numbers of record
 
-The numbers of record are taken on a real iPhone 12 (iOS 18) and a Pixel 6a, installed app, direct over Tailscale. CI numbers (Chrome, 4x CPU throttle) are a regression guard only.
+The numbers of record are taken on a real iPhone 12 (iOS 18) and a Pixel 6a, installed app, direct to the server. CI numbers (Chrome, 4x CPU throttle) are a regression guard only.
 
 Test: `node --test lib/perf/meter.test.js` from the repo root.

@@ -405,7 +405,7 @@ async function startLocked(opts, root, p, release) {
       get placements() {
         return lentPlacements(registry, {
           // a chat that began on this server moves to a computer of the person's: its whole sealed turns (the server's own checkpoint store) become the session's transcript at the home, and the computer seeds its agent home from it
-          adopt: async (/** @type {string} */ space, /** @type {{ thread: string, person: string, chat?: string | null }} */ i) => {
+          adopt: async (/** @type {string} */ space, /** @type {{ thread: string, person: string, chat?: string | null, policy?: boolean }} */ i) => {
             const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
             if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" });
             const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread, person: i.person }, "module:vyred", { door: true })).data);
@@ -415,7 +415,7 @@ async function startLocked(opts, root, p, release) {
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
-            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines, ...(t.provider ? { provider: t.provider } : {}) });
+            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines, ...(t.provider ? { provider: t.provider } : {}), ...(i.policy ? { policy: true } : {}) });
           },
         });
       },

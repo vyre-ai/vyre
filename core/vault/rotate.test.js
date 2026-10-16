@@ -457,7 +457,8 @@ test("every provider credential-shapes.js knows has a key page and plain steps",
   const names = src.slice(src.indexOf("NAME_PROVIDERS = {"), src.indexOf("};", src.indexOf("NAME_PROVIDERS = {")));
   const slugs = new Set([...src.matchAll(/provider: "([a-z0-9-]+)"/g), ...names.matchAll(/: "([a-z0-9]+)"/g)].map(m => m[1]));
   assert.ok(slugs.size > 40 && slugs.has("jina") && slugs.has("cloudflare"), "read credential-shapes.js's providers");
-  for (const s of [...slugs, "tailscale"]) assert.ok(Object.hasOwn(PROVIDERS, s), `${s} has no entry`);
+  // Every provider a person can ADD has a key page and steps. The redactor also knows shapes of products Vyre does not add (core/vault/needs.test.js: "a key of a product Vyre does not add"): those need no rotation entry.
+  for (const s of slugs) assert.ok(Object.hasOwn(PROVIDERS, s), `${s} has no entry`);
   const auto = Object.entries(PROVIDERS).filter(([, p]) => p.auto).map(([k]) => k).sort();
   assert.deepEqual(auto, ["aws", "cloudflare", "gcp", "gitlab"]);
   for (const [k, p] of Object.entries(PROVIDERS)) {
