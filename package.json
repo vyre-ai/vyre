@@ -129,5 +129,8 @@
     "self-hosted",
     "vault",
     "memory"
-  ]
+  ],
+  "optionalDependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
 }

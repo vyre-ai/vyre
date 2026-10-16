@@ -10,8 +10,21 @@
 
 import "../../lib/mac-test-refusal.js";
 import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
+
+const require = createRequire(import.meta.url);
+
+/** Docs harvest loads every module; node:sqlite's bundled engine often has no FTS5, so migrations fail and reference pages drift from CI. */
+function openForDocsHarvest(file) {
+  const BetterSqlite = require("better-sqlite3");
+  const db = BetterSqlite(file);
+  db.pragma("busy_timeout = 10000");
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  return db;
+}
 
 /** Open the database with the settings every connection needs. */
 export function open(file) {
@@ -20,7 +33,7 @@ export function open(file) {
   const old = process.umask(0o077);
   let db;
   try {
-    db = new DatabaseSync(file);
+    db = process.env.VYRE_DOCS_HARVEST === "1" ? openForDocsHarvest(file) : new DatabaseSync(file);
     // busy_timeout FIRST: switching to WAL itself needs a lock, and with the timeout not yet set a second
     // process opening the same file (the installer's `code` command while the daemon starts) failed at once with "database is locked".
     db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
