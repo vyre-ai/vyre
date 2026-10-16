@@ -88,6 +88,8 @@ export type BlockCtx = {
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
+  /** A chat with more than one person: vault item names on cards are not shown. */
+  hideVaultNames?: boolean;
 };
 
 export const copy = async (text: string, ctx: BlockCtx) => {
@@ -475,8 +477,8 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
     case "preview": return <PreviewCard block={block as never} />;
     case "questions": return <QuestionsCard block={block as never} />;
-    case "operator": return <OperatorCard block={block as never} />;
-    case "signin": return <SigninCard block={block as never} />;
+    case "operator": return <OperatorCard block={block as never} hideVaultNames={ctx.hideVaultNames} />;
+    case "signin": return <SigninCard block={block as never} hideVaultNames={ctx.hideVaultNames} />;
     default: return <TextBlock block={block} />;
   }
 }

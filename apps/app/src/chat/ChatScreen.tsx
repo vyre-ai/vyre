@@ -242,6 +242,7 @@ export function ChatScreen(p: ChatScreenProps) {
     () => ({
       wide: !phone,
       diffSplit: !phone && threadW >= 560,
+      hideVaultNames: Math.max(store.group.participants().filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1,
       ...(actions
         ? {
             onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
@@ -276,7 +277,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {

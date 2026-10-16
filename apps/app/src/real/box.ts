@@ -66,6 +66,12 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   if (MOCK && mockDocumentTools[name]) return mockDocumentTools[name](given) as T; // and the record page's Documents bar (mock-documents.ts)
   if (MOCK && mockMcpTools[name]) return mockMcpTools[name](given) as T; // and the AI keys screen's (mock-mcp.ts)
   if (override) return (await override(name, given)) as T;
+  if (name === "stream.decrypt") {
+    const { resolveDecryptKid } = await import("../chat/private-text.js");
+    const { toB64u } = await import("../../../../lib/databox.js");
+    const key = await resolveDecryptKid(String(given.kid ?? ""));
+    return { key: key ? toB64u(key) : undefined } as T;
+  }
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
   if (wire) {

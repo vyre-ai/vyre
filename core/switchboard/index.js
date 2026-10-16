@@ -516,6 +516,19 @@ export class Switchboard {
     this.prunes.add(job);
   }
 
+  /** Drop old delivered inbox rows (retention); safe to call often. */
+  pruneInbox(now = Date.now()) {
+    const cutoff = now - 30 * 86400_000;
+    const keep = 200;
+    try {
+      this.db.prepare("DELETE FROM threads_inbox WHERE delivered_at IS NOT NULL AND delivered_at < ?").run(cutoff);
+      for (const { thread } of /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NOT NULL").all())) {
+        const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC").all(thread));
+        for (const r of rows.slice(keep)) this.db.prepare("DELETE FROM threads_inbox WHERE id = ?").run(r.id);
+      }
+    } catch (e) { this.deps.log(`pruning threads_inbox failed: ${/** @type {Error} */ (e).message}`); }
+  }
+
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
     // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
@@ -3082,6 +3095,7 @@ export class Switchboard {
       mark.run(now, via, m.id);
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
+    this.pruneInbox(now);
     return { messages: rows.map(m => ({ id: m.id, text: m.note ? `${m.text}\n\n${m.note}` : m.text, surface: m.surface, at: m.at })) };
   }
 
@@ -3093,7 +3107,9 @@ export class Switchboard {
   replied(id, text) {
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { replied: 0 };
-    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(Date.now(), id);
+    const now = Date.now();
+    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(now, id);
+    this.pruneInbox(now);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (text) this.emit("thread.text", { message: `inbox-${rows.at(-1).id}`, text: String(text), done: true }, id, project);
@@ -3394,6 +3410,8 @@ export class Switchboard {
     if (!/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(String(model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
     const rec = this.must(id);
     const st = this.live.get(id);
+    const busy = st && st.proc && typeof st.proc.control === "function" && st.turn && ["working", "waiting"].includes(String(rec.status));
+    if (busy) throw Object.assign(new Error("a turn is running: wait for it to end, then switch the model"), { code: "busy" });
     if (st && st.proc.control) await st.proc.control("set_model", { model });
     // The next reply is labelled by the live model first (speaker), so it follows the switch, not the model the thread started with.
     if (st) st.model = String(model);
