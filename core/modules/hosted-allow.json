@@ -126,6 +126,7 @@
   "threads.history": "reads the person's chats and their history",
   "threads.lineage": "reads the person's chats and their history",
   "threads.list": "reads the person's chats and their history",
+  "threads.recall-sessions": "lists thread ids for a person when relaying member-scoped recall; read-only",
   "threads.send": "sends a message into one of the person's own chats; the chat gate judges it",
   "work.chat.create": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.get": "reads or starts a chat the person is in, or names and pins it",

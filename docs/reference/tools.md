@@ -12089,7 +12089,7 @@ Add an agent (an assistant that does work in the space, for example as the doer 
 
 ### `spaces.members.computers`
 
-Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.
+Read or set whether members may run sessions on their own computers. Owners or admins write; members read. Input: space; optional allow.
 
 - Input:
   - `space` string, required

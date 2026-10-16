@@ -83,6 +83,8 @@ const EXCLUDE = {
   "learn.skill-install": "installing a skill",
   "work.template.install": "installing a work template",
   "work.template.install-in-space": "installing a work template",
+  "identity.vault.install": "installs the held master key into the running vault at first run; not a device pair or enrol",
+  "vault.master.install": "internal vault step of identity.vault.install; not a device pair or enrol",
 };
 
 /** Entry points that are not tools. Each file must contain the shared symbol. */

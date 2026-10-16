@@ -194,6 +194,10 @@ export function registerInstallPair(o) {
       const owner = o.meta.get("owner");
       if (owner && owner.identity) return { ok: true, owned: true, person: String(owner.identity) };
       if (!session) throw fail("bad_state", "Make an install line first, run it on the server, then ask again.");
+      /** @type {any} */ let ck;
+      try { ck = await ctx.call("spaces.identity.confirm-key", { id: session.person }); }
+      catch (/** @type {any} */ e) { throw fail(e && e.code === "unavailable" ? "unavailable" : "denied", (e && e.message) || "The directory could not confirm this key. Wait a minute and try again."); }
+      if (ck && ck.error) throw fail(ck.error.code === "unavailable" ? "unavailable" : "denied", String(ck.error.message || "That person has no published key. Open the Vyre app and finish starting, then pair again."));
       const qr = typeof o.ticket === "function" ? await o.ticket(session) : await offerTicket(ctx, session);
       if (typeof o.pair !== "function") throw fail("unavailable", "This computer could not finish pairing. Open the Vyre app and it will finish.");
       const started = await o.pair(String(qr || ""), session.person);

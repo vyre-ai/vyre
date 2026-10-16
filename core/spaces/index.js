@@ -1140,7 +1140,7 @@ export default {
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         });
       }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOrHome(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
-    tool("spaces.members.computers", "Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => {
+    tool("spaces.members.computers", "Read or set whether members may run sessions on their own computers. Owners or admins write; members read. Input: space; optional allow.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => {
       const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
       const actor = await actingPerson(K, meta, /** @type {string} */ (s.id));
       const r = await membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: actor, self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse });
