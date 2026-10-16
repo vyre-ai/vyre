@@ -555,7 +555,7 @@ export default {
           // Legacy boolean: only staff when kernel forwards person_id; boolean true alone no longer means owner-wide for every person hop.
           if (typeof person === "boolean" && person && !pid) {
             if (String(caller || "").startsWith("module:")) return { all: true, agent: null };
-            throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; forward person_id from the kernel chain`, "denied");
+            throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; pass person_id from the kernel chain`, "denied");
           }
           const wide = await ownerWideRead(K, {}, caller, {
             ownerDevice,

@@ -48,7 +48,7 @@ export default {
         if (username !== opened.username) throw refuse("That username does not match this device.", "bad_input");
         const dial = typeof ctx.dialServer === "function" ? ctx.dialServer : (info) => dialLive(ctx, info);
         const live = await dial({ server, username: opened.username, identityId: opened.id });
-        if (!live || live.live !== true || typeof live.device !== "string" || !live.device) throw refuse("That space's server did not admit this computer.", "denied");
+        if (!live || live.live !== true || typeof live.device !== "string" || !live.device) throw refuse("That space's server did not admit this computer. Ask the space owner to enrol it with spaces.devices.enrol, or pair this computer and try devices.signin again.", "denied");
         const id = `dev_${Date.now().toString(36)}`;
         ctx.store.db.prepare("INSERT INTO devices_signin (id, server, username, at) VALUES (?, ?, ?, ?)").run(id, server, opened.username, Date.now());
         return { ok: true, username: opened.username, id: opened.id, server, unlocked: true, live: true, device: live.device, carry: M.signinCarry(root) };

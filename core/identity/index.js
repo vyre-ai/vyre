@@ -119,13 +119,13 @@ export default {
           let published = null;
           try {
             const r = await ctx.call("spaces.identity.published-key", { space: String(input.space) }, { relay: true });
-            if (!r || r.error) throw refuse((r && r.error && r.error.message) || "This space has no published key on this device yet.", "not_found");
+            if (!r || r.error) throw refuse((r && r.error && r.error.message) || "This space has no published key on this device yet. Install or restore the space here first, then try again.", "not_found");
             published = answered(r);
           } catch (e) {
             const err = /** @type {any} */ (e);
-            throw refuse(err.message || "This space has no published key on this device yet.", "not_found");
+            throw refuse(err.message || "This space has no published key on this device yet. Install or restore the space here first, then try again.", "not_found");
           }
-          if (!published || typeof published.pub !== "string" || !published.pub) throw refuse("This space has no published key on this device yet.", "not_found");
+          if (!published || typeof published.pub !== "string" || !published.pub) throw refuse("This space has no published key on this device yet. Install or restore the space here first, then try again.", "not_found");
           space = { id: String(input.space), pub: published.pub };
         }
         return forCaller(meta, { installed: true, plaintext: false, id, deviceKey, space });
