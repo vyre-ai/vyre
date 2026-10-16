@@ -8,7 +8,7 @@ status: draft
 
 # Master password
 
-You have one username and one master password. The username is your address, `https://vyre.run/u/alex` for example, and it is private unless you choose to be listed. The old address `alex.vyre.run` redirects there. Your master password unlocks your identity and your personal vault on this device. You enter it on your device. An agent never sees it, and it never sees your recovery key.
+You have one username and one master password. The username is your address, `https://vyre.run/u/alex` for example, and it is private unless you choose to be listed. The old address `alex.vyre.run` redirects there. Your master password is the root of your identity and your personal vault on this device. A copy of that key stays so agents can lend a value into a call while you are away, without waiting for you to unlock. You enter the password on your device. An agent never sees it, and it never sees your recovery key.
 
 ## The recovery key
 
