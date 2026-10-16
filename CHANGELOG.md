@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
+- test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
 - fix(install): the server setup page does not ask for a pasted code when the install line started that server.
 - feat(app): Continue with GitHub opens the address in the kernel config (`github.start`). A hosted key cannot call onboard or wink.install tools.
