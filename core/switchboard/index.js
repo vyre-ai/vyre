@@ -45,6 +45,8 @@ import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOf
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
+import { memberThreadAllowSet, chainPerson, isStaffPerson } from "../../lib/member-scope.js";
+import { ingressProviderCall, personCallOpts } from "../../lib/person-relay.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { normalizeCaps } from "../../lib/caps-flags/index.js";
@@ -53,6 +55,7 @@ import { Leases, ownSurface, sameKeyboard } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
+import { registerComposerSlashTools } from "./composer-slash.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere, registerTranscriptTools } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
@@ -515,6 +518,19 @@ export class Switchboard {
     this.prunes.add(job);
   }
 
+  /** Drop old delivered inbox rows (retention); safe to call often. */
+  pruneInbox(now = Date.now()) {
+    const cutoff = now - 30 * 86400_000;
+    const keep = 200;
+    try {
+      this.db.prepare("DELETE FROM threads_inbox WHERE delivered_at IS NOT NULL AND delivered_at < ?").run(cutoff);
+      for (const { thread } of /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NOT NULL").all())) {
+        const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC").all(thread));
+        for (const r of rows.slice(keep)) this.db.prepare("DELETE FROM threads_inbox WHERE id = ?").run(r.id);
+      }
+    } catch (e) { this.deps.log(`pruning threads_inbox failed: ${/** @type {Error} */ (e).message}`); }
+  }
+
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
     // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
@@ -972,7 +988,9 @@ export class Switchboard {
       // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
-      if (w.branch) kept.branch = w.branch;   if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // who started it, from the verified chat turn (never a caller's word): a transcript is placed in this thread only for this person (threads.transcript-target)
+      if (w.branch) kept.branch = w.branch;
+      if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // verified chat turn (never a caller's word)
+      else if (o.person) kept.person = String(o.person);   // member's own session token on cli
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -1042,7 +1060,7 @@ export class Switchboard {
       // A person's own first words are heard like any turn of theirs: before any provider sees them.
       const said = crypto.randomUUID();
       await slow();
-      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || [], personTurn(o.surface) ? o.surface : null) : [];
       const note = heard.length ? tagNote(heard) : "";
       await slow();
       at("first prompt send");
@@ -1547,7 +1565,7 @@ export class Switchboard {
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
     const foreign = o.provider && o.provider !== "claude";
     const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null, sessionCli: this.confinedBy.has(id) });
-    const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
+    const mcpEnv = { VYRE_THREAD: id, VYRE_PROVIDER: String(o.provider || "claude"), ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
     // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.
@@ -2558,9 +2576,10 @@ export class Switchboard {
    * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
    * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
    * for a caller personTurn admits.
-   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access
+   * @param {any} [relayMeta] the verified session on this send (token, kernelFacts), for personCallOpts
    */
-  async ingress(id, text, surface, uuid, chips = [], pasted = []) {
+  async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null, relayMeta = null) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
@@ -2569,7 +2588,7 @@ export class Switchboard {
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
     const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
@@ -3081,6 +3100,7 @@ export class Switchboard {
       mark.run(now, via, m.id);
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
+    this.pruneInbox(now);
     return { messages: rows.map(m => ({ id: m.id, text: m.note ? `${m.text}\n\n${m.note}` : m.text, surface: m.surface, at: m.at })) };
   }
 
@@ -3092,7 +3112,9 @@ export class Switchboard {
   replied(id, text) {
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { replied: 0 };
-    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(Date.now(), id);
+    const now = Date.now();
+    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(now, id);
+    this.pruneInbox(now);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (text) this.emit("thread.text", { message: `inbox-${rows.at(-1).id}`, text: String(text), done: true }, id, project);
@@ -3393,6 +3415,8 @@ export class Switchboard {
     if (!/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(String(model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
     const rec = this.must(id);
     const st = this.live.get(id);
+    const busy = st && st.proc && typeof st.proc.control === "function" && st.turn && ["working", "waiting"].includes(String(rec.status));
+    if (busy) throw Object.assign(new Error("a turn is running: wait for it to end, then switch the model"), { code: "busy" });
     if (st && st.proc.control) await st.proc.control("set_model", { model });
     // The next reply is labelled by the live model first (speaker), so it follows the switch, not the model the thread started with.
     if (st) st.model = String(model);
@@ -4271,10 +4295,13 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
+      async (i, meta) => {
+        const { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone } = meta;
         guard(caller, "start sessions");
         if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
+        const sessionPerson = ctx.kernel ? await chainPerson(ctx.kernel, meta) : null;
+        const sessionStaff = !sessionPerson || !ctx.kernel || await isStaffPerson(ctx.kernel, sessionPerson);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
@@ -4304,7 +4331,8 @@ export default {
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
         const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
-        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromAsker);
+        const launchPerson = (kturn && kturn.asker) || (!sessionStaff && sessionPerson ? sessionPerson : undefined);
+        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(launchPerson ? { person: launchPerson } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromAsker);
       });
 
     /**
@@ -4514,7 +4542,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
+        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
@@ -4535,10 +4563,18 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        const callMeta = meta;
+        const filterMember = async (/** @type {any[]} */ rows) => {
+          if (!Array.isArray(rows)) return rows;
+          const allow = await memberThreadAllowSet(ctx, ctx.kernel, callMeta);
+          const scoped = allow ? rows.filter(r => r && allow.has(String(r.id))) : rows;
+          const ok = await Promise.all(scoped.map(r => sessionMay(callMeta, r && r.id, false)));
+          return scoped.filter((_, k) => ok[k]);
+        };
+        if (!(await wantsMacs(ctx, i, caller, meta))) return filterMember(sb.list(q));
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
-        return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
+        return filterMember(mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) }));
       });
 
     // Every ask says what answering it takes: `presence: {required, covered, since}`. Answering is the
@@ -4685,7 +4721,8 @@ export default {
       { type: "object", required: ["thread", "queued", "text"], properties: { thread: str, queued: { type: "integer" }, text: str, surface: str,
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked for the edited words ({kind, id}); as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the edited words the person pasted. Sending it (even empty) says which words are typed; without it the edited words are not heard as the person's at all, so no tag or ask in them counts." } } },
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const { caller } = meta;
         guard(caller, "edit queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit queued words"), { code: "denied" });
         // The edited words are the person's new words: heard like a send (a said row, tags, asks), but only when the composer
@@ -4695,7 +4732,7 @@ export default {
         // recorded survives, and what they now type is heard afresh under the usual rules.
         if (sb.hasQueued(i.thread, i.queued)) await sb.revokeHeard(i.thread, sb.queuedUuids(i.thread, i.queued));
         if (personTurn(caller) && Array.isArray(i.pasted) && sb.hasQueued(i.thread, i.queued)) {
-          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
+          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20), caller, meta);
           if (heard.length) note = tagNote(heard);
         }
         return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });
@@ -4762,9 +4799,7 @@ export default {
         return sb.switchEffort(i.thread, i.effort ?? null);
       });
 
-    tool("threads.commands", "The slash commands a running thread offers, for a composer's / menu. Send one as a message, e.g. \"/compact\".",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
+    registerComposerSlashTools(tool, { sb, ctx, guard, queuesFor, personTurn, surfaceOf, str });
 
     tool("threads.tasks", "A running thread's background tasks (shell commands run in the background, subagents): id, kind, title, status (running, completed, failed, killed), summary.",
       { type: "object", required: ["thread"], properties: { thread: str } },
@@ -4785,20 +4820,6 @@ export default {
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches thinking"), { code: "denied" });
         return sb.thinking(i.thread, i.on);
       });
-
-    tool("threads.shell", "Claude Code's ! mode: run a shell line in the thread's folder, as you, under the security floor. Its output shows here and goes to Claude with your next message. Only a person can.",
-      { type: "object", required: ["thread", "command"], properties: { thread: str, command: str } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not run the person's shell lines"), { code: "denied" });
-        return sb.shell(i.thread, i.command);
-      }, ["cli", "local", "deck", "capsule"]);
-
-    tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions: the person edits them, or another session does"), { code: "denied" });
-        return sb.remember(i.thread, i.text, i.scope || "project");
-      }, ["cli", "local", "deck", "capsule"]);
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation and folder that the original never sees. For terminal-busy sessions.",
       { type: "object", required: ["thread"], properties: { thread: str, at: { type: "string", description: "A message's uuid (thread.turn's): fork from just before that turn instead of from the live end." }, prompt: str, name: str, surface: str } },
@@ -5059,6 +5080,29 @@ export default {
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
     }); registerTranscriptTools(ctx, sb, str);
+    ctx.tool("threads.recall-sessions", {
+      description: "Session ids Recall may attribute to one person: their threads, each thread's rollover windows, and nothing else. For recall.search member scoping only.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["person"], properties: { person: str } },
+      run: async i => {
+        const want = sb.canon(String(i.person));
+        /** @type {string[]} */
+        const threads = [];
+        for (const row of /** @type {any[]} */ (sb.db.prepare("SELECT id, opts FROM threads_runs").all())) {
+          const o = optsOf(row);
+          if (o.person && sb.canon(String(o.person)) === want) threads.push(String(row.id));
+        }
+        const sessions = new Set(threads);
+        for (const tid of threads) {
+          sessions.add(tid);
+          sessions.add(sb.mirrorId(tid));
+          for (const r of /** @type {any[]} */ (sb.db.prepare("SELECT native_to, native_from FROM threads_rolls WHERE thread = ?").all(tid))) {
+            if (r.native_to) sessions.add(String(r.native_to));
+            if (r.native_from) sessions.add(String(r.native_from));
+          }
+        }
+        return { sessions: [...sessions] };
+      },
+    });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },

@@ -415,7 +415,7 @@ async function startLocked(opts, root, p, release) {
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
-            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines });
+            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines, ...(t.provider ? { provider: t.provider } : {}) });
           },
         });
       },
@@ -776,7 +776,7 @@ async function startLocked(opts, root, p, release) {
         let entries = st && Array.isArray(st.entries) ? st.entries : [];
         if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
         const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-        if (!e || typeof e.pub !== "string") return null;
+        if (!e || typeof e.pub !== "string" || !(await ask("spaces.identity.confirm-key", { id: identity, key: e.pub }))) return null;
         // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
         let age = e;
         if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
@@ -791,7 +791,7 @@ async function startLocked(opts, root, p, release) {
       // the person's own MCP servers for a lent session: their personal vault's store (vault `personalStore`), read for the person the lease names; never the owner's
       const memberMcpOf = async (/** @type {{ space: string, person: string }} */ q) => { const ps = /** @type {any} */ (registry.deps).personalStore; return typeof ps === "function" ? memberMcpConfig(ps(q.person, q.space)) : null; };
       /** @type {any} */ (registry.deps).memberMcpOf = memberMcpOf;   // also read by the end-to-end test of a member's own accounts
-      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
+      const lent = lentServiceFor({ root, registry, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },
         // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
@@ -867,12 +867,12 @@ async function startLocked(opts, root, p, release) {
     registry.deps.limitedGate = createLimitedGate({ isLimited: async (/** @type {string} */ id) => { const r = /** @type {any} */ (await registry.call("relay.device.info", { id }, "module:vyred")); return Boolean(r && r.data && r.data.viaChain && r.data.viaChain.limited === true); } });
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
   }
-  // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
+  // The eight box-only modules gate on cfg.machine (server or device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
   // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
-  // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
+  // A box's container is the server: a config that is not a server would switch off every box-only module without a word, so it stops here with the reason.
   if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
   // A Basic device holds no planner records (the planner and tasks need a server, records/basic-types.js), so the planner does not start there.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules, ...(basicDevice ? { disable: [...new Set([...((cfg.modules && cfg.modules.disable) || []), "planner"])] } : {}) });
@@ -1051,7 +1051,7 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
 async function fromClaude(socket, registry, caller) {
   const who = await above(socket, registry, caller);
   if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
-  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
+  if (who.inside) return "this comes from inside a coding-agent session (Claude, Codex, Grok or another), which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
 }
 
@@ -1589,7 +1589,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
       const who = await above(req.socket, registry, caller);
       if (who.nopid) return send(res, 403, { error: { code: "denied", message: "vyred cannot tell which process is calling, so this is refused" } });
-      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence" } });
+      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a coding-agent session (Claude, Codex, Grok or another), which acts as an agent: only the person answers, approves and proves presence" } });
       if (who.unknown) {
         if (!(who.server && await serverTrusted(who.server, req.headers["x-vyre-presence"], caller, registry))) {
           // The full path, pid and start time, never a basename: a model can name its own process

@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { createTurnSeal } from "./ownserver.js";
 import { coverOf } from "./sync.js";
 import { readInside, writeInside, plantable } from "./safefs.js";
+import { lentProcessProvider, manifestSessionFilePattern } from "../sessions/drivers/lent-agent.js";
 
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const PAGE = 2000;
@@ -52,12 +53,13 @@ export function createResumeLent(o) {
       const got = coverOf(cp.manifest || {}, lines.map((line, k) => ({ seq: k + 1, line })), cp.seq, cp.turn);
       if (want.transcript !== got.transcript || want.manifest !== got.manifest || want.seq !== cp.seq || want.turn !== cp.turn) throw err("unavailable", "the lender's checkpoint does not match its transcript: it is not carried on");
     }
-    // A provider that keeps its own session file (Claude): the lines the computer's program printed are not that file, and a resumed Claude reads only the file ("No conversation found with session ID").
+    // A provider that keeps its own session file: the lines the computer's program printed are not always that file; resume uses the manifest's file when present.
     // The computer's checkpoint carries the file as part of the agent's home, so the chat's transcript here is that file, the bytes the manifest's hash names; the printed lines stay the cover's witness.
     let body = Buffer.from(lines.join("\n") + "\n");
     {
       const mf = (cp.manifest && typeof cp.manifest === "object") ? cp.manifest : {};
-      const want1 = new RegExp(`^agent/claude/projects/[^/]+/(${[tg.native, i.session].filter(x => typeof x === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(x)).join("|") || "-"})\\.jsonl$`);
+      const prov = String(tg.provider || i.provider || "claude");
+      const want1 = manifestSessionFilePattern(prov, tg.native, i.session);
       const key = Object.keys(mf).find(k => want1.test(k));
       const ent = /** @type {any} */ (key ? mf[key] : null);
       if (key && ent && ent.version !== undefined && ent.version !== null && ent.hash !== "deleted" && typeof i.view.file === "function") {
@@ -89,9 +91,21 @@ export function createResumeLent(o) {
     const port = o.port ? o.port(i.space) : null;
     let turn = Number(cp.turn) || 0;
     if (port) {
-      const seal = createTurnSeal({ port, session: tg.native, file, root });
-      const done = await seal.seal({ state: tg.cwd ? { cwd: tg.cwd } : {} });
-      turn = done.turn;
+      const prov = lentProcessProvider(tg.provider || i.provider || "claude") || "claude";
+      if (prov === "claude") {
+        const seal = createTurnSeal({ port, session: tg.native, file, root });
+        const done = await seal.seal({ state: tg.cwd ? { cwd: tg.cwd } : {} });
+        turn = done.turn;
+      } else {
+        for (let from = 1; from <= cp.seq; ) {
+          const page = await i.view.transcript(from, Math.min(PAGE, cp.seq - from + 1));
+          if (!Array.isArray(page) || !page.length) break;
+          await port.appendTranscript(tg.native, page);
+          from += page.length;
+        }
+        await port.putCheckpoint(tg.native, { turn: Number(cp.turn) || 1, seq: cp.seq, manifest: {}, state: { ...(tg.cwd ? { cwd: tg.cwd } : {}), provider: prov } });
+        turn = Number(cp.turn) || 1;
+      }
     }
     // the files the session changed
     let files = 0; const conflicts = /** @type {string[]} */ ([]);

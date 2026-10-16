@@ -17,13 +17,12 @@ Use your own details throughout. Nothing here needs example data.
 
 ## 1. Set up your server (about 15 minutes)
 
-Open the Vyre app, choose your name, create a space, and paste the one line it shows into a
-terminal on that server. The app then checks four words with you, and walks you
-through giving the space a look, your AI account, your tools and a Kit.
-[Install](../get-started/install.md) walks every screen.
+Open the Vyre app, create your identity, create a space, and paste the one line it shows into a
+terminal on that server. The server installs Vyre and adopts you. The app waits on that screen until
+the server is online. [Install](../get-started/install.md) walks every screen.
 
-**Check:** the terminal on the server says `Vyre is running on this server.` and shows four words that match the app, and
-`vyre status` on the server says Vyre is running.
+**Check:** the app leaves Waiting, the terminal on the server says `Vyre is running on this server.`,
+and `vyre status` on the server says Vyre is running.
 
 ## 2. Sign in to your AI (2 minutes)
 

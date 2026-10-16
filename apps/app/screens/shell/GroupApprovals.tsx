@@ -78,7 +78,6 @@ export function GroupApprovals({ sample, doneLine }: { sample?: Group[]; doneLin
   const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setGroups(groupsFrom(a))).catch(() => setGroups([])); }, []);
   useEffect(() => {
     if (sample) return;
-    if (Platform.OS === "web" && !shellIdentity()) return;
     load();
     void signer().then((s) => setCanSign(!!s));
     const t = setInterval(load, 60_000);
@@ -92,7 +91,7 @@ export function GroupApprovals({ sample, doneLine }: { sample?: Group[]; doneLin
     void namesFor([...new Set(wanted)], ask).then((m) => { if (live && m.size) setNames((old) => new Map([...old, ...m])); });
     return () => { live = false; };
   }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!sample && Platform.OS === "web" && !shellIdentity()) return null;
+  if (!sample && Platform.OS === "web" && !shellIdentity() && canSign === false) return null;
   if (done) return <View className="px-s4 pb-s3"><Text size="body">{done}</Text></View>;
   if (!groups.length) return null;
   const say = async (g: Group) => {

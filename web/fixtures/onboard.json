@@ -2,7 +2,7 @@
   "onboard.status": {
     "mode": "loopback",
     "role": "box",
-    "machine": "solo",
+    "machine": "device",
     "can": { "relayJoin": false, "relayJoinReason": "Not available on a Mac yet. Needs vyre-core." },
     "owner": null,
     "address": null,
@@ -227,9 +227,9 @@
   "onboard.machine": {
     "$by": "machine",
     "cases": {
-      "solo": { "machine": "solo", "service": null },
       "server": { "machine": "server", "service": null },
-      "*": { "machine": "solo", "service": null }
+      "device": { "machine": "device", "service": null },
+      "*": { "machine": "device", "service": null }
     }
   },
   "onboard.join": {

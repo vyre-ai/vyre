@@ -58,45 +58,67 @@ test("config: a real existing box's config.json (role box, no machine) migrates 
   assert.deepEqual(c.problems, []);
 });
 
-test("config: a real Mac local config.json (role local, no machine) migrates to machine solo, not device", t => {
+test("config: a real Mac local config.json (role local, no machine) is a device, with no notice", t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
   const c = config.load(root);
   assert.equal(c.role, "local");
-  assert.equal(c.machine, "solo", 'a lone Mac never had a device/server split to have chosen; "device" would wrongly imply a server exists');
+  assert.equal(c.machine, "device");
+  assert.equal(c.needsServer, undefined);
+  assert.deepEqual(c.problems, []);
+  assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8").includes("solo"), false);
 });
 
-test("config: an explicit machine in config.json always wins over a role-inferred one", t => {
+test("config: a stored solo is rewritten to a device and opens the first run", t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "solo" }));
   const c = config.load(root);
-  assert.equal(c.machine, "solo", "the person's own machine choice is never overridden by role");
+  assert.equal(c.machine, "device");
+  assert.equal(c.onboard.firstRun, "open");
+  assert.equal(c.needsServer, undefined);
+  assert.deepEqual(c.problems, []);
+  const disk = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+  assert.equal(disk.machine, "device");
+  assert.equal(disk.onboard.firstRun, "open");
+  assert.equal(JSON.stringify(disk).includes("solo"), false);
+  const again = config.load(root);
+  assert.equal(again.onboard.firstRun, "open");
+  assert.equal(again.machine, "device");
 });
 
-test("config: with no config.json, machine defaults the same way role's OS guess always did", t => {
+test("config: with no config.json, a Mac or Windows PC is a device and Linux is a server", t => {
   const root = tempHome(t);
+  const prev = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
   const c = config.load(root);
-  assert.ok(["solo", "server", "device"].includes(c.machine));
-  assert.equal(c.machine, process.platform === "darwin" ? "solo" : process.platform === "win32" ? "device" : "server");
+  if (prev === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prev;
+  assert.ok(["server", "device"].includes(c.machine));
+  assert.equal(c.machine, process.platform === "darwin" || process.platform === "win32" ? "device" : "server");
+  assert.equal(c.needsServer, undefined);
 });
 
 // Reviewer's HOLD on 80fd866e, 28 Sep: a fresh (or existing, unconfigured) Mac must behave
 // exactly like today's local role -- no box-only module loads, no server-side presence rules --
 // until the person makes an explicit choice. `platform` is injectable so this runs on any CI box.
-test("config: a fresh darwin install defaults to solo, which is NOT a server (today's Mac behavior, unchanged)", t => {
+test("config: a fresh darwin install defaults to device, which is not a server", t => {
   const root = tempHome(t);
+  const prev = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
   const c = config.load(root, "darwin");
+  if (prev === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prev;
   assert.equal(c.role, "local");
-  assert.equal(c.machine, "solo");
-  assert.equal(config.isServer(c.machine), false, "solo alone must never turn on the eight box-only modules");
-  assert.equal(config.isDevice(c.machine), true, "solo still gets the full local core");
+  assert.equal(c.machine, "device");
+  assert.equal(c.needsServer, undefined);
+  assert.equal(config.isServer(c.machine), false, "a fresh Mac must never turn on the eight box-only modules");
+  assert.equal(config.isDevice(c.machine), true);
 });
 
-test("config: an existing Mac's config.json (role local, no machine) migrates to solo, still not a server", t => {
+test("config: an existing Mac's config.json (role local, no machine) becomes a device, still not a server", t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
   const c = config.load(root, "darwin");
-  assert.equal(c.machine, "solo");
+  assert.equal(c.machine, "device");
+  assert.equal(c.needsServer, undefined);
   assert.equal(config.isServer(c.machine), false);
 });
 
@@ -113,18 +135,18 @@ test("config: an unknown machine falls back and says so, independently of role",
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "container" }));
   const c = config.load(root);
   assert.equal(c.role, "box");
-  assert.ok(["solo", "server", "device"].includes(c.machine));
+  assert.ok(["server", "device"].includes(c.machine));
   assert.match(c.problems.join(" "), /machine "container"/);
 });
 
 test("config: isServer and isDevice read machine, and alias the legacy role strings", () => {
   assert.equal(config.isServer("server"), true);
-  assert.equal(config.isServer("solo"), false, "solo is not a server: fixed after reviewer's HOLD on 80fd866e");
+  assert.equal(config.isServer("solo"), false);
   assert.equal(config.isServer("device"), false);
   assert.equal(config.isServer("box"), true, "legacy alias");
   assert.equal(config.isServer("local"), false, "legacy alias");
   assert.equal(config.isDevice("device"), true);
-  assert.equal(config.isDevice("solo"), true);
+  assert.equal(config.isDevice("solo"), false);
   assert.equal(config.isDevice("server"), false);
   assert.equal(config.isDevice("local"), true, "legacy alias");
   assert.equal(config.isDevice("box"), false, "legacy alias");
@@ -319,7 +341,12 @@ test("config: a Mac set up as a server (machine server, no role named) is role b
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server" }));
   const mac = config.load(root, "darwin");
   assert.equal(mac.machine, "server"); assert.equal(mac.role, "box");
-  assert.equal(config.load(tempHome(t), "darwin").role, "local", "a Mac with no config is still a Home");
+  const prod = tempHome(t);
+  const prevH = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
+  assert.equal(config.load(prod, "darwin").role, "local", "a Mac with no config is still a Home");
+  if (prevH === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prevH;
+  assert.equal(config.load(tempHome(t), "darwin").role, "box", "a test temp home on darwin loads box modules");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server", role: "local" }));
   assert.equal(config.load(root, "darwin").role, "local", "the role the person named is theirs");
 });

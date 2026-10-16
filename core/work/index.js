@@ -28,6 +28,7 @@ import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createMemberProjects } from "./member-projects.js";
 import { createMemberFiles } from "./member-files.js";
 import { createPersistent } from "./persistent.js";
+import { createChatPrefs } from "./chat-prefs.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
@@ -245,6 +246,16 @@ export default {
       input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => unshareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
+    /** @type {any} */ let chatPrefs = null;
+    const chatPrefsOf = () => chatPrefs || (chatPrefs = createChatPrefs({ db: ctx.store.db }));
+    chatTool("work.chat.prefs", { description: "Your mute and list-pin for chats: which chats are quiet and which sit at the top of your list, on every device.",
+      input: obj({ chat: { type: "string" }, muted: { type: "boolean" }, pinned: { type: "boolean" } }), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const c = await chainOf(extra);
+        if (i.chat === undefined) return chatPrefsOf().get(c);
+        return chatPrefsOf().set(c, i);
+      } });
+    ctx.tool("work.chat.prefs.muted", { description: "Whether a person muted a chat (for notifications). Internal.", internal: true, callers: ["module"],
+      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { kernelOf(); return { muted: chatPrefsOf().isMuted(String(i.person), String(i.chat)) }; } });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),

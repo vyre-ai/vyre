@@ -19,7 +19,7 @@
       "https://airline.example.com"
      ],
      "rotate": false,
-     "updated": 1791585637185,
+     "updated": 1792177855852,
      "vault": "agents",
      "grants": []
     },
@@ -36,7 +36,7 @@
       "https://app.clio.com"
      ],
      "rotate": false,
-     "updated": 1791585636880,
+     "updated": 1792177855791,
      "vault": "agents",
      "grants": []
     },
@@ -51,7 +51,7 @@
      ],
      "hosts": [],
      "rotate": false,
-     "updated": 1791585637563,
+     "updated": 1792177855958,
      "vault": "agents",
      "grants": []
     },
@@ -64,7 +64,7 @@
      ],
      "hosts": [],
      "rotate": false,
-     "updated": 1791585637621,
+     "updated": 1792177855975,
      "vault": "agents",
      "grants": []
     },
@@ -81,7 +81,7 @@
       "https://mail.google.com"
      ],
      "rotate": false,
-     "updated": 1791585636727,
+     "updated": 1792177855746,
      "vault": "agents",
      "grants": []
     },
@@ -96,7 +96,7 @@
       "https://api.openai.com"
      ],
      "rotate": false,
-     "updated": 1791585637508,
+     "updated": 1792177855932,
      "vault": "agents",
      "grants": []
     },
@@ -113,7 +113,7 @@
       "https://travel.state.gov"
      ],
      "rotate": false,
-     "updated": 1791585637032,
+     "updated": 1792177855825,
      "vault": "agents",
      "grants": []
     },
@@ -128,7 +128,7 @@
       "https://api.stripe.com"
      ],
      "rotate": false,
-     "updated": 1791585637447,
+     "updated": 1792177855915,
      "vault": "agents",
      "grants": []
     }
@@ -196,7 +196,7 @@
     "enrolled": false,
     "available": false
    },
-   "at": 1791585637783
+   "at": 1792177856028
   }
  },
  "vault.pass.list": {
@@ -241,14 +241,14 @@
     {
      "name": "Airline-account",
      "kind": "login",
-     "code": "856969",
-     "next": "179446",
+     "code": "765237",
+     "next": "341002",
      "period": 30,
-     "remaining": 23,
+     "remaining": 4,
      "digits": 6
     }
    ],
-   "at": 1791585637966
+   "at": 1792177856115
   }
  },
  "vault.account.status": {

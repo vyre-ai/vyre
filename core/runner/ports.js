@@ -1,6 +1,7 @@
 // @ts-check
 // TEST SEAM. Production gets its ports from the kernel (ctx.kernel.runnerPorts(): leases from gateway.leases, bound to the device key, with `allowed`
 // computed by the kernel from the Offers); this file computes `allowed` itself and exists so the runner's tests exercise the same shapes.
+// spaces.compute (terms, maxSessions) is kept in step with Offers on the space server (lib/spaces/consent-sync.js); the lent home enforces both on place, start, move, resume, and beat.
 // The runner's real ports, made from the kernel's own pieces (the module gets these from its host; tests pass fakes of the same shape):
 //   sealer    the sealing client (kernel/seal/client.js): sealer.lease.issue / renew, called as a person's chain
 //   offers    gateway.grants.offers (kernel/grants): active({ member, device }) and onRevoke(fn)

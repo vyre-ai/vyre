@@ -7,12 +7,12 @@ import { Banner, Button, Chip, Icon, Pulse, Text, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { LiveScreen } from "./LiveScreen";
 import { useStill } from "./useStill";
-import { asksForCode, dots, runWord, stillWord, totpLogins } from "./screen-model.js";
+import { asksForCode, dots, runWord, stillWord, totpLogins, vaultItemLabel } from "./screen-model.js";
 
 type Op = { block: "operator"; run: string; computer: string; title: string; state: "working" | "done" | "stuck" | "paused"; line: string; ask?: string; steps: { line: string; state: string }[] };
 
 /** `sample` is a stand-in picture for the sample world (the shots); a real card asks the box. */
-export function OperatorCard({ block, sample }: { block: Op; sample?: string }) {
+export function OperatorCard({ block, sample, hideVaultNames }: { block: Op; sample?: string; hideVaultNames?: boolean }) {
   const { color } = useUiTheme();
   const [watch, setWatch] = useState(false);
   const [privateSignIn, setPrivateSignIn] = useState(false);
@@ -65,7 +65,7 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
         ) : null}
         {wantsCode && seeds.length ? (
           <View style={{ gap: 8 }}>
-            {seeds.slice(0, 3).map((x, i) => <View key={x.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Use the code from the Vault: ${x.name}`} disabled={busy} onPress={() => useSeed(x.name)} /></View>)}
+            {seeds.slice(0, 3).map((x, i) => <View key={x.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Use the code from the Vault: ${vaultItemLabel(x.name, { shared: hideVaultNames })}`} disabled={busy} onPress={() => useSeed(x.name)} /></View>)}
             <Text size="caption" tone="label">The Vault gives this computer the six digits, never the secret behind them. Or type it below.</Text>
           </View>
         ) : null}

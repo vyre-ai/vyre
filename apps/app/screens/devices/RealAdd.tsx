@@ -1,46 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { serverSay } from "../install/flow.js";
-import { pairSayHere } from "../../src/real/pair-say";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Field, PasswordField, Text } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { said, tool } from "../../src/real/box";
-import { phoneAnswerSession, serverSession, type Target } from "../../src/real/pairing";
-import type { PairingSession } from "../../src/api/pairing-session";
-import { PairEntry, PairWatch, PairWords, type LongCode } from "./PairParts";
-import { phoneAsk, targetsOf } from "./real.js";
-import { COPY, stepWords, type DeviceKind } from "./wink.js";
+import { type DeviceKind } from "./wink.js";
 import { useDevices } from "./state";
-import { WinkCode } from "../../src/ui/WinkCode";
-import { AckCode } from "./TypeCode";
-import { leftOf } from "./typed-model.js";
-
-type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
-type Ask = { name: string; line: string; words: [string, string, string] | null };
 
 /**
- * Adding a device against the real box: only the side this device is. A server: scan or paste what it printed, see the three words, say yes
- * at the server. A phone or computer: show the code, type the three words the new device shows. Nothing is added until the box says so.
+ * Add a computer, a phone or a server with the same onboard tools the first run uses.
+ * A computer signs in with the space address and the master password. A phone gets a link. A server gets the one install command.
  */
 export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onBack: () => void; onDone: () => void; first?: { title: string; sub: string; skipLabel: string; onSkip: () => void } }) {
   const load = useDevices((s) => s.load);
   const [said1, setSaid] = useState("");
-  const [session, setSession] = useState<PairingSession | null>(null);
   const [done, setDone] = useState(false);
-  const [opened, setOpened] = useState<Opened | null>(null);
-  const [ask, setAsk] = useState<Ask | null>(null);
-  const [targets, setTargets] = useState<Target[]>([]);
-  const [target, setTarget] = useState<Target | null>(null);
   const [busy, setBusy] = useState(false);
-  const answerer = useMemo(() => (ask ? phoneAnswerSession(ask.words) : null), [ask]);
+  const [url, setUrl] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [phoneLink, setPhoneLink] = useState("");
+  const [place, setPlace] = useState<"linux" | "mac">("linux");
+  const [command, setCommand] = useState("");
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
-
-  // A server pairs to you or to a space you administer.
-  useEffect(() => {
-    if (kind !== "server") return;
-    tool("wink.pair.targets").then((d) => { const t = targetsOf(d); setTargets(t); setTarget(t[0] ?? null); }).catch((e) => setSaid(said(e)));
-  }, [kind]);
 
   // A phone's key is signed onto the name's list by this app (the server holds no identity): asked while this screen is up and again on the wink events, so a typed code's yes is served too.
   useEffect(() => {
@@ -50,60 +32,77 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     return () => clearInterval(t);
   }, [kind]);
 
-  // A phone or computer: poll for the new device asking, every 2 s while the code is up.
-  useEffect(() => {
-    if (kind === "server" || !opened || done || ask) return;
-    const t = setInterval(() => {
-      tool("wink.phone.pairing").then((r) => { const a = phoneAsk(r); if (a.asking && live.current) setAsk({ name: a.name, line: a.line, words: a.words }); }).catch(() => {});
-    }, 2000);
-    return () => clearInterval(t);
-  }, [kind, opened, done, ask]);
-
-  // First run: the code is up as soon as the screen is, with Skip in place of Back.
-  const auto = useRef(false);
-  useEffect(() => { if (first && kind !== "server" && !auto.current) { auto.current = true; showCode(); } });
-  const reset = (say = "") => { setSession(null); setAsk(null); setOpened(null); setSaid(say); };
   const finish = () => { setDone(true); void load(); };
-
-  const gotServerCode = (c: LongCode) => {
-    if (!target) { setSaid("There is nothing here to pair the server to."); return; }
-    const s = serverSession(c, target);
-    setSaid("");
-    setBusy(true);
-    s.ready!().then(() => { if (live.current) setSession(s); }).catch((e: Error) => reset((e as { code?: string }).code ? pairSayHere(serverSay(e)) : e.message || COPY.ended)).finally(() => setBusy(false));
-  };
-  const showCode = () => {
-    setBusy(true);
-    tool<Opened>("wink.phone.open", {}).then((o) => { setOpened(o); setSaid(""); }).catch((e) => setSaid(said(e))).finally(() => setBusy(false));
-  };
-
   const noun = kind === "phone" ? "phone" : kind === "server" ? "server" : "computer";
+  const addComputer = () => {
+    setBusy(true);
+    tool("onboard.computer.add", { url: url.trim(), password, ...(username.trim() ? { username: username.trim() } : {}) })
+      .then(() => { if (live.current) { setSaid(""); finish(); } })
+      .catch((e) => { if (live.current) setSaid(said(e)); })
+      .finally(() => { if (live.current) setBusy(false); });
+  };
+  const addPhone = () => {
+    setBusy(true);
+    tool<{ spaces?: { id?: string; name?: string }[]; current?: string | null }>("onboard.space.list", {})
+      .then((list) => {
+        const rows = Array.isArray(list?.spaces) ? list.spaces : [];
+        const hit = rows.find((s) => s.id && s.id === list?.current) || rows[0];
+        if (!hit) throw Object.assign(new Error("Create or join a space first."), { code: "no_space" });
+        return tool<{ link?: string }>("onboard.phone.add", { space: hit.name || hit.id });
+      })
+      .then((r) => { if (live.current) { setPhoneLink(String(r?.link || "")); setSaid(""); finish(); } })
+      .catch((e) => { if (live.current) setSaid(said(e)); })
+      .finally(() => { if (live.current) setBusy(false); });
+  };
+  const openServer = () => {
+    setBusy(true);
+    tool<{ command?: string }>("onboard.space.open", { kind: place })
+      .then((r) => { if (live.current) { setCommand(String(r?.command || "")); setSaid(""); } })
+      .catch((e) => { if (live.current) setSaid(said(e)); })
+      .finally(() => { if (live.current) setBusy(false); });
+  };
+
   let body: React.ReactNode;
-  if (done) {
-    body = <Card className="items-center gap-s3"><Chip tone="ok" icon="check">Done</Chip><Text strong>{`The ${noun} is added`}</Text><Button size="sm" label="Done" onPress={onDone} /></Card>;
-  } else if (kind === "server") {
-    body = session
-      ? <PairWatch session={session} who={`A ${noun}`} onConfirmed={finish} onRejected={(say) => reset(say)} />
-      : <Card className="gap-s3">
-          <Text strong>Scan it, or paste the long code</Text>
-          <Text tone="muted">It shows a code when it is ready. Scan it, or paste the long code.</Text>
-          {targets.length > 1 ? <View className="flex-row flex-wrap gap-s2">{targets.map((t) => <Button key={t.id} size="sm" kind={target?.id === t.id ? "primary" : "secondary"} label={t.kind === "identity" ? "You" : t.label} onPress={() => setTarget(t)} />)}</View> : null}
-          {busy ? <Text tone="muted">Asking your Vyre.</Text> : <PairEntry onCode={gotServerCode} />}
-        </Card>;
-  } else if (ask) {
-    body = <PairWords session={answerer!} who={ask.name} onConfirmed={finish} onRejected={() => reset(COPY.rejected)} />;
-  } else if (opened) {
+  if (done && kind !== "server") {
     body = (
       <Card className="items-center gap-s3">
-        <Text strong>{`Open Vyre on the ${noun}, then scan this or paste the long code.`}</Text>
-        {opened.qr ? <WinkCode text={opened.qr} kind="device" typed={opened.code ?? null} expires={opened.code_expires ?? null} /> : null}
-        {opened.qr ? <Text mono size="caption" selectable className="w-full text-center" style={{ wordBreak: "break-all" } as never}>{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
-        {opened.code && opened.code_offer ? <AckCode offer={opened.code_offer} onDone={() => setDone(true)} /> : null}
-        <Text tone="muted">{(() => { const l = leftOf(opened.code_expires ?? opened.expires ?? null, Date.now()); return l ? `Waiting for the new device. Good for ${l}.` : "Waiting for the new device."; })()}</Text>
+        <Chip tone="ok" icon="check">Done</Chip>
+        <Text strong>{`The ${noun} is added`}</Text>
+        {phoneLink ? <Text mono selectable className="w-full text-center">{phoneLink}</Text> : null}
+        <Button size="sm" label="Done" onPress={onDone} />
+      </Card>
+    );
+  } else if (kind === "server") {
+    body = (
+      <Card className="gap-s3">
+        <Text strong>Linux server or always-on Mac</Text>
+        <View className="flex-row gap-s2">
+          <Button size="sm" kind={place === "linux" ? "primary" : "secondary"} label="Linux" onPress={() => setPlace("linux")} />
+          <Button size="sm" kind={place === "mac" ? "primary" : "secondary"} label="Mac" onPress={() => setPlace("mac")} />
+        </View>
+        <Button kind="primary" label={busy ? "Asking" : "Show the install command"} onPress={busy ? () => {} : openServer} />
+        {command ? <Text mono selectable>{command}</Text> : null}
+      </Card>
+    );
+  } else if (kind === "phone") {
+    body = (
+      <Card className="gap-s3">
+        <Text strong>Add your phone</Text>
+        <Text tone="muted">The phone opens a link and joins the space.</Text>
+        <Button kind="primary" label={busy ? "Asking" : "Make the link"} onPress={busy ? () => {} : addPhone} />
       </Card>
     );
   } else {
-    body = <Card className="items-center gap-s3"><Text tone="muted" className="text-center">{stepWords(kind, 0)}</Text><Button kind="primary" icon="plus" label={`Show the code for a ${noun}`} loading={busy} onPress={showCode} /></Card>;
+    body = (
+      <Card className="gap-s3">
+        <Text strong>Add this computer</Text>
+        <Text tone="muted">It connects to every space you belong to. The master password unlocks the vault.</Text>
+        <Field label="Space address" value={url} onChangeText={setUrl} placeholder="https://juniper.vyre.run" />
+        <Field label="Username" value={username} onChangeText={setUsername} />
+        <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
+        <Button kind="primary" label={busy ? "Adding" : "Add this computer"} onPress={busy ? () => {} : addComputer} />
+      </Card>
+    );
   }
   if (first) {
     return (
@@ -116,7 +115,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     );
   }
   return (
-    <Page title={`Add a ${noun}`} sub={kind === "server" ? "Scan or paste, then say yes at the server" : "Scan or paste on the new device, then type its three words"}>
+    <Page title={`Add a ${noun}`} sub={kind === "server" ? "One install command" : kind === "phone" ? "A link the phone opens" : "The space address and your master password"}>
       {said1 ? <Banner tone="warn">{said1}</Banner> : null}
       {body}
       <View className="flex-row justify-center"><Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={onBack} /></View>

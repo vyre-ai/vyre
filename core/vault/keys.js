@@ -276,6 +276,8 @@ export function keystore({ dir, kind, keychain, helper = null, login = false }) 
         return mk;
       },
       async load(_ = {}) { return kc.read(); },
+      /** @param {Buffer} raw overwrite the keychain entry with this device key */
+      async save(raw) { await kc.put(Buffer.from(raw).toString("hex")); },
       destroy: kc.remove,
       migrate: kc.migrate,
     };
@@ -295,6 +297,17 @@ export function keystore({ dir, kind, keychain, helper = null, login = false }) 
         const raw = readPrivate(file);
         if (raw === null) return null;
         try { return hexKey(`${file} is not a vault key`)(raw.toString("utf8").trim()); } finally { raw.fill(0); }
+      },
+      /** @param {Buffer} raw overwrite vault/key with this device key, mode 0600 */
+      async save(raw) {
+        const body = Buffer.from(raw).toString("hex") + "\n";
+        fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+        try { fs.chmodSync(path.dirname(file), 0o700); } catch { /* win32 */ }
+        const tmp = `${file}.${process.pid}.tmp`;
+        const fd = fs.openSync(tmp, "w", 0o600);
+        try { fs.writeFileSync(fd, body); } finally { fs.closeSync(fd); }
+        try { fs.chmodSync(tmp, 0o600); } catch { /* win32 */ }
+        fs.renameSync(tmp, file);
       },
       async destroy() { rmFile(file); },
     };

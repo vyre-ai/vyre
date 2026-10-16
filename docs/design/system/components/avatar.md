@@ -251,8 +251,8 @@ whether or not the artwork itself is original.
 - [ ] App: the agent tile is a circle (`radius.full`) with `--text-2` ink at 32; it needs the
   rounded square and a shared `Avatar` component with the four sizes.
 - [ ] Lumen: no avatar; Lumen board draws 20 tiles with radius 5.
-- [ ] The optional stored-pick override (see "Avatar option" above) has no real field yet -
-  `onboard.person.avatarOption` or similar, written only by the person, read by every surface
+- [ ] The optional stored-pick override (see "Avatar option" above) has no real field yet.
+  It would be written only by the person and read by every surface
   that draws their avatar including the phone's pairing screen. Not needed for 0.1.1: every
   surface can compute the deterministic default from the fingerprint alone until this exists.
   `anywhere` (core/onboard) builds it later. `tailnet` puts the identity fingerprint in the

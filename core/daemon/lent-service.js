@@ -26,14 +26,21 @@ const defaultSpec = account => ({
   credentialRoutes: account ? [{ route: "/provider", ref: account.item, allow: PROVIDER_ALLOW, provider: true }] : [],
 });
 
+/** Compute consent for the member a lease names (spaces.compute.status allows module:vyred for another person; lent-home uses it for maxSessions). Undefined when the registry has no such tool. @param {any} registry */
+export function registryComputeStatus(registry) {
+  if (!registry || !registry.tools.has("spaces.compute.status")) return undefined;
+  return async (/** @type {string} */ space, /** @type {string} */ person) => { try { const r = /** @type {any} */ (await registry.call("spaces.compute.status", { space, person }, "module:vyred", { door: true })); return r && r.data ? r.data : { active: false }; } catch { return { active: false }; } };
+}
+
 /**
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
  * `emit(type, payload)` is told when a session moves (thread.moved); `resume(i)` is the server's continuation of a session a lender gave up or lost; `titleOf(space, chat)` names a chat for the lender's list. Each Space's
  * home watches its lenders' heartbeats from the moment it is made, and `stop()` ends the watching.
- * @param {{ root: string, emit?: (type: string, payload: any) => void, resume?: (i: any) => any, canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null, titleOf?: (space: string, chat: string) => Promise<string | null> | string | null, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, keyOf?: (kernel: any, space: string) => Buffer | null, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
+ * @param {{ root: string, registry?: any, emit?: (type: string, payload: any) => void, resume?: (i: any) => any, canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null, titleOf?: (space: string, chat: string) => Promise<string | null> | string | null, computeStatus?: (space: string, person: string) => Promise<{ active?: boolean, terms?: { maxSessions?: number }, hash?: string } | null> | { active?: boolean, terms?: { maxSessions?: number }, hash?: string } | null, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, keyOf?: (kernel: any, space: string) => Buffer | null, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {
+  if (!o.computeStatus) o = { ...o, computeStatus: registryComputeStatus(o.registry) };
   /** @type {Map<string, () => void>} */ const subs = new Map();
   /** @type {Map<string, any>} the service each Space has now, for the home's own view of what is lent */ const live = new Map();
   /** @type {Map<string, any>} the kernel each live service was made for */ const liveK = new Map();
@@ -50,7 +57,7 @@ export function lentServiceFor(o) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work: ask the owner of this home to set up storage for that space"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http", "preview"].map(n => [n, refuse])));
     }
-    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
+    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.computeStatus ? { compute: { status: (/** @type {string} */ person) => Promise.resolve(o.computeStatus?.(space, person)).then(st => st || { active: false }) } } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => {
         const spec = o.lentSpec ? await o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null);
         // the person's own MCP servers (member-mcp), read for the person this lease is for and no one else; none when they have none, are locked, or the reader fails

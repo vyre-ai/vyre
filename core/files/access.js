@@ -21,6 +21,7 @@
 // agentOf is how this file decides which agent's projects.reach is asking for its own).
 
 import fs from "node:fs";
+import { chainPerson } from "../../lib/member-scope.js";
 
 const AGENT_RE = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/;
 
@@ -34,10 +35,12 @@ export function within(p, folders) {
  * user's own surfaces, a module, or a bare session. */
 export const agentOf = caller => AGENT_RE.exec(String(caller || ""))?.[1] || null;
 
-/** Is the kernel's chain for this call exactly one person? undefined when this daemon has no kernel (or the call gave no meta): the labels still decide, as before. @param {any} ctx @param {any} meta */
+/** @deprecated use chainPerson — kept for callers that still read a boolean. @param {any} ctx @param {any} meta */
 export async function personOf(ctx, meta) {
-  if (!meta || !ctx.kernel || typeof ctx.kernel.chain !== "function") return undefined;
-  try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+  const id = await chainPerson(ctx.kernel, meta);
+  if (id === null && meta && ctx.kernel) return false;
+  if (id) return true;
+  return undefined;
 }
 
 /**
@@ -61,8 +64,8 @@ export async function personOf(ctx, meta) {
  */
 export async function reach(ctx, caller, meta) {
   const who = agentOf(caller);
-  const person = await personOf(ctx, meta);
-  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content", ...(person === undefined ? {} : { person }), ...(meta && (meta.thread || meta.agent) ? { thread: meta.thread || "", claim: meta.agent || null } : {}) });
+  const person_id = await chainPerson(ctx.kernel, meta);
+  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content", ...(person_id ? { person_id } : {}), ...(meta && (meta.thread || meta.agent) ? { thread: meta.thread || "", claim: meta.agent || null } : {}) });
   if (r.error) {
     // An unnamed non-owner caller (a tailnet guest, a hook, an unrecognised kind) reads with no
     // projects at all, the same as an agent granted nothing, rather than as a throw: only a named

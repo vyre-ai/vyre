@@ -12,7 +12,7 @@ import { AIS } from "../lib/skill-library.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SURFACES = ["apps/app", "local", "web"];
-const SKIP_DIR = new Set(["node_modules", "dist", ".git", ".expo"]);
+const SKIP_DIR = new Set(["node_modules", "dist", ".git", ".expo", ".build", "app-web"]);
 const SKIP_FILE = /\.test\.|\.generated\.|mock|gallery|fixtures?\b|\/dist\/|\/test\//;
 
 const walk = (/** @type {string} */ dir, /** @type {string[]} */ out = []) => {

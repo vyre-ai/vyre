@@ -3,8 +3,13 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runWord, dots, signinWords } from "./screen-model.js";
+import { runWord, dots, signinWords, vaultItemLabel } from "./screen-model.js";
 import { normalizeBlock } from "./blocks.js";
+
+test("vaultItemLabel hides the real name in a shared chat", () => {
+  assert.equal(vaultItemLabel("anthropic-key", { shared: true }), "Vault item");
+  assert.equal(vaultItemLabel("anthropic-key", { shared: false }), "Anthropic key");
+});
 
 test("a run says one word, keeps seven steps, and a sign-in says what it asks and what stays private", () => {
   assert.equal(runWord("stuck"), "Needs you");
