@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci: fast pull request CI. node.yml runs only the test files a change can reach by imports (scripts/ci-select.mjs, tested in scripts/ci-select.test.js), and everything when a lockfile, package.json, a workflow, the kernel core, the module loader or the test runner changes or a file more than a third of the tests reach; main, integrate/**, release/**, the train and the lead's tips still run the whole suite, and work/** pushes run the selected tests. The docs check and the Windows jobs run only when the change can affect them. lumen-mac, lumen-win, vault-mac, android-app, design-pictures, first-run-e2e, box-image and runner-chaos run in full on release/**, integrate/** and the train (and main where they did), and on a pull request only when their own paths change.
 - feat(identity): the relay's GitHub sign-in public key is pinned in lib/relay-keys.js (RELAY_ASSERT_KEY). Its private half is the deploy environment secret GH_ASSERT_KEY, set on the relay as GITHUB_ASSERT_KEY by relay-deploy.yml. `github.assertKey` in a box's config still replaces it for development and tests.
 - test: the golden decisions are re-recorded for the merged 0.5.3 work; the removed Mac egress and tailnet tools are gone from them.
 - ci: the node tests run in ten shards on the self-hosted runners and five on GitHub's hosted ones.
