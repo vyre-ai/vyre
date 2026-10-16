@@ -149,3 +149,6 @@ export function lentMacOffline(placement, places, thread) {
   const list = Array.isArray(places) ? places : (places && typeof places === "object" && Array.isArray(/** @type {any} */ (places).places) ? /** @type {any} */ (places).places : []);
   return list.some((r) => r && (r.chat === thread || r.session === thread) && r.online === false);
 }
+
+/** How many 15s placement polls must see the lent Mac offline before auto-moving to the server (stops flapping). */
+export const LENT_OFFLINE_TICKS = 4;

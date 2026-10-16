@@ -1056,7 +1056,7 @@ export class Switchboard {
       // A person's own first words are heard like any turn of theirs: before any provider sees them.
       const said = crypto.randomUUID();
       await slow();
-      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || [], personTurn(o.surface) ? o.surface : null) : [];
       const note = heard.length ? tagNote(heard) : "";
       await slow();
       at("first prompt send");
@@ -2572,9 +2572,9 @@ export class Switchboard {
    * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
    * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
    * for a caller personTurn admits.
-   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access
    */
-  async ingress(id, text, surface, uuid, chips = [], pasted = []) {
+  async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
@@ -2583,7 +2583,8 @@ export class Switchboard {
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const as = asCaller && personTurn(asCaller) ? asCaller : null;
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input, as ? { as } : undefined) }) : [];
     const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
@@ -4533,7 +4534,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
+        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
@@ -4714,7 +4715,7 @@ export default {
         // recorded survives, and what they now type is heard afresh under the usual rules.
         if (sb.hasQueued(i.thread, i.queued)) await sb.revokeHeard(i.thread, sb.queuedUuids(i.thread, i.queued));
         if (personTurn(caller) && Array.isArray(i.pasted) && sb.hasQueued(i.thread, i.queued)) {
-          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
+          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20), caller);
           if (heard.length) note = tagNote(heard);
         }
         return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });

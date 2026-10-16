@@ -67,7 +67,7 @@ const flat = data => {
  * refuses or is absent means plain text, no grant. Before the mentions mechanism exists, a name is
  * a vault item alone (vault.mention.resolve by exact name, which records the "use"
  * intent with the item's own hosts; sessions never records a use intent itself).
- * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any) => Promise<any> }} o
+ * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any, opts?: any) => Promise<any> }} o
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
  */
 export async function resolveTags({ names, chips = [], thread, said, call }) {

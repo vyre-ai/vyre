@@ -162,5 +162,7 @@ export async function signIn(): Promise<void> {
 /** End the person session on the box. */
 export async function signOut(): Promise<void> {
   if (person) await person.end();
+  const { clearAllSessionCaches } = await import("../chat/session-cache.js");
+  clearAllSessionCaches();
   connection.signIn(true);
 }
