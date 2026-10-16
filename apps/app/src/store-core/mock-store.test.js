@@ -237,7 +237,7 @@ test("client pays: Now's Needs-you holds exactly one card, and approving it move
   const after = await s.tasks({ record: ran.matter });
   assert.deepEqual(after.map(t => [t.title, t.state]), [["Research the client", "done"], ["Welcome email for Jane Doe", "done"], ["Kickoff letter", "working"], ["Review the draft with Jane Doe", "waiting"]]);
   assert.equal((await s.tasks()).filter(t => needsYou(t, WHO.alex, actors)).length, 0, "nothing needs Alex until the kickoff letter is drafted");
-  assert.ok((await s.events({ record: ran.matter })).some(e => /moved Doe brand refresh to Engagement by itself/.test(what(e))));
+  assert.ok((await s.events({ record: ran.matter })).some(e => /moved Doe brand refresh to Kickoff by itself/.test(what(e))));
   // Every move the run made went through the table: none was made by the wrong party.
   const bad = s.transitions().filter(m => m.to === "done" && m.by !== "kernel" && m.by !== WHO.alex);
   assert.deepEqual(bad, []);
