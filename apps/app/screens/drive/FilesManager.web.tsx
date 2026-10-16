@@ -1,4 +1,4 @@
-// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked), the open folder in the middle as a list or a grid
+// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked, On your server), the open folder in the middle as a list or a grid
 // (@tanstack/react-table for the columns, @tanstack/react-virtual for the rows), breadcrumbs and a search above it, multi-select with a bulk bar, and a detail panel on the right. Every read
 // and write is an existing files.* tool (files-real.ts); what a source cannot do is not offered (files-model.ts abilities). The detail panel's preview is a slot: native-mount's FileViewer
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
@@ -14,7 +14,7 @@ import { MenuRow } from "../../ui/blocks/RowMenu";
 import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
 import { useFilesNav } from "./files-nav";
-import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, linkCreate } from "./real";
+import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
 import { bytesOf, sizeWord, textOf } from "./real-model";
 import { driveRefusal } from "./real-model";
 import { linkedRefusal, type LinkedVersion } from "./linked-model";
@@ -35,7 +35,7 @@ export default function FilesManager() {
 }
 
 function Manager({ wide }: { wide: boolean }) {
-  const { place, folders, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
+  const { place, folders, status, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
   const [rows, setRows] = useState<FileRow[] | null>(null);
   const [err, setErr] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
@@ -46,7 +46,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [focus, setFocus] = useState(-1);
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
 
-  // the roots (linked folders) and the open place are shared with the sidebar tree (files-nav.ts)
+  // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
 
   const parsed = parsePlace(place);
@@ -59,8 +59,9 @@ function Manager({ wide }: { wide: boolean }) {
     setErr(""); setRows(null);
     if (!pp) { setRows([]); return; }
     if (pp.root === "linked" && !pp.link) { setRows(folders.map((f) => ({ key: `linked:${f.id}`, place: `linked:${f.id}`, root: "linked" as const, name: f.name, dir: true, kind: "folder" as const, size: 0, modified: f.at, link: f.id, path: "" }))); return; }
+    if (pp.root === "box" && !pp.share) { setRows((status?.shares ?? []).map((s) => ({ key: `box:${s.name}`, place: `box:${s.name}`, root: "box" as const, name: s.name, dir: true, kind: "folder" as const, size: 0, modified: 0, share: s.name, path: "" }))); return; }
     loader.rows(p).then((r) => { setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] }))); }).catch((e) => { setErr(say(e)); setRows([]); });
-  }, [folders]);
+  }, [folders, status]);
   useEffect(() => { load(place); setSel({ set: new Set(), anchor: null }); setFocus(-1); }, [place, load, tick]);
   useEffect(() => { setQ(""); setChips([]); }, [place]);
 
@@ -145,7 +146,7 @@ function Manager({ wide }: { wide: boolean }) {
 
   const uploadButton = ability.upload && canOpenFolder ? <Button kind="primary" size="sm" icon="upload" label="Upload" onPress={pickUpload} /> : null;
   // With the detail panel open the middle is narrower, so Kind (which the panel shows) steps aside and the rest keep their widths.
-  const showDetail = !!one && (one.root === "space" || one.root === "linked");
+  const showDetail = !!one && (one.root === "space" || one.root === "linked" || one.root === "box");
   const GRID_COLS = showDetail ? "minmax(140px, 1fr) 104px 72px 36px" : "minmax(240px, 1fr) 120px 140px 80px 36px";
   const row = (r: FileRow, i: number, style?: React.CSSProperties) => {
     const on = sel.set.has(r.key);
