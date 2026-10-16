@@ -58,7 +58,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void, borrowed?(i: { thread: string, session: string, member: string, device: string, limit: string | null, epoch: number | null }): void, helloOf?(id: string): { cap?: "provider" | "internet" | null } | null },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
- *   lapseMs?: number,
+ *   lapseMs?: number, steadyMs?: number, returnCooldownMs?: number,
  *   canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null,
  *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any },
  *   compute?: { status(person: string): Promise<{ active?: boolean, terms?: { maxSessions?: number } }> } }} o
@@ -137,9 +137,9 @@ export function createLentHome(o) {
   const mayReturn = (row, /** @type {string} */ person) => {
     if (!row || row.person !== person || row.where !== "server" || row.pin === "server" || row.offer !== "mac" || !CLEARS.includes(String(row.reason)) || owed.has(row.session) || resuming.has(row.session)) return false;
     const l = lenders.get(row.device), t = now();
-    if (!l || l.person !== person || !l.well || !l.auto || t - l.at > LENDER_FRESH_MS || l.wellSince === null || t - l.wellSince < STEADY_MS) return false;
-    if (row.movedAt !== null && t - row.movedAt < COOLDOWN_MS) return false;
-    return canResume() && stands({ person, device: row.device }, keys.get(row.device)) && underSessionCap(person, row.device, row.session);
+    if (!l || l.person !== person || !l.well || !l.auto || t - l.at > LENDER_FRESH_MS || l.wellSince === null || t - l.wellSince < (o.steadyMs ?? STEADY_MS)) return false;
+    if (row.movedAt !== null && t - row.movedAt < (o.returnCooldownMs ?? COOLDOWN_MS)) return false;
+    return canResume() && stands({ person, device: row.device }, keys.get(row.device) || row.key || undefined) && underSessionCap(person, row.device, row.session);
   };
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
