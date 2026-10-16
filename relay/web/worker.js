@@ -6,7 +6,7 @@
 // No state, no cookies, no third-party script, nothing about any server or any person.
 
 const BASE = "default-src 'none'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; media-src 'self' blob:; "
-  + "connect-src 'self' https://relay.vyre.run wss://relay.vyre.run https://names.vyre.run https://*.ts.net wss://*.ts.net; "
+  + "connect-src 'self' https://relay.vyre.run wss://relay.vyre.run https://names.vyre.run https://*.vyre.run; "
   + "frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 /** @param {{ scriptHashes?: string[], styleHashes?: string[] }} b */

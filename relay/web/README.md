@@ -24,7 +24,7 @@ record, every other path is the app's page (the app routes itself; the URL fragm
 
 ## Policy
 
-`default-src 'none'`; `script-src 'self'` plus the hash of each inline script; `style-src 'self' 'unsafe-inline'` (the app's component library writes its style sheet and element styles at run time, which a hash cannot name; the rehearsal showed a blank page under a hash-only policy; with `default-src 'none'` nothing can be reached from a style); `connect-src` only `'self'`, `relay.vyre.run`, `names.vyre.run` and `*.ts.net`;
+`default-src 'none'`; `script-src 'self'` plus the hash of each inline script; `style-src 'self' 'unsafe-inline'` (the app's component library writes its style sheet and element styles at run time, which a hash cannot name; the rehearsal showed a blank page under a hash-only policy; with `default-src 'none'` nothing can be reached from a style); `connect-src` only `'self'`, `relay.vyre.run`, `names.vyre.run` and `*.vyre.run` (a space's own address, for the sign-in door at `<space>.vyre.run/login`);
 no frames, no `base`, no form posts. HSTS 2 years with preload, `nosniff`, `no-referrer`, COOP and CORP same-origin, no cookies, no third-party script,
 no request logs. The app's page and `vyre-build.json` are `no-cache`; `/app/_expo/static/*` (content-hashed) is immutable.
 
