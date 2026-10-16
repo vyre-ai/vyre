@@ -30,6 +30,7 @@ import { newPrefixedId } from "../../lib/id.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 import { standsOffers, countMacSessions } from "../../lib/runner-consent.js";
 import { COMPUTE_TERMS_DEFAULT } from "../../lib/spaces/compute.js";
+import { lentProcessProvider } from "../sessions/drivers/lent-agent.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
 /** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
@@ -265,7 +266,10 @@ export function createLentHome(o) {
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       // A chat spawned on this computer (lent spawn): the SDK's flags replace the Space's bare program, and the runner pumps the process's bytes through `lent.pipe`.
       const asked = pipes.pending(String(i.session), w.device);
-      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(asked.folder ? { folder: asked.folder } : {}) };
+      if (asked) {
+        const prov = lentProcessProvider(asked.command);
+        spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(prov ? { provider: prov } : {}), ...(asked.folder ? { folder: asked.folder } : {}) };
+      }
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
       // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
@@ -312,7 +316,8 @@ export function createLentHome(o) {
       const title = (asked && asked.title) || (chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null);
       const { credentialRoutes, ...visible } = spec;
       const seed = seeds.get(String(i.session)); if (seed) seeds.delete(String(i.session));
-      return { ...visible, ...(seed ? { seed } : {}), network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
+      const seedProv = seed && seed.provider ? seed.provider : undefined;
+      return { ...visible, ...(seedProv ? { provider: seedProv } : {}), ...(seed ? { seed } : {}), network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
     },
     /**
      * The lender is alive. Each session it still runs is checked against the book: one whose epoch is not current (it moved, or the home restarted without it) is listed in `fenced`, and the lender stops it
@@ -422,7 +427,7 @@ export function createLentHome(o) {
     /**
      * A chat that began on the server moves to one of the person's computers (runner.move to a computer): its whole turns so far are put in the store as the session's transcript, the book lends the session
      * to a ready computer, and the computer writes that transcript into its own Claude home before it starts the program (the spec's `seed`). Nothing is moved from the server's own disk: the server's copy stays.
-     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[] }} i
+     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[], provider?: string }} i
      * @returns {{ where: "mac", device: string, epoch: number }}
      */
     async adopt(i) {
@@ -444,7 +449,7 @@ export function createLentHome(o) {
       return Promise.resolve(store.appendTranscript(HOME, session, lines.map((line, k) => ({ seq: held + k + 1, line: String(line) })))).then(() => {
         if (had) book.bringBack(session, person);
         const row = book.lend({ session, chat: i.chat || null, person, device, key: keys.get(device) || null });
-        seeds.set(session, { native: String(i.native), count: lines.length, from: held + 1 });
+        seeds.set(session, { native: String(i.native), count: lines.length, from: held + 1, ...(i.provider && lentProcessProvider(i.provider) ? { provider: lentProcessProvider(i.provider) } : {}) });
         threads.set(session, String(i.thread));
         reserved.add(session);
         // the chat's next turn starts the program there (the Switchboard finds this row); until then the place is kept for hours, not seconds

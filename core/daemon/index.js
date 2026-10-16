@@ -415,7 +415,7 @@ async function startLocked(opts, root, p, release) {
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
-            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines });
+            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines, ...(t.provider ? { provider: t.provider } : {}) });
           },
         });
       },

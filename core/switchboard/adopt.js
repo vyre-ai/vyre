@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { lentProcessProvider, serverTranscriptPlace, workTranscriptPath } from "../../lib/lent-agent.js";
+import { lentProcessProvider, serverTranscriptPlace, workTranscriptPath } from "../sessions/drivers/lent-agent.js";
 
 /** A transcript written this recently belongs to a session that is still working somewhere. */
 export const ACTIVE_MS = 30_000;

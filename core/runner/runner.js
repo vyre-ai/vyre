@@ -29,6 +29,7 @@ import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./
 import { createEgress } from "./egress.js";
 import { openVyreDoor } from "./vyre-door.js";
 import { createSessionSync, restore, ROOTS, syncRootsFor } from "./sync.js";
+import { lentProcessProvider } from "../sessions/drivers/lent-agent.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
@@ -223,7 +224,8 @@ export function createRunner(o) {
       const lines = await o.sync.getTranscript(s.session, Number.isInteger(s.seed.from) && s.seed.from >= 1 ? s.seed.from : 1);
       if (lines.length) {
         const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
-        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native)) : null;
+        const prov = s.provider || lentProcessProvider(s.command) || "claude";
+        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native), prov) : null;
         if (file) writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
       }
     }
@@ -237,7 +239,7 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const agentRoots = syncRootsFor(s.provider);
+    const agentRoots = syncRootsFor(s.provider || lentProcessProvider(s.command));
     const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), roots: [{ dir: "files", remote: "files" }, ...(s.folder ? [] : agentRoots)], log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection

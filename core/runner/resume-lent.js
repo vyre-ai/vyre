@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import { createTurnSeal } from "./ownserver.js";
 import { coverOf } from "./sync.js";
 import { readInside, writeInside, plantable } from "./safefs.js";
-import { manifestSessionFilePattern } from "../../lib/lent-agent.js";
+import { manifestSessionFilePattern } from "../sessions/drivers/lent-agent.js";
 
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const PAGE = 2000;

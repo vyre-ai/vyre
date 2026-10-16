@@ -3,8 +3,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { list as codexRollouts } from "../core/import/formats/codex.js";
-import { AGENTS } from "./agent-sandbox.js";
+import { list as codexRollouts } from "../../import/formats/codex.js";
+import { AGENTS } from "../../../lib/agent-sandbox.js";
 
 /** Providers that run as a process on the lender (AGENTS table); in-process chat providers are never lent. */
 export const LENT_PROCESS_PROVIDERS = Object.freeze(Object.keys(AGENTS));

@@ -30,7 +30,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { readInside, listInside, writeInside, parts, plantable } from "./safefs.js";
 import { isCredentialFile } from "../sessions/drivers/credfiles.js";
-import { DEFAULT_SYNC_ROOTS, restorableAgentRel, syncRootsFor } from "../../lib/lent-agent.js";
+import { DEFAULT_SYNC_ROOTS, restorableAgentRel, syncRootsFor } from "../sessions/drivers/lent-agent.js";
 
 /** The folders the sync carries, relative to the mounted workspace, and where each lands in the space. */
 export const ROOTS = [{ dir: "files", remote: "files" }, ...DEFAULT_SYNC_ROOTS];
