@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- docs: the sitemap lists the master password guide and ADR 0054, and the app lists the space vault tools that take a space.
 - test(tools): vault.space.use has three ordinary asks, so an agent can find it from what a person would say.
 - test(vault): a plain session's use of a space vault item is the session's own request. The server wrap places the value, and the response is redacted.
 - fix(vault): a space vault response is redacted by the shared scrub, so a lent value never comes back in the answer.
