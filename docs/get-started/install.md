@@ -87,7 +87,7 @@ A Mac, a Windows PC and the web app offer the same two choices. Vyre does not ru
    (`http://<the-server>/setup`) and paste the code the app shows. The page locks after pairing.
 5. The app connects, and your space is ready.
 
-You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address. When the server adopts you, the app makes that space's vault. Adding a computer reaches each space's own server, and the computer is then live in each space.
+You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address. When the server adopts you, the app makes that space's vault. Adding a computer reaches each space's own server, and the computer is then live in each space. The web app, the Mac app, the Windows app and the phone use these same steps.
 
 
 ## 6. Add your phone

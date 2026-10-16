@@ -5,10 +5,9 @@
 import { useEffect, useState } from "react";
 import { MOCK, said, tool } from "../../src/real/box";
 import { startAddServer, type AddServerState } from "../../src/real/add-server-bind";
-import { DEFAULT_CHOICE, SERVER_KINDS } from "../../src/real/add-server.js";
 import { addressOf } from "./flow-model.js";
 import { allowedOf, refusal } from "../spaces/computers-model.js";
-import { createInput, emailIt, madeNote } from "../devices/invite.js";
+import { emailIt, madeNote } from "../devices/invite.js";
 
 export const LIVE = !MOCK;
 
@@ -31,24 +30,23 @@ function store<T>(initial: T) {
 
 const runState = store<AddServerState | null>(null);
 let run: Awaited<ReturnType<typeof startAddServer>> | null = null;
-const live = (s: AddServerState | null) => !!s && ["install", "found", "pairing", "done"].includes(s.stage);
 
 /** Starts the run for a Linux server or a Mac. A run already going is kept, so a screen coming back does not throw the line away. */
 export async function beginServerRun(kind: "cloud" | "mac") {
-  if (run && live(runState.get())) return;
+  const place = kind === "mac" ? "mac" : "linux";
+  const opened = await tool<{ command?: string }>("onboard.space.open", { kind: place });
   run?.stop();
-  run = await startAddServer((s) => runState.set(s));
-  await run.begin(DEFAULT_CHOICE, kind === "mac" ? SERVER_KINDS[1].id : SERVER_KINDS[0].id);
+  run = null;
+  runState.set({ stage: "install", choice: place, installLine: String(opened?.command || ""), code: "", lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: 0 });
 }
 export const useServerRun = () => runState.use();
 export const confirmServerWords = () => run?.confirmWords();
 export const denyServerWords = () => run?.denyWords();
 export const stopServerRun = () => { run?.stop(); run = null; };
 
-/** A typed server code, when the person has the code and not the line: the same pairing a typed code does elsewhere (devices/TypeCode.tsx). Rejects with words. */
-export async function pairByCode(code: string, onAck: (ack: string, expires?: number) => void) {
-  const { redeemPairing } = await import("../devices/TypeCode");
-  await redeemPairing(code, onAck);
+/** A server joins from the install command (onboard.space.open). There is no code to type. */
+export async function pairByCode(_code: string, _onAck: (ack: string, expires?: number) => void) {
+  throw Object.assign(new Error("The install command is how a server joins. There is no code to type."), { code: "bad_input" });
 }
 
 // ---- the space on that server ----
@@ -85,24 +83,19 @@ const card = store<JoinCard | null>(null);
 export const useJoinCard = () => card.use();
 export const joinCard = () => card.get();
 
-/** A pasted link is used as it is; a typed invite code (INV-XXXX-XXXX or the short code) is redeemed over the relay for the link. */
-export async function linkFromInput(text: string, onAck: (ack: string, expires?: number) => void): Promise<string> {
-  const t = text.trim();
-  if (/^https?:\/\//i.test(t) || /\/join\//.test(t)) {
-    const { parseInviteLink } = await import("../../src/real/join-team.js");
-    try { parseInviteLink(t); } catch { throw Object.assign(new Error("This is not a Vyre invite. Paste the whole link your inviter sent, or ask them for a new one."), { code: "bad_input" }); }
-    return t;
-  }
-  const { redeemInvite } = await import("../devices/TypeCode");
-  return (await redeemInvite(t, onAck)).invite!.link;
+/** A pasted invite link, checked the same way onboard.space.join checks it. There is no code to type. */
+export async function linkFromInput(text: string, _onAck: (ack: string, expires?: number) => void): Promise<string> {
+  const { parseInvite } = await import("../../../../lib/first-run-shape.js");
+  const parsed = parseInvite(text.trim());
+  if (!parsed) throw Object.assign(new Error("That link does not open a space. Ask for a new invite."), { code: "bad_input" });
+  return parsed.link;
 }
 
 /** The card for an invite: the space, the role and the space's four words. The inviter's name is not on the card the server gives, so the screen shows none. */
 export async function readInvite(link: string): Promise<JoinCard> {
-  const { previewInvite } = await import("../../src/real/install");
-  const c = await previewInvite(link);
+  const c = await tool<{ link?: string; role?: string; space?: string | null }>("onboard.join.read", { link });
   const role = c.role === "admin" || c.role === "owner" ? "admin" : "member";
-  const made: JoinCard = { link, space: String(c.label || c.space), label: String(c.label || c.space), role, roleWord: String(c.role || "member"), words: String(c.fingerprint_words || "").split(/\s+/).filter(Boolean) };
+  const made: JoinCard = { link: String(c.link || link), space: String(c.space || ""), label: String(c.space || ""), role, roleWord: String(c.role || "member"), words: [] };
   card.set(made);
   return made;
 }
@@ -137,12 +130,10 @@ export async function lendThisComputer(space: string, on: boolean) {
 export type MadeInvite = { id: string; link: string; code: string | null; needsConfirm: boolean };
 
 /** Makes the invite the way the Invite screen does: this app when it keeps the name, else the box. The name is only for the inviter's list (the box takes none), so the link is for anyone who holds it. */
-export async function makeInvite(role: string, projects: string[] = [], days = 7, levels: Record<string, string> = {}): Promise<MadeInvite> {
+export async function makeInvite(role: string, _projects: string[] = [], days = 7, _levels: Record<string, string> = {}): Promise<MadeInvite> {
   const s = active.get();
   if (!s?.id) throw Object.assign(new Error("There is no space to invite people to yet. Create or join one first."), { code: "no_space" });
-  const input = createInput({ space: s.id, role, anyone: true, projects, days, levels });
-  const t = await import("../../src/real/team-join");
-  const r = (await t.invitesHere()) ? await t.makeTeamInvite({ space: s.id, name: s.slug, role: input.role }) : await tool("spaces.invites.create", input);
+  const r = await tool("onboard.member.link", { space: s.id, role: role === "temp" ? "guest" : role, ttlDays: days });
   const n = madeNote(r);
   return { id: n.id, link: n.link, code: n.code, needsConfirm: n.needsConfirm };
 }
