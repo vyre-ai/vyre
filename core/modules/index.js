@@ -39,6 +39,7 @@ import { within } from "../../lib/within.js";
 import { FIRST_RUN_RELAY, relayedPerson, carriesPerson, agentsMayRelay, checkAgentsRelay } from "./relay-context.js";
 export { agentsMayRelay, checkAgentsRelay };
 import { mayHop, originApi, FLOW_RUN, FLOW_ACT } from "./hop.js";
+import { satisfies } from "./semver.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
@@ -160,32 +161,7 @@ export function addedCheck(m) {
 /** The modules a manifest requires: a list of names, or the keys of { name: range } (ADR 0047). @param {any} m */
 export const requiresOf = m => (Array.isArray(m && m.requires) ? m.requires : m && m.requires && typeof m.requires === "object" ? Object.keys(m.requires) : []);
 
-/** A version as [major, minor, patch], or null. @param {string} v */
-const semver = v => { const x = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(v).trim()); return x ? [Number(x[1]), Number(x[2] || 0), Number(x[3] || 0)] : null; };
-const cmp = (/** @type {number[]} */ a, /** @type {number[]} */ b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
-
-/**
- * Whether a version meets a range: comparators (>=, >, <=, <, =, ^, ~, or a bare version) joined by
- * spaces, all of which must hold, or * for any. null when the range can't be read.
- * @param {string} version @param {string} range @returns {boolean | null}
- */
-export function satisfies(version, range) {
-  const v = semver(version);
-  const parts = String(range).trim().split(/\s+/).filter(Boolean);
-  if (!v) return false;
-  let ok = true;
-  for (const part of parts) {
-    if (part === "*" || part === "x") continue;
-    const x = /^(>=|<=|>|<|=|\^|~)?(v?\d+(?:\.\d+){0,2})$/.exec(part);
-    if (!x) return null;
-    const want = /** @type {number[]} */ (semver(x[2])), c = cmp(v, want);
-    const op = x[1] || "=";
-    const upper = op === "^" ? (want[0] > 0 ? [want[0] + 1, 0, 0] : [0, want[1] + 1, 0]) : [want[0], want[1] + 1, 0];
-    const hold = op === ">=" ? c >= 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : op === "<" ? c < 0 : op === "=" ? c === 0 : c >= 0 && cmp(v, upper) < 0;
-    ok = ok && hold;
-  }
-  return ok;
-}
+export { satisfies } from "./semver.js";
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
 const USE_FLUSH = 60_000;

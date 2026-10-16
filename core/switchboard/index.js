@@ -2564,8 +2564,7 @@ export class Switchboard {
    * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
    * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
    * for a caller personTurn admits.
-   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access
-   * @param {any} [relayMeta] the verified session on this send (token, kernelFacts), for personCallOpts
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access @param {any} [relayMeta] the verified session on this send (token, kernelFacts), for personCallOpts
    * @param {{ memberTurn?: boolean }} [turn] a member's chat turn (not staff): only a picked record (the kernel checks it under that member's chain) and an account chip are heard; a #Name, vault, Drive or GitHub chip would resolve under the owner's access.
    */
   async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null, relayMeta = null, turn = {}) {

@@ -25,7 +25,7 @@ import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
-import { recordTrigger, eventPatterns, fieldPasses, onRecordChange } from "./triggers.js";
+import { recordTrigger, typeMatches, triggerScope, onRecordChange } from "./triggers.js";
 import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
@@ -2048,22 +2048,6 @@ export class FlowRunner {
 }
 
 // ---------------------------------------------------------------------- helpers
-
-/** Does an event pattern (`noun.past-verb`, `noun.*`) match a type? @param {string} pattern @param {string} type */
-export const typeMatches = (pattern, type) => pattern === type || (pattern.endsWith(".*") && type.startsWith(pattern.slice(0, -1)));
-
-/**
- * Does this event trigger this Flow? Returns the scope the Flow reads (`trigger` and `event`), or null. An error in the condition is "no".
- * @param {any} t the Flow's trigger @param {any} env an event envelope
- */
-export function triggerScope(t, env) {
-  let scope = null;
-  if (t.on === "event" && eventPatterns(t).some(e => typeMatches(e, env.type)) && fieldPasses(t, env)) scope = { trigger: env.data ?? {}, event: env };
-  else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
-  if (!scope) return null;
-  if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
-  return scope;
-}
 
 /** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
 const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });
