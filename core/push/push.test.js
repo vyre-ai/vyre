@@ -569,6 +569,7 @@ test("push: no payload carries thread, goal, message or teammate text: every sen
     "identity.entry-added": { seq: 1, eid: "e1", entry: { eid: "e1", label: text(1) } },
     "identity.recovered": { seq: 2, label: text(1) },
     "identity.device-removed": { eid: "e2", label: text(1) },
+    "signin.new-device": { device: "dev_1", at: 1_790_000_000_000, name: text(1), label: text(2), address: text(3), username: text(4) },
   };
   for (const type of Object.keys(NOTES)) assert.ok(type in events, `${type} has no free-text probe: add one`);
   for (const [type, payload] of Object.entries(events)) {
@@ -586,4 +587,20 @@ test("push: no payload carries thread, goal, message or teammate text: every sen
   // Whatever a sender puts in a message, only the fixed fields are sent.
   const wire = outgoing({ kind: "goal", title: "t", path: "/goals/g", tag: "x", at: 0, body: text(1), text: text(2), summary: text(3), thread: text(4) });
   assert.deepEqual(Object.keys(wire).sort(), ["at", "kind", "path", "tag", "title"]);
+});
+
+test("push: a new device signing in rings the person's other devices, loudly, with fixed words and only the device id in the path", async () => {
+  const { NOTES, outgoing } = await import("./index.js");
+  const made = NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_000 } }, {});
+  assert.equal(made.kind, "notice", "a notice is always on and is not counted in the daily budget");
+  assert.equal(made.loud, true);
+  assert.deepEqual(made.actions, ["remove"]);
+  assert.equal(made.title, "A new device signed in to your space. Remove it if it was not you");
+  assert.equal(made.path, "/settings?section=devices&remove=dev_1");
+  const again = NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_001 } }, {});
+  assert.notEqual(made.tag, NOTES["signin.new-device"]({ payload: { device: "dev_2", at: 1_790_000_000_000 } }, {}).tag, "two devices are two notices");
+  assert.equal(made.tag, again.tag, "the same device in the same second is one notice");
+  const hostile = NOTES["signin.new-device"]({ payload: { device: "a&b=c/../x", at: 1 } }, {});
+  assert.ok(!hostile.path.includes("&b=") && !hostile.path.includes("../"), hostile.path);
+  assert.ok(JSON.stringify(outgoing({ ...made, at: 0 })).includes("Remove it if it was not you"));
 });

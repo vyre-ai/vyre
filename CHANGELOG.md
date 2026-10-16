@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(identity): sign-in guessing limits (`lib/signin-limit.js`). A limiter that sits in front of the sign-in tools and needs only the username and the space address: 5 wrong guesses in 15 minutes lock the username (1 minute, doubling to 1 hour), 30 in 10 minutes lock the address (5 minutes, doubling to 1 hour), locks fall back after a clean day, a correct sign-in clears that username but never the address, and every call counts toward a burst limit. A name that does not exist is limited exactly like one that does, and the refusal (`rate_limited`, with `retryAfterMs`) never says which limit or whether the name exists. `guardSignin` wraps a tool's `run`; only a wrong answer from the finishing step counts, never a busy server or bad input. Wired in when the sign-in tools land.
+- feat(push): a new device signing in rings the person's other devices (`signin.new-device`, payload `{ device, at }`): a loud notice outside the daily budget, fixed words, a one-tap Remove, only the device id in the path. The sign-in module emits it.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
