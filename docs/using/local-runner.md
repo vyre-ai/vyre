@@ -29,6 +29,8 @@ turn. A computer that was only asleep and wakes later finds it no longer has the
 nothing, so no turn is ever run twice. When the lid opens or the computer is plugged in again, the chat offers
 "Bring back to this Mac?"; nothing moves back unless you say so.
 
+You choose what an allowed computer does on its own: Always allow, or Ask. Under Always allow a new chat starts here, and a session that left because the lid closed, the computer slept, went on battery or lost its network comes back at your next message, once this computer has stayed ready for a minute and two minutes have passed since the move. A computer that keeps coming and going never gets a session back. Under Ask, only what you put on this computer runs here. Never is the switch off.
+
 "Move to the server" in the chat hands a session over after its current turn. Pin a session to the server to keep it
 running when you close the laptop. Settings, This computer, holds one switch for letting sessions run here, "only
 while plugged in", a processor limit and a memory limit; past a limit a session moves to the server. "Pause all"

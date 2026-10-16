@@ -15,8 +15,10 @@ export const hereLine = (cpuPercent, memoryMb, state) => `${state === "paused" ?
 
 /** The limits a person may set for a computer (the Settings page's ranges; the same numbers are declared in module.json). */
 export const LIMITS = Object.freeze({ cpuPercent: [10, 100], memoryMb: [512, 65536] });
-export const SETTING_KEYS = Object.freeze({ enabled: "runner.enabled", pluggedInOnly: "runner.plugged_in_only", cpuPercent: "runner.cpu_percent", memoryMb: "runner.memory_mb" });
-export const SETTING_DEFAULTS = Object.freeze({ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
+export const SETTING_KEYS = Object.freeze({ enabled: "runner.enabled", mode: "runner.mode", pluggedInOnly: "runner.plugged_in_only", cpuPercent: "runner.cpu_percent", memoryMb: "runner.memory_mb" });
+/** `enabled` is the master switch (Never is off). `mode` is what an enabled computer does on its own: "always" starts new chats here and takes sessions back after a steady stretch of being well; "ask" takes only what the person puts on it. */
+export const MODES = Object.freeze(["always", "ask"]);
+export const SETTING_DEFAULTS = Object.freeze({ enabled: false, mode: "always", pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
 
 /**
  * What a computer's limits are, read through the one settings mechanism (core/settings): a key the settings module cannot give now reads as its default, so a daemon without it still answers.
@@ -174,29 +176,34 @@ export function registerPlaceTools(ctx, d) {
       if (!meta || meta.caller !== "module:threads") throw refuse("only the chat engine puts a chat back on its person's computer, when that person sends their next message: send a message in the chat", "denied");
       const thread = threadOf(i), person = String(i.person);
       const hit = find(thread, undefined, person);
-      if (!hit || hit.row.person !== person || hit.row.where !== "server" || hit.row.reason !== "another-person") return { moved: false };
+      if (!hit || hit.row.person !== person || hit.row.where !== "server") return { moved: false };
       const p0 = placements();
+      // A chat another person's turn took away comes back to its person on their next turn. A chat that left because its computer's condition cleared (lid, sleep, battery, offline) comes back the same way only by the person's standing choice
+      // (Always allow) and only once that computer has stayed well: the home's own check (mayReturn), so a computer that comes and goes never gets a session back. The person's next turn is the boundary: never inside a turn, never on a timer.
+      const policy = hit.row.reason !== "another-person";
+      if (policy && !(typeof p0.mayReturn === "function" && p0.mayReturn(hit.space, hit.row.session, person))) return { moved: false };
       if (typeof p0.adopt !== "function") return { moved: false };
       const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
       const at = named && named.data;
       if (!at) return { moved: false };
       { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) return { moved: false, why: "busy" }; }
-      try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { return { moved: false, why: String(/** @type {any} */ (e).message || "not ready") }; }
+      try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person, ...(policy ? { policy: true } : {}) }); } catch (e) { return { moved: false, ...(policy ? {} : { why: String(/** @type {any} */ (e).message || "not ready") }) }; }
       return { moved: true };
     },
   });
 
   ctx.tool("runner.settings", {
-    description: "This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.",
+    description: "This computer's limits for running a space's sessions: enabled, mode (always or ask), pluggedInOnly, cpuPercent, memoryMb.",
     input: obj(),
     run: async (_i, meta) => { await d.person(meta, "this computer's limits"); return d.readSettings(); },
   });
 
   ctx.tool("runner.settings.set", {
-    description: "Change this computer's limits for running sessions: any of enabled, pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.",
-    input: obj({ enabled: { type: "boolean" }, pluggedInOnly: { type: "boolean" }, cpuPercent: { type: "integer" }, memoryMb: { type: "integer" } }),
+    description: "Change this computer's limits for running sessions: any of enabled, mode (always or ask), pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.",
+    input: obj({ enabled: { type: "boolean" }, mode: { type: "string", enum: [...MODES] }, pluggedInOnly: { type: "boolean" }, cpuPercent: { type: "integer" }, memoryMb: { type: "integer" } }),
     run: async (i, meta) => {
       await d.person(meta, "this computer's limits");
+      if (i.mode !== undefined && !MODES.includes(i.mode)) throw refuse("mode is always or ask (off is the switch)", "bad_input");
       for (const k of /** @type {const} */ (["cpuPercent", "memoryMb"])) {
         if (i[k] === undefined) continue;
         const [lo, hi] = LIMITS[k];

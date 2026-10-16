@@ -451,7 +451,7 @@ export default {
       const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
       /** @type {{ fenced: string[], directives: any[] }} */ const got = { fenced: [], directives: [] };
       for (let at = 0; at === 0 || at < mine.length; at += per) {
-        const ans = await p.beat({ sessions: mine.slice(at, at + per), well, folders: folders.visible() });
+        const ans = await p.beat({ sessions: mine.slice(at, at + per), well, auto: limits.mode !== "ask", folders: folders.visible() });
         if (ans && Array.isArray(ans.fenced)) got.fenced.push(...ans.fenced);
         if (ans && Array.isArray(ans.directives)) got.directives.push(...ans.directives);
       }

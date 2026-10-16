@@ -22,7 +22,7 @@ import { createCheckpointStore } from "./checkpoint-store.js";
 import { effectiveNetwork } from "./runner.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
-import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
+import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, CLEARS, HEARTBEAT_MS, LAPSE_MS, STEADY_MS, COOLDOWN_MS } from "./placement-book.js";
 import { createPipes } from "./pipe-home.js";
 import { createPreviews } from "./preview-home.js";
 import { within, withinOrThrow } from "../../lib/within.js";
@@ -118,10 +118,10 @@ export function createLentHome(o) {
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
   const nudge = (/** @type {string} */ device) => { const x = waiters.get(device); if (!x) return; clearTimeout(x.t); waiters.delete(device); x.res({ directives: directivesFor(device) }); };
   /** The ready computer of this person's to start a session on, or null: it beat lately and said nothing holds it back, both Offers stand, and the server could take the session back if the lid closed. The computer already running the session wins. */
-  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null, /** @type {boolean} */ again = false) => {
+  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null, /** @type {boolean} */ again = false, /** @type {boolean} */ byPolicy = false) => {
     const row = SESSION.test(session) ? book.get(session) : null;
     // a chat given a folder of a computer runs on the computer that has that folder, and needs no server to carry it on: it never goes there
-    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && underSessionCap(person, device, session) && (!folder || (l.folders || []).some(f => f.id === folder)));
+    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && (!byPolicy || l.auto) && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && underSessionCap(person, device, session) && (!folder || (l.folders || []).some(f => f.id === folder)));
     if (folder) {
       if (!SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server")) return null;
       if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
@@ -132,7 +132,15 @@ export function createLentHome(o) {
     if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
     return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
   };
-  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean, folders?: { id: string, label: string }[] }>} */ const lenders = new Map();
+  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. `auto` is the person's Always allow (a new chat starts there on its own, and a session that left comes back by itself); without it the computer takes only what the person puts on it. `wellSince` is when it last became well and has stayed so beat after beat. @type {Map<string, { person: string, at: number, well: boolean, auto: boolean, wellSince: number | null, folders?: { id: string, label: string }[] }>} */ const lenders = new Map();
+  /** May this session be put back on its computer now, by the person's standing choice? Only the person's own computer, only when it is allowed to do that on its own (Always allow), steadily well, past the cooldown of the last move, and only for a session that left because a condition cleared. A session that left for any other reason, or that is pinned, never comes back this way. @param {any} row */
+  const mayReturn = (row, /** @type {string} */ person) => {
+    if (!row || row.person !== person || row.where !== "server" || row.pin === "server" || row.offer !== "mac" || !CLEARS.includes(String(row.reason)) || owed.has(row.session) || resuming.has(row.session)) return false;
+    const l = lenders.get(row.device), t = now();
+    if (!l || l.person !== person || !l.well || !l.auto || t - l.at > LENDER_FRESH_MS || l.wellSince === null || t - l.wellSince < STEADY_MS) return false;
+    if (row.movedAt !== null && t - row.movedAt < COOLDOWN_MS) return false;
+    return canResume() && stands({ person, device: row.device }, keys.get(row.device)) && underSessionCap(person, row.device, row.session);
+  };
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw err("not_found", "not found");
@@ -237,6 +245,8 @@ export function createLentHome(o) {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
     book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
+    /** May the person's standing choice put this session back on its computer now? (see mayReturn) @param {string} session @param {string} person */
+    mayReturn(session, person) { return mayReturn(book.get(String(session)), person); },
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The folders the person's computers that beat lately offer to chats: [{ device, id, label }] (ids and labels only; the paths stay on the computers). @param {string} person */
@@ -343,7 +353,10 @@ export function createLentHome(o) {
       if (i && i.well === true) book.clear(w.device);
       // the folders this computer's person approved for chats, by id and label only (never a path): a chat that is to work in one is placed on the computer that has it
       const folders = i && Array.isArray(i.folders) ? i.folders.slice(0, 32).filter((/** @type {any} */ f) => f && /^fld_[0-9a-f]{12}$/.test(String(f.id))).map((/** @type {any} */ f) => ({ id: String(f.id), label: String(f.label || "").slice(0, 60) })) : [];
-      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true, folders });
+      const was = lenders.get(w.device), well = Boolean(i && i.well === true);
+      // steadily well: well now and at the last beat, with no gap longer than a lapse between them (a computer that vanished and came back starts over)
+      const wellSince = !well ? null : was && was.well && was.wellSince !== null && now() - was.at <= LAPSE_MS ? was.wellSince : now();
+      lenders.set(w.device, { person: w.person, at: now(), well, auto: !(i && i.auto === false), wellSince, folders });
       return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: directivesFor(w.device) };
     },
     /**
@@ -417,7 +430,7 @@ export function createLentHome(o) {
       const had = SESSION.test(session) ? book.get(session) : null;
       if (had) return had.where === "mac" && had.person === person ? { where: "mac", device: had.device, epoch: had.epoch } : { where: "box" };
       const folder = i && typeof i.folder === "string" ? i.folder : null;
-      const device = pickLender(person, session, folder);
+      const device = pickLender(person, session, folder, false, !folder);   // a new chat starts on a computer by itself only where the person said Always allow
       if (!device) { if (folder) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer"); return { where: "box" }; }
       if (!underSessionCap(person, device, session)) return { where: "box" };
       const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null, ...(folder ? { folder } : {}) });
@@ -428,7 +441,7 @@ export function createLentHome(o) {
     /**
      * A chat that began on the server moves to one of the person's computers (runner.move to a computer): its whole turns so far are put in the store as the session's transcript, the book lends the session
      * to a ready computer, and the computer writes that transcript into its own Claude home before it starts the program (the spec's `seed`). Nothing is moved from the server's own disk: the server's copy stays.
-     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[], provider?: string }} i
+     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[], provider?: string, policy?: boolean }} i
      * @returns {{ where: "mac", device: string, epoch: number }}
      */
     async adopt(i) {
@@ -438,7 +451,9 @@ export function createLentHome(o) {
       const had = book.get(session);
       if (had && had.person !== person) throw err("not_found", "not found");   // a chat that is another person's is not there for this one
       if (had && (had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place: let it finish where it is, then move it");
-      const device = pickLender(person, session, null, Boolean(had));
+      // The person's standing choice (Always allow) puts a session that left for a condition back on the computer it left, once that computer has stayed well; the person's own ask goes to any ready computer
+      if (i.policy === true && !mayReturn(had, person)) throw err("unavailable", "that computer is not steadily ready yet");
+      const device = i.policy === true ? /** @type {any} */ (had).device : pickLender(person, session, null, Boolean(had));
       if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
       if (!underSessionCap(person, device, session)) throw err("not_allowed", `That computer already runs ${sessionCap(person)} of this space's sessions.`);
       const lines = Array.isArray(i.lines) ? i.lines : [];
