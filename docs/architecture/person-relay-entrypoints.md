@@ -1,6 +1,9 @@
 # Person relay entry points
 
-Standing rule (owner): fix the **class everywhere** — one shared implementation in [`lib/person-relay.js`](../../lib/person-relay.js), every entry point wired through it, and **table-driven tests** derived from [`lib/person-relay-entrypoints.js`](../../lib/person-relay-entrypoints.js) (not hand-maintained surface lists).
+Standing rules (owner):
+
+- Fix the **class everywhere** — one shared implementation in [`lib/person-relay.js`](../../lib/person-relay.js), every entry point wired through it, and **table-driven tests** derived from [`lib/person-relay-entrypoints.js`](../../lib/person-relay-entrypoints.js) (not hand-maintained surface lists).
+- **Agent-agnostic** — slash, member relay, and isolation live tests must behave the same for every registered session adapter. Use [`core/sessions/testing/fake-agent-harness.js`](../../core/sessions/testing/fake-agent-harness.js) (`FAKE_SESSION_PROVIDERS`: **claude**, **grok**, **codex**); do not wire tests through Claude-only env vars.
 
 ## Shared binding
 
@@ -18,7 +21,12 @@ import { personRelayReportMarkdown } from "../../lib/person-relay-report.js";
 // personRelayReportMarkdown(registry) → markdown for docs/PRs
 ```
 
-Live isolation tests: [`core/person-scope/member-relay-entrypoints.test.js`](../../core/person-scope/member-relay-entrypoints.test.js).
+Live isolation tests (parametrized over **claude**, **grok**, **codex**):
+
+- [`core/person-scope/member-relay-entrypoints.test.js`](../../core/person-scope/member-relay-entrypoints.test.js)
+- [`core/switchboard/composer-slash-member-live.test.js`](../../core/switchboard/composer-slash-member-live.test.js)
+
+Harness: [`core/person-scope/member-relay-harness.js`](../../core/person-scope/member-relay-harness.js).
 
 ## Primary surfaces
 
