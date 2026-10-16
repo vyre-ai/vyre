@@ -1251,9 +1251,11 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
-          const origin = captureOrigin();
-          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token, ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) } });
+          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || isPerson(cur.caller));
+          if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
+          const origin = captureOrigin() || (isPerson(cur.caller) ? String(cur.caller) : undefined);
+          const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
+          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: relayed });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting

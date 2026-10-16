@@ -47,6 +47,8 @@ export const LAYOUT = {
   spec: "The deep-link specification for the apps.",
   stores: "Record stores behind the kernel's store interface; today the Twenty store.",
   test: "Tests that cross folders: boundaries, docs, installers, releases.",
+  "docs-site": "The documentation site build (separate from docs/ prose).",
+  "unit-logs": "Captured unit-test logs used by CI and local test harnesses.",
   tools: "Tooling for the Cloudflare workers.",
   web: "Static web assets.",
   wink: "The Go forwarder that carries Wink traffic, built into the server image.",

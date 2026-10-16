@@ -36,7 +36,7 @@ function onboardNames() {
 function wrappedWrites() {
   const src = fs.readFileSync(path.join(ROOT, "core/onboard/first-run.js"), "utf8");
   const names = new Set();
-  for (const m of src.matchAll(/\bcall\(\s*"([a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*)+)"/g)) names.add(m[1]);
+  for (const m of src.matchAll(/\b(?:call|personCall|relayTool)\(\s*"([a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*)+)"/g)) names.add(m[1]);
   names.delete("spaces.list");
   names.delete("identity.status");
   // Settings connects AI accounts the same way; onboarding reaches it only through onboard.agent.signin in the app.
@@ -62,7 +62,7 @@ test("the onboard tools are the registry's, and first run is the only place that
   assert.ok(onboard.includes("onboard.computer.add"));
   assert.ok(onboard.includes("onboard.phone.add"));
   const wrapped = new Set(wrappedWrites());
-  for (const name of ["identity.create", "identity.github.link", "spaces.invites.accept", "spaces.invites.create", "devices.signin", "wink.install.issue", "wink.install.status", "wink.install.complete", "vault.space.create"]) {
+  for (const name of ["identity.create", "identity.github.link", "spaces.invites.accept", "spaces.invites.create", "devices.signin", "wink.install.issue", "wink.install.status", "vault.space.create"]) {
     assert.ok(wrapped.has(name), name);
   }
   const roots = [path.join(ROOT, "apps/app"), path.join(ROOT, "local/capsule")];

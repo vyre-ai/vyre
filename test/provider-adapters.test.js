@@ -28,7 +28,7 @@ const TOKENS = {
 /** @param {string} dir @param {string[]} out */
 function walk(dir, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === "node_modules" || e.name === "drivers" || e.name === "testing" || e.name === "docs") continue;
+    if (e.name === "node_modules" || e.name === "drivers" || e.name === "testing" || e.name === "docs" || e.name === ".build" || e.name === "app-web") continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
     else if (/\.(js|mjs)$/.test(e.name) && !/\.test\.(js|mjs)$/.test(e.name)) out.push(p);

@@ -159,7 +159,8 @@ export async function holdNeedsYou(registry, o) {
   const { tool, def, caller } = o;
   if (!def || def.internal || def.hook) return null;
   // A Kit proposal from the person's own assistant session runs under their chain in flows; bare MCP/harness callers stay held.
-  if (tool === "flows.kit.propose" && provenSession(o.meta)) return null;
+  // The person's pinned assistant (juno) may propose from its daemon-bound session; other agents (kit in golden) stay held.
+  if (tool === "flows.kit.propose" && provenSession(o.meta) && o.meta.agent === "juno") return null;
   if (modelCaller(caller)) {
     const missing = deviceAddMissing(tool, o.input);
     if (missing) return missing;

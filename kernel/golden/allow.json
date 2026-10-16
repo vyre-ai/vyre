@@ -1104,6 +1104,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.space.poll opened to a model or a module in d14c56ec8 (16 Oct 2026); the body decides: says whether the new space's computer is online yet, and reads nothing secret"
  },
  {
+  "tool": "onboard.agent.list",
+  "reason": "integrate 0.5.3 first-run: lists login-capable AI providers for the sign-in step (public ids and labels only); on the MCP allow list in lib/mcp-allow.js"
+ },
+ {
+  "tool": "onboard.first.progress",
+  "reason": "integrate 0.5.3 first-run: reads which first-run screen this person reached so the app can resume after reload; no secrets"
+ },
+ {
   "tool": "planner.bin",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; planner.bin opened to a model or a module in 49f105dbe (4 Oct 2026); the body decides: read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
  },
