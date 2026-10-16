@@ -4,7 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- feat(windows): the Windows shell summarises a yes-moment proof the way the Mac shell does (canonical payload hash, then "Approve:" and the card's fields), and it tries Windows Hello, then the TPM, then the software key store. A Hello prompt per signature is still not proven on hardware, so the key stays held and the shell asks in its own window before the key signs.
+- fix(vault): an assistant never receives a vault value, including after Approve. The result is scrubbed on the way out. Lending stays `vault.request` and `vault.space.use`, where the value is injected and scrubbed. `test/mcp-vault-result.test.js` fails if an MCP result contains one.
+- fix(devices): the approval card for adding a device names that device, its type, its key fingerprint, and who asked. An assistant cannot add one without those.
+- fix(mcp): the onboarding, device and invite tools an agent can reach are a fixed list. The coverage test keeps its own copy and checks that list, not a scan of the source.
+- fix(windows): if Windows Hello cannot make the identity key, the app asks before it uses a software key. A runner with nobody to ask does not make one.
+- ci(windows): after Authenticode signing, the installer signature is checked. The job fails when that signature does not verify. A missing certificate still publishes the unsigned installer.
+- fix(onboard): a stored machine of solo is rewritten to a device and opens Identity, a space, then Ready. Setup does not accept solo.
+- feat(windows): the Windows shell summarises a yes-moment proof the way the Mac shell does (canonical payload hash, then "Approve:" and the card's fields), and it tries Windows Hello, then the TPM. A software key is only made after the person says yes. A Hello prompt per signature is still not proven on hardware, so the key stays held and the shell asks in its own window before the key signs.
 - fix(onboard): the Needs-you line for creating an identity names the username and does not show the master password.
 - feat(onboard): first run is Identity, a space, then Ready, on the web, the Mac app and the Windows app. Solo is not a mode. A stored machine of solo loads as a device, with no notice and no move. `onboard.machine` does not accept solo. The screens call `onboard.*`, which call `identity.create`, `identity.unlock`, `devices.signin` and `wink.install.*` when that server has them.
 - feat(mcp): `onboard.machine`, `onboard.windows`, `releases.info` and the first-run tools are kernel tools an MCP caller can drive. Only an assistant's change to people, devices or vault access waits for one Needs-you tap. A person in their own app does not wait. An assistant never receives a vault value. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.

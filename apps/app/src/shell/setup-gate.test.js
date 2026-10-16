@@ -14,6 +14,11 @@ test("a paired phone, or a direct address, is never gated", () => {
   assert.equal(gateTarget({ path: "/", paired: false, direct: true }), null);
 });
 
+test("an install that still has the first run open is sent there, even when it is already paired", () => {
+  assert.equal(gateTarget({ path: "/", paired: true, direct: true, firstRun: true }), SETUP_ROUTE);
+  assert.equal(gateTarget({ path: "/onboard", paired: true, direct: false, firstRun: true }), null);
+});
+
 test("after Not now an unpaired phone keeps only the /u landing, and setup stays open", () => {
   assert.equal(gateTarget({ path: "/u/now", paired: false, direct: false, skipped: true }), null);
   assert.equal(gateTarget({ path: "/u/spaces", paired: false, direct: false, skipped: true }), null);

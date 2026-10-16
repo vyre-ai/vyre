@@ -8,7 +8,7 @@ import {
 import { JOIN_COPY, PHASES, afterIdentity, commandOk, entryScreen, passwordOk, phaseOf, usernameOf } from "../../../../lib/first-run-shape.js";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin } from "../onboard/flow-model.js";
-import { addComputer, addPhone, createPerson, finishGithub, joinSpace, makeInvite, openSpace, pollSpace, readInvite, startGithub } from "./real.js";
+import { addComputer, addPhone, createPerson, finishFirstRun, finishGithub, joinSpace, makeInvite, openSpace, pollSpace, readInvite, startGithub } from "./real.js";
 
 type Screen = "id.create" | "id.recovery" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
 
@@ -273,7 +273,11 @@ export function FirstRun() {
 
   return (
     <FlowStep steps={steps} hero mark="done" title="You're in" lead={space ? `${space} is ready.` : "Your identity is ready."}
-      primary={{ label: "Open Vyre", onPress: () => router.replace("/u/now" as never) }}
+      primary={{ label: "Open Vyre", loading: busy, onPress: () => void run(async () => {
+        const r = await finishFirstRun();
+        if (!r.ok) { setFailure(r.message); return; }
+        router.replace("/u/now" as never);
+      }) }}
       secondary={{ label: "Invite someone", onPress: () => go("invite.share") }}>
       <ChoiceList label="Also" onChange={(v) => go(v)} options={[
         { value: "computer.add", title: "Add a computer", sub: "A computer you already use.", icon: "laptop" },

@@ -55,7 +55,7 @@ test("the first-run tools are the ones the app calls, and an access change is ma
   const { tools } = harness();
   const names = [...tools.keys()].sort();
   assert.deepEqual(names, [
-    "onboard.computer.add", "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
+    "onboard.computer.add", "onboard.first.done", "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
     "onboard.person.create", "onboard.person.lookup", "onboard.phone.add", "onboard.space.join", "onboard.space.open", "onboard.space.poll",
   ]);
   const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
@@ -69,6 +69,9 @@ test("the first-run tools are the ones the app calls, and an access change is ma
     assert.equal(rows.get(name).outward, undefined, name);
     assert.equal(rows.get(name).effect, "read", name);
   }
+  assert.equal(rows.get("onboard.first.done").effect, "write");
+  assert.equal(rows.get("onboard.first.done").reach, "person");
+  assert.equal(rows.get("onboard.first.done").outward, undefined);
 });
 
 test("creating a person returns one recovery key when the vault does, and never puts the password in the card line", async () => {
@@ -83,6 +86,12 @@ test("creating a person returns one recovery key when the vault does, and never 
   const line = lineOfOp("onboard.person.create", { username: "alex", password: "correct horse battery" }, "An assistant");
   assert.match(line, /alex/);
   assert.doesNotMatch(line, /horse/);
+  const device = lineOfOp("onboard.computer.add", { name: "Desk", type: "windows", fingerprint: "ab12cd34ef56", password: "correct horse battery" }, "An assistant (mcp)");
+  assert.match(device, /An assistant \(mcp\)/);
+  assert.match(device, /Desk/);
+  assert.match(device, /windows/);
+  assert.match(device, /ab12cd34ef56/);
+  assert.doesNotMatch(device, /horse/);
   await assert.rejects(() => tools.get("onboard.person.create").run({ username: "alex", password: "short" }, {}), /12 characters/);
 });
 
