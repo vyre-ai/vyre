@@ -10,6 +10,7 @@ import { argon2id } from "./stretch.js";
 import { aesWrap, aesUnwrap, hkdf32, x25519Pair } from "./wrap.js";
 import { writePrivate, readJson } from "./files.js";
 import { holdIdentity, holdPersonal, forgetIdentity, clearPersonal, identityHeld } from "./holder.js";
+import { openVaultKey } from "./vault-at-rest.js";
 import { checkUsername, personUrl } from "./username.js";
 
 /** RFC 9106's second recommendation, one lane: this file's Argon2id is one lane only. */
@@ -126,12 +127,15 @@ function stripIdentityFile(file) {
   writePrivate(file, JSON.stringify(r) + "\n");
 }
 
-/** @param {any} rec @param {Buffer} rk @param {string} [identityFile] */
-function holdFrom(rec, rk, identityFile) {
+/** @param {any} rec @param {Buffer} rk @param {string} [identityFile] @param {string} [root] */
+function holdFrom(rec, rk, identityFile, root) {
   const id = JSON.parse(aesUnwrap(rk, rec.identityWrap, AAD_ID).toString("utf8"));
   if (identityFile) holdIdentity(identityFile, { privateKeyB64: id.privateKey, agreePrivateB64: id.agreePrivate || null });
-  if (rec.vaultWrap) holdPersonal(aesUnwrap(rk, rec.vaultWrap, AAD_VAULT));
-  else clearPersonal();
+  if (rec.vaultWrap) {
+    // After vault.master.install the device key lives sealed on disk; unlock restores identity keys only until the person installs again.
+    if (root && openVaultKey(root)) clearPersonal();
+    else holdPersonal(aesUnwrap(rk, rec.vaultWrap, AAD_VAULT));
+  } else clearPersonal();
   return id;
 }
 
@@ -154,7 +158,7 @@ export function unlockMaster(o) {
     catch { kek.fill(0); throw refuse("That password does not unlock this identity. Try again, or enter your recovery key on this device.", "bad_password"); }
     kek.fill(0);
   }
-  holdFrom(rec, rk, file);
+  holdFrom(rec, rk, file, o.root);
   rk.fill(0);
   return { unlocked: true, username: rec.username, id: rec.id };
 }

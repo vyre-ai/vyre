@@ -104,6 +104,8 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
   stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // threads.slash relays /later and /find as the composer's own surface (lib/person-relay.js).
+  switchboard: (/** @type {string} */ as) => isPerson(as),
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.

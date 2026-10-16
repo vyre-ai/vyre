@@ -8,7 +8,7 @@ import path from "node:path";
 import { writeTranscripts, SESSIONS, HOME } from "../../test/fixtures/corpus.js";
 import { listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 import { CAROL, BOB, relayDaemon, twoMembers, scratchWork, tokenMeta } from "../person-scope/member-relay-harness.js";
-import { threadStartProviderFields } from "../sessions/testing/fake-agent-harness.js";
+import { threadStartProviderFields, ensureMemberLoginAccounts } from "../sessions/testing/fake-agent-harness.js";
 import { indexCorpusTranscripts, recallFts5Available } from "../sessions/testing/recall-live.js";
 
 test("recall.search: members see only their own sessions on every person-relay entry point", { timeout: 180_000 }, async t => {
@@ -21,6 +21,7 @@ test("recall.search: members see only their own sessions on every person-relay e
 
   const K = d.kernel, OWNER = K.id.owner;
   const { ownerChain, carolMeta, bobMeta } = await twoMembers(d, K, OWNER);
+  await ensureMemberLoginAccounts(d, [["Carol", carolMeta], ["Bob", bobMeta]], "claude");
   const ownerMeta = await tokenMeta(K, ownerChain);
   const work = scratchWork(t, "vyre-recall-member-");
 

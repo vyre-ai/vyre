@@ -63,7 +63,8 @@ export function registerComposerSlashTools(tool, o) {
         return g && g.data ? { thread, model: g.data.thread && g.data.thread.model } : { thread, model: null };
       }
       if (route.tool === "planner.add" || route.tool === "recall.search") {
-        return relay(route.tool, route.input);
+        const r = await relay(route.tool, route.input);
+        return r && r.data !== undefined ? r.data : r;
       }
       if (route.tool === "threads.commands") return ctx.call("threads.commands", { thread });
       return ctx.call(route.tool, { ...extra, ...route.input });

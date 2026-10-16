@@ -45,7 +45,7 @@ import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOf
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
-import { memberThreadAllowSet } from "../../lib/member-scope.js";
+import { memberThreadAllowSet, chainPerson, isStaffPerson } from "../../lib/member-scope.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -988,7 +988,9 @@ export class Switchboard {
       // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
-      if (w.branch) kept.branch = w.branch;   if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // who started it, from the verified chat turn (never a caller's word): a transcript is placed in this thread only for this person (threads.transcript-target)
+      if (w.branch) kept.branch = w.branch;
+      if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // verified chat turn (never a caller's word)
+      else if (o.person) kept.person = String(o.person);   // member's own session token on cli
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -4294,10 +4296,13 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
+      async (i, meta) => {
+        const { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone } = meta;
         guard(caller, "start sessions");
         if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
+        const sessionPerson = ctx.kernel ? await chainPerson(ctx.kernel, meta) : null;
+        const sessionStaff = !sessionPerson || !ctx.kernel || await isStaffPerson(ctx.kernel, sessionPerson);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
@@ -4327,7 +4332,8 @@ export default {
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
         const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
-        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromAsker);
+        const launchPerson = (kturn && kturn.asker) || (!sessionStaff && sessionPerson ? sessionPerson : undefined);
+        return sb.launch({ ...rest, ...(slotName ? { slotName } : {}), ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(launchPerson ? { person: launchPerson } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, fromAsker);
       });
 
     /**

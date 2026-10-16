@@ -14,9 +14,6 @@ import { generate, manifests, literalKeys, REPO } from "../scripts/lib/docs/refe
 import { FORBIDDEN } from "../scripts/lib/hygiene.js";
 import { SCRATCH } from "./scratch.mjs";
 
-// Harvest runs two full module starts; keep this file serial so parallel tests do not compete on a loaded runner.
-test.configure({ concurrency: 1 });
-
 const FM = (title = "A page", extra = "") => `---\ntitle: ${title}\nsummary: One sentence.\naudience: users, builders\nowner: docs\nstatus: stable\n${extra}---\n\n`;
 
 /** A docs tree in a temp folder: { "index.md": text, ... } plus nav pages. Returns the root. */

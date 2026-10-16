@@ -84,6 +84,28 @@ export async function ensureFakeSessionProvider(d, provider) {
   if (provider === "grok" || provider === "codex") await ensureFakeAcpAccount(d, provider);
 }
 
+/**
+ * Members need their own provider login so threads.start runs on their account (memberAccount), not the owner's ambient credential.
+ * @param {any} d daemon
+ * @param {Array<[string, any]>} people label and session meta pairs
+ * @param {"claude"|"grok"|"codex"} [provider]
+ */
+export async function ensureMemberLoginAccounts(d, people, provider = "claude") {
+  for (const [label, meta] of people) {
+    const have = await d.registry.call("sessions.accounts.list", { provider }, "cli", meta);
+    if (!have.error && (have.data || []).some((/** @type {any} */ a) => !a.synthetic)) continue;
+    if (provider === "grok" || provider === "codex") {
+      const r = await d.registry.call("sessions.accounts.add", { provider, label, kind: "login" }, "cli", meta);
+      if (r.error) throw new Error(`sessions.accounts.add ${label}: ${JSON.stringify(r.error)}`);
+      continue;
+    }
+    const added = await d.registry.call("sessions.accounts.add", { provider: "claude", label, kind: "login" }, "cli", meta);
+    if (added.error) throw new Error(`sessions.accounts.add ${label}: ${JSON.stringify(added.error)}`);
+    const db = d.registry.deps.db;
+    db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
+  }
+}
+
 /** threads.start fields for the active fake provider. */
 export function threadStartProviderFields(provider) {
   return provider === "claude" ? {} : { provider };
