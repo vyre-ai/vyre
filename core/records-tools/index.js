@@ -81,8 +81,9 @@ export default {
         const space = (/^vyre:\/\/([^/]+)\//.exec(urn) || [])[1];
         if (!space) return { kind: "record" };
         try {
-          const h = await ctx.kernel.for(space);
-          const defs = (await h.gateway.definitions(ctx.kernel.serviceChain("records"))) || [];
+          const h = ctx.kernel.for(space);
+          const owner = ctx.kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: ctx.kernel.owner, path: "direct" });
+          const defs = (await h.gateway.definitions(owner)) || [];
           const custom = defs.filter((/** @type {any} */ t) => !isSystemType(String(t.name)) && !(t.name === "project" && t.kind === "project")).map((/** @type {any} */ t) => String(t.name));
           const kind = kindOf(urn, custom);
           return kind === "record" ? { kind, record_type: (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(urn) || [])[1] || null } : { kind };

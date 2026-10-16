@@ -218,7 +218,7 @@ export async function createKernel(cfg) {
       set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false,
     });
     /** @type {any} */ const handle = {
-      space: cfg.space, get owner() { return ownerRef.id; },
+      space: cfg.space, chains, get owner() { return ownerRef.id; },
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
       canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
       records, memory: gateway.memory, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
