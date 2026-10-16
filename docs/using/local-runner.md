@@ -27,7 +27,7 @@ Your computer tells the space's server it is there every few seconds. If it goes
 closed, the network dropped, the computer slept), the server takes the session and carries on from the last whole
 turn. A computer that was only asleep and wakes later finds it no longer has the session: it stops it and writes
 nothing, so no turn is ever run twice. When the lid opens or the computer is plugged in again, the chat offers
-"Bring back to this Mac?"; nothing moves back unless you say so.
+"Bring back to this Mac?". Under Ask, nothing moves back unless you say so; under Always allow it comes back at your next message once the computer has stayed ready (below).
 
 You choose what an allowed computer does on its own: Always allow, or Ask. Under Always allow a new chat starts here, and a session that left because the lid closed, the computer slept, went on battery or lost its network comes back at your next message, once this computer has stayed ready for a minute and two minutes have passed since the move. A computer that keeps coming and going never gets a session back. Under Ask, only what you put on this computer runs here. Never is the switch off.
 
