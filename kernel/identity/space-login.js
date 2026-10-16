@@ -292,6 +292,24 @@ export function createLoginService(o) {
       if (rec && Array.isArray(rec.devices) && rec.devices.includes(d)) o.store.set(`login:${u}`, { ...rec, devices: rec.devices.filter((/** @type {string} */ x) => x !== d) });
       return { revoked: n > 0, ended: n };
     },
+    /**
+     * The same two calls by person id, for a space with several people (each sees only their own sign-ins): a person's usernames here are the ones whose record names them, so the answer is for that person
+     * and no other, whatever name a caller supplies.
+     * @param {string} person
+     */
+    sessionsOfPerson(person) {
+      sweep();
+      const names = new Set([...sessions.values()].map(x => x.username).filter(u => { const r = record(u); return Boolean(r && r.person === person); }));
+      return [...sessions.values()].filter(x => names.has(x.username)).sort((a, b) => b.at - a.at).slice(0, 20).map(x => ({ device: x.device, label: x.label, at: x.at }));
+    },
+    /** @param {string} person @param {string} device */
+    revokeDeviceOfPerson(person, device) {
+      sweep();
+      const names = new Set([...sessions.values()].map(x => x.username).filter(u => { const r = record(u); return Boolean(r && r.person === person); }));
+      let ended = 0;
+      for (const u of names) ended += this.revokeDevice(u, device).ended;
+      return { revoked: ended > 0, ended };
+    },
     /** The username a session belongs to, or null. @param {string} session */
     sessionUser(session) { sweep(); const s = sessions.get(String(session)); return s ? s.username : null; },
     has: (/** @type {string} */ username) => Boolean(record(String(username).toLowerCase())),

@@ -241,3 +241,22 @@ test("a person can list their live sign-ins and sign one device out; the device 
   await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.82");
   assert.equal(r.events.length, before + 1, "the signed-out device is new again and rings the others");
 });
+
+test("by person: a person lists and signs out only the devices of their own usernames, whatever name a caller gives", async () => {
+  const r = await rig();
+  const go = async (/** @type {any} */ device) => {
+    const b = r.svc.begin({ username: "alex" }, "203.0.113.90");
+    const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
+    return r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)), device }, "203.0.113.90");
+  };
+  await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" });
+  r.clock.t += 1000;
+  await go({ id: "browser-bbbbbbbb", label: "A phone" });
+  assert.deepEqual(r.svc.sessionsOfPerson(PERSON).map(x => x.device), ["browser-bbbbbbbb", "browser-aaaaaaaa"], "newest first, for the person the record names");
+  assert.deepEqual(r.svc.sessionsOfPerson("per_" + "b".repeat(26)), [], "another person sees none of them");
+  assert.equal(r.svc.revokeDeviceOfPerson("per_" + "b".repeat(26), "browser-aaaaaaaa").revoked, false, "another person cannot sign them out");
+  assert.equal(r.svc.sessionsOfPerson(PERSON).length, 2);
+  assert.deepEqual(r.svc.revokeDeviceOfPerson(PERSON, "browser-aaaaaaaa"), { revoked: true, ended: 1 });
+  assert.deepEqual(r.svc.sessionsOfPerson(PERSON).map(x => x.device), ["browser-bbbbbbbb"]);
+  assert.equal(JSON.stringify(r.svc.sessionsOfPerson(PERSON)).includes("session"), false);
+});
