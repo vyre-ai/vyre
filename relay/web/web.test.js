@@ -96,7 +96,8 @@ test("the worker: strict policy from the build's hashes, the app under /app, the
   assert.equal(csp, cspFor(JSON.parse(fs.readFileSync(path.join(out, "vyre-build.json"), "utf8"))));
   assert.match(csp, /default-src 'none'/);
   assert.match(csp, new RegExp(`script-src 'self' '${cspHash(SPLASH).replace(/[+/]/g, "\\$&")}'`));
-  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|https:\/\/(?!relay|names|\*\.ts\.net)[^ ;]*\.(com|net|io|org)/);
+  assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*unsafe-inline|https:\/\/(?!relay|names|\*\.vyre\.run)[^ ;]*\.(com|net|io|org)/, "scripts stay strict; only styles may be inline");
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/);
   assert.match(csp, /frame-ancestors 'none'/);
   for (const [k, v] of Object.entries(SECURITY)) assert.equal(home.headers.get(k), v, k);
   assert.match(home.headers.get("strict-transport-security"), /max-age=63072000.*preload/);
