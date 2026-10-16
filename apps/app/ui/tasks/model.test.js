@@ -27,7 +27,8 @@ test("client pays: the Welcome card names what it used and offers Send with Face
   assert.equal(m.lead, "intake");
   assert.ok(m.tags.some((t) => t.text === "Doe brand refresh"));
   const d = draftOf(w, need[0]);
-  assert.match(d.body, /trust funded before the house sale/);
+  assert.match(d.body, /new site live before the November season/);
+  assert.match(d.body, /Alex Rivera is your designer/);
   assert.match(d.subject, /Welcome to Juniper Studio, Jane/);
 });
 
@@ -53,7 +54,7 @@ test("the morning world: a stuck card says why and offers Fix and Reassign; a ta
   assert.ok(m.tags.some((t) => t.text === "Stuck"));
   const todo = now.needs.find((t) => t.title === "Review the draft with Jane Doe");
   const t = cardFor(w, todo);
-  assert.equal(t.why, "Chris Park assigned this to you. Due with Engagement.");
+  assert.equal(t.why, "Chris Park assigned this to you. Due with Kickoff.");
   assert.deepEqual(t.actions.map((a) => a.label), ["Mark done", "Open"]);
   assert.equal(now.needs.length, 7);
   assert.match(now.meta, /7 things need you/);
@@ -101,8 +102,8 @@ test("the project page: stages made of tasks, the team with its doing-now line, 
   assert.equal(groups[1].current, true);
   assert.equal(`${groups[1].done} of ${groups[1].total}`, "0 of 2");
   const team = teamOf({ tasks, actors: w.actors, owner: rec.data.owner.actor.id });
-  assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Drafting is drafting the kickoff letter"]);
-  assert.equal(liveLine(tasks, w.actors), "Drafting is drafting the kickoff letter");
+  assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Design is drafting the kickoff letter"]);
+  assert.equal(liveLine(tasks, w.actors), "Design is drafting the kickoff letter");
   const events = await s.events({ record: rec.urn });
   assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Client project, 9:00 am. Flow On payment: Jane Doe paid $1,500.");
   assert.equal(progressText(tasks), "2 of 4 tasks");

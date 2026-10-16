@@ -2,12 +2,13 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
+import { testFlowDef } from "../../../../kernel/flows/test-flow-name.js";
 import { fromDefinition, toDefinition, newStep, stepProblem, valueSources, condExpr, SPECIAL_ACTIONS, flowSettings, setFlowSetting, actionChoices, actionPick } from "./logic.js";
 
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const options = { ...O, types: [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name", kind: "text" }] }] };
-const flow = (steps) => ({ name: "Options", trigger: { kind: "created", type: "contact" }, steps });
+const flow = (steps) => testFlowDef("Options", { kind: "created", type: "contact" }, steps);
 const round = (def) => toDefinition(fromDefinition(def, options), options);
 
 test("an agent step stored with await false stays false when the Flow is saved again", () => {
@@ -77,7 +78,7 @@ test("Flow settings read from a stored Flow, write back inside the engine's rang
 });
 
 test("any other module action is a step of its own that stores as the same call, and the steps with a form of their own stay theirs", () => {
-  const d = { name: "Action", trigger: { kind: "created", type: "contact" }, steps: [] };
+  const d = testFlowDef("Action", { kind: "created", type: "contact" }, []);
   const s = newStep("action", d, options);
   assert.notEqual(stepProblem(s, options), null, "an empty action says what to write");
   Object.assign(s, { action: "tasks.nudge", resource: "vyre://space/tasks", fields: [{ field: "taskId", value: "{after.id}" }, { field: "note", value: "Still open" }] });
@@ -134,7 +135,9 @@ test("a web call keeps its query and headers and can check with HEAD", () => {
   assert.deepEqual(out.steps[0].headers, { "x-trace": "run" });
   assert.equal(out.steps[0].body, undefined, "a check carries no body");
   const guarded = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "GET", path: "/", drive: { saveTo: "files/x" } }]), options);
-  assert.equal(guarded.steps[0].kind, "advanced", "a drive hand-off stays as it was");
+  assert.equal(guarded.steps[0].kind, "web");
+  assert.equal(guarded.steps[0].driveMode, "save");
+  assert.equal(guarded.steps[0].drivePath, "files/x");
 });
 
 test("a connection's named operation is a step of its own and stores as the same service step", () => {
@@ -149,7 +152,7 @@ test("a connection's named operation is a step of its own and stores as the same
 });
 
 test("every call a dedicated step writes is on the list the generic action step leaves alone", () => {
-  const d = { name: "All", trigger: { kind: "created", type: "contact" }, steps: [] };
+  const d = testFlowDef("All", { kind: "created", type: "contact" }, []);
   for (const kind of ["sms", "email", "document", "project"]) { const s = newStep(kind, d, options); d.steps.push(s); }
   const actions = toDefinition(d, options).steps.filter((x) => x.kind === "call").map((x) => x.action);
   assert.equal(actions.length, 4, "each of the four dedicated steps writes one call");

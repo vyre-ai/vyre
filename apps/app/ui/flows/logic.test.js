@@ -203,7 +203,7 @@ test("the formula step is a Code step with a fixed source whose hash is the engi
 
 test("the palette is grouped and searchable", () => {
   assert.deepEqual(searchChoices("").map((g) => g.name), ["Logic", "Records", "Calculate", "Send", "Web", "AI", "Work"]);
-  assert.deepEqual(searchChoices("else").flatMap((g) => g.items.map((i) => i.kind)), ["decide"]);
+  assert.deepEqual(searchChoices("else").flatMap((g) => g.items.map((i) => i.kind)), ["decide", "action"]);
   assert.deepEqual(searchChoices("sms").flatMap((g) => g.items.map((i) => i.kind)), ["sms"]);
   assert.deepEqual(searchChoices("zzzz"), []);
 });
