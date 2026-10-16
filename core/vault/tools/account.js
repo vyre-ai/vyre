@@ -7,7 +7,7 @@ import { presence } from "./presence.js";
 
 const PEOPLE = ["cli", "local"];
 /** The person's paired phone or other device, whose call always carries presence (a call from one has no terminal or Mac login behind it). */
-const DEVICES = ["mobile", "device"];
+const DEVICES = ["device"];
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const password = { type: "string" };
 
@@ -54,7 +54,7 @@ export function register({ vault, tool }) {
 
   // From the phone (the owner's paired device): the password AND the person's presence (Face ID), always. A device-method key alone is never enough (revised PW-1: presence is by method), and unlike the desk tool above
   // the password does not stand in for the proof here, because a phone's call arrives with no terminal or Mac login behind it. A model, a module or a browser session without presence cannot call it.
-  tool("vault.account.unlock-phone", ["mobile", "device"], "Unlock your personal vault from the phone: its password, and Face ID.",
+  tool("vault.account.unlock-phone", ["device"], "Unlock your personal vault from the phone: its password, and Face ID.",
     obj({ password }, ["password"]), (input, { caller }) => {
       if (typeof input.password !== "string" || !input.password) throw new Error("give the password");
       return vault.unlockAccount({ password: input.password, method: "password" }, caller);

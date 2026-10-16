@@ -37,7 +37,7 @@ const obj = (properties = {}, required = []) => ({ type: "object", properties, r
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 /** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
-const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
+const WORK_CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 /** The modules that ask work.project.may-read: the memory module, the sessions module (for the references in a prompt's instructions), and the module that runs a person's threads. */
 const MAY_READ_ASKERS = ["module:memory", "module:switchboard", "module:agents", "module:projects", "module:sessions"];
 /** Followers (log subscriptions) one caller keeps for work.team.doing; the oldest is dropped past this. */

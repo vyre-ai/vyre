@@ -6,7 +6,7 @@ import { createDoor } from "../../lib/gateway-door.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {

@@ -211,7 +211,7 @@ export default {
     });
 
     // ---- drafting and approving: anyone drafts, the level's owner says yes -------------------------------------------------------------------------------------------------------------
-    const WHO_CAN = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    const WHO_CAN = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"];
     const need = async (/** @type {any} */ meta) => { const c = await chainOf(meta); if (!c) throw err("denied", "this call carries no person: a skill is drafted and approved for someone"); return c; };
     const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
     const common = { name: { type: "string" }, level: { type: "string", enum: [...LEVELS] }, scope: { type: "string", description: "personal: you (default); agent: the agent's name; project: its short name; space: leave out" } };

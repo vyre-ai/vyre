@@ -26,7 +26,7 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 /** The person's own surfaces and modules, plus an agent's own hands (a model session): resolveAgent refuses a model that names no agent of its own. */
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {

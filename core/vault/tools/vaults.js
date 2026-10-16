@@ -23,7 +23,7 @@ export function register({ vault, tool }) {
   const shared = vault.shared;
 
   // The person's paired phone makes a space's shared vault too (Create a space, from the app): the presence floor (core/presence personOnly) asks for its yes.
-  tool("vault.vaults.create", [...WRITERS, "mobile"], "Make a shared vault. This Vyre is its owner and its home.",
+  tool("vault.vaults.create", [...WRITERS], "Make a shared vault. This Vyre is its owner and its home.",
     obj({ name: str }, ["name"]), (input, { caller }) => shared.create(input, caller));
 
   tool("vault.vaults.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Shared vaults: members, roles, fingerprints and item names. Never a value.",

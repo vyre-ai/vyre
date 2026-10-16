@@ -10,7 +10,7 @@
 import { brandFromHtml, normalizeBrand, resolveBrand } from "../../lib/brand/profile.js";
 
 const MIGRATIONS = [`CREATE TABLE brand_profile (id INTEGER PRIMARY KEY CHECK (id = 1), profile TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL)`];
-const ANYONE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const ANYONE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
