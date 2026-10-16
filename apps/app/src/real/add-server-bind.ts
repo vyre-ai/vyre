@@ -28,7 +28,7 @@ export async function startAddServer(onChange: (s: AddServerState) => void) {
       const key = await createSetupKey();
       const secret = globalThis.crypto.getRandomValues(new Uint8Array(16));
       const fp = await setupFingerprint(key.spki);
-      const minted = await mintPairCode({ publicKey: me.key.publicKey, secret, fingerprint: fp, sign: (m: Uint8Array) => me.key.sign(m) });
+      const minted = await mintPairCode({ person: me.id, publicKey: me.key.publicKey, secret, fingerprint: fp, sign: (m: Uint8Array) => me.key.sign(m) });
       return { code: minted.code, secret, key, expiresAt: minted.exp * 1000, os };
     },
     identity: async () => {

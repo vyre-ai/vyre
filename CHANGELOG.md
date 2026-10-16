@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- feat(install): a server pairs from one install line. The app, or an agent through the Gate, issues a code the creator's identity key signs. The line carries the code in its environment, works once, and expires in 30 minutes. The server adopts that person. The setup page at /setup takes the same code and locks after pairing. The tools are wink.install.issue, wink.install.status and wink.install.complete, one definition each for MCP, HTTP and CLI. Issuing a line and finishing pairing wait at the Gate, and the signing key stays on the device.
+- feat(install): a server pairs from one install line. The person's own app shows the line at once. The Create step calls spaces.pair.install, declared on the spaces module, which calls the wink.install.issue mint. An agent's call waits at the Gate. The code is signed by the device key and names the identity chain's person id. Redeem adopts only when that key is still published for the id, and leaves the server unowned when the directory disagrees or cannot be reached. Linux and a Mac that stays on use the same line. The line carries the code in its environment, works once, and expires in 30 minutes. The setup page at /setup takes the same code and locks after pairing. Status and complete are wink.install.status and wink.install.complete. The signing key stays on the device.
 
 ## 0.5.2
 
