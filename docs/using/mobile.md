@@ -15,14 +15,16 @@ when a direct path is not possible.
 
 ## Set up the phone
 
-You add the phone from the Vyre app on your computer: choose **Add your phone**, then follow the steps below. The app on the
-computer shows a code. The phone and the computer each show the same words, and you confirm they match.
+Install the app with the steps below, then add the phone in either of two ways. From a computer you are signed in on, open
+the Vyre app, choose **Devices**, **Add a device**, **A phone**, then **Make the link**, and open that link on the phone. Or
+open the app on the phone and choose **Sign in**: type your space address, your username and your master password, or press
+**Sign in with GitHub** and then type the master password.
 
 **Android**
 
 1. On the phone, open the [latest release](https://github.com/vyre-ai/vyre/releases/latest) and download `Vyre-android.apk`.
 2. Open the file. Android asks you to allow installs from your browser or Files app. Allow it, then install.
-3. Open Vyre and scan the code on your computer. Check that both screens show the same words.
+3. Open Vyre, then open the link from your computer, or choose **Sign in** and type your space address, username and master password.
 
 The same key signs every release, so a newer APK installs over an older one and keeps your data. Because it does not come from a
 store, Android does not update it for you: download the new file when a release comes out.
@@ -35,7 +37,7 @@ There is no App Store app yet. You build the app on a Mac with Xcode and install
 2. In a copy of the Vyre source, run `apps/app/scripts/ios-sideload.sh --install` with your iPhone plugged in and unlocked. The script
    builds the app and installs it. [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md) has the details.
 3. On the phone, trust your developer profile (Settings, General, VPN and Device Management), then open Vyre.
-4. Scan the code on your computer, and check that both screens show the same words.
+4. Open the link from your computer, or choose **Sign in** and type your space address, username and master password.
 
 A build signed with a free Apple account stops working after seven days. Run the script again to install it afresh; your data stays.
 

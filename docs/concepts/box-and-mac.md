@@ -138,7 +138,7 @@ On the Mac, `vyre up` starts vyred in the background with the local set of modul
 
 ## How the Mac finds the box
 
-`vyre up` on a Mac with no box configured asks for your server's pairing code. It shows three words, and you confirm they match on both screens and approve with your passkey. You can also give it the address:
+`vyre up` on a Mac with no box configured says how to pair. Give it your server's address with `--connect`, or run `vyre link pair <address>`. It shows a code, and you approve it in the Vyre app with your passkey. You can also name the address directly:
 
 ```
 vyre box add alex@192.0.2.10                     # put the box on a server you can SSH to
