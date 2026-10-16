@@ -218,7 +218,12 @@ test("sandbox: the bubblewrap plan unshares everything, mounts nothing of the ho
     assert.ok(!a.includes("AWS_SECRET"));
     const binds = a.reduce((acc, x, i) => (x === "--bind" ? acc.concat([a[i + 1]]) : acc), []);
     assert.deepEqual(binds, [fs.realpathSync(ws)], "the only writable host path is the workspace");
-    assert.ok(!a.includes("/home") && !a.includes("/root"));
+    const nodePath = fs.realpathSync(process.execPath);
+    const hostPath = (/** @type {string} */ flag) => a.flatMap((x, i) => (x === flag ? [a[i + 1]] : [])).filter(Boolean);
+    const isHomeTree = (/** @type {string} */ p) => { try { const r = fs.realpathSync(p); return r !== nodePath && (r.startsWith("/home") || r.startsWith("/root")); } catch { return false; } };
+    assert.ok(!hostPath("--bind").some(isHomeTree), "the host home is not mounted");
+    assert.ok(!hostPath("--ro-bind").some(isHomeTree), "only the node binary may be read from under the host home, never the tree");
+    assert.ok(a.some((x, i) => x === "--tmpfs" && a[i + 1] === "/home"), "HOME lives on a tmpfs inside the sandbox");
   } finally { rm(ws); }
 });
 

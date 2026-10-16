@@ -148,6 +148,7 @@ export default {
         running = true;
         try {
           const s = await indexer.run(folders(), { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
+          if (indexer.captured) await indexer.captured;
           return s;
         }
         finally { running = false; vectorLoop(); }
