@@ -2,7 +2,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../../../../scripts/mac-test-guard.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { laterNoteFromLine, rewindPointsFromStore, secondOpinionTargets } from "./capabilities-model.js";
+
+const slashSrc = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../ui/chat/slash.ts"), "utf8");
 
 test("rewindPointsFromStore lists person messages newest first", () => {
   const store = {
@@ -14,6 +19,10 @@ test("rewindPointsFromStore lists person messages newest first", () => {
 
 test("laterNoteFromLine parses /later", () => {
   assert.deepEqual(laterNoteFromLine('/later "at 5pm" check inbox'), { title: "check inbox", when: "at 5pm" });
+});
+
+test("NATIVE_SLASHES includes the documented composer command names", () => {
+  for (const name of ["clear", "compact", "later", "find", "rewind", "export", "memory", "roll", "move"]) assert.ok(slashSrc.includes(`"${name}"`), name);
 });
 
 test("secondOpinionTargets skips the author", () => {

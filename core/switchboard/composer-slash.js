@@ -2,6 +2,7 @@
 // Composer slash commands as one kernel tool (threads.slash), shared routing in lib/thread-composer-route.js.
 
 import { routeComposerLine } from "../../lib/thread-composer-route.js";
+import { relayPersonTool } from "../../lib/person-relay.js";
 
 /**
  * Register threads.slash and move a few small thread tools here so switchboard/index.js stays under its cap.
@@ -38,6 +39,7 @@ export function registerComposerSlashTools(tool, o) {
     } },
     async (i, meta) => {
       const { caller } = meta;
+      const relay = (/** @type {string} */ tool, /** @type {any} */ input) => relayPersonTool(ctx, caller, meta, tool, input);
       guard(caller, "send to sessions");
       let thread = typeof i.thread === "string" ? i.thread : "";
       if (!thread && typeof i.chat === "string") {
@@ -53,8 +55,7 @@ export function registerComposerSlashTools(tool, o) {
         return ctx.call("threads.send", { ...extra, text: String(route.input.text ?? i.line) });
       }
       if (route.tool === "threads.shell" || route.tool === "threads.remember") {
-        if (!personTurn(caller)) throw Object.assign(new Error("only a person's surface runs this command"), { code: "denied" });
-        return ctx.call(route.tool, { ...extra, ...route.input });
+        return relay(route.tool, { ...extra, ...route.input });
       }
       if (route.tool === "threads.get" && !route.input.model) {
         guard(caller, "read sessions");
@@ -62,8 +63,7 @@ export function registerComposerSlashTools(tool, o) {
         return g && g.data ? { thread, model: g.data.thread && g.data.thread.model } : { thread, model: null };
       }
       if (route.tool === "planner.add" || route.tool === "recall.search") {
-        if (!personTurn(caller)) throw Object.assign(new Error("only a person's surface runs this command"), { code: "denied" });
-        return ctx.call(route.tool, route.input, { as: caller });
+        return relay(route.tool, route.input);
       }
       if (route.tool === "threads.commands") return ctx.call("threads.commands", { thread });
       return ctx.call(route.tool, { ...extra, ...route.input });
