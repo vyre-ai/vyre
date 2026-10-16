@@ -229,7 +229,7 @@ test("client pays: Now's Needs-you holds exactly one card, and approving it move
   assert.equal(aidOf(card.doer), "intake");
   assert.equal(aidOf(card.checker), WHO.alex);
   assert.match(String(card.ext?.result?.draft?.body), /^Hi Jane,/);
-  assert.match(String(card.ext?.result?.draft?.body), /Your matter is Doe brand refresh, and Alex Rivera is your designer/);
+  assert.match(String(card.ext?.result?.draft?.body), /Your project is Doe brand refresh, and Alex Rivera is your designer/);
 
   // One tap: the checker's approval is the Gate approval. The stage moves on by itself.
   await s.decide(card.id, { outcome: "approved", proof: proof("approve") });
