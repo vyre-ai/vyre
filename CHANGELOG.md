@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: the golden decisions are re-recorded for the merged 0.5.3 work; the removed Mac egress and tailnet tools are gone from them.
 - ci: the node tests run in ten shards on the self-hosted runners and five on GitHub's hosted ones.
 - fix(app): one id per space everywhere. A space the device signs in to (password or GitHub) is kept as the row the space itself names in its login reply (its `spc_` id, name, role and address), the same row a created or joined space has; a space that does not say which space it is gets no row and nothing is kept.
 - feat(app): sign-in sends one stable device id per browser (so a known browser does not ring the person's other devices each time), and `publishSpace` adds or removes a space address in the names directory's list for the username, as an act the identity's device key signs (`space-add`, `space-remove`), for the space steps to call when a space is created or joined.
