@@ -102,3 +102,29 @@ test("a member signing out the owner's device id does nothing, and the owner's l
   await tools.get("identity.signin.ack").run({ device: A }, as(BLAIR));
   assert.deepEqual(await mine(ALEX), [A], "the member's word about a device id is not the owner's");
 });
+
+test("with no kernel the home's person answers only the owner's local surfaces; every network, agent or model caller is refused, on all three tools", async () => {
+  const { ctx, tools } = ctxOf();
+  delete ctx.kernel;
+  const svc = fakeService();
+  registerSignins(ctx, { service: () => svc, fallbackPerson: () => ALEX, now: () => 1 });
+  const ask = (tool, caller, extra = {}) => tools.get(tool).run(tool === "identity.signins.pending" ? {} : { device: A }, { caller, ...extra });
+  for (const tool of ["identity.signins.pending", "identity.signin.revoke", "identity.signin.ack"]) {
+    for (const caller of ["device:aaaaaaaaaaaaaaaa", "web:x", "tailnet:alex", "space:bob@juniper", "mcp", "mcp:agent:kit", "cli:agent:kit", "cli:thread:x", "harness", "agent:kit", ""]) {
+      await assert.rejects(ask(tool, caller), { code: "person_required" }, `${tool} for ${caller || "(none)"}`);
+    }
+    await assert.rejects(ask(tool, "cli", { person: BLAIR }), { code: "person_required" }, `${tool}: a person in the meta is not the local owner`);
+    for (const caller of ["cli", "local", "deck", "capsule"]) await ask(tool, caller);
+  }
+  svc.sessions.push({ person: ALEX, device: A, label: "Home", at: 1 });
+  assert.deepEqual(await tools.get("identity.signin.revoke").run({ device: A }, { caller: "cli" }).then((r) => r.revoked), true, "cli is the home's person");
+});
+
+test("with a kernel whose chain throws or answers nothing, no call falls back to the home's person", async () => {
+  for (const chain of [async () => { throw new Error("no chain"); }, async () => null, async () => ({ hops: [] })]) {
+    const { ctx, tools } = ctxOf();
+    ctx.kernel = { chain };
+    registerSignins(ctx, { service: () => fakeService(), fallbackPerson: () => ALEX, now: () => 1 });
+    for (const tool of ["identity.signins.pending", "identity.signin.revoke", "identity.signin.ack"]) await assert.rejects(tools.get(tool).run({ device: A }, { caller: "cli" }), { code: "person_required" }, tool);
+  }
+});
