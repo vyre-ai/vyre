@@ -9,6 +9,7 @@ import path from "node:path";
 import { writeTranscripts } from "../../test/fixtures/corpus.js";
 import { composerPersonRelayTargets, listAllPersonRelayEntryPoints, listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 import { CAROL, BOB, relayDaemon, twoMembers, groupChat, scratchWork, tokenMeta, FAKE_SESSION_PROVIDERS } from "./member-relay-harness.js";
+import { indexCorpusTranscripts } from "../sessions/testing/recall-live.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -101,17 +102,10 @@ for (const provider of FAKE_SESSION_PROVIDERS) {
 
   test(`person-scoped slash targets [${provider}]: /find relays recall.search as each member`, { timeout: 180_000 }, async (t) => {
     assert.ok(composerPersonRelayTargets().includes("recall.search"));
-    const { d, root } = await relayDaemon(t, provider);
-    if (!d.registry.tools.has("recall.search")) {
-      t.skip("recall module not loaded on this daemon");
-      return;
-    }
+    const { d, root } = await relayDaemon(t, provider, { recall: true });
     const transcripts = path.join(root, "transcripts");
     writeTranscripts(transcripts);
-    if (d.registry.tools.has("recall.index")) {
-      const ix = await d.registry.call("recall.index", {}, "cli");
-      assert.ok(!ix.error, JSON.stringify(ix.error));
-    }
+    await indexCorpusTranscripts(d);
 
     const K = d.kernel, OWNER = K.id.owner;
     const work = scratchWork(t, `vyre-find-${provider}-`);
@@ -125,16 +119,16 @@ for (const provider of FAKE_SESSION_PROVIDERS) {
       assert.ok(!rB.error, `${ep.id} bob find: ${JSON.stringify(rB.error)}`);
     }
 
-    const directC = await d.registry.call("recall.search", { query: "intake form", limit: 3 }, "cli", carolMeta);
-    const directB = await d.registry.call("recall.search", { query: "intake form", limit: 3 }, "cli", bobMeta);
+    const directC = await d.registry.call("recall.search", { q: "intake form", limit: 3 }, "cli", carolMeta);
+    const directB = await d.registry.call("recall.search", { q: "intake form", limit: 3 }, "cli", bobMeta);
     assert.ok(!directC.error && !directB.error, JSON.stringify({ directC: directC.error, directB: directB.error }));
 
     const ownerMeta = await tokenMeta(K, ownerChain);
     const secret = `vault-find-leak-${Date.now()}`;
     const put = await d.registry.call("vault.put", { name: secret, kind: "secret", fields: { value: "x" } }, "cli", ownerMeta);
     assert.ok(!put.error, JSON.stringify(put.error));
-    const leakC = await d.registry.call("recall.search", { query: secret, limit: 5 }, "cli", carolMeta);
-    const leakB = await d.registry.call("recall.search", { query: secret, limit: 5 }, "cli", bobMeta);
+    const leakC = await d.registry.call("recall.search", { q: secret, limit: 5 }, "cli", carolMeta);
+    const leakB = await d.registry.call("recall.search", { q: secret, limit: 5 }, "cli", bobMeta);
     assert.equal((leakC.data || []).length, 0, "members must not recall-search into owner's vault item name");
     assert.equal((leakB.data || []).length, 0);
   });

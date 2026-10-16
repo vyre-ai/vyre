@@ -11,6 +11,7 @@ import {
   FAKE_SESSION_PROVIDERS,
   threadStartProviderFields,
 } from "../sessions/testing/fake-agent-harness.js";
+import { RECALL_LIVE_CONFIG, hookRecallTestEmbedder } from "../sessions/testing/recall-live.js";
 
 export { FAKE_SESSION_PROVIDERS };
 
@@ -20,12 +21,17 @@ export const BOB = "per_" + "b".repeat(26);
 /**
  * @param {import("node:test").TestContext} t
  * @param {"claude"|"grok"|"codex"} [provider]
+ * @param {{ recall?: boolean }} [opts]
  */
-export function relayEnv(t, provider = "claude") {
+export function relayEnv(t, provider = "claude", { recall = false } = {}) {
   const root = tempHome(t);
   const { transcripts } = applyFakeSessionProvider(t, root, provider);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
-    name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" },
+    name: "test-box",
+    role: "box",
+    transcripts: [transcripts],
+    sessions: { install: false, thread_socket: "on" },
+    ...(recall ? { recall: { ...RECALL_LIVE_CONFIG } } : {}),
   }));
   return { root, transcripts, provider };
 }
@@ -33,9 +39,11 @@ export function relayEnv(t, provider = "claude") {
 /**
  * @param {import("node:test").TestContext} t
  * @param {"claude"|"grok"|"codex"} [provider]
+ * @param {{ recall?: boolean }} [opts]
  */
-export async function relayDaemon(t, provider = "claude") {
-  const { root, transcripts } = relayEnv(t, provider);
+export async function relayDaemon(t, provider = "claude", { recall = false } = {}) {
+  if (recall) hookRecallTestEmbedder(t);
+  const { root, transcripts } = relayEnv(t, provider, { recall });
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   asOwner(d, root);
   t.after(() => d.stop());
