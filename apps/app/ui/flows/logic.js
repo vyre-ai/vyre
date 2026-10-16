@@ -707,6 +707,21 @@ function triggerFrom(t) {
 function triggerFromKind(t) {
   const raw = { kind: "advanced", raw: t };
   if (!t || typeof t !== "object") return raw;
+  // Draft triggers ({ kind, ... } with no `on`) from tests and fromDefinition on a builder-shaped object.
+  if (!("on" in t) && typeof t.kind === "string") {
+    if (t.kind === "manual" && keys(t, ["kind"])) return { kind: "manual" };
+    if (t.kind === "created" && keys(t, ["kind", "type"])) return { kind: "created", type: t.type };
+    if (t.kind === "created" && keys(t, ["kind"])) return { kind: "created", type: "" };
+    if (t.kind === "changed" && keys(t, ["kind", "type"])) return { kind: "changed", type: t.type, ...(t.field ? { field: t.field } : {}), again: t.again === "keep" ? "keep" : "replace" };
+    if (t.kind === "removed" && keys(t, ["kind", "type"])) return { kind: "removed", type: t.type };
+    if (t.kind === "event" && keys(t, ["kind", "event"])) return { kind: "event", event: t.event };
+    if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "watcher", watcher: t.watcher };
+    if (t.kind === "stage" && keys(t, ["kind", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
+    if (t.kind === "signup" && keys(t, ["kind"])) return { kind: "signup" };
+    if (t.kind === "form" && keys(t, ["kind", "path"])) return { kind: "form", path: t.path };
+    if (t.kind === "schedule") return { kind: "schedule", every: t.every, at: t.at };
+    if (t.kind === "advanced" && keys(t, ["kind", "raw"])) return { kind: "advanced", raw: t.raw };
+  }
   if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };
   if (t.on === "stage" && keys(t, ["on", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
   if (t.on === "event" && Array.isArray(t.event) && t.event.length === 2 && keys(t, ["on", "event", "field", "when_record_changes"])) {
