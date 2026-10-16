@@ -289,5 +289,5 @@
     "agents/errors.md",
     "agents/behaviour.md"
   ],
-  "unpublished": ["proposals/", "design/boards/", "agents/"]
+  "unpublished": ["proposals/", "design/boards/", "agents/", "release/"]
 }

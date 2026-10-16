@@ -3893,7 +3893,7 @@ Share a Flow with a person: { id, subject (the person), level: use | edit | null
 
 ### `flows.actions`
 
-The actions a Flow's call step can name: every tool the running modules offer as a Flow step, with what it takes and gives. Read it to pick the action for a call step.
+Actions a Flow call step may name: module tools offered as Flow steps, with inputs and outputs.
 
 - Input:
   - `space` string
@@ -11155,7 +11155,7 @@ Turn down a draft waiting for a yes: the proposer or the level's owner retires i
   - `name` string, required
   - `version` integer, required
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
-- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `space`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `skills.draft`
 
