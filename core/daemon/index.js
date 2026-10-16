@@ -415,7 +415,7 @@ async function startLocked(opts, root, p, release) {
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
-            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines });
+            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines, ...(t.provider ? { provider: t.provider } : {}) });
           },
         });
       },
@@ -791,7 +791,7 @@ async function startLocked(opts, root, p, release) {
       // the person's own MCP servers for a lent session: their personal vault's store (vault `personalStore`), read for the person the lease names; never the owner's
       const memberMcpOf = async (/** @type {{ space: string, person: string }} */ q) => { const ps = /** @type {any} */ (registry.deps).personalStore; return typeof ps === "function" ? memberMcpConfig(ps(q.person, q.space)) : null; };
       /** @type {any} */ (registry.deps).memberMcpOf = memberMcpOf;   // also read by the end-to-end test of a member's own accounts
-      const lent = lentServiceFor({ root, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
+      const lent = lentServiceFor({ root, registry, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },
         // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)

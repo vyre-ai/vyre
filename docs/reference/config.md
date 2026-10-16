@@ -34,6 +34,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `network` | `object` | see [network](#network) | How this machine is reached. See [Install](../get-started/install.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
 | `owner` | `{ id: string }` | unset | The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input. |
+| `github` | `{ start?: string }` | unset | Not described yet. |
 | `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
 | `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
@@ -217,6 +218,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
+| `VYRE_INSTALL_FROM_LINE` | Not described yet. | `core/wink/install-pair.js` |
 | `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |

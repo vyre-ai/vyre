@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { lentProcessProvider, serverTranscriptPlace, workTranscriptPath } from "../sessions/drivers/lent-agent.js";
 
 /** A transcript written this recently belongs to a session that is still working somewhere. */
 export const ACTIVE_MS = 30_000;
@@ -57,8 +58,8 @@ export function transcriptPlace(folders, cwd, id) {
   return { file: path.join(folders[0], String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`), root: folders[0] };
 }
 
-/** Where the provider keeps a session's transcript INSIDE a runner's workspace (the agent's home is `<work>/home`), for the folder `cwd` the session sees. @param {string} work @param {string} cwd @param {string} id */
-export const workTranscript = (work, cwd, id) => path.join(work, "home", ".claude", "projects", String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
+/** Where the provider keeps a session's transcript INSIDE a runner's workspace (the agent's home is `<work>/home`), for the folder `cwd` the session sees. @param {string} work @param {string} cwd @param {string} id @param {string} [provider] */
+export const workTranscript = (work, cwd, id, provider) => workTranscriptPath(provider || "claude", work, cwd, id);
 
 /**
  * The folder a session ran in and its name, from the start of its transcript (the first lines
@@ -154,27 +155,35 @@ export function registerTranscriptTools(ctx, sb, str) {
     run: async i => {
       const id = String(i.thread);
       const rec = sb.record(sb.threadOfNative(id) || id);
-      if (!rec || (rec.provider || "claude") !== "claude") return null;
+      const provider = rec && lentProcessProvider(rec.provider || "claude");
+      if (!rec || !provider) return null;
       const thread = String(rec.id || id), native = sb.nativeOf(thread);
       // a transcript is placed only in the chat of the person it is for: the thread's own person (who started it) must be the one asked for, which the home takes from its book, never from what a computer sent
       { let owner = null; try { const o = /** @type {any} */ (sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(thread)); owner = o && o.opts ? JSON.parse(String(o.opts)).person : null; } catch { owner = null; }
         if (!owner || !i.person || sb.canon(owner) !== sb.canon(String(i.person))) throw Object.assign(new Error("that chat is not this person's, so nothing is placed in it: ask the chat's owner to move it"), { code: "not_allowed" }); }
-      let folders = sb.deps.transcripts || [], account;
+      let folders = sb.deps.transcripts || [], account, accountHome = null;
       if (process.env.VYRE_SUPERVISOR === "docker") {
-        const acct = await sb.accountFor({ provider: "claude", account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
+        const acct = await sb.accountFor({ provider, account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
         const home = acct && acct.uid != null && sb.deps.accountHome ? sb.deps.accountHome(acct) : null;
         if (!home) return null;
-        folders = [path.join(home, ".claude", "projects")]; account = Number(acct.uid);
+        accountHome = home;
+        if (provider === "claude") folders = [path.join(home, ".claude", "projects")];
+        account = Number(acct.uid);
+      } else if (provider !== "claude" && sb.deps.accountHome) {
+        const acct = await sb.accountFor({ provider, account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
+        if (acct) accountHome = sb.deps.accountHome(acct);
       }
-      const at = transcriptPlace(folders, String(rec.cwd || ""), native);
-      return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}), ...(account !== undefined ? { account } : {}) } : null;
+      const at = provider === "claude"
+        ? transcriptPlace(folders, String(rec.cwd || ""), native)
+        : serverTranscriptPlace({ provider, folders, cwd: String(rec.cwd || ""), native, accountHome });
+      return at ? { thread, native, provider, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}), ...(account !== undefined ? { account } : {}) } : null;
     },
   });
   // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).
   ctx.tool("threads.work-transcript", {
     description: "The file where the provider keeps a session's transcript inside a runner's workspace, for the folder the session will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
     input: { type: "object", required: ["work", "cwd", "session"], properties: { work: str, cwd: str, session: str } },
-    run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session)) }; },
+    run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session), typeof i.provider === "string" ? i.provider : undefined) }; },
   });
   // A chat that moves to a computer ends its process here first, quietly (the same close as an idle one): its next turn then starts where the home's book now places it, from the transcript the computer was seeded with.
   ctx.tool("threads.chat-thread", {

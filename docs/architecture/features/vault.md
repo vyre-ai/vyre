@@ -68,7 +68,7 @@ The Vault screen is in `apps/app/screens/vault/`. The header says "Vault". A sco
 - An agent asks for a use and never a value: it names the item and the system attaches the key. If a sign-in is missing it marks the task stuck with a suggested fix naming the item, and the person's card opens the Add sheet.
 - See sealed values and secrets (agent doc "sealed-and-secrets"), connections (agent doc "connections") and outward acts (agent doc "outward-acts").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5, a member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read the other items in it yet. A woken agent borrows a credential through a task lease, and 0.6 plans credentials lent for one job, use only (R051-02).
 - A member signs in to an AI provider with the provider's own sign-in and adds no setup token or API key as their own AI account.

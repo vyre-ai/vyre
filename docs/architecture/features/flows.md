@@ -78,7 +78,7 @@ A run id is a hash of the Flow and the trigger key, so a trigger delivered twice
 
 Every call runs under the caller's own chain, and a call with no person or session chain is refused. Open to models: `flows.define` (nothing runs until a person approves), `flows.propose`, `flows.start`, `flows.get`, `flows.list`, `flows.code`, `flows.graph`, `flows.card`, `flows.simulate`, `flows.cheatsheet`, `flows.runs`, `flows.run`, `flows.health`, `flows.attention`, `flows.patch`, `flows.from-chat`. Person-only: `flows.approve` (also asks for presence), `flows.rollback`, `flows.pause`, `flows.resume`, `flows.kit.remove`, `flows.access.get`, `flows.access.set`, `flows.settle`, `flows.advance`, `flows.test.remove`. An agent step becomes a task for the named agent, and `core/daemon/agent-wake.js` does the wake. See Flows for agents (agent doc "flows"), the Flows cheatsheet (agent doc "flows-cheatsheet") and outward acts (agent doc "outward-acts").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5, a "For each" step takes up to 50 items in the editor, though the engine allows 1000. A longer list is cut, and the run page gives no note. A Flow written in the code view loops over up to the engine's 1000.
 - An agent step has no deadline in 0.5. A session that ends without finishing is marked stuck. 0.6 plans a due time on the step with a failure path, and a failure panel on every step in the editor (R051-03, R051-04).
