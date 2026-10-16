@@ -123,16 +123,16 @@ The token path is optional, and only if the person offers it. Tell them first th
 
 **Step 3. Create the server (you, after a yes).** Before you call the create API, show the person the provider, region, image, size and monthly price, and wait for a yes in words. Create exactly one server. Do not list, change or delete any other server or resource in their account, and never delete the server you made. Then call the provider's API: DigitalOcean `POST https://api.digitalocean.com/v2/droplets`, Hetzner `POST https://api.hetzner.cloud/v1/servers`, or the host's own. Use a current Ubuntu or Debian image of the chosen size, and an SSH key you hold. Through the provider's cloud-init (user data), create a non-root user with sudo, your SSH key and the person's own SSH key so they are never locked out, because the install line must run as that user and not as root, and install Docker with Compose 2.24 or newer. Prefer Docker's own apt repository. Docker's convenience script (`curl -fsSL https://get.docker.com | sh`) is the vendor's script and runs as root, so name it to the person if you use it. The installer asks before installing Docker, and with no terminal to ask on it prints the command and stops, so installing Docker first avoids that stop. Give the person the server's address.
 
-**Step 4. The steps only the person can do (the person).** These use the person's own key and devices, and nobody can do them for the person.
+**Step 4. The person's own start (the person).** The name, the app and the recovery code use the person's own key and devices.
 
 1. Open https://vyre.run/setup on a Mac or Windows PC, type the name they want (it becomes https://vyre.run/u/<name>, private unless they opt in), choose Reserve this name, and copy the code that starts with VYRE-. It is held for 24 hours and works once. The old host <name>.vyre.run redirects there. Infrastructure hosts do not.
 2. Install the Vyre app from https://github.com/vyre-ai/vyre/releases/latest: the dmg for a Mac (`Vyre-aarch64.dmg` for Apple silicon, `Vyre-x86_64.dmg` for Intel), or `VyreSetup.exe` for Windows. The app is not signed with a store identity yet, so a Mac needs Open Anyway under Privacy and Security, and Windows needs More info, then Run anyway.
 3. Open the app, choose Start, paste the code, and save the recovery code the app shows once. It is the only way back in if every device is lost.
-4. Choose Add a server, then A Linux server or cloud machine, then With Records (or Without Records for a small server). The app shows one install line.
+4. Choose Add a server, then A Linux server or A Mac that stays on. The app shows one install line. An agent on this computer can call `wink.install.issue` over Vyre's MCP. The call waits at the Gate until the person taps yes. The agent receives the line. The signing key stays on the person's device.
 
-**Step 5. Run the install line (the person or you, on the new server).** The line looks like `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`. It is good for one hour and works once, and it is run as the non-root user. The safest way is for the person to run it in a terminal on the server. If the person chooses to hand you the line, you may run it over SSH as that user on the server you created, and only there. Do not keep it, and do not run it anywhere else. The installer checks the release signature before it installs anything. The server is up when that line finishes.
+**Step 5. Run the install line (the person or you, on the new server).** Run the line once, as the non-root user. It looks like `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`. On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=... VYRE_STORE=auto sh`. The server installs Vyre and adopts the person who approved the line. The line works once and expires in 30 minutes. The installer checks the release signature before it installs anything. The safest way is for the person to run it in a terminal on the server. If the person chooses to hand you the line, you may run it over SSH as that user on the server you created, and only there. Do not keep it, and do not run it anywhere else.
 
-**Step 6. Confirm the server in the app (the person).** The app finds the server. The person confirms it is the server they expect, and that confirmation is what connects it. If it is not the server they expect, they decline and nothing is connected.
+**Step 6. Finish pairing (you, with one tap from the person).** Call `wink.install.status` to see whether the server is owned, then `wink.install.complete` to finish this device's pairing. `wink.install.complete` waits at the Gate for one tap. The person can also open the server's setup page (`http://<the-server>/setup`) and paste the code the app shows. The page locks after pairing.
 
 **After Step 6. Remove your access (you or the person).** Remove your SSH key and the provisioning user from the server, or have the person do it. Say to the person that until this is done you could still log in. The person's own key stays, so they are never locked out.
 
@@ -150,7 +150,7 @@ If setup stops, https://vyre.run/docs/get-started/troubleshooting.md has the mes
 
 ## Next
 
-Labelled Next, so you never describe it as shipped: this entry point is planned to become an MCP server itself, exposing the map and the setup tools, so an agent connects once and can provision a server, install Vyre and build the business end to end. Until then, this page is how you do it.
+Setup runs through Vyre's MCP. The tools are `wink.install.issue`, `wink.install.status` and `wink.install.complete`. An agent on the person's computer calls them. Issuing a line and finishing pairing wait at the Gate for one tap, and the signing key stays on the person's device.
 
 Other plans, by version, are in https://vyre.run/docs/roadmap/README.md: 0.6 makes Flows more reliable and complete, and 0.7 brings Integrations, a Skills screen and a Plugins screen.
 

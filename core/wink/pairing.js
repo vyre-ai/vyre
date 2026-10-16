@@ -821,9 +821,10 @@ export function createPairing(o) {
       input: obj({ identity: str }, ["identity"]),
       run: async (input, meta1 = {}) => {
         if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
-        if (hasOwner()) throw fail("owned", "This server already belongs to someone.");
         const to = String((input && input.identity) || "").trim();
         if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
+        const cur = meta.get("owner");
+        if (cur && String(cur.identity || cur.id) !== to) throw fail("owned", "This server already belongs to someone.");
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr({});
