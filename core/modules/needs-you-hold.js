@@ -3,9 +3,9 @@
 // so the tool's name does not decide it. An assistant, model, MCP or hosted caller never receives one.
 // A person's own caller is unchanged, so a recovery key can still be shown once. Lending (vault.request,
 // vault.space.use) injects the value and still drops a secret-tagged field inside the vendor body.
-import { collectSecrets, popSecretScope, pushSecretScope, redactLog, redactSecrets, rememberSecrets } from "../../lib/secret-schema.js";
+import { collectSecrets, popSecretScope, pushSecretScope, redactExtra, redactLog, redactSecrets, rememberSecrets } from "../../lib/secret-schema.js";
 
-export { redactLog };
+export { redactExtra, redactLog };
 
 const AGENT_OR_THREAD = /(?:^|[\s:])(?:agent|thread):/;
 const LENDING = new Set(["vault.request", "vault.space.use"]);

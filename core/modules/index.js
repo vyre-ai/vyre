@@ -37,7 +37,7 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
-import { scrubVaultResult, armSecrets, disarmSecrets } from "./needs-you-hold.js";
+import { scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -1147,11 +1147,11 @@ export class Registry {
       // that module's tools.
       store: this.routedStore(m, db, () => homeKernel),
       // A function for built in callers, with the levels module API 1 names (ADR 0047 section 3).
-      log: Object.assign((msg, extra) => log(`[${m.name}] ${msg}`, extra), {
-        info: (msg, extra) => log(`[${m.name}] ${msg}`, extra),
-        warn: (msg, extra) => log(`warn: [${m.name}] ${msg}`, extra),
-        error: (msg, extra) => log(`error: [${m.name}] ${msg}`, extra),
-        debug: (msg, extra) => log(`debug: [${m.name}] ${msg}`, extra),
+      log: Object.assign((msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)), {
+        info: (msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)),
+        warn: (msg, extra) => log(redactLog(`warn: [${m.name}] ${msg}`), redactExtra(extra)),
+        error: (msg, extra) => log(redactLog(`error: [${m.name}] ${msg}`), redactExtra(extra)),
+        debug: (msg, extra) => log(redactLog(`debug: [${m.name}] ${msg}`), redactExtra(extra)),
       }),
       events: {
         emit: (type, payload, where) => {

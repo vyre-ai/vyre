@@ -11,7 +11,9 @@ import path from "node:path";
 import { Registry } from "../core/modules/index.js";
 import { scrubVaultResult } from "../core/modules/needs-you-hold.js";
 import { Events } from "../kernel/bus.js";
-import { SECRET_FIELD_TYPES, secretSchema, secretTypeOf } from "../lib/secret-schema.js";
+import { start } from "../core/daemon/index.js";
+import { tempHome } from "./helpers.js";
+import { SECRET_FIELD_TYPES, keyIsSecret, secretSchema, secretTypeOf } from "../lib/secret-schema.js";
 import { stripSecrets } from "../lib/master-secret.js";
 import { open, migrate as migrateDb } from "../core/store/index.js";
 import identity from "../core/identity/index.js";
@@ -29,6 +31,8 @@ const P = {
   "master-record": "VYRE-PLANTED-MASTER-RECORD-7f3c1a",
   token: "VYRE-PLANTED-GITHUB-TOKEN-7f3c1a",
   "record-secret": "VYRE-PLANTED-RECORD-SECRET-7f3c1a",
+  "connection-credential": "VYRE-PLANTED-CONNECTION-CREDENTIAL-7f3c1a",
+  "invite-token": "VYRE-PLANTED-INVITE-TOKEN-7f3c1a",
 };
 const ALL = Object.values(P);
 
@@ -199,4 +203,71 @@ test("identity reads and a sign-in return no secret to a non-person, and a space
   assert.equal(JSON.stringify(putEcho).includes(item), false);
   forgetAll();
   db.close();
+});
+
+/** @param {string} key */
+function plantedFor(key) {
+  return P[/** @type {keyof typeof P} */ (secretTypeOf(key) || "vault-value")];
+}
+
+/** @param {any} schema @param {number} [depth] */
+function fill(schema, depth = 0) {
+  if (!schema || depth > 3) return undefined;
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+  const t = schema.type;
+  if (t === "integer" || t === "number") return schema.minimum ?? 1;
+  if (t === "boolean") return false;
+  if (t === "array") {
+    const one = schema.items ? fill(schema.items, depth + 1) : undefined;
+    return one === undefined ? [] : [one];
+  }
+  if (t === "string") return "fixture";
+  if (t === "object" || schema.properties || !t) {
+    const props = schema.properties || {};
+    const keys = Object.keys(props);
+    if (!keys.length) return depth > 1 ? { name: "fixture" } : {};
+    /** @type {Record<string, any>} */ const out = {};
+    for (const k of keys) {
+      if (keyIsSecret(k) || (props[k] && props[k].secret === true)) out[k] = plantedFor(k);
+      else {
+        const v = fill(props[k], depth + 1);
+        if (v !== undefined) out[k] = v;
+      }
+    }
+    for (const k of schema.required || []) if (out[k] === undefined) out[k] = props[k] && props[k].type === "number" ? 1 : "fixture";
+    return out;
+  }
+  return undefined;
+}
+
+test("every registered tool, called as an agent with planted secrets, keeps them out of the result, the error, events, the log and stream frames", async (t) => {
+  /** @type {{ stop: () => Promise<void>, registry: { tools: Map<string, any>, call: Function }, events: { latestId: () => number, since: (id: number) => any[] } } | null} */
+  let d = null;
+  const root = tempHome(t, { stop: () => d && d.stop() });
+  /** @type {string[]} */ const logs = [];
+  d = await start({ root, log: (m) => logs.push(String(m)) });
+  /** @type {{ name: string, channels: string[] }[]} */ const leaks = [];
+  for (const name of d.registry.tools.keys()) {
+    const def = d.registry.tools.get(name);
+    const input = fill(def && def.input) || {};
+    const mark = logs.length;
+    const before = d.events.latestId();
+    /** @type {any[]} */ const frames = [];
+    let result;
+    try {
+      result = await Promise.race([
+        d.registry.call(name, input, "mcp", { partial: (/** @type {any} */ f) => frames.push(f) }),
+        new Promise(resolve => setTimeout(() => resolve({ error: { code: "timeout" } }), 400)),
+      ]);
+    } catch (e) {
+      result = { error: { message: String(/** @type {any} */ (e && e.message) || e) } };
+    }
+    /** @type {string[]} */ const channels = [];
+    if (leaked(result).length) channels.push("result");
+    if (leaked(d.events.since(before)).length) channels.push("event");
+    if (leaked(logs.slice(mark).join("\n")).length) channels.push("log");
+    if (leaked(frames).length) channels.push("stream");
+    if (channels.length) leaks.push({ name, channels });
+  }
+  assert.deepEqual(leaks, [], leaks.map(l => `${l.channels.join("+")} ${l.name}`).join("\n"));
 });
