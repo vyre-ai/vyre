@@ -10,10 +10,10 @@ test("only an https join link of a space is passed on, encoded once or twice", (
   const good = "https://juniper.vyre.run/join/7Kq2-M9";
   assert.equal(joinLink(good), good);
   assert.equal(joinLink(encodeURIComponent(good)), good);
-  assert.equal(joinTarget(good), "/u/install/join", "the token is not in the address");
+  assert.equal(joinTarget(good), "/onboard?path=join", "the token is not in the address");
   assert.equal(takeJoin(0), good);
   for (const bad of ["http://juniper.vyre.run/join/x", "https://juniper.vyre.run/other/x", "javascript:alert(1)", "", undefined, "https://h.vyre.run/join/"]) assert.equal(joinLink(bad), null);
-  assert.equal(joinTarget("nope"), "/u/install/join");
+  assert.equal(joinTarget("nope"), "/onboard?path=join");
 });
 
 test("a real invite token is payload.signature, so a dot is part of it", () => {
@@ -34,7 +34,7 @@ test("JL-1: the token is held in memory once, never in the address, and never sh
   assert.equal(withoutToken(tok), "https://h.vyre.run/join/…");
   assert.ok(!withoutToken(tok).includes("eyJ"));
   assert.equal(cleanAddress("https://app.vyre.run/app/join?link=https%3A%2F%2Fh.vyre.run%2Fjoin%2Fx.y#frag"), "/app/join");
-  assert.equal(joinTarget("nope"), "/u/install/join");
+  assert.equal(joinTarget("nope"), "/onboard?path=join");
   assert.equal(takeJoin(), null, "a bad link holds nothing");
 });
 

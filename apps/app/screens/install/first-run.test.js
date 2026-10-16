@@ -40,9 +40,9 @@ test("a browser's pairing goes back to its own screen, and the not-set-up screen
 test("the empty-state actions open the routes that exist", () => {
   assert.equal(startStep("phone"), "addphone");
   assert.equal(startStep("connect"), "scan");
-  assert.equal(GAP.mac.route, "/u/install/phone");
-  assert.equal(GAP.phone.route, "/u/install/connect");
-  assert.equal(GAP.web.route, "/u/install/connect");
+  assert.equal(GAP.mac.route, "/onboard?path=phone");
+  assert.equal(GAP.phone.route, "/onboard?path=computer");
+  assert.equal(GAP.web.route, "/onboard?path=computer");
 });
 
 test("what is missing: a phone or browser with no Vyre, a Mac with no phone, and nothing once connected", () => {
@@ -129,7 +129,7 @@ test("the setup banner shows only when the box says setup is not finished", () =
   assert.equal(setupUnfinished({ finished: true }), false);
   assert.equal(setupUnfinished(null), false);
   assert.equal(setupUnfinished({}), false);
-  assert.equal(SETUP_BANNER.route, "/u/install/setup");
+  assert.equal(SETUP_BANNER.route, "/onboard");
 });
 
 test("the short typed code is on in release and gated on RC.typedCode, so the kill switch hides every typed path", async () => {

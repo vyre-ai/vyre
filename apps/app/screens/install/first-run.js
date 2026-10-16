@@ -1,6 +1,7 @@
 // @ts-check
 // First run, per platform (team/0.3/DESIGN-first-run-per-platform.md, the prototype's "Not built" rows). Pure, so Node tests it.
 import { buildInstallLine } from "../../../../lib/install-line.js";
+import { FIRST_RUN } from "../../src/shell/old-routes.js";
 // Each device offers only what it can do: a phone holds the key and connects, a Mac can host Vyre, a browser holds nothing.
 
 /** @typedef {"ios"|"android"|"mac"|"web"} DeviceKind */
@@ -124,9 +125,9 @@ export const WAITING = { title: "Your Vyre has not answered yet", line: "Check t
 
 /** What is missing on this device, as the empty state's words (row 8b). One line, one fixing action. @type {Record<"phone"|"mac"|"web", EmptyCopy>} */
 export const GAP = {
-  phone: { title: "Not connected to a Vyre", line: "Your phone needs a running Vyre to show anything.", action: "Scan the code", route: "/u/install/connect" },
-  mac: { title: "Nothing can approve yet", line: "No phone is paired, so sends and new devices wait.", action: "Add your phone", route: "/u/install/phone" },
-  web: { title: "Not connected", line: "This browser has no Vyre to talk to.", action: "Scan from your phone", route: "/u/install/connect" },
+  phone: { title: "Not connected to a Vyre", line: "Your phone needs a running Vyre to show anything.", action: "Scan the code", route: FIRST_RUN.computer },
+  mac: { title: "Nothing can approve yet", line: "No phone is paired, so sends and new devices wait.", action: "Add your phone", route: FIRST_RUN.phone },
+  web: { title: "Not connected", line: "This browser has no Vyre to talk to.", action: "Scan from your phone", route: FIRST_RUN.computer },
 };
 
 /**
@@ -177,8 +178,8 @@ export const WEB_SAY = {
 
 /** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
 export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
-/** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
-export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your agent, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
+/** The one banner for it: where it leads is the onboarding the box runs (/onboard). */
+export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your agent, your Claude and your devices.", action: "Finish setup", route: FIRST_RUN.start };
 
 /**
  * What a long code read on this device starts. A phone's code (`for: "phone"`, from Add a device) adds THIS device to the person's name; a server's code pairs this device to that server. A browser that cannot

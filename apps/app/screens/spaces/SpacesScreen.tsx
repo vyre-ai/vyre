@@ -48,7 +48,7 @@ export function SpacesScreen() {
 
   return (
     <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
-      actions={<Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add a space" />} items={[{ label: "Create a space", onPress: () => router.push("/u/install/create" as never) }, { label: "Join a space", onPress: () => router.push("/u/install/join" as never) }]} />}>
+      actions={<Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add a space" />} items={[{ label: "Create a space", onPress: () => router.push("/onboard?path=create" as never) }, { label: "Join a space", onPress: () => router.push("/onboard?path=join" as never) }]} />}>
       {MOCK ? null : <MyCloudCard />}
       {ELSEWHERE ? (
         <Banner icon="refresh">
@@ -56,7 +56,7 @@ export function SpacesScreen() {
             <Text strong>{setupElsewhere(ELSEWHERE.device)}</Text>
             <Text size="caption" tone="muted">{`${ELSEWHERE.spaceName} is paired. The rest of its setup carries on from there, or from here.`}</Text>
             <View className="self-start"><Button size="sm" label={CONTINUE_HERE} onPress={() => {
-              const keep = (step: string, name: string, addr: string | null, look: string, where: string) => writeProgress(packProgress({ step: isResumable(step) ? step : "look", name: MOCK ? "alex" : "", spaceName: name, addr, look, where, pairTo: "me", device: "this" })).then(() => router.push("/u/install/create" as never));
+              const keep = (step: string, name: string, addr: string | null, look: string, where: string) => writeProgress(packProgress({ step: isResumable(step) ? step : "look", name: MOCK ? "alex" : "", spaceName: name, addr, look, where, pairTo: "me", device: "this" })).then(() => router.push("/onboard?path=create" as never));
               if (MOCK) { void keep("look", ELSEWHERE.spaceName, ELSEWHERE.space, "amber", "server"); return; }
               // The claim answers where the setup stood; resume there, with the space's own name and look, not the space id.
               void tool("spaces.setup.claim", { space: ELSEWHERE.space }).then((c) => { const a = applyClaim(c); return keep(a?.step ?? "look", a?.name || ELSEWHERE.spaceName, a?.addr ?? null, a?.look ?? "amber", a?.where ?? "server"); }, (e) => showToast(said(e)));
