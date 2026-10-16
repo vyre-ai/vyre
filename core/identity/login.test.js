@@ -12,7 +12,7 @@ import { startLogin } from "./login-start.js";
 import { loginPort } from "../../lib/login-door.js";
 import { TEST_KDF } from "../../kernel/identity/master.js";
 import { aesWrap, aesUnwrap } from "../../kernel/identity/wrap.js";
-import { bundleHash, deriveLogin, loginMessage, registerMessage } from "../../kernel/identity/space-login.js";
+import { buildLinkMake, buildLinkRedeem, bundleHash, deriveLogin, loginMessage, registerMessage } from "../../kernel/identity/space-login.js";
 
 const PERSON = "per_" + "a".repeat(26);
 const PASSWORD = "correct horse battery";
@@ -103,4 +103,26 @@ test("a computer that is not a server opens no sign-in door", async () => {
   const door = await startLogin({ paths: { root: os.tmpdir() }, log() {}, events: { emit() {} }, config: { machine: "device", name: "alex" } });
   assert.equal(loginPort(), null);
   await door.stop();
+});
+
+test("a device link over the real listener: made by the identity, redeemed once by a fresh device key, the second use is link_used", async (t) => {
+  const b = await box(t);
+  const { rk } = await register(b);
+  const made = await buildLinkMake({ space: "juniper", person: PERSON, identity: { pub: b.pub, sign: m => b.sign(m) } });
+  const ok = await b.post(made.body);
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const k = crypto.generateKeyPairSync("ed25519");
+  const dev = { pub: Buffer.from(k.publicKey.export({ format: "der", type: "spki" }).subarray(-32)).toString("base64url"), sign: (/** @type {Buffer} */ m) => crypto.sign(null, m, k.privateKey).toString("base64url") };
+  const redeem = await buildLinkRedeem({ space: "juniper", nonce: made.nonce, device: { id: "phone-aaaaaaaa", label: "Aina's phone", ...dev } });
+  const got = await b.post(redeem);
+  assert.equal(got.status, 200, JSON.stringify(got.body));
+  assert.equal(got.cors, ORIGIN);
+  assert.ok(got.body.salt && got.body.bundle && got.body.session);
+  assert.equal(got.body.role, "owner");
+  assert.equal(b.events.at(-1)[0], "signin.new-device");
+  const again = await b.post(redeem);
+  assert.equal(again.status, 401);
+  assert.equal(again.body.error.code, "link_used");
+  assert.equal((await b.post({ ...redeem, nonce: crypto.randomBytes(32).toString("base64url") })).body.error.code, "bad_link");
+  void rk;
 });

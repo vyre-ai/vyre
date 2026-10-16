@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { TEST_KDF } from "./master.js";
 import { aesWrap, aesUnwrap } from "./wrap.js";
-import { acceptKdf, buildRegistration, bundleHash, createLoginService, githubLinkMessage, GH_ASSERT_TAG, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
+import { acceptKdf, buildRegistration, buildLinkMake, buildLinkRedeem, bundleHash, createLoginService, githubLinkMessage, GH_ASSERT_TAG, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
 
 const SPACE = "juniper";
 const PERSON = "per_" + "a".repeat(26);
@@ -32,7 +32,7 @@ async function rig(o = {}) {
   const events = /** @type {any[]} */ ([]);
   const idKey = identityKey();
   const svc = createLoginService({
-    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); }, keys: () => [...store.keys()] }, now: () => clock.t,
     verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex" || u === "blair",
     onNewDevice: e => events.push(e), ...o,
   });
@@ -240,4 +240,60 @@ test("a person can list their live sign-ins and sign one device out; the device 
   const before = r.events.length;
   await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.82");
   assert.equal(r.events.length, before + 1, "the signed-out device is new again and rings the others");
+});
+
+/** A new device with a fresh key of its own. */
+function newDevice() {
+  const k = identityKey();
+  return { pub: k.pub, sign: (/** @type {Buffer} */ m) => k.sign(m) };
+}
+
+test("a device link: made by the identity, redeemed once with a fresh device key, and the record still needs the master password", async () => {
+  const r = await rig();
+  const made = await buildLinkMake({ space: SPACE, person: PERSON, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) }, now: () => r.clock.t });
+  assert.equal(JSON.stringify(made.body).includes(made.nonce), false, "the nonce itself never goes to the space");
+  assert.equal((await r.svc.linkMake(made.body)).ok, true);
+  const dev = newDevice();
+  const redeem = await buildLinkRedeem({ space: SPACE, nonce: made.nonce, device: { id: "phone-aaaaaaaa", label: "Aina's phone", ...dev } });
+  const got = await r.svc.linkRedeem(redeem, "203.0.113.90");
+  assert.equal(got.ok, true, JSON.stringify(got));
+  assert.equal(got.salt, r.salt);
+  assert.deepEqual(aesUnwrap(deriveLogin(PASSWORD, got.salt, TEST_KDF).K, got.bundle.passwordWrap, "vyre:master:password:v1"), r.rk, "the master password opens it");
+  assert.equal(r.events.at(-1).device, "phone-aaaaaaaa", "the other devices are told");
+  // a second use, with the same signed request or a new one, is link_used
+  const again = await r.svc.linkRedeem(redeem, "203.0.113.91");
+  assert.equal(again.error.code, "link_used");
+  assert.equal((await r.svc.linkRedeem(await buildLinkRedeem({ space: SPACE, nonce: made.nonce, device: { label: "x", ...newDevice() } }), "203.0.113.92")).error.code, "link_used");
+});
+
+test("a device link that is wrong, old, for another space, made by a stranger or not by a member fails plainly and burns", async () => {
+  const r = await rig();
+  const mk = async (/** @type {any} */ o = {}) => buildLinkMake({ space: SPACE, person: PERSON, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) }, now: () => r.clock.t, ...o });
+  // a link nobody made, and a malformed one
+  assert.equal((await r.svc.linkRedeem(await buildLinkRedeem({ space: SPACE, nonce: crypto.randomBytes(32).toString("base64url"), device: { label: "x", ...newDevice() } }), "198.51.100.1")).error.code, "bad_link");
+  assert.equal((await r.svc.linkRedeem({ nonce: "short", device: {} }, "198.51.100.2")).error.code, "bad_link");
+  // expiry
+  const old = await mk();
+  await r.svc.linkMake(old.body);
+  r.clock.t += 5 * 60_000 + 1;
+  assert.equal((await r.svc.linkRedeem(await buildLinkRedeem({ space: SPACE, nonce: old.nonce, device: { label: "x", ...newDevice() } }), "198.51.100.3")).error.code, "link_expired");
+  // a request for another space does not make a link here, a stranger's key does not, a non-member does not
+  await assert.rejects(async () => r.svc.linkMake((await mk({ space: "other" })).body), (/** @type {any} */ e) => e.code === "denied");
+  const stranger = identityKey();
+  await assert.rejects(async () => r.svc.linkMake((await mk({ identity: { pub: stranger.pub, sign: (/** @type {Buffer} */ m) => stranger.sign(m) } })).body), (/** @type {any} */ e) => e.code === "denied", "a key the person never published");
+  await assert.rejects(async () => r.svc.linkMake((await mk({ person: "per_" + "b".repeat(26) })).body), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(async () => r.svc.linkMake({ ...(await mk()).body, exp: r.clock.t + 3_600_000 }), (/** @type {any} */ e) => e.code === "bad_input", "a link lasts five minutes");
+  // a redeem signed by some key other than the device's own is refused, and the link is gone
+  const fresh = await mk();
+  await r.svc.linkMake(fresh.body);
+  const bad = await buildLinkRedeem({ space: SPACE, nonce: fresh.nonce, device: { label: "x", ...newDevice() } });
+  const wrong = { ...bad, sig: newDevice().sign(Buffer.from("not the redeem message")) };
+  assert.equal((await r.svc.linkRedeem(wrong, "198.51.100.4")).error.code, "bad_link");
+  assert.equal((await r.svc.linkRedeem(bad, "198.51.100.5")).error.code, "link_used", "burned by the first presentation");
+});
+
+test("at most five device links wait for one person", async () => {
+  const r = await rig();
+  for (let i = 0; i < 5; i += 1) await r.svc.linkMake((await buildLinkMake({ space: SPACE, person: PERSON, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) }, now: () => r.clock.t })).body);
+  await assert.rejects(async () => r.svc.linkMake((await buildLinkMake({ space: SPACE, person: PERSON, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) }, now: () => r.clock.t })).body), (/** @type {any} */ e) => e.code === "rate_limited");
 });

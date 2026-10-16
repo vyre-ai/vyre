@@ -21,6 +21,11 @@ export async function loginHandle(q, svc, source) {
     catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
   }
   if (op === "github") { const r = await svc.githubFinish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
+  if (op === "link-make") {
+    try { return { status: 200, body: await svc.linkMake(/** @type {any} */ (q)) }; }
+    catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : err.code === "rate_limited" ? 429 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
+  }
+  if (op === "link-redeem") { const r = await svc.linkRedeem(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
   if (op === "link-github") {
     try { return { status: 200, body: await svc.linkGithub(/** @type {any} */ (q)) }; }
     catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
