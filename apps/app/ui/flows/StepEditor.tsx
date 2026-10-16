@@ -15,7 +15,7 @@ import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { DocumentFields } from "./DocumentFields";
 import { FailurePanel } from "./FailurePanel";
-import { HOWS, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
+import { HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -63,13 +63,24 @@ function Condition({ s, setStep, draft, options }: { s: DraftStep; setStep: (pat
       </>
     );
   }
+  const more: any[] = c.more ?? [];
+  const setClause = (i: number, patch: Record<string, unknown>) => (i === 0 ? set(patch) : set({ more: more.map((x, k) => (k === i - 1 ? { ...x, ...patch } : x)) }));
   return (
     <>
-      <Select label="Check a field of" value={c.source ?? "trigger"} options={earlier} onChange={(source) => set({ source })} />
-      <Field label="Field" value={c.field ?? ""} onChangeText={(field) => set({ field })} placeholder="For example amount" />
-      <Select label="Is" value={c.op ?? ">"} options={OPERATORS} onChange={(op) => set({ op })} />
-      <Field label="Value" value={String(c.value ?? "")} onChangeText={(value) => set({ value })} placeholder="For example 500" />
-      <View className="flex-row"><Button kind="ghost" size="sm" label="Edit as a formula" onPress={() => set({ mode: "formula", formula: condExpr(c, draft.trigger) })} /></View>
+      {[c, ...more].map((x, i) => (
+        <View key={i} className="gap-s2">
+          {i ? <Select label="Joined to the one above with" value={c.join === "or" ? "or" : "and"} options={[["and", "and: both must hold"], ["or", "or: either can hold"]]} onChange={(join) => set({ join })} /> : null}
+          <Select label="Check a field of" value={x.source ?? "trigger"} options={earlier} onChange={(source) => setClause(i, { source })} />
+          <Field label="Field" value={x.field ?? ""} onChangeText={(field) => setClause(i, { field })} placeholder="For example amount" />
+          <Select label="Is" value={x.op ?? ">"} options={OPERATORS} onChange={(op) => setClause(i, { op })} />
+          <Field label="Value" value={String(x.value ?? "")} onChangeText={(value) => setClause(i, { value })} placeholder="For example 500" />
+          {i ? <View className="flex-row"><Button kind="ghost" size="sm" icon="x" label="Remove this check" onPress={() => set({ more: more.filter((_, k) => k !== i - 1) })} /></View> : null}
+        </View>
+      ))}
+      <View className="flex-row gap-s2">
+        <Button kind="ghost" size="sm" icon="plus" label="Add another check" onPress={() => set({ more: [...more, { source: "trigger", field: "", op: "==", value: "" }] })} />
+        <Button kind="ghost" size="sm" label="Edit as a formula" onPress={() => set({ mode: "formula", formula: condExpr(c, draft.trigger) })} />
+      </View>
     </>
   );
 }
@@ -135,6 +146,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
               ) : null}
               {s.kind === "agent" || s.kind === "assign" ? (
                 <View className="gap-s3 border-t border-edge pt-s3">
+                  <Select label="What comes back" value={s.output ?? "note"} options={OUTPUTS} onChange={(output) => setStep(s.id, { output })} />
+                  {TARGETED.has(s.output) ? <Field label={s.output === "fields" ? "Fields to fill in on the record" : s.output === "file" ? "Folder for the file (optional)" : "Name of the draft (optional)"} value={s.outputTarget ?? ""} onChangeText={(outputTarget) => setStep(s.id, { outputTarget })} placeholder={s.output === "fields" ? "For example status, owner" : s.output === "file" ? "For example contracts/signed" : "For example welcome"} help={s.output === "fields" ? "Separated by commas. The task is done when they are filled in." : undefined} /> : null}
                   <Text strong>Who checks it and who follows it</Text>
                   <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
                   {s.checker ? <ContextBox label="Note for the approver" value={s.approverNote ?? ""} onChange={(approverNote) => setStep(s.id, { approverNote })} options={options} placeholder="What to check" /> : null}
@@ -281,6 +294,9 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Rows rows={s.query ?? []} onChange={(query) => set({ query })} draft={draft} stepId={s.id} options={options} fieldLabel="Name" title="Query (optional)" help="Added to the address as ?name=value." />
           <Rows rows={s.headers ?? []} onChange={(headers) => set({ headers })} draft={draft} stepId={s.id} options={options} fieldLabel="Header" title="Headers (optional)" help="The key stays in the Vault: a header such as Authorization is never set here." />
           {(s.method ?? "GET") !== "GET" && (s.method ?? "GET") !== "HEAD" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <Select label="A file from Drive (optional)" value={s.driveMode ?? ""} options={[["", "None"], ["upload", "Send a file from Drive"], ["save", "Save the answer to Drive"]]} onChange={(driveMode) => set({ driveMode: driveMode || undefined })} />
+          {s.driveMode ? <Field label="Drive path" value={s.drivePath ?? ""} onChangeText={(drivePath) => set({ drivePath })} placeholder="For example contracts/signed.pdf" help="A path in the Space's Drive." /> : null}
+          {s.driveMode === "upload" ? <Field label="File type (optional)" value={s.driveType ?? ""} onChangeText={(driveType) => set({ driveType })} placeholder="For example application/pdf" /> : null}
           <NewConnection options={options} onAdded={(connector) => set({ connector })} />
           <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>
@@ -330,6 +346,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" title="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
+      {["email", "sms", "web", "action", "connection", "document", "project"].includes(s.kind) ? <View className="gap-s1"><Switch label="Always ask a person before this goes out" on={s.approve === true} onChange={(on) => set({ approve: on ? true : undefined })} /><Text size="caption" tone="label">Off unless you turn it on: once the Flow is switched on, this step runs without asking.</Text></View> : null}
       <FailurePanel s={s} setStep={set} inHandler={inHandler} />
     </>
   );

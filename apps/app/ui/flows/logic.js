@@ -217,7 +217,7 @@ function kindProblem(s, o) {
     case "subflow": return s.flow ? null : "Choose the flow to run.";
     case "connection": return !s.connection ? "Choose the connection (an owner adds one in the Vault)." : !/^(request|[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,3})$/.test((s.operation || "").trim()) ? "Name the operation, for example contacts.list, or request." : null;
     case "action": return !ACTION_WORDS.test((s.action || "").trim()) ? "Write the action as module.action, for example records.create." : !RESOURCE_WORDS.test((s.resource || "").trim()) ? "Write where it acts, starting with vyre://." : null;
-    case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
+    case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || ![s.cond, ...(s.cond.more || [])].every((c) => (c.field || "").trim() && String(c.value ?? "").trim() !== "") ? "Say what to check: a field, how, and a value." : null;
     case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
     default: return null;
   }
@@ -446,6 +446,40 @@ export const HOWS = /** @type {[string, string][]} */ ([["template", "Fill in a 
 const namedRows = (rows) => { const o = Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return Object.keys(o).length ? o : null; };
 /** The stored object as rows to edit; null when a value is not one the rows can show. @param {any} o */
 const namedRowsFrom = (o) => { if (!o || typeof o !== "object" || Array.isArray(o)) return null; const rows = Object.entries(o).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? rows : null; };
+/** A web call's hand-off with Drive as the stored step has it: send a file from a Drive path, or save the answer to one. @param {any} s */
+const driveOf = (s) => {
+  const path = String(s.drivePath || "").trim();
+  if (!path || path.split("/").includes("..")) return null;
+  if (s.driveMode === "upload") return { upload: { path, ...(String(s.driveType || "").trim() ? { contentType: String(s.driveType).trim() } : {}) } };
+  return s.driveMode === "save" ? { saveTo: path } : null;
+};
+/** The stored hand-off as the draft's fields; null when it says more than the editor shows (a version). @param {any} d */
+const driveFrom = (d) => {
+  if (d === undefined) return {};
+  if (!d || typeof d !== "object") return null;
+  const ks = Object.keys(d);
+  if (ks.length === 1 && ks[0] === "saveTo" && typeof d.saveTo === "string") return { driveMode: "save", drivePath: d.saveTo };
+  const u = d.upload;
+  if (ks.length === 1 && ks[0] === "upload" && u && typeof u.path === "string" && Object.keys(u).every((k) => k === "path" || k === "contentType")) return { driveMode: "upload", drivePath: u.path, ...(typeof u.contentType === "string" ? { driveType: u.contentType } : {}) };
+  return null;
+};
+/** What a task hands back: the kinds the engine knows, and the optional name of what it is for. */
+export const OUTPUTS = /** @type {[string, string][]} */ ([["note", "A note"], ["fields", "Filled-in fields"], ["draft", "A draft to check"], ["sent", "Something sent"], ["decision", "A yes or no"], ["file", "A file"]]);
+/** The stored output of a task step from the draft. @param {any} s */
+const outputOf = (s) => {
+  if (!OUTPUTS.some((x) => x[0] === s.output) || s.output === "note") return { kind: "note" };
+  const text = String(s.outputTarget || "").trim();
+  if (!TARGETED.has(s.output) || !text) return { kind: s.output };
+  return { kind: s.output, target: s.output === "fields" ? text.split(",").map((x) => x.trim()).filter(Boolean) : text };
+};
+/** The output kinds that take a target: the record fields a task fills in, the name of a draft, the folder a file lands in. */
+export const TARGETED = new Set(["fields", "draft", "file"]);
+/** The draft's output fields from a stored output; null when it says more than the editor shows. @param {any} o */
+const outputFrom = (o) => {
+  if (!o || typeof o !== "object" || !OUTPUTS.some((x) => x[0] === o.kind) || Object.keys(o).some((k) => k !== "kind" && k !== "target")) return null;
+  if (o.target !== undefined && !(TARGETED.has(o.kind) && (typeof o.target === "string" || (o.kind === "fields" && Array.isArray(o.target) && o.target.every((x) => typeof x === "string" && x && !x.includes(",")))))) return null;
+  return o.kind === "note" ? {} : { output: o.kind, ...(o.target !== undefined ? { outputTarget: Array.isArray(o.target) ? o.target.join(", ") : o.target } : {}) };
+};
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
 /** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
@@ -467,7 +501,8 @@ export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Numb
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
   if (s.kind === "advanced") return s.raw;
-  return { ...kindDefinition(s, d), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+  const k = kindDefinition(s, d);
+  return { ...k, ...(s.approve === true && (k.kind === "call" || k.kind === "service") ? { approve: true } : {}), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
 }
 
 /** @param {DraftStep} s @param {Draft} d */
@@ -485,7 +520,7 @@ function kindDefinition(s, d) {
     case "wait":
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
-    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
+    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(driveOf(s) ? { drive: driveOf(s) } : {}), ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
@@ -499,8 +534,8 @@ function kindDefinition(s, d) {
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
     case "document": return { id: s.id, kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: s.template, ...(s.format === "pdf" ? { format: "pdf" } : {}), ...(placeholderRows(s.fields).length ? { values: Object.fromEntries(placeholderRows(s.fields).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])) } : {}), ...((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).length ? { records: Object.fromEntries((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).map((/** @type {any} */ r) => [r.alias, recUrn(r.ref)])) } : {}) } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
-    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
-    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(HOWS.some((x) => x[0] === s.how) ? { how: s.how } : {}), ...(HOWS.some((x) => x[0] === s.how) && typeof s.template === "string" && s.template.trim() ? { template: s.template } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
+    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: outputOf(s), record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
+    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: outputOf(s), ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(HOWS.some((x) => x[0] === s.how) ? { how: s.how } : {}), ...(HOWS.some((x) => x[0] === s.how) && typeof s.template === "string" && s.template.trim() ? { template: s.template } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
@@ -691,17 +726,50 @@ const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("te
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
+  const parts = splitJoined(e || "");
+  if (!parts) return { mode: "formula", formula: e || "" };
+  const clauses = parts.list.map(clauseFrom);
+  if (clauses.some((c) => !c)) return { mode: "formula", formula: e || "" };
+  return { mode: "build", ...clauses[0], ...(clauses.length > 1 ? { join: parts.join, more: clauses.slice(1) } : {}) };
+}
+
+/** An expression split at its top-level " and " or " or ": one kind of joiner only, and never inside quoted text. Null when both kinds are mixed. @param {string} e @returns {{ join: "and" | "or", list: string[] } | null} */
+function splitJoined(e) {
+  /** @type {{ at: number, word: "and" | "or" }[]} */ const cuts = [];
+  let q = false;
+  for (let i = 0; i < e.length; i++) {
+    const ch = e[i];
+    if (q) { if (ch === "\\") i++; else if (ch === '"') q = false; continue; }
+    if (ch === '"') q = true;
+    else if (e.startsWith(" and ", i)) cuts.push({ at: i, word: "and" });
+    else if (e.startsWith(" or ", i)) cuts.push({ at: i, word: "or" });
+  }
+  if (new Set(cuts.map((c) => c.word)).size > 1 || e.includes("(") && cuts.length) return null;
+  const word = cuts[0]?.word ?? "and";
+  const list = [];
+  let from = 0;
+  for (const c of cuts) { list.push(e.slice(from, c.at)); from = c.at + word.length + 2; }
+  list.push(e.slice(from));
+  return { join: word, list };
+}
+
+/** One field, operator and value as the builder shows it; null when it is more than that. @param {string} e */
+function clauseFrom(e) {
   const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<|contains) (-?\d+(?:\.\d+)?|true|false|"[^"]*")$/.exec(e || "");
   // A quoted text that looks like a number or a yes/no would come back unquoted, which is a different value: keep it as the formula it is.
-  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return { mode: "formula", formula: e || "" };
-  return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
+  if (!m || /^"(-?\d+(\.\d+)?|true|false)"$/.test(m[5])) return null;
+  return { source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
 /** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
   const { plain, policy } = splitPolicy(s);
-  const d = stepFromKind(plain);
-  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...policyDraft(policy, stepFrom) };
+  // `approve: true` is the step's own "always ask a person" and rides on any call or service step.
+  const asks = plain.approve === true && (plain.kind === "call" || plain.kind === "service");
+  const { approve: _approve, ...bare } = plain;
+  void _approve;
+  const d = stepFromKind(asks ? bare : plain);
+  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...(asks ? { approve: true } : {}), ...policyDraft(policy, stepFrom) };
 }
 
 /** @param {any} s @returns {DraftStep} */
@@ -729,9 +797,10 @@ function stepFromKind(s) {
     }
     case "service": {
       if (s.connection !== undefined && s.connector === undefined) return typeof s.connection === "string" && typeof s.operation === "string" && keys(s, ["id", "kind", "connection", "operation", "input", "label"]) && (s.input === undefined || (typeof s.input === "object" && s.input !== null && !Array.isArray(s.input) && Object.values(s.input).every((v) => unval(v) !== null))) ? { id: s.id, kind: "connection", connection: s.connection, operation: s.operation, fields: rowsOf(s.input || {}) } : adv;
+      const dv = driveFrom(s.drive);
       const q = s.query === undefined ? [] : namedRowsFrom(s.query), h = s.headers === undefined ? [] : namedRowsFrom(s.headers);
-      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null
-        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}) } : adv;
+      return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "drive", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null && dv !== null
+        ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}), ...dv } : adv;
     }
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
     case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
@@ -769,10 +838,10 @@ function stepFromKind(s) {
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
-        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...ppl } : adv;
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && outputFrom(s.output) !== null && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
+        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...outputFrom(s.output), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "record"]) && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
@@ -816,6 +885,12 @@ export function fieldExpr(c, t) {
 export function condExpr(c, t) {
   if (!c) return "";
   if (c.mode === "formula") return String(c.formula || "").trim();
+  const parts = [c, ...(c.more || [])].map((x) => clauseExpr(x, t));
+  return parts.some((x) => !x) ? "" : parts.join(c.join === "or" ? " or " : " and ");
+}
+
+/** One field, operator and value as an expression; empty when it is not filled in. @param {any} c @param {Trigger} t */
+function clauseExpr(c, t) {
   const left = fieldExpr(c, t);
   if (!left || c.value === undefined || String(c.value).trim() === "") return "";
   const v = String(c.value).trim();
@@ -826,8 +901,8 @@ export function condExpr(c, t) {
 export function condWords(c, t) {
   if (!c) return "a condition holds";
   if (c.mode === "formula") return String(c.formula || "").trim() || "a condition holds";
-  const op = OPERATORS.find(([x]) => x === c.op)?.[1] || "is";
-  return c.field && String(c.value ?? "").trim() !== "" ? `${c.field} ${op} ${c.value}` : "a condition holds";
+  const words = [c, ...(c.more || [])].map((x) => { const op = OPERATORS.find(([y]) => y === x.op)?.[1] || "is"; return x.field && String(x.value ?? "").trim() !== "" ? `${x.field} ${op} ${x.value}` : ""; });
+  return words.some((x) => !x) ? "a condition holds" : words.join(c.join === "or" ? " or " : " and ");
 }
 void fieldExpr;
 

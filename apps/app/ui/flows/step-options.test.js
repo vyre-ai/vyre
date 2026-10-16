@@ -156,6 +156,48 @@ test("every call a dedicated step writes is on the list the generic action step 
   for (const a of actions) assert.ok(SPECIAL_ACTIONS.has(a), a);
 });
 
+test("an If step joins several checks with and or or, and a mix of both stays a formula", () => {
+  const trig = { kind: "created", type: "contact" };
+  const c = { mode: "build", source: "trigger", field: "amount", op: ">", value: "500", join: "or", more: [{ source: "trigger", field: "name", op: "contains", value: "harlow and sons" }] };
+  assert.equal(condExpr(c, trig), 'trigger.after.amount > 500 or trigger.after.name contains "harlow and sons"');
+  const back = fromDefinition(flow([{ id: "d1", kind: "decide", if: condExpr(c, trig), then: [], else: [] }]), options).steps[0].cond;
+  assert.deepEqual([back.mode, back.join, back.more.length, back.more[0].value], ["build", "or", 1, "harlow and sons"]);
+  assert.equal(toDefinition(fromDefinition(flow([{ id: "d1", kind: "decide", if: condExpr(c, trig), then: [], else: [] }]), options), options).steps[0].if, condExpr(c, trig));
+  const mixed = 'trigger.after.a > 1 and trigger.after.b > 2 or trigger.after.c > 3';
+  assert.equal(fromDefinition(flow([{ id: "d1", kind: "decide", if: mixed, then: [], else: [] }]), options).steps[0].cond.mode, "formula");
+  assert.equal(condExpr({ ...c, more: [{ source: "trigger", field: "", op: "==", value: "" }] }, trig), "", "a check left empty makes no condition yet");
+});
+
+test("a send can always ask a person, and a web call can send or save a Drive file", () => {
+  const d = flow([{ id: "m1", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: "+15550100", body: "Hi" }, approve: true }, { id: "w1", kind: "service", connector: "crm", method: "POST", path: "/up", drive: { upload: { path: "files/a.pdf", contentType: "application/pdf" } }, approve: true }]);
+  const draft = fromDefinition(d, options);
+  assert.deepEqual(draft.steps.map((s) => [s.kind, s.approve]), [["sms", true], ["web", true]]);
+  assert.equal(draft.steps[1].driveMode, "upload");
+  const out = toDefinition(draft, options);
+  assert.equal(out.steps[0].approve, true);
+  assert.deepEqual(out.steps[1].drive, { upload: { path: "files/a.pdf", contentType: "application/pdf" } });
+  assert.deepEqual(checkFlow(out), []);
+  draft.steps[0].approve = undefined; draft.steps[1].driveMode = "save"; draft.steps[1].drivePath = "files/out.json";
+  const again = toDefinition(draft, options);
+  assert.equal(again.steps[0].approve, undefined);
+  assert.deepEqual(again.steps[1].drive, { saveTo: "files/out.json" });
+  const versioned = fromDefinition(flow([{ id: "w1", kind: "service", connector: "crm", method: "POST", path: "/up", drive: { upload: { path: "a", version: 2 } } }]), options);
+  assert.equal(versioned.steps[0].kind, "advanced", "a pinned version stays as it was");
+});
+
+test("an agent or assign step says what comes back, not only a note", () => {
+  const d = flow([{ id: "a1", kind: "agent", assistant: "teammate:juno", title: "Draft", instructions: "Write it", output: { kind: "draft", target: "welcome" }, record: { expr: "event.subject" }, await: true }, { id: "t1", kind: "assign", to: "role:intake", title: "Fill", output: { kind: "fields", target: ["status", "owner"] }, record: { expr: "event.subject" } }]);
+  const draft = fromDefinition(d, options);
+  assert.deepEqual([draft.steps[0].kind, draft.steps[0].output, draft.steps[0].outputTarget, draft.steps[1].output, draft.steps[1].outputTarget], ["agent", "draft", "welcome", "fields", "status, owner"]);
+  const out = toDefinition(draft, options);
+  assert.deepEqual([out.steps[0].output, out.steps[1].output], [{ kind: "draft", target: "welcome" }, { kind: "fields", target: ["status", "owner"] }]);
+  assert.deepEqual(checkFlow(out), []);
+  draft.steps[0].output = "note";
+  assert.deepEqual(toDefinition(draft, options).steps[0].output, { kind: "note" });
+  const odd = fromDefinition(flow([{ id: "t1", kind: "assign", to: "role:intake", title: "Sign", output: { kind: "file", extra: 1 } }]), options);
+  assert.equal(odd.steps[0].kind, "advanced");
+});
+
 test("the action picker searches by name or words and picking one fills where it acts and a row for each plain input", () => {
   const o = { ...options, actions: [{ action: "documents.generate", label: "Make a document from a template", risk: "read", inputs: { template: "string", values: "object", format: "string" } }, { action: "tasks.nudge", label: "Nudge a task", risk: "outward.send", inputs: { id: "string", days: "number" } }] };
   assert.deepEqual(actionChoices(o, "").map((x) => x[0]), ["documents.generate", "tasks.nudge"]);
