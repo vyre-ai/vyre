@@ -147,7 +147,7 @@ export function pickPlacement(d) {
 export function lentMacOffline(placement, places, thread) {
   if (!placement || placement.where !== "mac" || !thread) return false;
   const list = Array.isArray(places) ? places : (places && typeof places === "object" && Array.isArray(/** @type {any} */ (places).places) ? /** @type {any} */ (places).places : []);
-  return list.some((r) => r && (r.chat === thread || r.session === thread) && r.online === false);
+  return list.some((/** @type {any} */ r) => r && (r.chat === thread || r.session === thread) && r.online === false);
 }
 
 /** How many 15s placement polls must see the lent Mac offline before auto-moving to the server (stops flapping). */

@@ -34,8 +34,8 @@ export async function liveDuplex(o) {
   };
   return {
     send() { run(); },
-    onMessage: (cb) => { msg.push(cb); },
-    onClose: (cb) => { shut.push(cb); if (closed) cb(); },
+    onMessage: (/** @type {(frame: any) => void} */ cb) => { msg.push(cb); },
+    onClose: (/** @type {() => void} */ cb) => { shut.push(cb); if (closed) cb(); },
     close: end,
     info,
   };
