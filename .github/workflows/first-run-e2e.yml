@@ -1,0 +1,139 @@
+# The new first run, end to end, on real machines (scripts/proof-first-run.mjs). A release does not publish unless this passes (release.yml, job first-run).
+#
+# Linux runner: a person's computer (a real vyred serving this checkout's own web export) is driven in a browser through Identity (username, master password, recovery key) and Create a space; the one
+#   install command the screen shows is run by the REAL installer (scripts/install-box.sh, in docker); the server pairs to the creator, the app says Ready, the server names this identity its owner;
+#   then a lock, and the master password (and the recovery key) open the identity again.
+# macOS runner: the same walk with the Mac app from the dmg installed in /Applications (signed, started against that vyred; its window must load the app and call the daemon) and the REAL Mac installer
+#   (scripts/install-mac-server.sh) for the server. A hosted runner has no nested virtualization, so the Mac server runs on the built-in store (VYRE_PROOF_BUILTIN_STORE), as install-mac-server's own proof does.
+# The relay (relay/node/server.js) and the names directory (the Worker's own code) run on the runner; nothing reaches vyre.run, relay.vyre.run or names.vyre.run.
+name: first-run-e2e
+on:
+  workflow_call:
+    inputs:
+      build_mac:
+        description: "Build the Mac app here (false when the calling run already uploaded the artifact `mac-app`)"
+        type: boolean
+        default: true
+  workflow_dispatch:
+  pull_request:
+    paths: ["scripts/proof-first-run.mjs", "scripts/lib/proof/**", "apps/app/screens/first-run/**", "apps/app/screens/unlock/**", "apps/app/src/shell/**", "core/onboard/**", "core/identity/**", "kernel/identity/**", ".github/workflows/first-run-e2e.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: first-run-e2e-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # The app's own web export from this checkout: what the person's vyred serves at /app/, and what the Mac app's window loads through it.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: first-run-web
+          path: apps/app/dist
+          retention-days: 2
+
+  mac-build:
+    if: ${{ inputs.build_mac != false }}
+    uses: ./.github/workflows/mac-app.yml
+    permissions:
+      contents: read
+    with:
+      version: ""
+      sign: false
+
+  linux:
+    needs: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: first-run-web
+          path: apps/app/dist
+      - name: A browser (the one pinned version)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.48.2
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: The first run, on a real Linux server
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/
+        run: node scripts/proof-first-run.mjs --server installer --out "$RUNNER_TEMP/first-run-linux"
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs --tail 120 vyre-vyre-1 2>&1 || true
+          tail -60 "$RUNNER_TEMP/first-run-linux/server/install.log" 2>&1 || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: first-run-linux
+          path: ${{ runner.temp }}/first-run-linux
+          retention-days: 14
+
+  mac:
+    needs: [web, mac-build]
+    if: ${{ always() && !cancelled() && needs.web.result == 'success' && (needs.mac-build.result == 'success' || needs.mac-build.result == 'skipped') }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: first-run-web
+          path: apps/app/dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mac-app
+          path: ${{ runner.temp }}/mac-app
+      - name: Install the app from the dmg, the way a person does
+        run: |
+          dmg=$(find "$RUNNER_TEMP/mac-app" \( -name 'Vyre-aarch64.dmg' -o -name 'Vyre-*-aarch64.dmg' \) | head -1)
+          [ -n "$dmg" ] || { echo "no aarch64 dmg in the mac-app artifact:"; find "$RUNNER_TEMP/mac-app" | head -30; exit 1; }
+          mkdir -p "$RUNNER_TEMP/dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "$dmg"
+          rm -rf /Applications/Vyre.app
+          ditto "$RUNNER_TEMP/dmg/Vyre.app" /Applications/Vyre.app
+          hdiutil detach "$RUNNER_TEMP/dmg"
+          codesign -dv /Applications/Vyre.app 2>&1 | head -5
+      - name: A browser (the one pinned version)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.48.2
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install chromium
+      - name: The first run, with the installed Mac app, on a real Mac server
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/
+        run: node scripts/proof-first-run.mjs --server mac --mac-app /Applications/Vyre.app --out "$RUNNER_TEMP/first-run-mac"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: first-run-mac
+          path: ${{ runner.temp }}/first-run-mac
+          retention-days: 14
