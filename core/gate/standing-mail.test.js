@@ -1,7 +1,7 @@
 // @ts-check
 // The guards of a standing permission, on a real vyred with the kernel on and a REAL mail connection (a fake IMAP and SMTP server behind it, test/helpers.js mailFixture): an agent's mail.send reaches the Gate
 // through the mail module, the kernel's standingFor sees the agent's own chain, and
-//  - the person the agent works for must hold use of the connection: a member's chat is held, the owner's approverless run goes out;
+//  - the person the agent works for must hold use of the connection: a member's chat is held at the Gate; the owner's agent still one-taps at the registry, then standing sends at the Gate;
 //  - another agent that merely names juno is not covered;
 //  - a followed list does not count an address added by someone who does not hold the connection;
 //  - an expiry ends it; a payment is held over its limit, over its day and in another currency.
@@ -73,8 +73,9 @@ test("a standing permission over a real mail connection: the owner's agent goes 
   await ok("agents.create", { name: "kit", kind: "agent" });
   await K.gateway.grants.setRole(w.dev(OWNER), { person: BEN, role: "member" }, { presence: { op: "stand-in", fields: {}, n: 1 } }).catch(() => {});
   const sendOut = async (/** @type {string} */ agent, /** @type {string} */ person, /** @type {string} */ to) => {
-    const r = await w.agentCall(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
-    assert.notEqual(r.error?.code, "held_for_approval", `${agent} as ${person.slice(4, 8)}: standing must skip the registry hold, got ${JSON.stringify(r.error)}`);
+    const first = await w.agentCall(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.equal(first.error?.code, "held_for_approval", `${agent} as ${person.slice(4, 8)}: agents one-tap at the registry before mail runs`);
+    const r = await w.throughRegistryHold(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
     assert.ok(!r.error, `${agent} as ${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
     const id = r.data.held || r.data.id;
     return (await ok("gate.get", { id })).state;
@@ -156,8 +157,9 @@ test("over MCP, an agent is covered by its own permission only: naming another a
   await ok("agents.create", { name: "kit", kind: "agent" });
   await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
   const sendOut = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
-    const r = await w.agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
-    assert.notEqual(r.error?.code, "held_for_approval", `${agent}: standing must skip the registry hold, got ${JSON.stringify(r.error)}`);
+    const first = await w.agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
+    assert.equal(first.error?.code, "held_for_approval", `${agent}: agents one-tap at the registry`);
+    const r = await throughRegistryHold(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
     assert.ok(!r.error, `${agent}: ${JSON.stringify(r.error)}`);
     return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
   };

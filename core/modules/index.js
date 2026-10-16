@@ -1766,11 +1766,8 @@ export class Registry {
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
     // A first-party module's tool that the person's card already covers files a nested outward tool it names in `covers` (comms.send files mail.send): that is the same act, so it rides the same yes.
     const rideMark = String(caller).startsWith("module:") ? coveredRide(this.tools, currentCall(), tool, caller) : null;
-    let standingCovered = false;
-    if (def.outward === true && !def.asks && !door && !rideMark && !approval && typeof this.deps.standingCovers === "function") {
-      try { standingCovered = await this.deps.standingCovers(tool, input, meta); } catch { standingCovered = false; }
-    }
-    if (def.outward === true && !def.asks && !door && !rideMark && !standingCovered && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
+    // Standing permissions skip the Gate hold after the tool runs; they never skip the registry one-tap for an agent (only the owner's own surface is a person caller here).
+    if (def.outward === true && !def.asks && !door && !rideMark && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
       let fields = holdFields(input);
       if (approval) {
