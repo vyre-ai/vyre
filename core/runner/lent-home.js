@@ -248,10 +248,10 @@ export function createLentHome(o) {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
     book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
-    /** May the person's standing choice put this session back on its computer now? (see mayReturn) @param {string} session @param {string} person */
-    mayReturn(session, person) { return mayReturn(book.get(String(session)), person); },
     /** Does this chat have more than one person? Such a chat never runs on a computer. @param {string} chat */
     isGroup(chat) { return isGroup(chat); },
+    /** May the person's standing choice put this session back on its computer now? (see mayReturn) @param {string} session @param {string} person */
+    mayReturn(session, person) { return mayReturn(book.get(String(session)), person); },
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The folders the person's computers that beat lately offer to chats: [{ device, id, label }] (ids and labels only; the paths stay on the computers). @param {string} person */
