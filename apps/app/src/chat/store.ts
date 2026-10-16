@@ -17,6 +17,8 @@ import { createMockStream, type Frame, type StreamSource, type StreamState } fro
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
 import { hasSessionCache, loadSessionCache, saveSessionCache } from "./session-cache.js";
+import { newUuid } from "@vyre/chat-core/composer-state.js";
+import { decryptUserMessage, openPrivateKey } from "./private-text.js";
 
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; saved: boolean; rev: number };
@@ -149,6 +151,15 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       if (isKind(f, "text-done")) finished.add("a:" + f.data.message);
       if (isKind(f, "status") || isKind(f, "user-message")) meta = true;
       for (const k of r.touched) touched.add(k);
+      if (isKind(f, "user-message") && f.data?.enc) {
+        const ukey = "u:" + f.data.message;
+        void decryptUserMessage(f.data.enc, openPrivateKey).then((plain) => {
+          if (plain && folder.setUserText(ukey, plain)) {
+            notifyRow(ukey);
+            for (const fn of [...layoutSubs]) fn();
+          }
+        });
+      }
     }
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }
     const now = nowMs();
@@ -179,8 +190,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   }
 
   /** The words show at once, dimmed, and the box's own row replaces them; a refusal (or a throw) takes them back out and says why. */
-  async function withOptimistic(text: string, run: () => Promise<string | null>): Promise<string | null> {
-    const key = folder.addOptimistic(text);
+  async function withOptimistic(text: string, message: string, run: () => Promise<string | null>): Promise<string | null> {
+    const key = folder.addOptimistic(text, message);
     for (const f of [...layoutSubs]) f();
     let why: string | null;
     try { why = await run(); } catch (e) { why = e instanceof Error && e.message ? e.message : "That did not send."; }
@@ -189,7 +200,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   }
 
   /** The plain send: the group route, the session's own, or the source's. */
-  async function sendPlain(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
+  async function sendPlain(text: string, o?: { message?: string; mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
@@ -233,7 +244,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     },
     async send(text, o) {
       if (!text.trim()) return null;
-      return withOptimistic(text, () => sendPlain(text, o));
+      const message = newUuid();
+      return withOptimistic(text, message, () => sendPlain(text, { ...o, message }));
     },
     async interrupt() {
       if (!store.meta().canStop) return null;
@@ -257,7 +269,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
-      return withOptimistic(text, async () => {
+      const message = newUuid();
+      return withOptimistic(text, message, async () => {
       const a = withActions(source);
       if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
         const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...chipsOf(o.mentions), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });

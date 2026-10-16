@@ -36,7 +36,7 @@ export type SessionActions = {
   /** A new session with the conversation up to (not including) `at`; resolves with its id. */
   branch(at: string): Done;
   /** Send a message; resolves with why it was refused, or null. */
-  sendText(text: string, o?: { mentions?: Mention[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null>;
+  sendText(text: string, o?: { message?: string; mentions?: Mention[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null>;
   /** Tell the chat this person is typing (shown to the others for a few seconds; nothing is kept). */
   typing(): void;
   stopSession(): Promise<string | null>;
@@ -152,13 +152,14 @@ export function boxStream(session: string): BoxStream {
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
     sendText: async (text, o) => {
+      const message = o?.message ?? newUuid();
       const route = routeComposerLine(text);
       const chips = o?.mentions?.slice(0, 8).map((m) => ({ kind: m.kind, id: m.id, name: m.name }));
       if (route.tool !== "threads.send" || !route.sendAsMessage) {
         const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(chips?.length ? { mentions: chips } : {}) });
         return r.error ? reason(r.error) : null;
       }
-      return note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(chips?.length ? { chips } : {}) });
+      return note("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}), ...(chips?.length ? { chips } : {}) });
     },
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.

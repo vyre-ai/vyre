@@ -21,7 +21,7 @@ import { argsFor } from "./runner.js";
 import { Leases, TTL, ownSurface } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
+import { MIGRATIONS, answerSummary, projectRules, Switchboard } from "./index.js";
 import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
@@ -1603,4 +1603,35 @@ shardTest("one model per turn (#41): the thread follows what the provider report
   assert.equal(textOf(0).payload.model, "claude-opus-5-5", "the old reply is not relabelled");
   assert.match(textOf(1).payload.model, /haiku/, "the new reply says the new model");
   assert.equal(of(s.got, id, "model.switched").length, 2, "an answer that matches the switch says nothing more");
+});
+
+test("pruneInbox drops delivered rows older than 30 days and caps how many are kept per thread", () => {
+  const root = tempHome({ after: () => {} });
+  const db = open(path.join(root, "s.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const sb = new Switchboard({ db, emit: () => {}, call: async () => ({}), root, log: () => {} });
+  const old = Date.now() - 31 * 86400_000;
+  const ins = db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, delivered_at, via) VALUES (?,?,?,?,?,?)");
+  ins.run("t1", "old", "deck", old, old, "turn");
+  ins.run("t1", "fresh", "deck", Date.now(), Date.now(), "turn");
+  ins.run("t1", "wait", "deck", Date.now(), null, null);
+  for (let i = 0; i < 210; i++) ins.run("t2", `m${i}`, "deck", Date.now(), Date.now() + i, "turn");
+  sb.pruneInbox();
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM threads_inbox WHERE thread = ? AND text = 'old'").get("t1").n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL").get("t1").n, 1);
+  assert.ok(db.prepare("SELECT COUNT(*) AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL").get("t2").n <= 200);
+  db.close();
+});
+
+test("switchModel is refused while a live turn is working and the process has control", async () => {
+  const root = tempHome({ after: () => {} });
+  const db = open(path.join(root, "s.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO threads_runs (id, status, cwd, name, provider, mode, started_at, last_at) VALUES (?,?,?,?,?,?,?,?)").run(id, "working", "/tmp", "t", "claude", "default", now, now);
+  const sb = new Switchboard({ db, emit: () => {}, call: async () => ({}), root, log: () => {} });
+  sb.live.set(id, { proc: { control: async () => {} }, turn: "t:1" });
+  await assert.rejects(() => sb.switchModel(id, "haiku"), (e) => e.code === "busy");
+  db.close();
 });
