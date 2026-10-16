@@ -1,0 +1,141 @@
+{
+ "skills.browse": {
+  "data": {
+   "skills": [
+    {
+     "id": "space/house-style",
+     "name": "house-style",
+     "level": "space",
+     "description": "Use when the gallery needs a real skill on the box.",
+     "tokens": 33,
+     "kind": "skill",
+     "harnesses": [
+      "claude",
+      "codex",
+      "grok"
+     ]
+    }
+   ],
+   "drafts": [
+    {
+     "id": "space/gallery-plugin",
+     "name": "gallery-plugin",
+     "level": "space",
+     "scope": "",
+     "version": 1,
+     "state": "draft",
+     "kind": "plugin",
+     "owner": null,
+     "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
+     "hash": "31c65c6f11f4b8b03c79f27f"
+    }
+   ],
+   "role": "owner",
+   "levels": {
+    "personal": {
+     "view": true,
+     "draft": true,
+     "approve": true,
+     "plugin": true
+    },
+    "space": {
+     "view": true,
+     "draft": true,
+     "approve": true,
+     "plugin": true
+    },
+    "agent": {
+     "view": true,
+     "draft": true,
+     "approve": true,
+     "plugin": true
+    },
+    "project": {
+     "view": true,
+     "draft": true,
+     "approve": true,
+     "plugin": true
+    }
+   },
+   "identityPersonal": false,
+   "can": {
+    "draft": {
+     "personal": true,
+     "space": true,
+     "agent": true,
+     "project": true
+    },
+    "approve": {
+     "personal": true,
+     "space": true,
+     "agent": true,
+     "project": true
+    },
+    "plugin": {
+     "personal": true,
+     "space": true,
+     "agent": true,
+     "project": true
+    }
+   }
+  }
+ },
+ "skills.versions": {
+  "data": {
+   "versions": [
+    {
+     "id": "space/house-style",
+     "name": "house-style",
+     "level": "space",
+     "scope": "",
+     "version": 1,
+     "state": "approved",
+     "kind": "skill",
+     "owner": null,
+     "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
+     "hash": "4b29a7030ef6ce8e7931de3b"
+    }
+   ]
+  }
+ },
+ "skills.get": {
+  "data": {
+   "id": "space/house-style",
+   "name": "house-style",
+   "level": "space",
+   "description": "Use when the gallery needs a real skill on the box.",
+   "tokens": 33,
+   "text": "---\nname: house-style\ndescription: Use when the gallery needs a real skill on the box.\n---\n\n# house-style\n\nDo the thing carefully.\n"
+  }
+ },
+ "connectors.connection.list": {
+  "data": {
+   "connections": []
+  }
+ },
+ "skills.draft.plugin": {
+  "data": {
+   "id": "space/gallery-plugin",
+   "name": "gallery-plugin",
+   "level": "space",
+   "scope": "",
+   "version": 1,
+   "state": "draft",
+   "kind": "plugin",
+   "owner": null,
+   "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
+   "hash": "31c65c6f11f4b8b03c79f27f",
+   "declares": {
+    "hooks": [],
+    "mcp": [
+     {
+      "name": "helper",
+      "transport": "http",
+      "url": "https://mcp.example.com/tools"
+     }
+    ]
+   },
+   "ack": "e01bd434ecbc8e5d1e581f1f"
+  }
+ }
+}

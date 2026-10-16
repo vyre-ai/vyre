@@ -70,6 +70,12 @@ export const ALIASES = {
     input: { type: "object", properties: { level: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
     map: (a) => Object.fromEntries(["level", "limit"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
   },
+  skills_decline: {
+    tool: "skills.decline",
+    description: "Turn down a draft skill or plugin version waiting for approval.",
+    input: { type: "object", required: ["name", "level", "version"], properties: { name: { type: "string" }, level: { type: "string" }, scope: { type: "string" }, version: { type: "integer", minimum: 1 } } },
+    map: (a) => Object.fromEntries(["name", "level", "scope", "version"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
+  },
   memory_correct: {
     tool: "memory.heard",
     description: "Pass on a correction the person just made in this chat. Needs action and from_turn, the person's own turn (seq) that says it.",

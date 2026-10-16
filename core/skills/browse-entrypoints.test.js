@@ -30,6 +30,7 @@ test("registry-derived: member door and MCP core expose browse; list routes thro
   const mcpMem = fs.readFileSync(path.join(ROOT, "harness/mcp/memory-tools.js"), "utf8");
   assert.match(mcpMem, /skills_list[\s\S]*skills\.browse/);
   assert.match(mcpMem, /skills_browse[\s\S]*skills\.browse/);
+  assert.match(mcpMem, /skills_decline[\s\S]*skills\.decline/);
   const memberOps = fs.readFileSync(path.join(ROOT, "core/skills/member-ops.js"), "utf8");
   assert.match(memberOps, /ops\.browse/);
   assert.match(memberOps, /o\.browse/);

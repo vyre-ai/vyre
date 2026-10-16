@@ -86,7 +86,11 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     if (done.data.kind === "plugin" && mcpAdd) {
       const p = JSON.parse(String(done.data.body));
       for (const m of p.mcp || []) {
-        try { await mcpAdd({ name: `p-${p.name}-${m.name}`.slice(0, 32), transport: m.transport, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) }); connections.push(`p-${p.name}-${m.name}`.slice(0, 32)); }
+        try {
+          const auth = m.connection ? { type: "bearer", item: `conn-${m.connection}` } : { type: "none" };
+          await mcpAdd({ name: `p-${p.name}-${m.name}`.slice(0, 32), transport: m.transport, auth, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) });
+          connections.push(`p-${p.name}-${m.name}`.slice(0, 32));
+        }
         catch (e) { log(`skills: could not add the Connection for ${p.name}/${m.name}: ${/** @type {Error} */ (e).message}`); }
       }
     }

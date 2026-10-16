@@ -196,7 +196,6 @@ export function ChatScreen(p: ChatScreenProps) {
   const actions = store.actions;
   const { onBranched } = p;
   const needs = useNeeds();
-  const router = useRouter();
   const chatId = here.thread ?? p.sessionId;
   // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
   // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.

@@ -4187,6 +4187,20 @@
     }
    }
   },
+  "skills-real": {
+   "title": "Skills (real box shapes)",
+   "screens": {
+    "full": {
+     "component": "skills-real"
+    },
+    "compact": {
+     "component": "skills-real"
+    },
+    "glance": {
+     "component": "skills-real"
+    }
+   }
+  },
   "flow-parallel": {
    "title": "Flow with a parallel and its join",
    "screens": {
