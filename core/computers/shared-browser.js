@@ -16,6 +16,7 @@ export function browseMode(cfg) {
   const m = cfg && cfg.browse;
   if (m === "desktop" || m === "desktops" || m === "pool") return "desktop";
   if (m === "browser") return "browser";
+  if (cfg && (cfg.defaultBrowser === true || cfg.default_browser === true)) return "browser";
   if (cfg && cfg.browser === false) return "desktop";
   // Real boxes default to the shared headless browser; the fake driver keeps desktop unless asked.
   if (cfg && cfg.driver === "fake") return "desktop";

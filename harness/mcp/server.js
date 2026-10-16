@@ -29,6 +29,7 @@ import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
 import { createLearner } from "../../lib/tools-learn.js";
+import { isShelvedTool } from "../../lib/tools-shelved.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
 
@@ -79,7 +80,7 @@ function askOnce() {
 const DRIVES = /^(threads|agents)\./;
 // Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
 // them from any session, so listing them only spends the model's context.
-const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name)
+const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name) && !isShelvedTool(t.name)
   && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
 /** @param {string} tool @param {any} input */
 function scoped(tool, input) {

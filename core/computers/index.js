@@ -24,6 +24,7 @@ import { Shield } from "./shield.js";
 import { Fills } from "./fill.js";
 import { helper, tellComputerd } from "./helper.js";
 import { SharedBrowser } from "./shared-browser.js";
+import { createProfileStore, AGENT_PROFILE_ITEM, MEMBER_PROFILE_ITEM } from "./profile-store.js";
 import { BrowserGlass } from "./browser-glass.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
@@ -76,12 +77,23 @@ export default {
     // Also live: computers.tailnet.set changes it without a restart. The key is fetched only when
     // a computer starts with the switch on, and goes straight to that computer, nowhere else.
     const tailnetCfg = () => (ctx.config && ctx.config.computers && ctx.config.computers.tailnet) || undefined;
+    const profileStore = createProfileStore({
+      fetchAgent: () => ctx.vault.fetch(AGENT_PROFILE_ITEM),
+      fetchMember: () => ctx.vault.fetch(MEMBER_PROFILE_ITEM),
+    });
+    const computersCfg = () => {
+      const c = (ctx.config && ctx.config.computers) || {};
+      const root = ctx.config || {};
+      const defaultBrowser = c.defaultBrowser === true || (root.computer && root.computer.defaultBrowser === true);
+      return { ...c, ...(defaultBrowser ? { defaultBrowser: true } : {}) };
+    };
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg,
       tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) },
-      memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
+      profileStore });
+    const shared = new SharedBrowser({ pool, call: ctx.call, cfg: computersCfg, log: ctx.log });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
-    const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });
     const keyboard = new Keyboard({ pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
     const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
       { ...o, computerRow: shared.enabled() ? shared.computer() : agent }, a => helperFor(a)) });

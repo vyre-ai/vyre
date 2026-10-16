@@ -31,6 +31,8 @@ export default function SessionScreen() {
 
 /** This screen's name for the terminal: a ticket is bound to the surface that asked for it (core/term). */
 const SURFACE = `${Platform.OS === "web" ? "deck" : "phone"}:app${Math.random().toString(36).slice(2, 8)}`;
+/** Session terminal UI is shelved for 0.6 chrome-inline; tools stay on the box. */
+const SESSION_TERMINAL_UI = false;
 
 type Term = { id: string; reason: string | null };
 
@@ -65,7 +67,7 @@ function BoxSession({ thread }: { thread: string }) {
   // The WebView on a phone loads the terminal page from the box; on the web the app's own copy serves it.
   const frameUrl = Platform.OS === "web" || !boxOrigin() ? undefined : boxOrigin() + DEFAULT_FRAME_URL;
   const title = chatRow?.title ?? listed?.name ?? "Chat";
-  const handlers = useMemo(() => ({ onFaceId: async () => true, onOpenTerminal: () => void openTerminal() }), [openTerminal]);
+  const handlers = useMemo(() => ({ onFaceId: async () => true, ...(SESSION_TERMINAL_UI ? { onOpenTerminal: () => void openTerminal() } : {}) }), [openTerminal]);
   const guts = useMemo(() => (RC.glass ? <ThreadGlass agent={listed?.agent ?? null} thread={thread} /> : null), [listed?.agent, thread]);
 
   const chat = (
@@ -78,7 +80,7 @@ function BoxSession({ thread }: { thread: string }) {
       onSwitch={() => router.push("/u/chats" as never)}
       onJumpSession={(n) => { const row = chats.rows[n - 1]; if (row) router.push({ pathname: "/session/[id]", params: { id: row.id } } as never); }}
       onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
-      onOpenTerminal={() => void openTerminal()}
+      {...(SESSION_TERMINAL_UI ? { onOpenTerminal: () => void openTerminal() } : {})}
       handlers={handlers}
     />
   );
@@ -87,9 +89,9 @@ function BoxSession({ thread }: { thread: string }) {
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, flexDirection: "row" }}>
         <View style={{ flex: 1, minWidth: 0 }}>{chat}</View>
-        {term && common && !phone ? <TerminalPane {...common} width={width} onWidth={setWidth} onClose={() => setTerm(null)} /> : null}
+        {SESSION_TERMINAL_UI && term && common && !phone ? <TerminalPane {...common} width={width} onWidth={setWidth} onClose={() => setTerm(null)} /> : null}
       </View>
-      {term && common && phone ? (
+      {SESSION_TERMINAL_UI && term && common && phone ? (
         <View style={StyleSheet.absoluteFill}>
           <TerminalScreen {...common} onBack={() => setTerm(null)} />
         </View>
