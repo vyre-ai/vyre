@@ -15,8 +15,34 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 
-/** Docs harvest loads every module; node:sqlite's bundled engine often has no FTS5, so migrations fail and reference pages drift from CI. */
+/** @param {import("node:sqlite").DatabaseSync} db */
+function applyPragmas(db) {
+  db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+}
+
+function openBuiltin(file) {
+  const db = new (require("node:sqlite").DatabaseSync)(file);
+  applyPragmas(db);
+  return db;
+}
+
+/** True when node:sqlite can create an FTS5 virtual table (reference harvest needs it). */
+function builtinHasFts5() {
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE VIRTUAL TABLE _vyre_fts5_probe USING fts5(x)");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Docs harvest loads every module; node:sqlite's bundled engine often has no FTS5 on Node 22, so migrations fail and reference pages drift. */
 function openForDocsHarvest(file) {
+  const major = Number(process.versions.node.split(".")[0]);
+  // Node 24 + better-sqlite3 in the same process crashes on exit; hosted Node 24's sqlite has FTS5.
+  if (major >= 24 || builtinHasFts5()) return openBuiltin(file);
   const BetterSqlite = require("better-sqlite3");
   const db = BetterSqlite(file);
   db.pragma("busy_timeout = 10000");
@@ -32,11 +58,9 @@ export function open(file) {
   const old = process.umask(0o077);
   let db;
   try {
-    // Harvest must not load node:sqlite in the same process as better-sqlite3 (Node 24 crashes on teardown).
-    db = process.env.VYRE_DOCS_HARVEST === "1" ? openForDocsHarvest(file) : new (require("node:sqlite").DatabaseSync)(file);
+    db = process.env.VYRE_DOCS_HARVEST === "1" ? openForDocsHarvest(file) : openBuiltin(file);
     // busy_timeout FIRST: switching to WAL itself needs a lock, and with the timeout not yet set a second
     // process opening the same file (the installer's `code` command while the daemon starts) failed at once with "database is locked".
-    db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   } finally { process.umask(old); }
   fs.chmodSync(file, 0o600);
   db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
