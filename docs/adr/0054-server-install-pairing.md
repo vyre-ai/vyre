@@ -2,7 +2,7 @@
 title: "ADR 0054: One install line pairs a server"
 summary: A server install is one line the creator's identity key signs. The server adopts that person once. An agent issues the line and finishes pairing through the Gate, and never holds the key.
 audience: builders
-owner: wink
+owner: integrator
 status: stable
 ---
 

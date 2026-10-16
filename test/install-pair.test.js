@@ -166,8 +166,12 @@ test("the tools are declared once, outward for the owner-changing ones, and open
   assert.equal(byName.get("wink.install.status").effect, "read");
   assert.equal(byName.get("wink.server.install-redeem").reach, "modules");
   const reach = fs.readFileSync(path.join(ROOT, "core/modules/agent-reach.js"), "utf8");
-  for (const name of ["wink.install.issue", "wink.install.status", "wink.install.complete"]) assert.ok(reach.includes(`"${name}"`), name);
-  assert.ok(!/ASK_FIRST[\s\S]*wink\.install\.issue/.test(reach), "issue is open so the Gate card can land");
+  const open = reach.slice(reach.indexOf("export const OPEN"), reach.indexOf("export const ASK_FIRST"));
+  const ask = reach.slice(reach.indexOf("export const ASK_FIRST"), reach.indexOf("export const WEB_REACH"));
+  for (const name of ["wink.install.issue", "wink.install.status", "wink.install.complete"]) {
+    assert.ok(open.includes(`"${name}"`), name);
+    assert.ok(!ask.includes(`"${name}"`), `${name} stays open so the Gate card can land`);
+  }
   const sign = fs.readFileSync(path.join(ROOT, "core/spaces/index.js"), "utf8");
   assert.ok(sign.includes("vyre-pair-install-v1\\n"));
   const box = fs.readFileSync(path.join(ROOT, "scripts/install-box.sh"), "utf8");
