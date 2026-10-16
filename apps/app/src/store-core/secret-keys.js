@@ -106,16 +106,16 @@ function matched(key, take) {
   return false;
 }
 
+/** A vault pass id in an event payload (`pass.created`, `pass.revoked`, …): the field is named `pass`, not a password. @param {string} key @param {string} val */
+function eventPassId(key, val) {
+  return key === "pass" && /^p_[A-Za-z0-9_-]+$/.test(val);
+}
+
 /**
  * True when a JSON text has a secret-named string value of at least 6 characters. The event bus
  * refuses that payload. Numbers, booleans and objects are left to the caller.
  * @param {string} json
  */
-/** A vault pass id in an event payload (`pass.created`, `pass.revoked`, …): the field is named `pass`, not a password. */
-function eventPassId(key, val) {
-  return key === "pass" && /^p_[A-Za-z0-9_-]+$/.test(val);
-}
-
 export function jsonHasSecretField(json) {
   const re = /"([^"\\]+)"\s*:\s*"([^"\\]{6,})"/g;
   let m;
