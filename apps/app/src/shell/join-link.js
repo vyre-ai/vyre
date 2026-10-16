@@ -1,5 +1,6 @@
 // @ts-check
 import { holdJoin } from "./join-hold.js";
+import { FIRST_RUN } from "./old-routes.js";
 // The web join page's "Open in Vyre" gives vyre://join?link=<url-encoded https join link>. Only an https link of a space's own join path goes on to the box
 // to be verified (the token is payload.signature, so it holds a dot); anything else lands on the plain Join screen with nothing filled in.
 
@@ -15,5 +16,5 @@ export function joinLink(raw) {
 export function joinTarget(raw) {
   const l = joinLink(raw);
   if (l) holdJoin(l);
-  return "/u/install/join";
+  return FIRST_RUN.join;
 }

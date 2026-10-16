@@ -92,7 +92,7 @@ export function RealInvite() {
           <Field label="Their name, for your own list" value={to} onChangeText={setTo} placeholder="Sam" />
           <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean.</Text></Banner>
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-          {onComputer && !isPhone(deviceKindHere()) && deviceKindHere() !== "web" ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/u/install/create") as never)} /></View> : null}
+          {onComputer && !isPhone(deviceKindHere()) && deviceKindHere() !== "web" ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/onboard?path=create") as never)} /></View> : null}
           <View className="flex-row"><Button kind="primary" label={busy ? "Making" : "Make the invitation"} onPress={busy ? () => {} : make} /></View>
         </Card>
       )}
