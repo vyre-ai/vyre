@@ -47,7 +47,7 @@ async function handle(line) {
   } else if (cmd === "probe") {
     const r = { type: "probe" };
     try { fs.readFileSync(process.env.VYRE_PROBE_FILE); r.outside = "READ"; } catch (e) { r.outside = e.code; }
-    try { r.homeList = fs.readdirSync(process.env.VYRE_PROBE_HOME).length; } catch (e) { r.homeList = e.code; }
+    try { fs.readdirSync(process.env.VYRE_PROBE_HOME); r.homeList = "READ"; } catch (e) { r.homeList = e.code; }
     r.envHasSecret = Object.values(process.env).some(v => /REAL-.*SECRET/.test(String(v)));
     r.envToken = !!process.env.ANTHROPIC_API_KEY;
     r.net = await new Promise(res => { const s = net.connect(Number(process.env.VYRE_PROBE_PORT), "127.0.0.1"); s.on("connect", () => { s.destroy(); res("CONNECTED"); }); s.on("error", e => res(e.code)); setTimeout(() => res("timeout"), 3000); });
