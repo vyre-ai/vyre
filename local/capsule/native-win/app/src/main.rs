@@ -518,11 +518,11 @@ fn confirm_native(_said: &str) -> bool { false }
 #[tauri::command]
 fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
-    // KP-3: the page's `prompt` is never shown. The shell reads the bytes, says what they are in its own window, and signs nothing it cannot read. (Yes-moment proofs are not read here, so they are not signed.)
+    // KP-3: the page's `prompt` is never shown. The shell reads the bytes (an identity-list change or a server ownership proof), says what they are in its own window, and signs nothing it cannot read. (Yes-moment proofs are not read here, so they are not signed.)
     let _ = prompt;
     let m = unb64u(&message)?;
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
-    let said = vyre_capsule_win::identity::chain_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
+    let said = vyre_capsule_win::identity::sign_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
     if !confirm_native(&said) { return Err("Not approved. Nothing was changed.".into()); }
     Ok(b64u(&logged("enclave_sign", ncrypt::sign(&m))?))
 }
