@@ -87,7 +87,7 @@ test("every registered session adapter gets the same caller, the same secret fil
   }
   const mine = await d.registry.call("computers.list", {}, named);
   assert.deepEqual((mine.data.computers || []).map((/** @type {{ agent: string }} */ c) => c.agent), ["kit"]);
-  const other = await d.registry.call("computers.checkout", { agent: "pax" }, named);
+  const other = await d.registry.call("computers.get", { agent: "pax" }, named);
   assert.match(other.error.message, /own computer/);
   const unnamed = await d.registry.call("computers.checkout", { agent: "kit" }, sessionCaller(adapters[0]));
   assert.equal(unnamed.error.code, "denied");
