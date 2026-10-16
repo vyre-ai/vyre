@@ -13,7 +13,7 @@ test("an address is a record when the Space has its own type of that name; the a
   const root = tempHome(t);
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
-  const K = d.kernel, space = K.space;
+  const K = d.kernel, space = K.id.space;
   const owner = K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: K.id.owner, path: "direct", session: "s" });
   const kind = async (/** @type {string} */ urn) => { const r = await d.registry.call("records.address-kind", { urn }, "module:sessions"); assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
   assert.deepEqual(await kind(`vyre://${space}/tag/t_1`), { kind: "tag" }, "no type of that name: the kind of thing it names");

@@ -347,7 +347,7 @@ export async function mailFixture(t, cli, { user = "alex@harlow.example", passwo
   await cli("vault.put", { name: conn.data.item, kind: "env-set", fields: fields("none") });
   const accounts = await cli("mail.accounts", {});
   const rows = accounts.data && (Array.isArray(accounts.data) ? accounts.data : accounts.data.accounts) || [];
-  const id = String((rows[0] && rows[0].id) || conn.data.id || "");
+  const id = String((rows[0] && (rows[0].id || rows[0].account)) || conn.data.id || "");
   if (!id) throw new Error(`no mail account id: ${JSON.stringify(accounts)}`);
   await cli("vault.connections.grant", { id, surface: "agents" });
   return { mailbox, item: String(conn.data.item), id };

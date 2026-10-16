@@ -34,7 +34,9 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const as = async (/** @type {string} */ p, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await tokenOf(dev(p)));
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(OWNER, tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   const agentCall = async (/** @type {string} */ name, /** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input) => {
-    const uid = (await ok("agents.uid", { name })).uid;
+    const row = (await ok("agents.list")).find((/** @type {any} */ a) => a.name === name);
+    const uid = row && row.uid;
+    assert.ok(uid, `agent ${name} has a uid`);
     return d.registry.call(tool, input, `mcp:agent:${name}`, { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: uid, session: `s-${name}-${person.slice(4, 8)}`, thread: `t-${name}-${person.slice(4, 8)}`, person, vouched: true }), {})).token, thread: "t-1", agent: name });
   };
   return { d, K, OWNER, dev, as, ok, agentCall };
