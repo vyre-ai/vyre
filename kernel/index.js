@@ -124,7 +124,7 @@ export async function createKernel(cfg) {
     const m = /^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via));
     if (!m || !grantsStore) return true;
     // the vault is the owner's: no role bundle carries vault.call (a connection is used by what the owner shared), so the owner holds every connection of it
-    if (grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) === "owner") return true;
+    if (String(person) === String(ownerRef.id) || grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) === "owner") return true;
     try {
       const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${m[1]}`;
       return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
@@ -136,12 +136,22 @@ export async function createKernel(cfg) {
    * @param {string} list @param {string} address
    */
   const listHas = async (list, address, via = undefined) => {
-    const addrsOf = async (/** @type {string} */ id) => { const c = await store.get("contact", id).catch(() => null); if (!c || !c.data) return []; return [c.data.email, ...(Array.isArray(c.data.other_emails) ? c.data.other_emails : [])].filter((/** @type {any} */ x) => typeof x === "string").map((/** @type {string} */ x) => x.toLowerCase()); };
+    const addrsOf = async (/** @type {string} */ id) => {
+      const from = (/** @type {any} */ data) => [data.email, ...(Array.isArray(data.other_emails) ? data.other_emails : [])].filter((/** @type {any} */ x) => typeof x === "string").map((/** @type {string} */ x) => x.toLowerCase());
+      const c = await store.get("contact", id).catch(() => null);
+      if (c && c.data) return from(c.data);
+      try {
+        const chain = chains.fromFacts({ kind: "device", device_key_id: "standing-list", person: ownerRef.id, path: "direct", session: "standing-list" });
+        const r = await gateway.records.get(chain, "contact", id);
+        if (r && r.data) return from(r.data);
+      } catch { /* no such contact */ }
+      return [];
+    };
     // a list that is followed as it changes only counts what someone who holds the connection last wrote: the record's last writer must still hold use of `via`
     const trusted = async (/** @type {string} */ type, /** @type {string} */ id) => {
       if (via === undefined) return true;
       let e = null; try { e = log.latestFor(`vyre://${cfg.space}/${type}/${id}`); } catch { e = null; }
-      const who = e && typeof e.actor === "string" && e.actor.startsWith("person:") ? e.actor.slice(7) : null;
+      const who = e && typeof e.actor === "string" && e.actor.startsWith("person:") ? e.actor.slice(7).split("@")[0] : null;
       return who ? mayUseVia(who, via) : true;
     };
     const m = /^contact:([A-Za-z0-9_-]{1,80})$/.exec(list) || null, p = /^project:([A-Za-z0-9_-]{1,80}):clients$/.exec(list) || null;
