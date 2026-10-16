@@ -151,5 +151,7 @@ test("every pair, adopt, enrol and install tool is routed or explicitly a differ
   assert.match(mac, /--code\|--code=\*\) die/);
   const win = fs.readFileSync(path.join(ROOT, "scripts/install-windows.ps1"), "utf8");
   assert.match(win, /\$env:VYRE_CODE/);
+  assert.ok(win.indexOf("Start-Process -FilePath $app") > win.indexOf("Remove-Item Env:\\VYRE_CODE"), "the app starts after VYRE_CODE is cleared");
+  assert.equal(/\$env:VYRE_SETUP_CODE\s*=/.test(win), false);
   assert.equal(win.includes("ArgumentList $code"), false);
 });
