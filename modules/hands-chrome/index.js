@@ -16,17 +16,21 @@
 // Glass's action log has something to show. No event, tool result or log line ever carries the
 // CDP endpoint's helper token or a page's full text: `summary` is a short, human sentence.
 
-import { agentClaim } from "../../core/modules/index.js";
+import { AGENT_NAME_RE, resolveComputerAgent } from "../../lib/computer-agent.js";
 import { isPerson } from "../../lib/caller.js";
 import { requirePublicUrl } from "./nav.js";
+import { cdpUrlOf } from "../../lib/browser-access.js";
 import { CdpPool } from "./cdp.js";
 import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
 import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
+import { watchNetwork } from "./net-tool.js";
+import { hostOf, mergeApiCatalog, watchApiTraffic } from "./api-tool.js";
+import { callApi, pruneDead, routeApi } from "./api-exec.js";
 
-const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+const AGENT = AGENT_NAME_RE;
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -37,31 +41,14 @@ const SELECTOR = obj({
 /** The person's own surfaces and modules, plus an agent's own hands (a model session): each tool below resolves which computer it means and refuses a model that names none of its own. */
 const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 
-/**
- * Which agent's computer a call means, the same rule as core/computers/index.js. `agentClaim`
- * finds the agent behind any transport shape ("mcp:agent:kit", "harness:agent:kit", "cli:agent:kit"),
- * so none of them reads as unnamed and may name another agent's browser (group D audit, HD-5).
- * A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no
- * computer of its own, so it may not name one either.
- */
+/** @param {import("../../lib/computer-agent.js").resolveComputerAgent} _r */
 async function resolveAgent(input, caller, call) {
-  const self = agentClaim(String(caller || ""));
-  let agent;
-  if (self) {
-    if (!input.agent || input.agent === self) agent = self;
-    else {
-      const r = await call("agents.list", {});
-      const a = !r.error && (r.data || []).find(x => x && x.name === self);
-      if (a && a.kind === "assistant") agent = input.agent;
-      else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
-    }
-  } else {
-    if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
-    if (!input.agent) throw new Error("say which agent's computer: agent is required");
-    agent = input.agent;
-  }
-  if (!AGENT.test(String(agent))) throw new Error(`"${agent}" is not an agent name`);
-  return String(agent);
+  const kindOf = async name => {
+    const r = await call("agents.list", {});
+    const a = !r.error && (r.data || []).find(x => x && x.name === name);
+    return a ? String(a.kind) : null;
+  };
+  return resolveComputerAgent(input, caller, kindOf);
 }
 
 /** @type {{ start(ctx: any): Promise<any> }} */
@@ -133,7 +120,7 @@ export default {
       const r = await ctx.call("computers.endpoint", { agent });
       if (r.error) throw new Error(r.error.message);
       // Chrome's own port is never handed out; only computerd's authenticated /cdp proxy is.
-      const cdp = await pool.get(agent, `${r.data.helper.url}/cdp`, r.data.helper.token);
+      const cdp = await pool.get(agent, cdpUrlOf(r.data.helper), r.data.helper.token);
       const sessionId = await cdp.page();
       return { cdp, sessionId };
     };
@@ -283,6 +270,96 @@ export default {
         await cdp.send("Input.insertText", { text: String(i.text) }, sessionId);
         act_(meta, agent, "type", true, undefined, { summary: ctl.name || ctl.role });
         return { ok: true, control: ctl };
+      });
+
+    /** @type {Map<string, ReturnType<typeof watchNetwork>>} */
+    const nets = new Map();
+    /** @type {Map<string, ReturnType<typeof watchApiTraffic>>} */
+    const apiNets = new Map();
+    /** @type {Map<string, any[]>} */
+    const apiCatalogs = new Map();
+
+    const catalogForAgent = (/** @type {string} */ agent) => {
+      const out = [];
+      for (const [k, v] of apiCatalogs) if (k.startsWith(`${agent}|`)) out.push(...v);
+      return pruneDead(out);
+    };
+    const trafficForAgent = (/** @type {string} */ agent) => {
+      const w = apiNets.get(agent);
+      return w ? w.all() : [];
+    };
+
+    tool("chrome.api", "Learn, catalog, route, and call a site's in-page API from traffic on the agent's browser (writes need approved: true).",
+      obj({ agent: str, action: str, host: str, hint: str, entryId: str, entry: str, params: { type: "object" }, approved: { type: "boolean" } }, ["action"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        if (action === "learn") {
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const prev = apiNets.get(agent);
+          if (prev) prev.stop();
+          const w = watchApiTraffic(cdp, sessionId);
+          await w.start();
+          apiNets.set(agent, w);
+          const fresh = await w.collect();
+          const pageUrl = String((await cdp.send("Runtime.evaluate", { expression: "location.href", returnByValue: true }, sessionId)).result?.value || "");
+          const host = String(i.host || hostOf(pageUrl));
+          if (!host) throw new Error("say which host to learn, or open a page first");
+          const catalog = mergeApiCatalog(apiCatalogs, agent, host, fresh);
+          act_(meta, agent, "api", true, undefined, { summary: `learned ${catalog.length} entries for ${host}` });
+          return { host, entries: catalog.length, catalog };
+        }
+        if (action === "catalog") {
+          const host = String(i.host || "");
+          if (!host) throw new Error("host is required for catalog");
+          const catalog = apiCatalogs.get(`${agent}|${host}`) || [];
+          return { host, catalog };
+        }
+        if (action === "route") {
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const hint = String(i.hint || "");
+          const res = await routeApi(catalogForAgent(agent), hint, i.params && typeof i.params === "object" ? i.params : {}, trafficForAgent(agent),
+            (entry, params) => callApi(entry, params, trafficForAgent(agent), {}, cdp, sessionId));
+          act_(meta, agent, "api", res.route === "api", res.route === "api" ? undefined : String(res.why || res.route), { summary: `route ${res.route} for ${hint.slice(0, 40)}` });
+          return res;
+        }
+        if (action === "call") {
+          const id = String(i.entryId || i.entry || "");
+          if (!id) throw new Error("entryId is required for call");
+          const entry = catalogForAgent(agent).find(e => e.id === id);
+          if (!entry) throw new Error("no catalog entry with that id (run chrome.api learn first)");
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const res = await callApi(entry, i.params && typeof i.params === "object" ? i.params : {}, trafficForAgent(agent),
+            { approved: i.approved === true }, cdp, sessionId);
+          act_(meta, agent, "api", !res.held, res.held ? String(res.why || "held") : undefined, { summary: `${entry.method} ${entry.pathTemplate}` });
+          return res;
+        }
+        throw new Error(`chrome.api does not know action "${action}"; use learn, catalog, route, or call`);
+      });
+
+    tool("chrome.net", "The agent page's network traffic on the box (CDP). start: capture; list: recent requests (URLs only, no secrets).",
+      obj({ agent: str, action: str }, ["action"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        if (action === "start") {
+          await mayAct(agent, "chrome.net");
+          const { cdp, sessionId } = await session(agent);
+          const prev = nets.get(agent);
+          if (prev) prev.stop();
+          const w = watchNetwork(cdp, sessionId);
+          await w.start();
+          nets.set(agent, w);
+          act_(meta, agent, "net", true, undefined, { summary: "capturing network" });
+          return { capturing: true };
+        }
+        if (action === "list") {
+          const w = nets.get(agent);
+          if (!w) throw new Error("call chrome.net with action start before list");
+          return { requests: w.list() };
+        }
+        throw new Error(`chrome.net does not know action "${action}"; use start or list`);
       });
 
     tool("chrome.screenshot", "A PNG of the agent's current page, base64-encoded.", obj({ agent: str }),

@@ -313,7 +313,7 @@ export class CdpMux {
     // rename Downloads there for a symlink into browser's own profile home, which Chrome would
     // then follow. /var/lib/vyre/browser/downloads is browser-owned, mode 2750 (entrypoint.sh) --
     // Chrome writes into it as browser, the agent can list and read but never rename or replace it.
-    this.downloads = o.downloads || "/var/lib/vyre/browser/downloads";
+    this.downloads = o.downloads || process.env.AGENT_DOWNLOADS || "/home/agent/Downloads";
     /** @type {ContextStore} */
     this.contextStore = o.contextStore || new Map();
     /** @type {Map<string, Promise<string>>} an agent name's Target.createBrowserContext while it
@@ -683,6 +683,30 @@ export class CdpMux {
    * context underneath it, mid-session -- callers should closeAgent before disposing, not after).
    * @param {string} agentId @returns {boolean} whether there was a context to dispose
    */
+  /**
+   * Export one agent browser context (cookies only) for vyred to seal on disk. Only computerd's
+   * owner routes call this — never an agent CDP client (Storage.getCookies is AGENT_REFUSED).
+   * @param {string} agentId
+   */
+  async exportAgentContext(agentId) {
+    const ctxId = this.contextStore.get(agentId);
+    if (typeof ctxId !== "string") return { v: 1, cookies: [] };
+    const r = await this.call("Storage.getCookies", { browserContextId: ctxId });
+    return { v: 1, cookies: (r && r.cookies) || [] };
+  }
+
+  /**
+   * Restore cookies into an agent context (creates the context if needed). Owner routes only.
+   * @param {string} agentId @param {{ v?: number, cookies?: any[] }} state
+   */
+  async importAgentContext(agentId, state) {
+    const cookies = state && Array.isArray(state.cookies) ? state.cookies : [];
+    if (!cookies.length) return false;
+    const ctxId = await this._contextFor(agentId);
+    await this.call("Storage.setCookies", { browserContextId: ctxId, cookies });
+    return true;
+  }
+
   disposeAgentContext(agentId) {
     const ctxId = this.contextStore.get(agentId);
     if (typeof ctxId !== "string") return false;

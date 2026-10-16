@@ -2,7 +2,7 @@
 // the live view (Glass) one tap away, where you can take over the keyboard. Under it, one plain sentence of what it is doing now, breathing while it works, and a short track of the last steps. When it is stuck and
 // asked for something (a code), the box to type it is right here; when it is stuck on something else, Take over is. The screen itself is Glass's (LiveScreen), so every rule Glass has holds.
 import { useEffect, useState } from "react";
-import { Image, Modal, Platform, Pressable, TextInput, View } from "react-native";
+import { Image, Modal, Pressable, TextInput, View } from "react-native";
 import { Banner, Button, Chip, Icon, Pulse, Text, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { LiveScreen } from "./LiveScreen";
@@ -15,6 +15,7 @@ type Op = { block: "operator"; run: string; computer: string; title: string; sta
 export function OperatorCard({ block, sample }: { block: Op; sample?: string }) {
   const { color } = useUiTheme();
   const [watch, setWatch] = useState(false);
+  const [privateSignIn, setPrivateSignIn] = useState(false);
   const [big, setBig] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,8 +23,6 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
   const busyState = block.state === "working" || block.state === "stuck";
   const real = useStill(block.run, `${block.line}|${block.state}`, busyState && !watch && !sample);
   const still = sample ? { src: sample, why: undefined } : real;
-  const bigReal = useStill(block.run, big && !sample ? block.line : "off", big && busyState && !sample, 1280);
-  const bigStill = sample ? { src: sample, why: undefined } : bigReal;
   const track = dots(block.steps);
   const wantsCode = block.state === "stuck" && !!block.ask && asksForCode(block.ask);
   const [seeds, setSeeds] = useState<{ name: string; near: boolean }[]>(sample ? [{ name: "GoHighLevel agency login", near: true }] : []);
@@ -39,7 +38,6 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
     catch (e) { setProblem(e instanceof Error && e.message ? e.message : "The Vault did not give a code."); } finally { setBusy(false); }
   };
   const ink = (s: string) => (s === "done" ? color.ok : s === "stuck" ? color.warn : s === "paused" ? color.label : color.accent);
-  const web = Platform.OS === "web";
   const send = async () => {
     setBusy(true); setProblem("");
     try { await tool("previews.reply", { run: block.run, text }); setText(""); } catch (e) { setProblem(e instanceof Error && e.message ? e.message : "That did not go through."); } finally { setBusy(false); }
@@ -47,7 +45,7 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
   return (
     <View style={{ borderWidth: 1, borderColor: block.state === "stuck" ? color["edge-strong"] : color.edge, backgroundColor: block.state === "stuck" ? color["warn-wash"] : color["surface-2"], borderRadius: 14, marginVertical: 4, maxWidth: 560, overflow: "hidden" }}>
       {watch ? (
-        <View style={{ padding: 10 }}><LiveScreen computer={block.computer} /></View>
+        <View style={{ padding: 10 }}><LiveScreen computer={block.computer} private={privateSignIn} autoTake={privateSignIn} onHandedBack={() => setPrivateSignIn(false)} /></View>
       ) : (
         <Pressable accessibilityRole="button" accessibilityLabel={`Open ${block.title} larger`} onPress={() => setBig(true)} style={{ aspectRatio: 16 / 10, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
           {still.src ? <Image accessibilityLabel={`What ${block.computer} is showing`} source={{ uri: still.src }} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
@@ -81,14 +79,17 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {block.state === "stuck" && block.ask ? <Button kind={wantsCode && seeds.length ? "ghost" : "primary"} size="sm" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /> : null}
-          {web ? <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => setWatch((w) => !w)} /> : null}
-          {!watch ? <Button kind={web ? "ghost" : "primary"} size="sm" icon={web ? undefined : "globe"} label={web ? "Open larger" : "Watch"} onPress={() => setBig(true)} /> : null}
+          <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => { setPrivateSignIn(false); setWatch((w) => !w); }} />
+          {block.state === "stuck" && block.ask ? <Button kind="ghost" size="sm" icon="key" label="Sign in privately" onPress={() => { setPrivateSignIn(true); setWatch(true); }} /> : null}
+          {!watch ? <Button kind="ghost" size="sm" icon="globe" label="Open larger" onPress={() => setBig(true)} /> : null}
         </View>
       </View>
       <Modal visible={big} transparent animationType="fade" onRequestClose={() => setBig(false)}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setBig(false)} style={{ flex: 1, backgroundColor: color.scrim, alignItems: "center", justifyContent: "center", padding: 16 }}>
-          {bigStill.src || still.src ? <Image source={{ uri: bigStill.src || (still.src as string) }} resizeMode="contain" style={{ width: "100%", height: "80%" }} /> : <Text tone="inverse">{stillWord(still.why)}</Text>}
-          <Text tone="inverse" size="caption" style={{ marginTop: 10 }}>{block.line}</Text>
+          <View style={{ width: "100%", maxWidth: 960, gap: 10 }} onStartShouldSetResponder={() => true}>
+            <LiveScreen computer={block.computer} private={privateSignIn} autoTake={privateSignIn} onHandedBack={() => { setPrivateSignIn(false); setBig(false); }} />
+            <Text tone="inverse" size="caption">{block.line}</Text>
+          </View>
         </Pressable>
       </Modal>
     </View>

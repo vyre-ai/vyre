@@ -742,6 +742,21 @@ const server = createServer(async (req, res) => {
       if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
       return send(200, { disposed: mux.disposeAgentContext(agentId) });
     }
+    if (req.method === "POST" && pathname === "/agents/profile/export") {
+      const body = await readBody(req);
+      const agentId = body && body.id;
+      if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
+      const state = await mux.exportAgentContext(agentId);
+      return send(200, { state });
+    }
+    if (req.method === "POST" && pathname === "/agents/profile/import") {
+      const body = await readBody(req);
+      const agentId = body && body.id;
+      const state = body && body.state;
+      if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
+      if (!state || typeof state !== "object") return send(400, { error: { message: "state is required" } });
+      return send(200, { imported: await mux.importAgentContext(agentId, state) });
+    }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
     if (isVersion) {

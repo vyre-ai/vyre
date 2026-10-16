@@ -218,3 +218,25 @@ test("computerd: /fs is behind the bearer token, and the shield answers 423 on i
   assert.deepEqual((await req(base, "POST", "/shield", { body: { on: false } })).json, { shielded: false, frozen: false });
   assert.notEqual((await req(base, "POST", "/act", { body: {} })).status, 423);
 });
+
+test("fs: Chrome downloads are listed read-only under home/Downloads (Glass Files)", async t => {
+  const homeDir = home(t);
+  const dl = path.join(homeDir, "Downloads");
+  fs.mkdirSync(dl, { recursive: true });
+  fs.writeFileSync(path.join(dl, "report.pdf"), "%PDF-1.4");
+  const prev = process.env.AGENT_DOWNLOADS;
+  process.env.AGENT_DOWNLOADS = dl;
+  t.after(() => { if (prev === undefined) delete process.env.AGENT_DOWNLOADS; else process.env.AGENT_DOWNLOADS = prev; });
+  const handle = createFs({ root: homeDir });
+  const server = http.createServer((req, res) => { handle(req, res, new URL(req.url || "/", "http://computerd")); });
+  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }));
+  const port = /** @type {net.AddressInfo} */ (server.address()).port;
+  const url = `http://127.0.0.1:${port}`;
+  const list = await fetch(`${url}/fs/list?path=Downloads`).then(r => r.json());
+  assert.equal(list.entries.find((/** @type {any} */ e) => e.name === "report.pdf").kind, "file");
+  const body = await fetch(`${url}/fs/read?path=Downloads/report.pdf`).then(r => r.text());
+  assert.equal(body, "%PDF-1.4");
+  const denied = await fetch(`${url}/fs/write?path=Downloads/x&size=1&overwrite=0`, { method: "PUT", body: "x" });
+  assert.equal(denied.status, 403);
+});

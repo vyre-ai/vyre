@@ -219,7 +219,7 @@ export default {
         const agent = agentOf(i.target);
         if (!agent) throw new Error("the box has no screen to take over");
         const shielded = i.private === true;
-        await need("computers.takeover", { agent, surface });
+        await need("computers.takeover", { agent, surface, ...(shielded ? { private: true } : {}) });
         if (shielded) {
           const s = await ctx.call("computers.shield", { agent, on: true });
           if (s.error) {

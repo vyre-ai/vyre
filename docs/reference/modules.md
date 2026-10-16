@@ -32,7 +32,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`builder`](#builder) | `core/builder` | `box` | 1 | 0 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
-| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
+| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 8 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
@@ -106,7 +106,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 181 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 183 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -300,7 +300,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [6](tools.md#chrome), 5 of them only for other modules
+- Tools: [8](tools.md#chrome), 5 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -350,8 +350,8 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Tools: [31](tools.md#computers), 8 of them only for other modules
 - Emits: [21 events](events.md#computers)
 - Shows on: cli, deck
-- Streams: `glass`
-- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`
+- Streams: `glass`, `browser-glass`
+- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`, `vyre-agent-browser-profile-key`
 
 ## connectors
 
@@ -809,7 +809,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#recall), 1 of them only for other modules
+- Tools: [18](tools.md#recall)
 - Emits: [5 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1150,7 +1150,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [181](tools.md#vault), 24 of them only for other modules
+- Tools: [183](tools.md#vault), 26 of them only for other modules
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`
