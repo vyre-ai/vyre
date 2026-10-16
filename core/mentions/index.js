@@ -7,7 +7,7 @@
 // Names only: nothing a provider returns beyond id, name, hint and icon survives, and no value.
 
 import { SURFACE_LABELS } from "../modules/index.js";
-import { personCallOpts } from "../../lib/person-relay.js";
+import { personCallOpts, provenFromMeta } from "../../lib/person-relay.js";
 
 /** Who may ask: the person's own surfaces and the owner's devices (a model, an agent or a guest never). */
 const PERSON = [...SURFACE_LABELS, "mobile", "tailnet", "device", "space", "agent"];
@@ -38,6 +38,16 @@ export function cleanGrant(g) {
 
 /** Modules that may resolve a tag: the person's own turn is theirs to read. */
 const RESOLVERS = ["module:sessions", "module:assistant"];
+
+/** @param {unknown} caller @param {any} meta */
+function relayOpts(caller, meta) {
+  const direct = personCallOpts(caller, meta);
+  if (direct) return direct;
+  if (!RESOLVERS.includes(String(caller))) return null;
+  const proven = provenFromMeta(meta);
+  if (proven.token || proven.kernelFacts) return { relay: true };
+  return { as: String(caller) };
+}
 
 /**
  * The providers, first-party and running, in draw order.
@@ -94,8 +104,7 @@ export default {
         const chosen = providers(ctx.modules.status()).filter(p => !want || want.has(p.kind));
         const answers = await Promise.all(chosen.map(async p => {
           try {
-            const relayAs = personCallOpts(meta.caller, meta) || (RESOLVERS.includes(String(meta.caller)) ? { relay: true } : null);
-            const r = await within(ctx.call(p.search, { q, limit }, relayAs || undefined), SEARCH_MS);
+            const r = await within(ctx.call(p.search, { q, limit }, relayOpts(meta.caller, meta) || undefined), SEARCH_MS);
             if (!r || r.error || (r.data && r.data.error)) return { p, failed: true };
             const d = r.data !== undefined ? r.data : r;
             const raw = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items : [];
@@ -119,8 +128,7 @@ export default {
         const p = providers(ctx.modules.status()).find(x => x.kind === input.kind);
         if (!p) throw fail("no_such_kind", `no provider offers ${input.kind}`);
         let r;
-        const relayAs = personCallOpts(meta.caller, meta) || (RESOLVERS.includes(String(meta.caller)) ? { relay: true } : null);
-        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, relayAs || undefined), 2000); }
+        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, relayOpts(meta.caller, meta) || undefined), 2000); }
         catch { throw fail("unavailable", `${p.kind} did not answer`); }
         const bad = !r || r.error || (r.data && r.data.error);
         if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
