@@ -54,6 +54,13 @@ export async function redeemInstallCode(o, code) {
   if (meta.get("install_setup_locked") || meta.get(spent)) throw fail("locked", "This code was already used. Make a new install line in the Vyre app and run it again.");
   const cur = meta.get("owner");
   if (cur && cur.identity && cur.identity !== v.person) throw fail("denied", "This server already belongs to someone. Reset it from its own screen before pairing another person.");
+  const mine = await creatorAlreadyOwns(o, v.person);
+  if (mine) {
+    meta.set(spent, { at: now() });
+    if (!cur) meta.set("owner", { kind: "identity", id: mine, identity: mine });
+    if (!meta.get("adopter")) meta.set("adopter", "install");
+    return finishInstall(o, meta, mine, now);
+  }
   meta.set(spent, { at: now() });
   if (!cur) meta.set("owner", { kind: "identity", id: v.person, identity: v.person });
   if (!meta.get("adopter")) meta.set("adopter", "install");
@@ -68,11 +75,30 @@ export async function redeemInstallCode(o, code) {
     meta.del("pair_to");
     throw fail(err.code === "no_such_tool" ? "unavailable" : (err.code || "unavailable"), "This server could not be made yours. Make a new install line in the Vyre app and run it again.");
   }
-  meta.set("install_setup_locked", { at: now(), person: v.person });
+  return finishInstall(o, meta, v.person, now);
+}
+
+/**
+ * This device already owns the server under its identity id, and the install code was signed by this device's key.
+ * Adopting again would name a second id (per_ plus the key id) and be refused. @param {any} o @param {string} person
+ */
+async function creatorAlreadyOwns(o, person) {
+  let self = null, dev = null;
+  try { self = await o.ctx.call("spaces.identity.self", {}); } catch { self = null; }
+  try { dev = await o.ctx.call("spaces.identity.device", {}); } catch { dev = null; }
+  const mine = self && self.data && typeof self.data.id === "string" ? self.data.id : "";
+  const eid = dev && dev.data && typeof dev.data.deviceId === "string" ? dev.data.deviceId : "";
+  const ownerNow = o.ctx && o.ctx.kernel && typeof o.ctx.kernel.owner === "string" ? o.ctx.kernel.owner : "";
+  return mine && eid && person === `per_${eid}` && ownerNow === mine ? mine : "";
+}
+
+/** @param {any} o @param {{ set: Function }} meta @param {string} person @param {() => number} now */
+function finishInstall(o, meta, person, now) {
+  meta.set("install_setup_locked", { at: now(), person });
   const space = kernelSpace(o.ctx);
   if (space) meta.set("install_space", space);
-  try { o.ctx.events && o.ctx.events.emit("wink.server-adopted", { owner: { kind: "identity", id: v.person } }); } catch { /* the owner record stands either way */ }
-  return { ok: true, person: v.person, ...(space ? { space } : {}) };
+  try { o.ctx.events && o.ctx.events.emit("wink.server-adopted", { owner: { kind: "identity", id: person } }); } catch { /* the owner record stands either way */ }
+  return { ok: true, person, ...(space ? { space } : {}) };
 }
 
 /**

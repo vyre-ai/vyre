@@ -76,8 +76,9 @@ test("redeem writes the owner, then adopts that person, and a second use is lock
   const publishedKeys = async () => [me.pub];
   const first = await redeemInstallCode({ ctx, meta, now: NOW, publishedKeys }, made.code);
   assert.equal(first.person, made.person);
-  assert.equal(ctx.calls[0].tool, "spaces.owner.adopt");
-  assert.equal(ctx.calls[0].owner.identity, made.person);
+  const adopt = ctx.calls.find((/** @type {any} */ c) => c.tool === "spaces.owner.adopt");
+  assert.ok(adopt);
+  assert.equal(adopt.owner.identity, made.person);
   assert.equal(meta.get("owner").identity, made.person);
   await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, publishedKeys }, made.code), (/** @type {any} */ e) => e.code === "locked" && /Make a new install line/.test(e.message));
 });
@@ -207,6 +208,27 @@ test("status returns the space id once the server adopts the creator", async () 
   const status = await tools.get("wink.install.status").run();
   assert.equal(status.owned, true);
   assert.equal(status.space, "spc_aaaaaaaaaa");
+});
+
+test("redeem does not adopt a second id when this device already owns the server", async () => {
+  const me = identity();
+  const made = await mintPairCode({ publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
+  const genesis = "per_" + "c".repeat(26);
+  const meta = metaOf();
+  const ctx = ctxOf(meta);
+  ctx.kernel = { space: "spc_aaaaaaaaaa", owner: genesis };
+  ctx.call = async (/** @type {string} */ tool) => {
+    ctx.calls.push({ tool, owner: meta.get("owner") });
+    if (tool === "spaces.identity.self") return { data: { id: genesis } };
+    if (tool === "spaces.identity.device") return { data: { deviceId: personIdOfKey(Buffer.from(me.pub, "base64url")).slice(4) } };
+    if (tool === "spaces.owner.adopt") return { error: { code: "owned_by_other", message: "no" } };
+    return { data: {} };
+  };
+  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW }, made.code);
+  assert.equal(redeemed.person, genesis);
+  assert.equal(redeemed.space, "spc_aaaaaaaaaa");
+  assert.equal(ctx.calls.some((/** @type {any} */ c) => c.tool === "spaces.owner.adopt"), false);
+  assert.equal(meta.get("owner").identity, genesis);
 });
 
 test("the tools are declared once, outward for the owner-changing ones, and open to a proven assistant", () => {
