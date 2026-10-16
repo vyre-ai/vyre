@@ -436,7 +436,7 @@ export function ChatScreen(p: ChatScreenProps) {
         busy={meta.busy}
         canStop={meta.canStop}
         stopping={meta.stopping}
-        offline={meta.connection === "offline"}
+        offline={meta.connection === "offline" && meta.saved}
         phone={phone}
         onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
       />

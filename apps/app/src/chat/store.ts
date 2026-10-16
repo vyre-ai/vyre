@@ -16,9 +16,10 @@ import { createFolder, headerState, type Frame as FoldFrame, type Item, type Lay
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
+import { hasSessionCache, loadSessionCache, saveSessionCache } from "./session-cache.js";
 
 
-export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
+export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; saved: boolean; rev: number };
 export type PerfSink = (name: "paint.delta" | "paint.first", ms: number) => void;
 export type ChatStore = {
   readonly session: string;
@@ -75,6 +76,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   let replay = true;
   let looping = false;
   let stopping = false;
+  /** @type {Frame[]} */ let frameLog: Frame[] = [];
+  const cached = loadSessionCache(session);
+  if (cached?.frames?.length) frameLog = cached.frames as Frame[];
   /** Delta frames waiting to be seen: their message, the length that must show, and when they were emitted. */
   const pending: { key: string; end: number; t: number; first: boolean }[] = [];
   const seenFirst = new Set<string>();
@@ -166,6 +170,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       conn.close();
       conn = source.connect({ from, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     }
+    frameLog = frameLog.concat(frames).slice(-400);
+    saveSessionCache(session, { head: folder.last, frames: frameLog });
   }
   function onFrame(f: Frame) {
     buffer.push(f);
@@ -199,6 +205,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     session,
     start() {
       if (conn) return;
+      if (frameLog.length && folder.last === 0) {
+        for (const f of frameLog) onFrame(f);
+        flush();
+        replay = true;
+      }
       conn = source.connect({ from: folder.last, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     },
     stop() { conn?.close(); conn = null; },
@@ -218,7 +229,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       if (metaSnap) return metaSnap;
       const s = folder.status;
       const h = headerState({ state: s.state, stopping: s.stopping || stopping });
-      return (metaSnap = { state: s.state, turn: s.turn, stopping: s.stopping || stopping, word: h.word, busy: h.busy, canStop: h.canStop, queue: folder.queue(), connection, rev: metaRev });
+      return (metaSnap = { state: s.state, turn: s.turn, stopping: s.stopping || stopping, word: h.word, busy: h.busy, canStop: h.canStop, queue: folder.queue(), connection, saved: hasSessionCache(session) || frameLog.length > 0, rev: metaRev });
     },
     async send(text, o) {
       if (!text.trim()) return null;

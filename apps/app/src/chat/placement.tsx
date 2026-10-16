@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
-import { listen } from "../api/box";
+import { listen, tool } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, leaseLine, lentMacOffline, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
@@ -18,7 +18,15 @@ export function usePlacement(thread: string, real: boolean) {
   useEffect(() => {
     if (!real) return;
     let live = true;
-    runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
+    const autoServer = async () => {
+      const pl = await runner.placement(thread).catch(() => null);
+      const places = await tool("runner.places", {}).catch(() => null);
+      if (!lentMacOffline(pl, places, thread)) return;
+      const x = await runner.move(thread, "server").catch(() => null);
+      if (x && live) setP(x);
+    };
+    runner.placement(thread).then((x) => { if (live) setP(x); void autoServer(); }).catch(() => {});
+    const tick = setInterval(() => { void autoServer(); }, 15_000);
     const off = listen((e: any) => {
       if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
         setStarting(placingWords(e.payload));
@@ -40,8 +48,9 @@ export function usePlacement(thread: string, real: boolean) {
       // A higher epoch wins: an update that arrives late never moves the chip back.
       setP((cur) => (fresher(cur?.epoch, epoch) ? { where: to === "mac" ? "mac" : "server", computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now(), ...(to === "paused" ? { state: "paused" as const } : {}), ...(epoch !== undefined ? { epoch } : {}) } : cur));
       say(Number(e.payload.at ?? Date.now()), movedLine({ to, reason: e.payload.reason }));
+      if (to === "server") void autoServer();
     });
-    return () => { live = false; off?.(); };
+    return () => { live = false; clearInterval(tick); off?.(); };
   }, [thread, real, say]);
   const move = useCallback(async (to: "mac" | "server") => {
     try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }

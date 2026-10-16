@@ -2,7 +2,14 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import { runnerFixtures as F, REASONS, STATES } from "../../../../test/contracts/runner.fixtures.js";
 import assert from "node:assert/strict";
-import { chipOf, fresher, pickPlacement, movedLine, pickSettings, parseLimit, switchNote, pickHere, hereLine, whyNotLine, DEFAULT_SETTINGS } from "./runner-model.js";
+import { chipOf, fresher, pickPlacement, movedLine, pickSettings, parseLimit, switchNote, pickHere, hereLine, whyNotLine, DEFAULT_SETTINGS, lentMacOffline } from "./runner-model.js";
+
+test("runner: a lent Mac that went offline should move the chat to the server", () => {
+  assert.equal(lentMacOffline({ where: "mac" }, [{ chat: "c1", online: false }], "c1"), true);
+  assert.equal(lentMacOffline({ where: "mac" }, { places: [{ session: "c1", online: false }] }, "c1"), true);
+  assert.equal(lentMacOffline({ where: "server" }, [{ chat: "c1", online: false }], "c1"), false);
+  assert.equal(lentMacOffline({ where: "mac" }, [{ chat: "c1", online: true }], "c1"), false);
+});
 
 test("runner: the chip says where a session runs, offers the other place, and says why it is on the server", () => {
   assert.deepEqual(chipOf({ where: "mac" }), { label: "On this Mac", tone: "ok", moveTo: "server", moveLabel: "Move to the server", why: "" });
