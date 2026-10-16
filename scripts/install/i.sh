@@ -5,7 +5,7 @@
 #   2. Installs Docker if it is missing and starts the Vyre box. That is the signed release installer (box/install-box.sh from the same
 #      site): it checks every file against the release's signature before anything is written, installs Docker when it is missing, and
 #      leaves a box that is already running alone. This script adds nothing to what it installs.
-#   3. With VYRE_CODE (the app's install line, or an agent's), the server installs and pairs itself. Without one, it prints the setup
+#   3. With VYRE_CODE (the app's install line, or an agent's), the server installs and pairs itself. On a Mac the same line is handed to the Mac server installer. Without one, it prints the setup
 #      page, where the person pastes the code the app shows. The code is an environment variable, never an argument.
 #
 # Run it again at any time: a server that is already installed is not touched. It never prints a secret, never takes the setup code as an

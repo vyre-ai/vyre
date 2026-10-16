@@ -39,7 +39,7 @@ test("every file START-HERE links exists in the repo, on the hosted docs or as a
 
 test("START-HERE carries the reading list, the questions, the mapping, Get started, Next and Stay in the loop, and no gaps link", () => {
   for (const h of ["## What Vyre is", "## How to operate", "## A map of everything", "## 2. Ask", "## 3. Map", "## 4. Get started", "## Next", "## Stay in the loop"]) assert.ok(START.includes(h), h);
-  for (const w of ["DigitalOcean", "Hetzner", "8 GB", "2 GB", "cloud-init", "vyre mcp connect", "tools_find", "Engineer", "https://vyre.run/updates/", "https://vyre.run/u/", "master password", "Needs you", "wink.install.issue", "wink.install.status", "wink.install.complete", "Gate"]) assert.ok(START.includes(w), w);
+  for (const w of ["DigitalOcean", "Hetzner", "8 GB", "2 GB", "cloud-init", "vyre mcp connect", "tools_find", "Engineer", "https://vyre.run/updates/", "https://vyre.run/u/", "master password", "Needs you", "spaces.pair.install", "wink.install.issue", "wink.install.status", "wink.install.complete", "Gate"]) assert.ok(START.includes(w), w);
   assert.ok(!START.includes("four words"), "the word comparison is retired from the setup steps");
   assert.ok(!START.includes("reservation code"), "a first run does not ask for a reservation code");
   assert.ok(!/Face ID signature/.test(START), "a phone does not sign a change of owner during first run");
