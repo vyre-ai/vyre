@@ -4564,11 +4564,12 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
+        const callMeta = meta;
         const filterMember = async (/** @type {any[]} */ rows) => {
           if (!Array.isArray(rows)) return rows;
-          const allow = await memberThreadAllowSet(ctx, ctx.kernel, meta);
+          const allow = await memberThreadAllowSet(ctx, ctx.kernel, callMeta);
           const scoped = allow ? rows.filter(r => r && allow.has(String(r.id))) : rows;
-          const ok = await Promise.all(scoped.map(r => sessionMay(meta, r && r.id, false)));
+          const ok = await Promise.all(scoped.map(r => sessionMay(callMeta, r && r.id, false)));
           return scoped.filter((_, k) => ok[k]);
         };
         if (!(await wantsMacs(ctx, i, caller, meta))) return filterMember(sb.list(q));
@@ -4721,7 +4722,8 @@ export default {
       { type: "object", required: ["thread", "queued", "text"], properties: { thread: str, queued: { type: "integer" }, text: str, surface: str,
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked for the edited words ({kind, id}); as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the edited words the person pasted. Sending it (even empty) says which words are typed; without it the edited words are not heard as the person's at all, so no tag or ask in them counts." } } },
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const { caller } = meta;
         guard(caller, "edit queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit queued words"), { code: "denied" });
         // The edited words are the person's new words: heard like a send (a said row, tags, asks), but only when the composer
