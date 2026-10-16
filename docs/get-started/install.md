@@ -87,6 +87,8 @@ A Mac, a Windows PC and the web app offer the same two choices. Vyre does not ru
    who approved the line. The app waits on this screen until the server is online.
 5. The app connects, and your space is ready.
 
+You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address.
+
 
 ## 6. Add your phone
 
