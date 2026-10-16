@@ -1575,8 +1575,7 @@ export class Registry {
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
     delete meta[VIEW_FOR];
-    const spaceHop = Boolean(meta.in_space_chain);
-    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
+    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
