@@ -138,7 +138,7 @@ export async function buildRegistration(o) {
 
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
- * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
+ * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void, keys?: () => string[] }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
  *   relayPub?: string, describe?: (username: string, rec: any) => Promise<Record<string, any>> | Record<string, any>, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, device: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
@@ -273,6 +273,11 @@ export function createLoginService(o) {
       o.store.set(`login:${username}`, { ...rec, github: who.id });
       return { ok: true, username, login: who.login };
     },
+    /** The usernames registered here for a person id (a person has one per space, but ask the records, not a guess). Empty when the store cannot list. @param {string} person */
+    usernamesOf(person) {
+      const keys = typeof o.store.keys === "function" ? o.store.keys() : [];
+      return keys.filter(k => k.startsWith("login:")).map(k => k.slice(6)).filter(u => { const r = record(u); return r && r.person === String(person); });
+    },
     /** A person's live sign-in sessions, newest first, last 20: a device id, its label and when. Never the session secret. @param {string} username */
     sessionsOf(username) {
       sweep();
@@ -293,21 +298,25 @@ export function createLoginService(o) {
       return { revoked: n > 0, ended: n };
     },
     /**
-     * The same two calls by person id, for a space with several people (each sees only their own sign-ins): a person's usernames here are the ones whose record names them, so the answer is for that person
-     * and no other, whatever name a caller supplies.
+     * The same two calls by person id, for a space with several people (each sees only their own sign-ins). A person's usernames are the ones the records name (usernamesOf), plus any username with a live
+     * session whose record names them, so a store that cannot list still answers for the people who are signed in. A device id is only ever matched inside those usernames.
      * @param {string} person
      */
     sessionsOfPerson(person) {
       sweep();
-      const names = new Set([...sessions.values()].map(x => x.username).filter(u => { const r = record(u); return Boolean(r && r.person === person); }));
+      const names = this.namesOfPerson(person);
       return [...sessions.values()].filter(x => names.has(x.username)).sort((a, b) => b.at - a.at).slice(0, 20).map(x => ({ device: x.device, label: x.label, at: x.at }));
+    },
+    /** @param {string} person */
+    namesOfPerson(person) {
+      const live = [...sessions.values()].map(x => x.username).filter(u => { const r = record(u); return Boolean(r && r.person === person); });
+      return new Set([...this.usernamesOf(person), ...live]);
     },
     /** @param {string} person @param {string} device */
     revokeDeviceOfPerson(person, device) {
       sweep();
-      const names = new Set([...sessions.values()].map(x => x.username).filter(u => { const r = record(u); return Boolean(r && r.person === person); }));
       let ended = 0;
-      for (const u of names) ended += this.revokeDevice(u, device).ended;
+      for (const u of this.namesOfPerson(person)) ended += this.revokeDevice(u, device).ended;
       return { revoked: ended > 0, ended };
     },
     /** The username a session belongs to, or null. @param {string} session */

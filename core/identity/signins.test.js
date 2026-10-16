@@ -84,3 +84,21 @@ test("a build with no kernel falls back to the home's own person and to no one e
   home = null;
   await assert.rejects(() => tools.get("identity.signin.revoke").run({ device: A }, {}), (e) => e.code === "person_required");
 });
+
+test("a member signing out the owner's device id does nothing, and the owner's list never shows the member's device", async () => {
+  const { ctx, tools, events, said } = ctxOf(), svc = fakeService();
+  registerSignins(ctx, { service: () => svc, now: () => 7 });
+  svc.sessions.push({ person: ALEX, device: A, label: "The owner's laptop", at: 10 }, { person: BLAIR, device: B, label: "The member's phone", at: 20 });
+  events.emit("signin.new-device", { device: A, at: 10 });
+  events.emit("signin.new-device", { device: B, at: 20 });
+  const mine = async (person) => (await tools.get("identity.signins.pending").run({}, as(person))).devices.map((d) => d.device);
+  assert.deepEqual(await mine(ALEX), [A], "the owner's list has the owner's device only");
+  assert.deepEqual(await mine(BLAIR), [B], "the member's list has the member's device only");
+  const guess = await tools.get("identity.signin.revoke").run({ device: A }, as(BLAIR));
+  assert.deepEqual([guess.revoked, guess.ended], [false, 0], "a guessed id matches only inside the caller's own usernames");
+  assert.deepEqual(svc.sessions.map((s) => s.device).sort(), [A, B].sort(), "no session of the owner's ended");
+  assert.deepEqual(await mine(ALEX), [A]);
+  assert.deepEqual(said.at(-1), ["signin.revoked", { device: A, at: 7 }]);
+  await tools.get("identity.signin.ack").run({ device: A }, as(BLAIR));
+  assert.deepEqual(await mine(ALEX), [A], "the member's word about a device id is not the owner's");
+});
