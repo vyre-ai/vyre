@@ -8,13 +8,15 @@ status: draft
 
 # Drive onboarding
 
+> The mounted box share this page describes (VyreDrive over the private network) was removed in 0.6. Mounted files are coming later, on a different design. Read what follows as history.
+
 Options for the new step (between connecting accounts and the phone, per the lead). Each marked
 built, S, M or L. Follows interaction.md section 3: reversible and cheap choices (turning a folder
 on, the files.receive switch) are optimistic with Undo; sync.delete stays confirm-with-preview,
 never Touch ID (it's not a secret action, ADR 0024).
 
 1. **What to sync.** Not built. Today VyreDrive shares whole folders the person names by hand
-   (`files.drive.share`); there's no picker showing Desktop/Documents/each project's files folder
+   (the old share tool); there's no picker showing Desktop/Documents/each project's files folder
    with sizes, no default exclusions the person can edit (drive.js's scan skips node_modules,
    .git, dist etc., but that list isn't user-facing or editable). **M**: a scan+picker UI plus an
    editable exclusion list (size and an over-N-MB filter).
@@ -28,7 +30,7 @@ never Touch ID (it's not a secret action, ADR 0024).
    - *Server only*: today this is just "don't mount this share here", an access choice per
      device, not a sync mode. **Built** as a checkbox, not as a labeled "mode."
 
-3. **Where it shows up.** Finder sidebar on the Mac: **built** (`files.drive.mount`). Windows
+3. **Where it shows up.** Finder sidebar on the Mac: **removed** with the mounted share. Windows
    network drive: **not built**: no Windows client exists at all yet (session import's device
    role is the first Windows-facing work, and it doesn't touch Drive). Capsule drop target:
    **not built**: files.deliver (box→Mac) exists as a tool, no Capsule UI calls it. Phone:
@@ -107,7 +109,7 @@ join lands on, and refuses anything that fails `isProjectId`.
 
 No agent has a grant by default (deny by default, same as vault). `sync.grants.set { project,
 agent, status }` is person-only (core/presence PERSON_ONLY, same reasoning as
-`files.drive.access`: a switch on an existing capability, not a secret reveal, so PERSON_ONLY
+the old box-share access switch: a switch on an existing capability, not a secret reveal, so PERSON_ONLY
 rather than HUMAN_ONLY). An empty `agent` string is "every agent" (matching a bare module grant in
 vault_grants); a named agent narrows it to that one, and the more specific row wins when both
 exist, same precedence vault's own release path already resolves.

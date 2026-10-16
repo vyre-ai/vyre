@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 48 | 2 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 49 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
@@ -440,8 +440,8 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [67](tools.md#files), 1 of them only for other modules
-- Emits: [3 events](events.md#files)
+- Tools: [48](tools.md#files), 1 of them only for other modules
+- Emits: [2 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Needs vault: `dropbox`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

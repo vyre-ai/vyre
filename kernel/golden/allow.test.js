@@ -23,7 +23,7 @@ test("every allow entry is a tool in OPEN, ASK_FIRST or DECLARED, or a reach any
 
 test("no person-only tool is allowed", () => {
   for (const e of committed()) assert.equal(PERSON_ONLY.has(e.tool), false, `${e.tool} is person only`);
-  for (const t of ["flows.approve", "flows.pause", "flows.resume", "flows.kit.remove", "files.drive.access", "threads.mode"]) assert.equal(committed().some(e => e.tool === t), false, t);
+  for (const t of ["flows.approve", "flows.pause", "flows.resume", "flows.kit.remove", "threads.mode"]) assert.equal(committed().some(e => e.tool === t), false, t);
 });
 
 test("every OPEN and ASK_FIRST tool has an entry, each with its own reason (no bulk text)", () => {

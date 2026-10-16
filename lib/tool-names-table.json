@@ -2543,50 +2543,6 @@
    "was": "List folders inside a folder (default: every root), or with q, folders under it matching the name, each marked git or not, with its project."
   },
   {
-   "old": "files.drive.access",
-   "name": "files.drive.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: name, mode.",
-   "was": "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model "
-  },
-  {
-   "old": "files.drive.address",
-   "name": "files.drive-address.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: share.",
-   "was": "Where one of this box's VyreDrive shares is reached on the tailnet, for a device that has no Vyre of its own to ask (a Windows PC's Vyre app"
-  },
-  {
-   "old": "files.drive.audit",
-   "name": "files.drive.check",
-   "area": "files",
-   "object": "drive",
-   "verb": "check",
-   "effect": "read",
-   "review": false,
-   "description": "Check drive (drive).",
-   "was": "Check the tailnet policy from the box: any online node besides a paired Mac that can reach the VyreDrive shares is a finding. Owner only."
-  },
-  {
-   "old": "files.drive.candidates",
-   "name": "files.drive-candidates.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive).",
-   "was": "Folders this box could share over VyreDrive, projects first, then folders in its file roots, each marked with its share. Feed one to files.d"
-  },
-  {
    "old": "files.drive.link.create",
    "name": "files.drive.link.create",
    "area": "files",
@@ -2620,83 +2576,6 @@
    "was": "Stop a shared link now and delete the copy it served: { code }. Taking access away is always allowed."
   },
   {
-   "old": "files.drive.list",
-   "name": "files.drive.list",
-   "area": "files",
-   "object": "drive",
-   "verb": "list",
-   "effect": "read",
-   "review": false,
-   "description": "List drive (drive). Needs: share.",
-   "was": "List a folder inside one of the box's VyreDrive shares: name, kind, size and date per entry, folders first, a page at a time."
-  },
-  {
-   "old": "files.drive.local",
-   "name": "files.drive-local.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: path.",
-   "was": "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it. A named agent gets null for a box"
-  },
-  {
-   "old": "files.drive.measure",
-   "name": "files.drive-measure.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: path.",
-   "was": "How big a folder is (files, folders, bytes) and whether VyreDrive may share it; a folder with a .env or key is not shareable."
-  },
-  {
-   "old": "files.drive.mount",
-   "name": "files.drive-mount.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: share.",
-   "was": "Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and Lumen open box files where they are."
-  },
-  {
-   "old": "files.drive.offer",
-   "name": "files.drive.create",
-   "area": "files",
-   "object": "drive",
-   "verb": "create",
-   "effect": "write",
-   "review": false,
-   "description": "Create drive (drive). Needs: path.",
-   "was": "Share a folder you picked over VyreDrive in one step: checks it like files.drive.measure, adds it to the box's shares under a name (a projec"
-  },
-  {
-   "old": "files.drive.open",
-   "name": "files.drive.open",
-   "area": "files",
-   "object": "drive",
-   "verb": "open",
-   "effect": "write",
-   "review": false,
-   "description": "Open drive (drive). Needs: share.",
-   "was": "Open a mounted box share, or a file or folder in it, in Finder."
-  },
-  {
-   "old": "files.drive.read",
-   "name": "files.drive.get",
-   "area": "files",
-   "object": "drive",
-   "verb": "get",
-   "effect": "read",
-   "review": false,
-   "description": "Get drive (drive). Needs: share, path.",
-   "was": "Read one chunk (up to 1 MiB) of a file in a box VyreDrive share, as base64, with its size and an end flag."
-  },
-  {
    "old": "files.drive.restore",
    "name": "files.drive.import",
    "area": "files",
@@ -2706,28 +2585,6 @@
    "review": false,
    "description": "Import drive (drive). Needs: path, version.",
    "was": "Restore an old version of a file in the Space's Drive as a NEW version (nothing is lost): { space?, path, version }. The person's own act wi"
-  },
-  {
-   "old": "files.drive.search",
-   "name": "files.drive.find",
-   "area": "files",
-   "object": "drive",
-   "verb": "find",
-   "effect": "read",
-   "review": false,
-   "description": "Find drive (drive). Needs: q.",
-   "was": "Find files by name or content across the box's offered VyreDrive shares. A named agent searches only shares inside its granted projects."
-  },
-  {
-   "old": "files.drive.share",
-   "name": "files.drive.send",
-   "area": "files",
-   "object": "drive",
-   "verb": "send",
-   "effect": "send",
-   "review": false,
-   "description": "Send drive (drive). Needs: name. Held for the person's yes.",
-   "was": "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right aft"
   },
   {
    "old": "files.drive.space.list",
@@ -2752,39 +2609,6 @@
    "was": "Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path"
   },
   {
-   "old": "files.drive.status",
-   "name": "files.drive-status.get",
-   "area": "files",
-   "object": "drive",
-   "verb": "get",
-   "effect": "read",
-   "review": false,
-   "description": "Get drive (drive).",
-   "was": "VyreDrive on the box: whether it may share folders with the paired Mac, the shares offered, and what is shared now."
-  },
-  {
-   "old": "files.drive.unmount",
-   "name": "files.drive-unmount.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: share.",
-   "was": "Unmount one of the box's shared folders from this Mac."
-  },
-  {
-   "old": "files.drive.unshare",
-   "name": "files.drive-unshare.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: name.",
-   "was": "Stop sharing one of the box's folders over VyreDrive. Owner only."
-  },
-  {
    "old": "files.drive.upload",
    "name": "files.drive-upload.import",
    "area": "files",
@@ -2794,17 +2618,6 @@
    "review": false,
    "description": "Import drive (drive). Needs: path, base64.",
    "was": "Put a file in the Space's Drive as a new version, under the caller's own grants: { space?, path, base64, base? }. `path` is relative (Client"
-  },
-  {
-   "old": "files.drive.url",
-   "name": "files.drive-url.update",
-   "area": "files",
-   "object": "drive",
-   "verb": "update",
-   "effect": "write",
-   "review": true,
-   "description": "Change drive (drive). Needs: share.",
-   "was": "The WebDAV address of one of the box's VyreDrive shares, as this Mac reaches it."
   },
   {
    "old": "files.drive.versions",
@@ -2970,28 +2783,6 @@
    "review": true,
    "description": "Change files (drive). Needs: path.",
    "was": "Bring a file from the box to this Mac (source box). Called on the box itself, returns one chunk at offset and length."
-  },
-  {
-   "old": "files.mentions.resolve",
-   "name": "files.mentions.get",
-   "area": "files",
-   "object": "mentions",
-   "verb": "get",
-   "effect": "read",
-   "review": false,
-   "description": "Get mentions (drive). Needs: id, thread.",
-   "was": "Make a tagged file readable in the chat it was tagged in: records that thread and that one file, and tells the model how to read it. Only th"
-  },
-  {
-   "old": "files.mentions.search",
-   "name": "files.mentions.find",
-   "area": "files",
-   "object": "mentions",
-   "verb": "find",
-   "effect": "read",
-   "review": false,
-   "description": "Find mentions (drive).",
-   "was": "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking."
   },
   {
    "old": "files.preview",
