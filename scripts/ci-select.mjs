@@ -2,7 +2,7 @@
 // Which test files a change can affect (fast pull request CI). The import graph of the repo's code, read from the files themselves, is walked backwards from each changed file to the test files
 // that reach it, and only those run. Everything runs when the change is one that reaches every test: a lockfile, any package.json, a workflow, the test runner and its records, the kernel's core or the
 // module loader, or a file that more than a third of the tests reach. A changed file that is not code and that nothing imports (a data file a test reads from disk) also runs everything, because the graph
-// cannot see who reads it; plain docs and notes run nothing, except the generated docs, which run their one check. A changed code file that no test reaches selects nothing and is named in the output.
+// cannot see who reads it; plain docs and notes run nothing, except the generated docs, which run their one check. A changed code file that no test reaches is a failure (`uncovered`, exit 1: "no test covers <file>"), so untested code cannot ride through a fast run; the apps and the capsule, which their own workflows cover, are exempt.
 // The full suite still runs on integrate/*, release/* and the train (.github/workflows/node.yml), so a miss here is caught there, never shipped.
 //
 //   node scripts/ci-select.mjs <base-ref>        prints {"all":bool,"files":[...],"docs":bool,"windows":bool,"why":[...]} for the diff from <base-ref> to the working tree
@@ -25,6 +25,8 @@ const INERT = [/^team\//, /^release\/notes\//, /\.md$/, /^LICENSE/, /^\.gitignor
 const DOCS = [/^docs\//, /(^|\/)module\.json$/];
 /** A change that can differ on Windows: the files test:windows and windows-socket-acl cover. */
 const WINDOWS = [/^core\/(config|daemon)\//, /^scripts\/win-/, /^relay\/client\//, /^core\/cli\//, /^lib\//];
+/** Code the node tests do not cover by design: the phone and desktop apps and the capsule have their own workflows. */
+const OWN_WORKFLOW = [/^apps\/app\//, /^local\/capsule\//];
 const FAN_IN = 1 / 3;
 
 /** Every relative path a source file names: imports, dynamic imports, requires, `new URL("./x", import.meta.url)`, and quoted repo paths that a test spawns or reads. @param {string} src */
@@ -80,7 +82,7 @@ export function testsReaching(file, rev) {
 
 /**
  * @param {{ changed: string[], tracked: Set<string>, read: (f: string) => string, tests?: string[] }} o `tests` are the files the suite runs (default: the tracked files test-counts would run)
- * @returns {{ all: boolean, files: string[], docs: boolean, windows: boolean, why: string[] }}
+ * @returns {{ all: boolean, files: string[], docs: boolean, windows: boolean, why: string[], uncovered: string[] }}
  */
 export function select(o) {
   const { changed, tracked, read } = o;
@@ -88,7 +90,8 @@ export function select(o) {
   const why = /** @type {string[]} */ ([]);
   const docs = changed.some(f => DOCS.some(r => r.test(f)));
   const windows = changed.some(f => WINDOWS.some(r => r.test(f)));
-  const everything = (/** @type {string} */ reason) => ({ all: true, files: [], docs: true, windows: true, why: [...why, reason] });
+  const everything = (/** @type {string} */ reason) => ({ all: true, files: [], docs: true, windows: true, why: [...why, reason], uncovered: /** @type {string[]} */ ([]) });
+  const uncovered = /** @type {string[]} */ ([]);
   const rev = dependents(tracked, read);
   const picked = new Set(docs ? ["test/docs-check.test.js"].filter(f => tests.has(f)) : []);
   for (const f of changed) {
@@ -100,12 +103,12 @@ export function select(o) {
     if (reached.length > tests.size * FAN_IN) return everything(`${f} is reached by ${reached.length} of ${tests.size} tests`);
     for (const t of reached) picked.add(t);
     if (!reached.length) {
-      if (CODE.test(f)) why.push(`${f}: no test reaches it`);
+      if (CODE.test(f) && !TEST.test(f)) { if (!OWN_WORKFLOW.some(r => r.test(f))) uncovered.push(f); }
       else if (!TEST.test(f)) return everything(`${f} is data nothing imports: a test may read it from disk`);
     }
   }
   const files = [...picked].sort();
-  return { all: false, files, docs: docs || files.includes("test/docs-check.test.js"), windows: windows || files.some(f => WINDOWS.some(r => r.test(f))), why };
+  return { all: false, files, docs: docs || files.includes("test/docs-check.test.js"), windows: windows || files.some(f => WINDOWS.some(r => r.test(f))), why, uncovered };
 }
 
 const git = (/** @type {string[]} */ args) => { const r = spawnSync("git", args, { cwd: REPO, encoding: "utf8", maxBuffer: 1 << 28 }); if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`); return r.stdout; };
@@ -125,7 +128,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (zero) throw new Error("no base to compare with");
     const changed = git(["diff", "--name-only", "--no-renames", `${base}...HEAD`]).split("\n").filter(Boolean);
     result = select({ changed, tracked, read: f => fs.readFileSync(path.join(REPO, f), "utf8"), tests: suite(tracked) });
-  } catch (e) { result = { all: true, files: [], docs: true, windows: true, why: [`could not tell what changed (${/** @type {Error} */ (e).message.split("\n")[0]}): running everything`] }; }
+  } catch (e) { result = { all: true, files: [], docs: true, windows: true, uncovered: [], why: [`could not tell what changed (${/** @type {Error} */ (e).message.split("\n")[0]}): running everything`] }; }
   if (toOutput && process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `all=${result.all}\ndocs=${result.docs}\nwindows=${result.windows}\nfiles=${result.files.join(" ")}\nany=${result.all || result.files.length > 0}\n`);
   console.log(JSON.stringify(result, null, 1));
+  if (!result.all && result.uncovered.length) { for (const f of result.uncovered) console.error(`no test covers ${f}`); console.error("Add a test that reaches it (an import is enough to link them), then push again."); process.exit(1); }
 }

@@ -7,8 +7,8 @@ on:
     # The full suite runs once per integration tip, not on every team push (team/FOUNDATION.md,
     # part 7): teams run preflight, the merge queue checks each landing, and this runs the whole
     # suite on what landed. The newest tip cancels an older run.
-    # work/** and integrate/** run on push too (fast PR CI): a work branch runs only the tests its change can reach (scripts/ci-select.mjs); main, integrate/**, release/**, the train and the lead's tips run everything.
-    branches: ["main", "work/**", "integrate/**", "release/**"]
+    # A work branch runs through its pull request (the selected tests, scripts/ci-select.mjs), not twice. The full suite runs on main, integrate/**, release/**, the train and the lead's tips.
+    branches: ["main", "work/lead-*", "work/release-*", "release/**", "integrate/**", "work/*/ship53/train", "work/stage-0.2"]
   pull_request:
     # ready_for_review starts the run that marking a draft ready asks for (the full matrix). A draft, and any pull request into an integrate/ branch, runs Node 24 only; the integrate branch's own pull request into a release branch, once ready, runs 22 and 24.
     types: [opened, synchronize, reopened, ready_for_review]

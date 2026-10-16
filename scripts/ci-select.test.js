@@ -71,11 +71,13 @@ test("a data file a test imports picks that test; one nothing imports picks all,
   assert.match(r.why.join(" "), /data nothing imports/);
 });
 
-test("a code file no test reaches picks nothing and is named", () => {
-  const t = { ...base(), "lib/lonely.js": "export const z = 1;" };
+test("a code file no test reaches is reported as uncovered; the apps and the capsule, with workflows of their own, are not", () => {
+  const t = { ...base(), "lib/lonely.js": "export const z = 1;", "apps/app/screens/s.tsx": "", "local/capsule/x.js": "" };
   const r = pick(t, ["lib/lonely.js"]);
-  assert.deepEqual([r.all, r.files], [false, []]);
-  assert.match(r.why.join(" "), /lib\/lonely\.js: no test reaches it/);
+  assert.deepEqual([r.all, r.files, r.uncovered], [false, [], ["lib/lonely.js"]]);
+  assert.deepEqual(pick(t, ["apps/app/screens/s.tsx", "local/capsule/x.js"]).uncovered, []);
+  assert.deepEqual(pick(t, ["lib/c.js"]).uncovered, []);
+  assert.deepEqual(pick(t, ["lib/lonely.js", "package.json"]).uncovered, [], "a run of everything covers it");
 });
 
 test("a script a test spawns by path, and a workspace package a test imports by name, count as imports", () => {
