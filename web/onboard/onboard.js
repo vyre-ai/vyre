@@ -391,7 +391,7 @@ const SCREENS = {
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
-      state.status && state.status.needsServer && state.status.notice ? h("p", { class: "lead" }, state.status.notice) : h("p", { class: "lead" }, "Join a space, or run Vyre on a computer that stays on."));
+      h("p", { class: "lead" }, "Join a space, or run Vyre on a computer that stays on."));
     const body = h("div", { class: "ob-panel" });
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);

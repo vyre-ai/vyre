@@ -61,6 +61,21 @@ jobs:
           name: win-web-proof
           path: apps/app/dist-proof
           retention-days: 2
+  # Typechecks the Tauri app, including the Windows ncrypt path, on a runner that has no TPM.
+  # cargo check does not create a key. VYRE_ALLOW_NO_WEB skips the bundled web export, which the build job still requires.
+  compile:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+        with:
+          toolchain: 1.98.1
+      - name: cargo check the app and ncrypt
+        working-directory: local/capsule/native-win/app
+        env:
+          VYRE_ALLOW_NO_WEB: "1"
+        run: cargo check --locked --verbose
   build:
     needs: [web]
     runs-on: windows-latest

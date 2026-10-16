@@ -1,4 +1,4 @@
-// The Space step's real calls, for SpaceScreens.tsx. Everything here is an existing piece of the app: the add-a-server run (add-server-bind.ts), the typed-code pairing (devices/TypeCode.tsx), the space on the
+// The Space step's real calls. Everything here is an existing piece of the app: the add-a-server run (add-server-bind.ts), the typed-code pairing (devices/TypeCode.tsx), the space on the
 // paired server (install.ts makeServerSpace), the vault tools, the invite pieces (team-join.ts, devices/invite.js) and the space's own-compute rule. No new server logic. The screens call these only when MOCK is off.
 // What a flow keeps between screens (the server run, the space just made or joined) lives here, because the prototype's ctx has no field for it.
 

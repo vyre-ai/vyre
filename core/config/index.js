@@ -155,7 +155,7 @@ export function privateSocketDir() {
  * the owner's Deck served from here, a real address other devices reach. True only for
  * `config.machine` "server", and for the legacy `config.role` value "box".
  *
- * NOT true for a device, and not true for a retired solo install (those load as a device).
+ * NOT true for a device. A stored "solo" loads as a device and is not a server.
  * A first pass made solo both a server and a device, which put the eight box-only modules
  * on every existing Mac by default. A device runs the local core and reaches a server;
  * it does not expose this machine as the server.
@@ -166,15 +166,12 @@ export function isServer(machine) { return machine === "server" || machine === "
 /**
  * Whether a machine is a device of a server elsewhere: the local-only modules, Capsule, voice,
  * presence's computer rules. True for `config.machine` "device" and the legacy `config.role`
- * value "local". A stored "solo" is not a device until load() rewrites it (see SOLO_RETIRED).
+ * value "local". A stored "solo" is not a device until load() reads it as one.
  * @param {string} [machine]
  */
 export function isDevice(machine) { return machine === "device" || machine === "local"; }
 
-/** What a person sees when an old install was set to run only on this computer. */
-export const SOLO_RETIRED = "This install was set up to run only on this computer. That way of running Vyre has been removed. Add a server, or join a space on someone else's, to keep using it.";
-
-/** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", needsServer?: boolean, projectsDir: string, roots: string[],
+/** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string },
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
@@ -306,9 +303,8 @@ export function load(root = home(), platform = process.platform) {
   // gets one inferred from that explicit choice, which says more than the OS guess in
   // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
   if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "device" : c.machine;
-  // An old solo install, or a local role that never named a machine, keeps the local modules and is told to add or join a server. The file is not rewritten here, so the notice stays until they choose.
-  const retiredSolo = user.machine === "solo" || (user.machine === undefined && user.role === "local");
-  if (retiredSolo) { c.machine = "device"; c.needsServer = true; problems.push(SOLO_RETIRED); }
+  // Solo is not a mode. A stored "solo" is a device. The file is not rewritten, and nothing asks for a move.
+  if (user.machine === "solo") c.machine = "device";
   if (!["server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not server or device; using ${d.machine}`); c.machine = d.machine; }
   // A machine chosen as a server does the box's work whatever the OS guess said: the box-only modules (wink, the relay's server side) read `role`, so a Mac set up as a server (machine "server",
   // no role named) is role box too. A role named in the file is the person's and stays.

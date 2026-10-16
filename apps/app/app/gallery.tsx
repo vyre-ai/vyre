@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, Markdown, MatchWords, PasswordField, ProviderRow, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, Markdown, NeedsYouCard, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -240,18 +240,24 @@ function StartingSample() {
   return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
-/** The guided-flow kit (FlowStep, Stack, CodeField, CodeDisplay, MatchWords, PasswordField, ChoiceList, ProviderRow) in one page: /gallery?f=flow-kit. */
+/** The guided-flow kit in one page: /gallery?f=flow-kit. Phases, not a step count. */
 function FlowKit() {
   const [code, setCode] = useState("WINK-7QMK");
   const [pw, setPw] = useState("river amber");
   const [pick, setPick] = useState<"a" | "b">("a");
+  const [saved, setSaved] = useState(false);
   return (
-    <FlowStep steps={{ labels: ["Identity", "Master password", "Inference", "Space", "Ready"], current: 1 }} onBack={() => {}} title="Flow step" lead="Back, the step strip, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
+    <FlowStep steps={{ labels: ["Identity", "Space", "Ready"], current: 1, kind: "phase" }} onBack={() => {}} title="Flow step" lead="Back, the phase, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
       <CodeField label="Code field" prefix="WINK" value={code} onChangeText={setCode} />
       <CodeDisplay label="Code display" code="WINK-7QMK-4P2X" note="Good for 10 min." />
-      <MatchWords label="Match words" words={["river", "amber", "stone", "quiet"]} note="Check them against your server." />
+      <RecoveryKeySheet secret="R1-SAMPLE-KEY-SHOWN-ONCE" saved={saved} onSaved={setSaved} />
       <PasswordField label="Password field" meter value={pw} onChangeText={setPw} />
+      <ChoiceHero title="Your space" lead="Join one you were invited to, or create one." value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "A Linux server or an always-on Mac.", icon: "server" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "link" }]} />
       <ChoiceList label="Choice list" value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "You need a server.", icon: "space" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "users" }]} />
+      <InviteShare link="https://vyre.run/i/sampletoken" />
+      <ServerUrlField value="https://juniper.vyre.run" onChangeText={() => {}} />
+      <ProviderSignInButton onPress={() => {}} />
+      <NeedsYouCard title="An assistant wants to add your phone" why="Approving adds the phone. Nothing changes until you do." facts={["space: juniper"]} onApprove={() => {}} onDeny={() => {}} />
       <Card flush>
         <ProviderRow provider="claude" title="Claude" sub="Sign in with your Claude subscription." state="idle" onConnect={() => {}} />
         <ProviderRow provider="codex" title="Codex" sub="Sign in with your ChatGPT account." state="connected" onConnect={() => {}} onTest={() => {}} />

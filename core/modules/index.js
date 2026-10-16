@@ -111,7 +111,7 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
- * with `config.machine` -- "server" or "device" (a retired "solo" loads as a device) -- and this
+ * with `config.machine` -- "server" or "device" (a stored "solo" loads as a device) -- and this
  * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
  * caller, mostly tests, that still passes one directly) passes straight through unchanged.
  * @param {string} role @returns {string[]}

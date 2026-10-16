@@ -1,6 +1,6 @@
 // @ts-check
-// Which registry tools the MCP server offers. Person-only names stay out, except a surface tool
-// the person approves with one tap (needsYou) or a surface read the screens already use.
+// Which registry tools the MCP server offers. Person-only names stay out, except a surface tool.
+// A surface write can wait for one tap. A vault value is listed and the call is refused.
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 
 const DRIVES = /^(threads|agents)\./;

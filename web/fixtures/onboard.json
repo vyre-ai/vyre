@@ -3,8 +3,6 @@
     "mode": "loopback",
     "role": "box",
     "machine": "device",
-    "needsServer": true,
-    "notice": "This install was set up to run only on this computer. That way of running Vyre has been removed. Add a server, or join a space on someone else's, to keep using it.",
     "can": { "relayJoin": false, "relayJoinReason": "Not available on a Mac yet. Needs vyre-core." },
     "owner": null,
     "address": null,

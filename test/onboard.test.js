@@ -107,18 +107,23 @@ test("onboard: onboard.machine holds an agent caller for one tap and changes not
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).machine, before);
 });
 
-test("onboard: a person-only surface read waits for the same tap, and releases.info does not", async t => {
+test("onboard: an assistant does not receive a vault value, and a device change waits for a tap", async t => {
   const { d } = await box(t);
   for (const name of ["vault.state", "spaces.devices.list"]) {
-    const held = await d.registry.call(name, {}, "mcp");
-    assert.equal(held.error && held.error.code, "held_for_approval", name);
-    assert.equal(held.data, undefined, name);
+    const refused = await d.registry.call(name, {}, "mcp");
+    assert.equal(refused.error && refused.error.code, "denied", name);
+    assert.equal(refused.data, undefined, name);
   }
+  const held = await d.registry.call("onboard.windows", { label: "desk" }, "mcp");
+  assert.equal(held.error && held.error.code, "held_for_approval");
+  assert.equal(held.data, undefined);
+  const own = await d.registry.call("onboard.windows", { label: "desk" }, "cli");
+  assert.ok(!own.error || own.error.code !== "held_for_approval", "a person in their own app is not held");
   const info = await d.registry.call("releases.info", {}, "mcp");
   assert.equal(info.error, undefined);
   assert.equal(typeof info.data.version, "string");
   const cli = await d.registry.call("vault.state", {}, "cli");
-  assert.ok(!cli.error || cli.error.code !== "held_for_approval", "a person on the terminal is not held");
+  assert.ok(!cli.error || (cli.error.code !== "held_for_approval" && cli.error.code !== "denied"), "a person on the terminal still reads their vault");
 });
 
 test("onboard: moving to server needs no proof during first-time setup (no owner yet)", async t => {
@@ -138,8 +143,7 @@ test("onboard: moving to server needs a presence proof once an owner already exi
   const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
   assert.equal(later.error.code, "presence_required");
   const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
-  assert.equal(solo.error.code, "solo_retired");
-  assert.match(solo.error.message, /run only on this computer/);
+  assert.equal(solo.error.code, "bad_input");
 });
 
 // Reviewer's HIGH, round 2: the first version exempted "no owner seen", which is permanently
@@ -196,15 +200,15 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
     ["onboard.pair", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
     ["onboard.finish", {}], ["onboard.link", {}]]) {
     const r = await d.registry.call(tool, input, "cli");
-    assert.equal(r.error?.code, "not_a_server", `${tool} should refuse on solo`);
+    assert.equal(r.error?.code, "not_a_server", `${tool} should refuse when this computer is not a server`);
   }
-  // status and machine, the two exceptions, still work.
+  // status and machine, the two exceptions, still work. Solo is not a value.
   const status = await d.registry.call("onboard.status", {}, "cli");
   assert.equal(status.data.machine, "device");
-  assert.equal(status.data.needsServer, true);
-  assert.match(status.data.notice, /run only on this computer/);
+  assert.equal(status.data.needsServer, undefined);
+  assert.equal(status.data.notice, undefined);
   const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
-  assert.equal(solo.error.code, "solo_retired");
+  assert.equal(solo.error.code, "bad_input");
 });
 
 test("onboard: join status says where the pair step stands and whether the relay is ready to pair", async t => {

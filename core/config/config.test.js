@@ -58,24 +58,25 @@ test("config: a real existing box's config.json (role box, no machine) migrates 
   assert.deepEqual(c.problems, []);
 });
 
-test("config: a real Mac local config.json (role local, no machine) becomes a device and asks for a server", t => {
+test("config: a real Mac local config.json (role local, no machine) is a device, with no notice", t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
   const c = config.load(root);
   assert.equal(c.role, "local");
   assert.equal(c.machine, "device");
-  assert.equal(c.needsServer, true);
-  assert.match(c.problems.join(" "), /run only on this computer/);
+  assert.equal(c.needsServer, undefined);
+  assert.deepEqual(c.problems, []);
   assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8").includes("solo"), false);
 });
 
-test("config: a stored solo is a device with the move notice, and the file is left as it was", t => {
+test("config: a stored solo loads as a device, with no notice, and the file is left as it was", t => {
   const root = tempHome(t);
   const raw = JSON.stringify({ role: "box", machine: "solo" });
   fs.writeFileSync(path.join(root, "config.json"), raw);
   const c = config.load(root);
   assert.equal(c.machine, "device");
-  assert.equal(c.needsServer, true);
+  assert.equal(c.needsServer, undefined);
+  assert.deepEqual(c.problems, []);
   assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8"), raw);
 });
 
@@ -105,7 +106,7 @@ test("config: an existing Mac's config.json (role local, no machine) becomes a d
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
   const c = config.load(root, "darwin");
   assert.equal(c.machine, "device");
-  assert.equal(c.needsServer, true);
+  assert.equal(c.needsServer, undefined);
   assert.equal(config.isServer(c.machine), false);
 });
 
