@@ -1253,7 +1253,7 @@ export default {
     });
 
     ctx.tool("relay.devices.remove", {
-      description: "Remove a paired device: its connections close at once and it can no longer reach the box through the relay. Its presence key is removed too.",
+      description: "Remove a paired device. Its connections close at once and its presence key is removed.",
       input: obj({ id: str }, ["id"]),
       presence: { summary: async input => `Remove device ${String(input && input.id)} from this box` },
       run: async (input, meta = {}) => {

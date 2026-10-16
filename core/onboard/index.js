@@ -397,7 +397,7 @@ export default {
 
     ctx.tool("onboard.claude", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
+      description: "Store Claude's sign-in in the Vault: a setup token or an API key. The value is never returned.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),

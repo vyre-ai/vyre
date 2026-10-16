@@ -107,6 +107,20 @@ test("onboard: onboard.machine holds an agent caller for one tap and changes not
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).machine, before);
 });
 
+test("onboard: a person-only surface read waits for the same tap, and releases.info does not", async t => {
+  const { d } = await box(t);
+  for (const name of ["vault.state", "spaces.devices.list"]) {
+    const held = await d.registry.call(name, {}, "mcp");
+    assert.equal(held.error && held.error.code, "held_for_approval", name);
+    assert.equal(held.data, undefined, name);
+  }
+  const info = await d.registry.call("releases.info", {}, "mcp");
+  assert.equal(info.error, undefined);
+  assert.equal(typeof info.data.version, "string");
+  const cli = await d.registry.call("vault.state", {}, "cli");
+  assert.ok(!cli.error || cli.error.code !== "held_for_approval", "a person on the terminal is not held");
+});
+
 test("onboard: moving to server needs no proof during first-time setup (no owner yet)", async t => {
   const { d } = await box(t);
   // Matches onboarding's own passkey-enrollment exemption -- there is no passkey to prove
