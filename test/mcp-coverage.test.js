@@ -15,7 +15,6 @@ const EXPECTED = Object.freeze([
   "flows.kit.library",
   "flows.kit.library.get",
   "flows.kit.propose",
-  "onboard.claude",
   "onboard.computer.add",
   "onboard.github.finish",
   "onboard.github.start",
