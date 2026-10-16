@@ -5065,6 +5065,28 @@ export default {
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
     }); registerTranscriptTools(ctx, sb, str);
+    ctx.tool("threads.recall-sessions", {
+      description: "Session ids Recall may attribute to one person: their threads, each thread's rollover windows, and nothing else. For recall.search member scoping only.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["person"], properties: { person: str } },
+      run: async i => {
+        const want = sb.canon(String(i.person));
+        /** @type {string[]} */
+        const threads = [];
+        for (const row of /** @type {any[]} */ (sb.db.prepare("SELECT id, opts FROM threads_runs").all())) {
+          const o = optsOf(row);
+          if (o.person && sb.canon(String(o.person)) === want) threads.push(String(row.id));
+        }
+        const sessions = new Set(threads);
+        for (const tid of threads) {
+          sessions.add(tid);
+          for (const r of /** @type {any[]} */ (sb.db.prepare("SELECT native_to, native_from FROM threads_rolls WHERE thread = ?").all(tid))) {
+            if (r.native_to) sessions.add(String(r.native_to));
+            if (r.native_from) sessions.add(String(r.native_from));
+          }
+        }
+        return { sessions: [...sessions] };
+      },
+    });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
