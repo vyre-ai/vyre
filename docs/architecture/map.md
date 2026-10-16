@@ -217,7 +217,6 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
 | `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
-| `docs-site/` | The documentation site build (separate from docs/ prose). |
 | `escrow/` | The Worker that keeps each identity's sealed Secret Key for GitHub sign-in; never the recovery code. |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
@@ -238,7 +237,6 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
 | `test/` | Tests that cross folders: boundaries, docs, installers, releases. |
 | `tools/` | Tooling for the Cloudflare workers. |
-| `unit-logs/` | Captured unit-test logs used by CI and local test harnesses. |
 | `updates/` | The weekly update sign-up: the Worker behind vyre.run/updates, with consent and unsubscribe. |
 | `web/` | Static web assets. |
 | `wink/` | The Go forwarder that carries Wink traffic, built into the server image. |
