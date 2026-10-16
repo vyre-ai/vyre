@@ -53,6 +53,10 @@ test("MEMBER_NAMED_AGENT_GROUP is only outward mail send tools that exist and st
     assert.equal(GROUP_OF.get(tool), "mail", `${tool} is a mail-group outward send`);
     const def = d.registry.tools.get(tool);
     assert.ok(def && (def.outward || def.asks), `${tool} is held at the Gate (outward or asks)`);
+    if (tool === "mail.send") {
+      assert.equal(def.outward, true, "mail.send is outward");
+      assert.ok(!def.asks, "mail.send is held by the registry outward path, not module asks");
+    }
   }
   const sends = ownerScopedTools(d.registry).filter(n => n === "mail.send" || n === "google.mail.send" || /^(mail|google\.mail)\./.test(n) && d.registry.tools.get(n)?.outward);
   for (const tool of sends) {
@@ -87,13 +91,16 @@ test("a member's named agent is not served the owner's memory, planner or vault"
 });
 
 test("a member's named agent on mail.send is held at the Gate as the member, not door-refused and not sent as the owner", { timeout: 200_000 }, async t => {
-  const { memberAgent } = await rig(t);
+  const { d, memberAgent } = await rig(t);
+  const mail = d.registry.tools.get("mail.send");
+  let runs = 0;
+  const run = mail.run;
+  mail.run = async (...a) => { runs++; return run(...a); };
+  /** @type {any[]} */ const sent = [];
+  d.registry.deps.events?.on?.("mail.sent", e => sent.push(e));
   const r = await memberAgent("mail.send", { to: "dana@example.com", subject: "Hi", body: "test" });
   assert.ok(!(r.error && r.error.message === refusal("mail.send")), "the outward send passes the member door");
-  if (r.error) {
-    assert.ok(["bad_input", "no_account", "not_found", "failed", "denied"].includes(r.error.code) && r.error.message !== refusal("mail.send"), `held or blocked before owner's mail: ${JSON.stringify(r.error)}`);
-  } else {
-    assert.ok(r.data && (r.data.held || r.data.id), `held at the Gate: ${JSON.stringify(r.data).slice(0, 200)}`);
-    assert.ok(!r.data.sent, "nothing went out without a Gate decision");
-  }
+  assert.equal(runs, 0, "the registry outward hold runs before the mail module");
+  assert.equal(r.error?.code, "held_for_approval", `one-tap approval, nothing ran: ${JSON.stringify(r.error || r.data).slice(0, 200)}`);
+  assert.equal(sent.length, 0, "mail is never sent unheld");
 });
