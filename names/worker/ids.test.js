@@ -47,6 +47,23 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   void chainsById;
 });
 
+test("ids: a space's chain id resolves to its name, as a person's does, and an id of the other kind or an unknown one is not found", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  data(await alex.claim("alex"));
+  const harlow = await identity(w, alex.first, { kind: "space", ctxFor: async id => id === alex.state.id ? alex.ops : null });
+  await harlow.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, alex.first.eid);
+  const h = data(await harlow.claim("harlow", "aG9tZQ", alex.first, alex.first.eid));
+  const bySpace = data(await alex.get(`/v1/ids/resolve?id=${h.id}`));
+  assert.deepEqual([bySpace.name, bySpace.kind, bySpace.id], ["harlow", "space", h.id]);
+  assert.deepEqual(bySpace, data(await alex.get("/v1/ids/resolve?name=harlow")), "the same answer the name gives");
+  const byPerson = data(await alex.get(`/v1/ids/resolve?id=${alex.state.id}`));
+  assert.deepEqual([byPerson.name, byPerson.kind], ["alex", "person"]);
+  assert.equal(code(await alex.get(`/v1/ids/resolve?id=spc_${"a".repeat(26)}`)), "not_found");
+  assert.equal(code(await alex.get("/v1/ids/resolve?id=spc_short")), "not_found");
+  assert.equal(code(await alex.get(`/v1/ids/resolve?id=xyz_${"a".repeat(26)}`)), "not_found");
+});
+
 test("ids: one namespace with the names an older setup gave a server, one name per identity, reserved and invalid names refused", async t => {
   const w = world(t), box = who(w);
   const alex = await person(w), other = await person(w);

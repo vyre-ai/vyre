@@ -254,14 +254,15 @@ export const idOps = {
     return { name: v.name, kind: state.kind, id: state.id, mine: true };
   },
 
-  /** Exact name, an own-domain alias, or a person id (`ii/` already maps the chain id to its name). A missing, released and invalid name answer alike, so a probe learns only what a holder published. @this {any} */
+  /** Exact name, an own-domain alias, or a person or space chain id (`ii/` already maps the chain id to its name). A missing, released and invalid name answer alike, so a probe learns only what a holder published. @this {any} */
   async op_idResolve(_b, _a, _ip, q) {
     if (q.id) {
       const id = String(q.id);
-      if (!/^per_[a-z2-7]{26}$/.test(id)) throw err(404, "not_found", "no such name");
+      // A person id (per_) or a space's chain id (spc_): a join link carries the space's chain id and names no server, so the app asks which space has it. Both answers are what the name's own answer already gives anyone.
+      if (!/^(per|spc)_[a-z2-7]{26}$/.test(id)) throw err(404, "not_found", "no such name");
       const held = await this.store.get(`ii/${id}`);
       const rec = held ? await this.idLiveRecord(held) : null;
-      if (!rec || rec.id !== id || rec.kind !== "person") throw err(404, "not_found", "no such name");
+      if (!rec || rec.id !== id || rec.kind !== (id.startsWith("spc_") ? "space" : "person")) throw err(404, "not_found", "no such name");
       return { name: rec.name, kind: rec.kind, id: rec.id, ops: rec.ops, sealed: rec.sealed, rec: rec.rec, aliases: rec.aliases };
     }
     let name = null;
