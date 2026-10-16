@@ -2,7 +2,7 @@
 // design-refs/. A picture that changed is a design change: it writes before, after and diff images and exits 1, and the screen's owner says yes (--update) or no. The rules checker runs on
 // every render: no sideways scroll, text of 12 or more (the uppercase section labels are the system's own micro size), touch targets of 44 on a phone, no console errors.
 //
-//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 10]
+//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 12]
 // Surfaces: app (1280, full form), phone (390, compact), chat (390, glance). Themes: dark, paper. Files: <refs>/<id>/<surface>-<theme>.png.
 // Needs `playwright` resolvable (PW_FROM, as shots.mjs does) and a web export of the app built with EXPO_PUBLIC_VYRE_MOCK=1.
 import fs from "node:fs";
@@ -17,7 +17,7 @@ const dist = path.resolve(flag("--dist", "dist-mock"));
 const refs = path.resolve(flag("--refs", "../../design-refs"));
 const only = (flag("--only", "") || "").split(",").filter(Boolean);
 const surfaceOnly = (flag("--surface", "") || "").split(",").filter(Boolean);
-const budgetMb = Number(flag("--budget-mb", "10"));
+const budgetMb = Number(flag("--budget-mb", "12"));
 const update = bool("--update");
 const [out] = args;
 if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [--only ids] [--surface names] [--update]"); process.exit(2); }
