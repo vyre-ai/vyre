@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":353,"tool":1843,"event":550,"config":308,"env":297,"screen":0,"concept":39},
+  "counts": {"command":353,"tool":1845,"event":550,"config":308,"env":297,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -834,6 +834,8 @@
     {"kind":"tool","name":"identity.signin.ack","definedIn":"core/identity/signins.js","page":"reference/tools.md#identitysigninack","module":"identity","mentions":[]},
     {"kind":"tool","name":"identity.signin.revoke","definedIn":"core/identity/signins.js","page":"reference/tools.md#identitysigninrevoke","module":"identity","mentions":[]},
     {"kind":"tool","name":"identity.signins.pending","definedIn":"core/identity/signins.js","page":"reference/tools.md#identitysigninspending","module":"identity","mentions":[]},
+    {"kind":"tool","name":"identity.signins.serve","definedIn":"core/identity/signins.js","page":"reference/tools.md#identitysigninsserve","module":"identity","mentions":[]},
+    {"kind":"tool","name":"identity.signins.serve-write","definedIn":"core/identity/signins.js","page":"reference/tools.md#identitysigninsserve-write","module":"identity","mentions":[]},
     {"kind":"tool","name":"identity.status","definedIn":"core/identity/index.js","page":"reference/tools.md#identitystatus","module":"identity","mentions":[]},
     {"kind":"tool","name":"identity.unlock","definedIn":"core/identity/index.js","page":"reference/tools.md#identityunlock","module":"identity","mentions":[{"page":"adr/0054-master-password-and-space-vault.md","line":27,"anchor":"decision"},{"page":"adr/0056-a-server-or-a-device.md","line":24,"anchor":"decision"}]},
     {"kind":"tool","name":"identity.vault.install","definedIn":"core/identity/index.js","page":"reference/tools.md#identityvaultinstall","module":"identity","mentions":[]},
