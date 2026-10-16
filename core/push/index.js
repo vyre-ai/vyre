@@ -162,9 +162,9 @@ export const NOTES = {
   "identity.recovered": e => ({ kind: "notice", title: "Your identity was recovered on a new device. Remove it if it was not you",
     path: "/settings?section=identity", tag: `identity-recovered-${e.payload.seq}`, actions: ["remove"], loud: true }),
   // The sign-in module (any-device sign-in with the space address, username and master password) emits this when a device that was not signed in before gets in: payload { device, at }, the device's id only.
-  // Every other device of the person rings at once, through quiet hours and outside the daily budget, with a one-tap Remove. The words are fixed; the path carries only the device id.
-  "signin.new-device": e => ({ kind: "notice", title: "A new device signed in to your space. Remove it if it was not you",
-    path: `/settings?section=devices&remove=${enc(e.payload.device)}`, tag: `signin-device-${e.payload.device}-${Math.floor((Number(e.payload.at) || 0) / 1000)}`, actions: ["remove"], loud: true }),
+  // Every other device of the person rings at once, through quiet hours and outside the daily budget, with a one-tap open of the devices page. The words are fixed; the tag carries only the device id.
+  "signin.new-device": e => ({ kind: "notice", title: "A new device signed in to your space. Check it was you",
+    path: "/settings?section=devices", tag: `signin-device-${e.payload.device}-${Math.floor((Number(e.payload.at) || 0) / 1000)}`, loud: true }),
   "identity.device-removed": e => ({ kind: "notice", title: "A device was removed from your identity", path: "/settings?section=identity", tag: `identity-removed-${e.payload.eid}`, loud: true }),
   "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };

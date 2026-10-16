@@ -589,18 +589,16 @@ test("push: no payload carries thread, goal, message or teammate text: every sen
   assert.deepEqual(Object.keys(wire).sort(), ["at", "kind", "path", "tag", "title"]);
 });
 
-test("push: a new device signing in rings the person's other devices, loudly, with fixed words and only the device id in the path", async () => {
+test("push: a new device signing in rings the person's other devices, loudly, with fixed words and no button that has no target", async () => {
   const { NOTES, outgoing } = await import("./index.js");
   const made = NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_000 } }, {});
   assert.equal(made.kind, "notice", "a notice is always on and is not counted in the daily budget");
   assert.equal(made.loud, true);
-  assert.deepEqual(made.actions, ["remove"]);
-  assert.equal(made.title, "A new device signed in to your space. Remove it if it was not you");
-  assert.equal(made.path, "/settings?section=devices&remove=dev_1");
-  const again = NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_001 } }, {});
+  assert.equal(made.actions, undefined, "a sign-in is a session with no revoke, so no Remove button");
+  assert.equal(made.title, "A new device signed in to your space. Check it was you");
+  assert.equal(made.path, "/settings?section=devices");
   assert.notEqual(made.tag, NOTES["signin.new-device"]({ payload: { device: "dev_2", at: 1_790_000_000_000 } }, {}).tag, "two devices are two notices");
-  assert.equal(made.tag, again.tag, "the same device in the same second is one notice");
-  const hostile = NOTES["signin.new-device"]({ payload: { device: "a&b=c/../x", at: 1 } }, {});
-  assert.ok(!hostile.path.includes("&b=") && !hostile.path.includes("../"), hostile.path);
-  assert.ok(JSON.stringify(outgoing({ ...made, at: 0 })).includes("Remove it if it was not you"));
+  assert.equal(made.tag, NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_001 } }, {}).tag, "the same device in the same second is one notice");
+  assert.ok(!made.path.includes("dev_1"), "the path carries no device id");
+  assert.ok(JSON.stringify(outgoing({ ...made, at: 0 })).includes("Check it was you"));
 });

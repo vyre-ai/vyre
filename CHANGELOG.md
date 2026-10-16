@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- feat(push): a new device signing in rings the person's other devices (`signin.new-device`, payload `{ device, at }`): a loud notice outside the daily budget, fixed words, a one-tap Remove, only the device id in the path. The sign-in module emits it.
+- feat(push): a new device signing in rings the person's other devices (`signin.new-device`, payload `{ device, at }`): a loud notice outside the daily budget, fixed words, opening the devices page (a sign-in is a session with no revoke, so no Remove button), only the tag carries the device id. The sign-in module emits it.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
