@@ -20,6 +20,7 @@ export function registerSpaceTools(ctx) {
   ctx.tool("vault.space.create", {
     description: "Make a space vault key, wrapped for the server so agents work while you are away.",
     input: obj({ space: str }, ["space"]),
+    presence: { summary: (/** @type {any} */ i) => `Make a space vault for ${i && i.space}` },
     run: async (input) => { spaceOk(input); return SV.create(dirOf(input)); },
   });
   ctx.tool("vault.space.status", {
@@ -37,11 +38,13 @@ export function registerSpaceTools(ctx) {
   ctx.tool("vault.space.grant", {
     description: "Wrap the space vault key to a member so their access carries to the space.",
     input: obj({ space: str, person: str, pub: str }, ["space", "person", "pub"]),
+    presence: { summary: (/** @type {any} */ i) => `Let ${i && i.person} open the space vault of ${i && i.space}` },
     run: async (input) => { spaceOk(input); return SV.grant(dirOf(input), input.person, input.pub); },
   });
   ctx.tool("vault.space.put", {
     description: "Store a space vault item. The value is sealed and never returned.",
     input: obj({ space: str, id: str, name: str, value: str }, ["space", "id", "name", "value"]),
+    presence: { summary: (/** @type {any} */ i) => `Store "${i && i.name}" in the space vault of ${i && i.space}` },
     run: async (input, meta) => {
       spaceOk(input);
       const caller = String((meta && meta.caller) || "");
@@ -58,6 +61,7 @@ export function registerSpaceTools(ctx) {
   ctx.tool("vault.space.rotate", {
     description: "Rotate the space vault key and drop one member. Remaining members still open items.",
     input: obj({ space: str, person: str }, ["space"]),
+    presence: { summary: (/** @type {any} */ i) => `Rotate the space vault of ${i && i.space}` },
     run: async (input) => { spaceOk(input); return SV.rotate(dirOf(input), { remove: input.person ? [input.person] : [] }); },
   });
   ctx.tool("vault.space.use", {
