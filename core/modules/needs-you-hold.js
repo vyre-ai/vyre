@@ -155,12 +155,25 @@ export function disarmSecrets(armed) {
 /** Proven assistant session (daemon-bound thread), same rule as agent-reach proven(). @param {any} meta */
 const provenSession = meta => Boolean(meta && typeof meta.thread === "string" && meta.thread);
 
+/** The one assistant row the agents module holds (kind assistant), not a hard-coded name. @param {{ tools: { get(name: string): any } }} registry */
+async function pinnedAssistantName(registry) {
+  const def = registry.tools.get("agents.list");
+  if (!def || typeof def.run !== "function") return null;
+  let rows;
+  try { rows = await def.run({}, { caller: "module:registry" }); } catch { return null; }
+  if (!Array.isArray(rows)) return null;
+  const row = rows.find((/** @type {any} */ a) => a && a.kind === "assistant");
+  return row && typeof row.name === "string" ? row.name : null;
+}
+
 export async function holdNeedsYou(registry, o) {
   const { tool, def, caller } = o;
   if (!def || def.internal || def.hook) return null;
-  // A Kit proposal from the person's own assistant session runs under their chain in flows; bare MCP/harness callers stay held.
-  // The person's pinned assistant (juno) may propose from its daemon-bound session; other agents (kit in golden) stay held.
-  if (tool === "flows.kit.propose" && provenSession(o.meta) && o.meta.agent === "juno") return null;
+  // A Kit proposal from the person's pinned assistant on a daemon-bound session runs under their chain in flows; every other agent and every bare adapter label stays held.
+  if (tool === "flows.kit.propose" && provenSession(o.meta)) {
+    const pinned = await pinnedAssistantName(registry);
+    if (pinned && o.meta.agent === pinned) return null;
+  }
   if (modelCaller(caller)) {
     const missing = deviceAddMissing(tool, o.input);
     if (missing) return missing;

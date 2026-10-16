@@ -37,7 +37,7 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
-import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
+import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra, modelCaller } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -1251,7 +1251,7 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || isPerson(cur.caller));
+          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || (isPerson(String(cur.caller)) && !modelCaller(String(cur.caller))));
           if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
           const origin = captureOrigin() || (isPerson(cur.caller) ? String(cur.caller) : undefined);
           const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
