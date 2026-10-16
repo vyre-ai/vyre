@@ -37,7 +37,7 @@ export function installLine(version, vars = {}) {
   const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
   const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
   const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? "VYRE_STORE=auto" : ""].filter(Boolean).join(" ");
-  // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice and prints the same four words.
+  // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice, and the server pairs itself.
   if (vars.os === "mac") return `curl -fsSL ${rc ? `${base}install-mac-server.sh` : "vyre.run/box/install-mac-server.sh"} | ${env ? `${env} ` : ""}sh`;
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }

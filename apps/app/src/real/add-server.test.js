@@ -137,6 +137,18 @@ test("add-server: starting again drops the old run (its offer and its lines neve
   assert.equal(a.state.stage, "idle");
 });
 
+test("add-server: an install code pairs as soon as the server is found, with no confirm from the person", async () => {
+  const f = fakes({ after: 2 });
+  const issued = { code: "B".repeat(199), secret: new Uint8Array(16), key: { privateKey: {}, spki: new Uint8Array(91) }, expiresAt: Date.now() + 30 * 60_000 };
+  const a = make(f, { autoPair: true, issue: async () => issued });
+  await a.begin("records", "linux");
+  assert.equal(a.state.installLine, installLine(undefined, { code: issued.code, store: "auto" }));
+  await until(() => a.state.stage === "done");
+  assert.equal(f.calls.connect, 1);
+  assert.deepEqual(f.calls.tools, ["system.info", "wink.server.setup-offer"]);
+  assert.equal(f.calls.paired.length, 1);
+});
+
 test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Records choice", async () => {
   const f = fakes({ after: 3, lines: [] });
   const a = make(f);

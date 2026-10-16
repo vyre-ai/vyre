@@ -22,6 +22,7 @@ import { within } from "../../lib/within.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
+import { armInstallBoot } from "./boot-pair.js";
 import { relayLink } from "./link.js";
 import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
@@ -1541,20 +1542,13 @@ export default {
     if (bootCode) {
       const at = bootAt > 1e12 ? bootAt : bootAt * 1000, age = Date.now() - at;
       if (!(Number.isFinite(at) && at > 0 && age >= -5 * 60_000 && age <= SETUP_TTL)) { bootSetupFailure = "the code on the install line is older than an hour (or has no valid time), so it was not used; make a new install line in the app"; ctx.log("relay: the setup code on this box has no valid stamp within the last hour and was not used"); }
-      else void (async () => {
-        // a refusal that cannot change (this box has an owner) ends at once with its reason; anything else (a busy or briefly unreachable relay) is tried again with a growing pause until the code's hour is over
-        let wait = Number(ctx.config && ctx.config.relay && ctx.config.relay.setupRetryMs) || 3000;
-        for (;;) {
-          try { await beginSetup(String(bootCode)); bootSetupFailure = null; bootSetupRetrying = false; return; } catch (err) {
-            const e = /** @type {any} */ (err);
-            const final = !e || e.code === "denied" || e.code === "unsupported" || stopping || Date.now() - at + wait > SETUP_TTL;
-            ctx.log(`relay: setup code not used${final ? "" : " yet, trying again"}: ${e && e.message}`);
-            if (final) { bootSetupRetrying = false; bootSetupFailure = `the relay or this box refused the setup code: ${e && e.message}`; return; }
-            bootSetupRetrying = true; bootSetupFailure = `the relay is busy or not answering (${e && e.message}); trying again`;
-            await nap(wait); wait = Math.min(wait * 2, 60_000);
-          }
-        }
-      })();
+      else armInstallBoot({
+        code: String(bootCode), at, beginSetup, redeem: (code) => ctx.call("wink.server.install-redeem", { code }),
+        log: (m) => ctx.log(m), nap, stopping: () => stopping, ttl: SETUP_TTL,
+        retryMs: Number(ctx.config && ctx.config.relay && ctx.config.relay.setupRetryMs) || 3000,
+        setFailure: (why, retrying) => { bootSetupFailure = why; bootSetupRetrying = Boolean(retrying); },
+        clearFailure: () => { bootSetupFailure = null; bootSetupRetrying = false; },
+      });
     }
 
     // Taking a device's presence key away (presence.remove) takes the device away too: its open

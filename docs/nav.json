@@ -138,6 +138,7 @@
       "adr/0052-session-stream.md",
       "adr/0053-the-public-door.md",
       "adr/0054-master-password-and-space-vault.md",
+      "adr/0054-server-install-pairing.md",
       "adr/0041-github-everywhere.md",
       "adr/0042-move-engine.md",
       "adr/0043-identity-marks-and-vyre-code.md",

@@ -31,7 +31,7 @@ export const SCREENS = {
   "create.name": { step: "Space", to: ["create.members"] },
   "create.members": { step: "Space", to: ["create.server"] },
   "create.server": { step: "Space", to: ["create.run"] },
-  "create.run": { step: "Space", to: ["create.code"] },
+  "create.run": { step: "Space", to: ["create.setup", "create.code"] },
   "create.code": { step: "Space", to: ["create.confirm"] },
   "create.confirm": { step: "Space", to: ["create.setup", "create.code"] },
   "create.setup": { step: "Space", to: ["compute", "ready", "vault.intro", "master.enter", "master.set"] },

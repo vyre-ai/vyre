@@ -81,8 +81,10 @@ On Windows the app offers the same two choices. This PC does not run Vyre on its
      Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
      Touch ID key approves new devices.
 
-   The line is good for one hour and works once. Nothing else is typed in the terminal.
-4. The installer checks the release's signature before it installs anything. The app waits on this screen until the server is online. You do not compare words and you do not type a code.
+   The line works once and expires in 30 minutes. It carries a one-time code the app made. Nothing else is typed in the terminal.
+   You do not compare words and you do not type a code.
+4. The installer checks the release's signature before it installs anything. The server installs Vyre and adopts the person
+   who approved the line. The app waits on this screen until the server is online.
 5. The app connects, and your space is ready.
 
 
@@ -135,15 +137,11 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 
 ## If setup stops partway
 
-> [!SNAG] The app says the reservation code is not valid
-> The code lasts 24 hours, works once, and a newer reservation of the same name replaces it. Reserve the name again at
-> <https://vyre.run/setup> and paste the new code.
-
 > [!SNAG] The app never finds the server
-> The line is good for one hour. In the app choose **Start again**, then run the new line. Check that the server can reach the internet.
+> The line expires in 30 minutes. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
 > If the installer says `Vyre is already running`, run `vyre uninstall --keep-data` on the server first, then paste the new line. Your data stays.
 
 > [!SNAG] The app stays on Waiting
-> The line is good for one hour. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
+> The line expires in 30 minutes and works once. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).

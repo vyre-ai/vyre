@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Get started with Vyre: reserve your name, install the app, add a server</title>
-  <meta name="description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
+  <meta name="description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, and add your phone.">
   <link rel="canonical" href="https://vyre.run/start/">
   <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
@@ -18,14 +18,14 @@
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/start/">
   <meta property="og:title" content="Get started with Vyre: reserve your name, install the app, add a server">
-  <meta property="og:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
+  <meta property="og:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, and add your phone.">
   <meta property="og:image" content="https://vyre.run/og/start.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Start with your name.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Get started with Vyre: reserve your name, install the app, add a server">
-  <meta name="twitter:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.">
+  <meta name="twitter:description" content="The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, and add your phone.">
   <meta name="twitter:image" content="https://vyre.run/og/start.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Get started","item":"https://vyre.run/start/"}]}]}</script>
   <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
@@ -73,8 +73,8 @@
 <li><strong>Use My Home</strong> (Mac only). Vyre runs on this Mac while it is awake. Add a server later and everything moves across.</li></ul></div></section>
 <section class="part rv" id="server" aria-labelledby="server-h"><span class="n">05</span><div><h2 id="server-h">Add a server</h2><p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
 <div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh</code><button type="button" data-copy="curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh" aria-label="Copy the command">Copy</button></div>
-<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line is good for one hour and works once.</p>
-<p>The installer checks the release’s signature, sets Vyre up, and prints four words. The app finds your server by itself and shows four words too. If they match, choose <strong>They match</strong>. Nothing is connected until you do.</p></div></section>
+<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line works once and expires in 30 minutes.</p>
+<p>The installer checks the release’s signature and sets Vyre up. The server pairs itself. The app finds your server and finishes pairing. You can also open the server's setup page and paste the code the app shows. The page locks after pairing.</p></div></section>
 <section class="part rv" id="phone" aria-labelledby="phone-h"><span class="n">06</span><div><h2 id="phone-h">Add your phone</h2><p>From the app, choose <strong>Add your phone</strong>. On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Scan the code from your computer and check that both screens show the same words. More on the <a href="/phone/">phone page</a>.</p></div></section>
 <section class="part rv" id="not-finished" aria-labelledby="not-finished-h"><span class="n">!</span><div><h2 id="not-finished-h">What is not in 0.5.1</h2><ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
@@ -93,7 +93,7 @@
 <section class="part rv" id="trouble" aria-labelledby="trouble-h"><span class="n">?</span><div><h2 id="trouble-h">If something goes wrong</h2><ul>
 <li>The app says the reservation code is not valid: it lasts 24 hours and works once. Reserve the name again on vyre.run/setup.</li>
 <li>The app says the line expired, or two servers used it: press <em>Start again</em> for a new line.</li>
-<li>The words do not match: press <em>They don’t match</em>, then start again. It means the line was not run on your server.</li>
+<li>The setup page will not take a code: the server is already paired, or that code was used. In the app, start again for a new line.</li>
 <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
 <li>Start over on a Linux server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then set up again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li></ul></div></section>
 </div></section>
