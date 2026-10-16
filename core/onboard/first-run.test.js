@@ -78,6 +78,7 @@ function harness(opt = {}) {
     if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: opt.completeCode || "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
     if (name === "wink.phone.open") return { qr: "vyre://wink/2?p=phoneseed", link: "vyre://wink/2?p=phoneseed", expires: 1_900_000_000_000, code: "WINK-ABCD-EFGH" };
+    if (name === "spaces.invites.preview") { if (opt.preview) return opt.preview(input); throw Object.assign(new Error("no card"), { code: "not_found" }); }
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
       if (link.includes("adminlink")) return { space: "spc_juniper", name: "juniper", role: "admin", server: "https://juniper.vyre.run" };
@@ -373,4 +374,17 @@ test("a poll stops hard when another server answered the install line first", as
   const w = await waiting.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
   const p = await waiting.tools.get("onboard.space.poll").run({ id: w.id }, { caller: "cli" });
   assert.equal(p.contested, undefined, "an ordinary wait is not a hard stop");
+});
+
+test("a shared vyre.run/i link names no server, so the review still shows the space and the role from the invite card; a card that cannot be read leaves the name empty", async () => {
+  const link = "https://vyre.run/i/inv_0123456789abcdef0123456789abcdef.eyJjaGFpbiI6e319";
+  const { tools, calls } = harness({ preview: (/** @type {any} */ input) => (input.link === link ? { space: "juniper.vyre.run", label: "Juniper Studio", role: "admin" } : null) });
+  const read = await tools.get("onboard.join.read").run({ link }, {});
+  assert.deepEqual([read.space, read.role, read.link], ["juniper", "admin", link]);
+  assert.ok(calls.some((c) => c[0] === "spaces.invites.preview" || (c.name === "spaces.invites.preview")), "the invite card was asked");
+  const blind = harness().tools;
+  const none = await blind.get("onboard.join.read").run({ link }, {});
+  assert.deepEqual([none.space, none.role], [null, "member"]);
+  const own = await blind.get("onboard.join.read").run({ link: "https://juniper.vyre.run/join/abcdefgh.ijklmnop" }, {});
+  assert.deepEqual([own.space, own.role], ["juniper", "member"], "a space's own link names its space without asking");
 });

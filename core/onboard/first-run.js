@@ -284,8 +284,17 @@ export function registerFirstRun(ctx, io) {
       const parsed = parseInvite(link);
       if (!parsed) throw bad("That link does not open a space. Ask for a new invite.");
       const heldLink = links.get(parsed.token);
-      const space = heldLink?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "");
-      return { link: parsed.link, role: heldLink?.role || "member", space: space || null, ttlDays: heldLink?.ttlDays || null };
+      let space = heldLink?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "");
+      let role = heldLink?.role || "member";
+      // The link an owner shares (vyre.run/i/<token>) names no server, so the person must still see which space and which role they are about to join: ask the invite card, which resolves the link and checks it.
+      if (!space) {
+        try {
+          const card = /** @type {any} */ (await personCall("spaces.invites.preview", { link: parsed.link }));
+          space = String((card && card.space) || "").replace(/\.vyre\.run$/, "");
+          if (!heldLink && card && typeof card.role === "string" && card.role) role = card.role;
+        } catch { /* the review then says "A space"; the join itself checks the invite */ }
+      }
+      return { link: parsed.link, role, space: space || null, ttlDays: heldLink?.ttlDays || null };
     },
   });
 
