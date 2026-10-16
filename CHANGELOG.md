@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the lock fails closed. Before the first read of the identity's state, and whenever that read fails, the app stays covered (a failed read says "Can't reach your vault. Try again." with a Try again button); only a build with no identity tool is uncovered. Under the cover the app is inert (the `inert` attribute and aria-hidden on the web, no-hide-descendants on a phone), so the keyboard and screen readers cannot reach it.
 - feat(app): coming back to the app, an identity that is made but locked on this device asks for its master password (or recovery key) before anything draws, and a legacy identity with no master password is asked for one and shown its recovery key. After a quiet spell the app locks itself again; Settings, Account picks 5 minutes, 15 minutes (the default), 1 hour or Never, and has Lock now. The tools are the existing `identity.status`, `identity.unlock`, `identity.vault.install`, `identity.migrate` and `identity.lock`; a model still cannot supply either secret. Proved on a real daemon through a restart (`test/unlock-live.test.js`).
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.

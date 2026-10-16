@@ -13,11 +13,14 @@ export function lockMinutes(raw) {
 }
 
 /**
- * What the gate shows for what identity.status answered: "unlock" (made, locked), "migrate" (keys with no master password), or "none" (nothing to ask, or nothing known).
- * @param {{ exists?: boolean, unlocked?: boolean, needsMigration?: boolean } | null | undefined} status
- * @returns {"none" | "unlock" | "migrate"}
+ * What the gate shows for what identity.status answered: "unlock" (made, locked), "migrate" (keys with no master password), "unreachable" (the read failed: stay covered, say so, offer Try again),
+ * "pending" (not read yet: covered, blank), or "none" (nothing to ask). A lock fails closed: only a build that has no identity at all (`null`) or an answer that says nothing is locked uncovers the app.
+ * @param {{ exists?: boolean, unlocked?: boolean, needsMigration?: boolean, unreachable?: boolean } | null | undefined} status @param {boolean} [loaded] has the first read finished
+ * @returns {"none" | "unlock" | "migrate" | "unreachable" | "pending"}
  */
-export function lockView(status) {
+export function lockView(status, loaded = true) {
+  if (!loaded) return "pending";
+  if (status && typeof status === "object" && status.unreachable === true) return "unreachable";
   if (!status || typeof status !== "object") return "none";
   if (status.needsMigration === true) return "migrate";
   if (status.exists === true && status.unlocked !== true) return "unlock";
@@ -76,4 +79,24 @@ export function createIdleLock(o) {
     setMinutes(minutes) { ms = minutes * 60_000; if (running) { if (timer !== null) clear(timer); timer = null; if (ms > 0) arm(Math.max(0, ms - (now() - last))); else running = false; } },
     get running() { return running; },
   };
+}
+
+/** Codes that mean "this build has no identity tool at all", which is no lock, as against a daemon that did not answer. */
+const NO_IDENTITY_TOOL = new Set(["no_such_tool", "not_found", "undeclared"]);
+/** What identity.status gave when it failed: a build with no identity tool is `null` (nothing to lock), anything else cannot be told from a locked vault, so it is `{ unreachable: true }`. @param {any} e */
+export function statusFailure(e) {
+  return e && NO_IDENTITY_TOOL.has(String(e.code)) ? null : { unreachable: true };
+}
+
+/** The words over a vault the app cannot read the state of. */
+export const UNREACHABLE = Object.freeze({ title: "Can't reach your vault", lead: "Try again." });
+
+/**
+ * Cover or uncover the app under the lock screen for the keyboard and for screen readers (web). `inert` takes the subtree out of the tab order and the accessibility tree at once; aria-hidden is
+ * the belt for a browser without it. @param {{ setAttribute(n: string, v: string): void, removeAttribute(n: string): void } | null | undefined} el @param {boolean} covered
+ */
+export function applyCover(el, covered) {
+  if (!el) return;
+  if (covered) { el.setAttribute("inert", ""); el.setAttribute("aria-hidden", "true"); }
+  else { el.removeAttribute("inert"); el.removeAttribute("aria-hidden"); }
 }
