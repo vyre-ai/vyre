@@ -31,6 +31,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # agent-fill signs in through a real headless Chrome: the one pinned build, the same one the Linux jobs use, not the runner's own Chrome app.
+      - run: node scripts/install-test-chrome.mjs
       - name: The targeted set (vault, its connectors, the modules and CLI it touches)
         # One file at a time with its own 8-minute alarm and a per-test timeout, so a single hung
         # file is named and fails instead of stalling the whole job until it is cancelled.
