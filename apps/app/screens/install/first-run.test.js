@@ -167,10 +167,9 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.match(src, /<AddServerCard onDone=\{\(\) => \{[\s\S]*doMake\("server"/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
 
-test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
-  assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
-  for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
-  assert.match(FIRST.windows, /alone is coming/);
+test("the first run offers Join a team first and Add a server second, on every device", () => {
+  for (const k of ["mac", "windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
+  assert.match(FIRST.windows, /does not run Vyre on its own/);
   assert.equal(FIRST.server.upgrades.mac, "This upgrades My Home to My Cloud.");
   assert.equal(FIRST.server.upgrades.windows, "This sets up My Cloud.");
 });

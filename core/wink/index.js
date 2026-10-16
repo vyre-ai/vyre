@@ -83,8 +83,8 @@ export function createWink(inject = {}) {
   /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
-    // A server runs all of this. A person's computer that belongs to a server (machine "device") runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
-    // lends itself to them, and holds the connection a storage drive on its network is reached through. A computer on its own (machine "solo") stays out: nothing here is for it.
+    // A server runs all of this. A person's computer (machine "device", including one that used to be solo) runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
+    // lends itself to them, and holds the connection a storage drive on its network is reached through.
     if (ctx.config.role !== "box" && ctx.config.machine !== "device") return { async stop() {} };
     const now = () => Date.now();
     ctx.store.migrate([
@@ -302,7 +302,7 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Type back the code the new device is showing. The right one adds the device. A wrong one closes the code.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
       run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed, meta.presence || null); },
@@ -655,7 +655,7 @@ export function createWink(inject = {}) {
       return { id: g.id, source: g.source, since: g.created_at, status: g.status, subject: g.subject, resource: g.resource.prefix, lastUsed: g.last_used || null, card: c };
     };
     ctx.tool("wink.access", {
-      description: "What you have added with a Wink: your devices (a phone, a computer, a server, a storage device, each with its kind, who it belongs to and what it offers) and the grants given to people, as cards. Devices belong to you, not to a space. Answers { devices, grants }.",
+      description: "Devices you have added and the grants given to people. Devices belong to you, not to a space.",
       input: obj({ status: { type: "string", enum: ["active", "revoked"] } }),
       run: async (input, meta = {}) => {
         owner(meta, "the access list");

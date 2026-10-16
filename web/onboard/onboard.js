@@ -54,11 +54,8 @@ const state = {
   name: "",
   assistant: "",
   host: "",
-  /** The "How will Vyre run?" step's choice, config.machine's three values ("solo"|"server"|
-   * "device", docs/design/anywhere.md, ADR 0039 — not config.role, which is unrelated and
-   * unchanged), fixture-backed until anywhere's and tailnet's onboard.* tools ship for real
-   * (asked, team/archive/work-journals/launch-surfaces.md "Where should Vyre live?"). */
-  /** @type {"solo"|"server"|"device"|null} */ live: null,
+  /** The "How will Vyre run?" step's choice: server or device, or null before the person picks. */
+  /** @type {"server"|"device"|null} */ live: null,
   /** The Device choice's "same Tailscale network" input: the existing server's tailnet name,
    * for the `verify{node}` call once Tailscale connects (tailnet, team/archive/work-journals/launch-surfaces.md
    * "Two separate paths for 'I have a server'"). Client-only. */
@@ -355,17 +352,17 @@ const SCREENS = {
   // New (28 Sep, user decision "Vyre anywhere"): a role choice ahead of the pairing screens.
   // Copy and the three choices are anywhere's (docs/design/anywhere.md, work/anywhere 11328815,
   // ADR 0039), which owns them; this screen is launch's build of that spec. The field is
-  // config.machine ("solo"|"server"|"device", additive, ADR 0039) — NOT config.role, which
+  // config.machine ("server"|"device", ADR 0054). solo is not a value. NOT config.role, which
   // stays "box"|"local" and is untouched by this screen.
   //
   // Unified per the lead (the user was explicit: Move to server is the SAME flow in onboarding
   // and later): "name" (reserving this machine's own address) never runs for Device — a device
   // never reserves an address, only a server does. "tailscale" DOES still run for Device (a
   // device joining IS "a second device joining", the case the lead said triggers it), just not
-  // for Solo or Server, which both skip both screens and defer to Settings > Your devices > Add
+  // for a server, which skips both screens and defers to Settings > Your devices > Add
   // a device later.
-  //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
-  //     server has it on record), then straight to Claude sign-in. Real tool, sha 73d03d39 —
+  //   - There is no solo choice. onboard.machine does not accept it.
+  //     Real tool, sha 73d03d39.
   //     `service` always comes back null for now (anywhere's own launchd installer isn't built
   //     yet), so nothing here reads it.
   //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not
@@ -394,7 +391,7 @@ const SCREENS = {
   live(col, s) {
     col.append(
       h("h1", { class: "h1" }, "How will Vyre run?"),
-      h("p", { class: "lead" }, "You can change this later without losing anything."));
+      h("p", { class: "lead" }, "Join a space, or run Vyre on a computer that stays on."));
     const body = h("div", { class: "ob-panel" });
     const st = h("div", { class: "check-line", "aria-live": "polite" });
     col.append(body, st);
@@ -421,18 +418,6 @@ const SCREENS = {
     const label = () => choice !== "device" ? "Continue" : via === "relay" ? "Pair" : "Connect";
 
     const syncFoot = () => s.foot({ label: label(), disabled: !choice, run: async () => {
-      if (choice === "solo") {
-        // Order matters: onboard.skip's tailscale/name calls are boxOnly() (core/onboard/index.js),
-        // refused once the machine is actually "solo" (config.isServer("solo") is false, correctly,
-        // since neither step applies to a solo machine at all). Skip them first, while this
-        // machine still counts as a server for that check, then flip it to solo - the other order
-        // silently failed the skip server-side, leaving onboard.status().steps stuck at "todo"
-        // forever even though the page had already moved on to Claude sign-in.
-        await mark_("tailscale", "skipped"); await mark_("name", "skipped");
-        await attempt("onboard.machine", { machine: "solo" });
-        await mark_("live", "done"); toClaude();
-        return;
-      }
       if (choice === "server") {
         put(st, "Setting this computer up as your server.");
         const r = await attempt("onboard.machine", { machine: "server" });
@@ -474,8 +459,7 @@ const SCREENS = {
       h("span", { class: "t" }, h("b", null, title)),
       value === via ? h("div", { class: "more" }, more) : null);
     const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "How Vyre runs" },
-      opt("solo", "Just on this computer"),
-      opt("server", "This computer stays on for me, and I'll use other devices too"),
+      opt("server", "Add a server"),
       opt("device", "I already have a Vyre server",
         relay.allowed
           ? h("div", { class: "choice", role: "radiogroup", "aria-label": "How to join it" },

@@ -17,6 +17,7 @@ import { anthropicKind } from "../../lib/credential-shapes.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
+import { registerFirstRun } from "./first-run.js";
 
 export const STEPS = ["you", "claude", "pair", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -163,6 +164,7 @@ export default {
       return r.data;
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
+    registerFirstRun(ctx, { call, tryCall, save });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things
@@ -274,7 +276,7 @@ export default {
         host: os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
-        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
+        current, finished: ob().firstRun === "open" ? false : Boolean(ob().finished), ...(ob().firstRun === "open" ? { firstRun: "open" } : {}), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: a vyre.run claim, or the person's own domain. */
@@ -318,18 +320,19 @@ export default {
 
     ctx.tool("onboard.machine", {
       effect: "write",
-      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
+      needsYou: true,
+      description: "Choose server or device for this computer. An assistant's call waits for your one tap.",
       // "device" stays in the type (checkInput has no per-caller schema, and removing it would
       // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
       // run() guard below, not the schema, is what actually stops a person or an agent choosing
       // it -- reviewer, 28 Sep round 2.
-      input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      input: obj({ machine: { type: "string", enum: ["server", "device"] } }, ["machine"]),
       // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
       // never an agent's or a third-party module's. "onboard" is the pre-owner loopback session
       // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
       // allowlist only so the two specific callers below can reach run() at all; which of them
       // may do what is checked there, by the exact caller string, not by this coarse kind.
-      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module", "mcp", "harness"],
       // Moving TO server turns on the eight box-only modules -- a real network-facing change --
       // so it needs an actual presence proof, EXCEPT the very first choice on a real box, before
       // any owner exists: that's already proven by the one-time link only cli/local/capsule can
@@ -349,7 +352,7 @@ export default {
         } else if (raw.startsWith("module:")) {
           // Any other module reaching this tool may only ever set device (above); solo and
           // server are the person's own choice, whoever is asking on their behalf.
-          throw Object.assign(new Error("only a person chooses solo or server"), { code: "denied" });
+          throw Object.assign(new Error("only a person chooses server"), { code: "denied" });
         }
         // machine's own default (config/index.js defaults()) already covers "no choice made
         // yet"; this tool only ever records an actual choice, so calling it with the value
@@ -358,6 +361,20 @@ export default {
         // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
         // this tool records the choice now so onboarding and Settings have something to call.
         return { machine: ctx.config.machine, service: null };
+      },
+    });
+
+    ctx.tool("onboard.windows", {
+      effect: "write",
+      needsYou: true,
+      description: "Ask to enrol this Windows computer. An assistant's call waits for your one tap and changes nothing until you approve.",
+      input: obj({ label: { type: "string", maxLength: 60 }, name: { type: "string" }, type: { type: "string" }, fingerprint: { type: "string" } }, ["label"]),
+      callers: ["cli", "local", "deck", "capsule", "onboard", "mcp", "harness"],
+      run: async ({ label }) => {
+        const l = String(label ?? "").trim();
+        if (!l || l.length > 60 || /[\u0000-\u001f]/.test(l)) throw Object.assign(new Error("the computer's name is one line of up to 60 characters"), { code: "bad_input" });
+        save({ onboard: { windows: { label: l, at: new Date().toISOString() } } });
+        return { recorded: true, label: l, next: "Open Vyre on that PC and approve the device there. Nothing on the device changes until you do." };
       },
     });
 
@@ -380,7 +397,7 @@ export default {
 
     ctx.tool("onboard.claude", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
+      description: "Store Claude's sign-in in the Vault: a setup token or an API key. The value is never returned.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),

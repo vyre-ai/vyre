@@ -368,6 +368,11 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
+  "releases.info": "510141976@15 Oct 2026",
+  "onboard.person.lookup": "d14c56ec8@16 Oct 2026",
+  "onboard.github.start": "d14c56ec8@16 Oct 2026",
+  "onboard.join.read": "d14c56ec8@16 Oct 2026",
+  "onboard.space.poll": "d14c56ec8@16 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -445,6 +450,11 @@ export const DECLARED_NOTES = Object.freeze({
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+  "releases.info": "reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value",
+  "onboard.person.lookup": "checks that a username has a valid form and returns the public page address, and reads nothing secret",
+  "onboard.github.start": "returns the address for Continue with GitHub, or says that step is not on this server, and reads nothing secret",
+  "onboard.join.read": "reads an invite link and says which space and role it opens, and names no secret",
+  "onboard.space.poll": "says whether the new space's computer is online yet, and reads nothing secret",
 });
 
 const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;

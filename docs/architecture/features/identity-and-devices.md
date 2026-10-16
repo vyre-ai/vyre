@@ -16,7 +16,7 @@ A person is a permanent identity id plus a signed, chained list of the keys that
 
 - First run shows "Sign in to Vyre" with the lead "Your name is how Vyre knows you on every device." The choices are "I already have a name" ("Sign in on this device. You approve it from a device you already use.") and "I am new to Vyre" ("Pick a name and save your recovery kit.").
 - Sign in by name opens "Approve on your other device". The other device asks "Sign in on this device" and shows three words. The person checks they match and taps Approve. A second button reads "Use my recovery kit instead". Refusals come in plain words: nobody approved in 2 minutes, the other device said no, or too many requests for that name.
-- Sign in with GitHub sits on the same first screen (`apps/app/screens/onboard/IdentityScreens.tsx`, `real-github`).
+- First run is Identity, a space, then Ready, on the web and in both apps (`apps/app/screens/first-run/FirstRun.tsx`). GitHub is optional on the identity screen and does not unlock the vault.
 - Settings, Devices has the sub line "Each device joins each space on its own.", the button **Add a device** and a switch **Make it faster** for direct connections between your devices. Each row shows a mark, the name, a kind (Phone, Server or Computer), the last time seen and the spaces it reaches.
 - A device page offers "Share this computer" (**Allow with Face ID**, **Stop sharing**), a per-space **Add** and a "Remove" group. A removed device shows "That device is not here".
 - Every person, device and space has a generated mark drawn from a seed, so one name draws one picture on every screen (`apps/app/ui/marks/source.js`). A device mark also shows its kind.

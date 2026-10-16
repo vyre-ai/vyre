@@ -56,7 +56,7 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 Open the app and choose **Start**. It asks for the reservation code. Paste it. The app shows the name it holds for
 you and makes your key on this computer. The key stays here.
 
-On a Windows PC the key is made with Windows Hello, which asks for your face, fingerprint or PIN. If Windows Hello is not set up, Vyre keeps the key on this PC instead.
+On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the Mac app shows.
 
 The app then shows a recovery code, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
@@ -69,11 +69,9 @@ The app asks how you will use it:
 - **Join a team.** Paste the invite your team sent. You run on your team's server and need none of your own. This is
   the choice for most people who work at a company that uses Vyre.
 - **Add a server.** A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and your teammates can
-  reach it. Go to step 5. On a Mac this upgrades My Home to My Cloud, and on Windows it sets up My Cloud.
-- **Use My Home** (Mac only). Vyre runs on this Mac while it is awake. Nothing else to set up. You can add a server later
-  from Settings, and Vyre moves everything across: that is the upgrade from My Home to My Cloud.
+  reach it. Go to step 5.
 
-On Windows the app offers **Join a team** and **Add a server**. A home on Windows is coming.
+A Mac, a Windows PC and the web app offer the same two choices. Vyre does not run only on this computer.
 
 ## 5. Add a server
 

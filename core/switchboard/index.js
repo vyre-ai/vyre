@@ -1547,7 +1547,7 @@ export class Switchboard {
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
     const foreign = o.provider && o.provider !== "claude";
     const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null, sessionCli: this.confinedBy.has(id) });
-    const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
+    const mcpEnv = { VYRE_THREAD: id, VYRE_PROVIDER: String(o.provider || "claude"), ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
     // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.

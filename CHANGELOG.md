@@ -2,6 +2,25 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- fix(security): a session that runs as an agent still calls as `mcp:agent:<name>` for every adapter. The Gate records that agent, and the agent's browser profile is the one that name selects. A provider name still does not appear in the caller. `test/agent-agnostic.test.js`.
+- fix(security): a Claude, Codex, Grok or any other registered session adapter gets the same MCP tool list and the same secret filter. The caller is `mcp` for all of them. `test/agent-agnostic.test.js` reads the adapters from the registry. The owner's ruling of 16 Oct 2026.
+- fix(security): secret field names live in one list, `lib/secret-keys.js`. A Flow timeline, the phone Flow screen, the browser redactor, site learning and an event payload all read that list, so a recovery wrap or a client secret is hidden wherever that name already means secret. The owner's ruling of 16 Oct 2026: fix the class everywhere, through one shared implementation, and test the set from its owner (the registry or the table), not from a hand-written list.
+- fix(vault): an assistant never receives a vault value, including after Approve. The result is scrubbed on the way out. Lending stays `vault.request` and `vault.space.use`, where the value is injected and scrubbed. `test/mcp-vault-result.test.js` fails if an MCP result contains one.
+- fix(devices): the approval card for adding a device names that device, its type, its key fingerprint, and who asked. An assistant cannot add one without those.
+- fix(mcp): the onboarding, device and invite tools an agent can reach are a fixed list. The coverage test keeps its own copy and checks that list, not a scan of the source.
+- fix(windows): if Windows Hello cannot make the identity key, the app asks before it uses a software key. A runner with nobody to ask does not make one.
+- ci(windows): after Authenticode signing, the installer signature is checked. The job fails when that signature does not verify. A missing certificate still publishes the unsigned installer.
+- fix(onboard): a stored machine of solo is rewritten to a device and opens Identity, a space, then Ready. Setup does not accept solo.
+- feat(windows): the Windows shell summarises a yes-moment proof the way the Mac shell does (canonical payload hash, then "Approve:" and the card's fields), and it tries Windows Hello, then the TPM. A software key is only made after the person says yes. A Hello prompt per signature is still not proven on hardware, so the key stays held and the shell asks in its own window before the key signs.
+- fix(onboard): the Needs-you line for creating an identity names the username and does not show the master password.
+- feat(onboard): first run is Identity, a space, then Ready, on the web, the Mac app and the Windows app. Solo is not a mode. A stored machine of solo loads as a device, with no notice and no move. `onboard.machine` does not accept solo. The screens call `onboard.*`, which call `identity.create`, `identity.unlock`, `devices.signin` and `wink.install.*` when that server has them.
+- feat(mcp): `onboard.machine`, `onboard.windows`, `releases.info` and the first-run tools are kernel tools an MCP caller can drive. Only an assistant's change to people, devices or vault access waits for one Needs-you tap. A person in their own app does not wait. An assistant never receives a vault value. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.
+- ci(windows): lumen-win typechecks the Tauri app and the ncrypt path on windows-latest. The check does not need a TPM or the web bundle.
+- fix(tools): the descriptions of the onboarding, device and invite tools an agent can now see are each twenty-five words or fewer.
+- feat(release): lumen-win signs the installer with Authenticode when the `windows` environment has WINDOWS_AUTHENTICODE_PFX_B64 and WINDOWS_AUTHENTICODE_PFX_PASSWORD, and otherwise publishes the unsigned installer and names each missing secret. release.yml passes `sign` on a publish and does not name the certificate. WINDOWS_SIGNING=required fails a publish that is still unsigned. Release notes draft: release/notes/0.5.3.md.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

@@ -786,7 +786,7 @@ export default {
       });
 
     // 2. spaces
-    tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
+    tool("spaces.create", "Create a space on a server you have, a new server, or this computer. It runs step by step and can be resumed.",
       obj({ name: str, displayName: str, home: HOME, storeChoice: { type: "string", enum: ["server", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
@@ -903,7 +903,7 @@ export default {
       const who = ["team", "client", "personal"].includes(picks.who) ? picks.who : null;
       return { step: i.step, device, started: prev ? prev.started : at, updated: at, name: text(i.name, 80), address: text(i.address, 120), look: text(i.look, 80), where: i.where || null, picks: { connectors, kit, ...(who ? { who } : {}) } };
     };
-    tool("spaces.setup.save", "Keep where setup has got to for a space you are setting up (one of look, members, ai, connectors, kit), so another device can carry on. Send setup: null when the last step is done. Only the device setup is on may save; no secret, code or key is kept.",
+    tool("spaces.setup.save", "Save where a space's setup has got to, so another device can continue. Only the device doing setup may save. No secret is kept.",
       obj({ space: str, setup: { type: ["object", "null"] } }, ["space", "setup"]), async (i, meta) => {
         const { row } = mine(i.space);
         const cur = await setupOf(row.id);
@@ -918,7 +918,7 @@ export default {
         await kv.put(`setup/${row.id}`, next);
         return { space: row.id, setup: next };
       });
-    tool("spaces.setup.claim", "Continue setting up a space on this device: setup moves here from the device it was on, and the state comes back. Only the person who is setting it up can do this.",
+    tool("spaces.setup.claim", "Move a space's setup onto this device and return its state. Only the person setting it up can do this.",
       obj({ space: str }, ["space"]), async (i, meta) => {
         const { row } = mine(i.space);
         const cur = await setupOf(row.id);
@@ -981,9 +981,9 @@ export default {
       if (next.length !== cur.length) emit(on ? "space.device-restored" : "space.device-removed", { space: row.id, device: dev.eid });
       return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
     };
-    tool("spaces.devices.remove", "Remove one of your devices from one space. The space (and the kernel) refuse it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, false));
-    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
-    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.remove", "Remove one of your devices from one space. Its other spaces stay as they are.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, false));
+    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str, name: str, type: str, fingerprint: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str, name: str, type: str, fingerprint: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
     tool("spaces.devices.set", "Set the whole list of spaces a device is enrolled in, as pairing does: every space you are in comes pre-ticked and the person unticks the ones to leave out. Leave device out for the device you are on.",
       obj({ device: str, spaces: { type: "array", items: str } }, ["spaces"]), async (i, meta) => {
         const s = me();
@@ -995,7 +995,7 @@ export default {
         emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
         return { device: dev.eid, spaces: ids };
       });
-    tool("spaces.devices.list", "The same as spaces.devices.spaces, for the Device screen: the spaces a device of yours reaches, whether it is enrolled in each, and whether you lend it to that space.",
+    tool("spaces.devices.list", "The spaces one of your devices reaches, whether it is enrolled in each, and whether you lend it there.",
       obj({ device: str }), async (i, meta) => {
         const s = me();
         const dev = await deviceOf(i.device, meta);
@@ -1093,7 +1093,7 @@ export default {
       if (!K || typeof K.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return home;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
-    tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
+    tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first lend needs your Face ID or fingerprint.",
       obj({ space: str, device: str, on: { type: "boolean" }, network_cap: { type: "string", enum: ["provider", "internet"], description: "Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen." }, loosen: { type: "boolean", description: "Lending only: you mean to allow more network than you did before on this computer." }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOrHome(i.space);
@@ -1135,7 +1135,7 @@ export default {
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         });
       }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOrHome(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
-    tool("spaces.members.computers", "Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => { const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); return membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: await actingPerson(K, meta, /** @type {string} */ (s.id)), self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse }); });
+    tool("spaces.members.computers", "Whether members may run sessions on their own computers. An owner or admin can allow or stop that. Each member still lends their own computer.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => { const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); return membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: await actingPerson(K, meta, /** @type {string} */ (s.id)), self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse }); });
     tool("spaces.devices.lend.status", "Whether a device of yours is lent to a space, when it was first lent and who allowed it. Only the device's person and the space's owners and admins can ask.", obj({ space: str, device: str }, ["space", "device"]), async (i, meta) => {
       const s = me();
       const row = spaceOrHome(i.space);
@@ -1482,7 +1482,7 @@ export default {
       return out;
     };
     tool("spaces.records.status", "Whether the records of each space on this device are ready, and when not, in plain words how far the first start is.", obj(), async (i, meta) => recordsStatus(K, (await listSpacesRaw(i, meta)).map((/** @type {any} */ r) => r.id)));
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
+    tool("spaces.list", "Spaces you created or belong to on this device, with your role in each. On a paired server, the spaces it hosts for its owner.", obj(), listSpaces);
 
     /**
      * Which Cloud space keeps this person's encrypted personal items and identity home: their own server's home space when this machine is a server (My Cloud), else the Cloud space they chose
@@ -1894,7 +1894,7 @@ export default {
       return shapeView(row.id, await flow.status(row.id));
     });
 
-    tool("spaces.resume", "Continue creating a space from the last good step. Give a new name if the first was taken, confirm 'this computer' if asked, or paste the server token again.",
+    tool("spaces.resume", "Continue creating a space from the last good step. Give a new name, confirm this computer, or paste the token again.",
       obj({ space: str, name: str, confirmThisComputer: { type: "boolean" }, vpsToken: str }, ["space"]), async (i, meta) => {
         const { row } = mine(i.space);
         const ctx2 = /** @type {any} */ ({});
@@ -2070,7 +2070,7 @@ export default {
         return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
       } catch { return { code: null }; }
     };
-    tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
+    tool("spaces.invites.create", "Make a join link for a role. A temp or member invite can name projects. Owners and admins, unless managers may invite.",
       obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, seats: { type: "array", items: { type: "object" }, description: "Projects the joiner is put on when they accept: [{ project, level: lead | contributor | viewer }], contributor by default" }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
@@ -2271,14 +2271,14 @@ export default {
       try { card = await kernelMembers({ handle: h, now }).invites.get(k, invId); if (h.hosted === false && !remoteHandles.has(`${r.payload.id}/${invId}`)) remoteHandles.set(`${r.payload.id}/${invId}`, { h, at: now() }); } catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); if (h.hosted === false && /^(unavailable|unreachable|failed)$/.test(String(/** @type {any} */ (e).code || ""))) throw gone(); throw e; }
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
     };
-    tool("spaces.invites.preview", "What a join link offers, before joining: the space, the role, what you will see and the button. Checks the link's signature against the space's pinned key. Shows nothing else.",
+    tool("spaces.invites.preview", "What a join link offers before you join: the space, the role and what you will see. Checks the link and shows nothing else.",
       obj({ link: str, pin: str }, ["link"]), async (i, meta) => {
         if (K) { const p0 = await parseLink(i.link); if (isKernelToken(p0.token)) { const c = await kernelCard(i, p0, meta); return { ...c.card, fingerprint: c.fingerprint, fingerprint_words: fingerprintWords(c.fingerprint) }; } }
         const { res } = await previewLink(i);
         if (!res.ok) throw refuse(res.message, res.code);
         return { ...res.card, fingerprint_words: fingerprintWords(res.card.fingerprint) };
       });
-    tool("spaces.invites.accept", "Join a space from its link, signing with this device's person key. When this device is the space's home the membership is made at once; otherwise the signed acceptance is returned for the home to redeem.",
+    tool("spaces.invites.accept", "Join a space from its link, signed with this device's key. On the space's home the membership is made at once.",
       obj({ link: str, pin: str, presence_key: { type: "object" } }, ["link"]), async (i, meta) => {
         const s = me();
         if (K) {

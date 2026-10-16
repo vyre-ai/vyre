@@ -16,7 +16,8 @@ type Action = { label: string; onPress: () => void; disabled?: boolean; loading?
  */
 export function FlowStep({ mark = "static", hero, steps, title, lead, failure, onBack, primary, secondary, children }: {
   /** The flow's steps and the current one (index). The strip is left out when a screen is not a step (the first one). */
-  steps?: { labels: string[]; current: number };
+  /** `phase` names the phase (Identity, Space, Ready). The default counts "Step 2 of 6". */
+  steps?: { labels: string[]; current: number; kind?: "count" | "phase" };
   /** The Vyre mark's state: at rest by default, "working" while something waits, "intro" on the first screen, "done" when a step succeeds. */
   mark?: MarkState;
   /** The mark large and in the middle, above the title (the first screen and Ready), instead of the small lockup at the top left. */
@@ -39,8 +40,8 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
         </View>
         {hero ? <View className="items-center py-s4"><VyreMark size="lg" state={mark} /></View> : null}
         {steps ? (
-          <View className="gap-s1" accessible accessibilityLabel={`Step ${steps.current + 1} of ${steps.labels.length}, ${steps.labels[steps.current]}`}>
-            <Text size="caption" tone="label">{`Step ${steps.current + 1} of ${steps.labels.length}`}</Text>
+          <View className="gap-s1" accessible accessibilityLabel={steps.kind === "phase" ? steps.labels[steps.current] : `Step ${steps.current + 1} of ${steps.labels.length}, ${steps.labels[steps.current]}`}>
+            <Text size="caption" tone="label">{steps.kind === "phase" ? steps.labels[steps.current] : `Step ${steps.current + 1} of ${steps.labels.length}`}</Text>
             <StageSteps stages={steps.labels} current={steps.current} strip />
           </View>
         ) : null}

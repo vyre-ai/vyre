@@ -675,13 +675,13 @@ export function createPairing(o) {
   function tools() {
     const { owner } = o;
     ctx.tool("wink.pair.targets", {
-      description: "The \"Pair to:\" choices for a server or storage device: you, and each space you administer. Answers { targets: [{ kind: identity | space, id, label, role? }] }. A phone and a computer pair to you only.",
+      description: "Where a server or storage device can pair: you, and each space you administer. A phone pairs to you only.",
       input: obj(),
       run: async (_, meta = {}) => { owner(meta, "the pair targets"); return { targets: await targets(await o.identity()) }; },
     });
     ctx.tool("wink.pair.server", {
-      description: "Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. The short typed code works too (`code`: type the one the server shows, then the server asks for the code this app shows); it is refused only when the kill switch is set on this computer (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
-      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["target"]),
+      description: "Pair a new server from this app with the QR or code it shows, and choose where it goes. The person at the server confirms.",
+      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str, type: str, fingerprint: str }, ["target"]),
       presence: { summary: async () => "Add a server to Vyre" },
       run: async (input, meta = {}) => {
         owner(meta, "pairing a server");
@@ -700,7 +700,7 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.pair.status", {
-      description: "Where a pairing is: { state: waiting | confirm | done | failed | expired, device?, reason?, words? }. `confirm` means the person at the server is being asked: show `words` (the same three words the server shows) and say to answer yes there only if they match. A failed pairing says why in plain words (for example that the server already belongs to someone and must be removed first).",
+      description: "Where a pairing is: waiting, confirm, done, failed or expired. On confirm, show the words and say yes only if they match.",
       input: obj({ pairing: str }, ["pairing"]),
       run: async (input, meta = {}) => {
         owner(meta, "pairing");
@@ -1443,8 +1443,8 @@ export function createPairing(o) {
     /** The avatar's 8 bytes for a typed code (the camera reader's picture of the same code), base64url. @param {string} code */
     const avatarOf = code => { const b = codeToAvatarBytes(code); return b ? b64url(b) : null; };
     ctx.tool("wink.phone.open", {
-      description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. The short typed code works too (`typed: true` asks for it) unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
-      input: obj({ space: str, typed: { type: "boolean" } }),
+      description: "Add a phone from a signed-in computer: a QR and a code, good for one phone and five minutes. A phone pairs to you only.",
+      input: obj({ space: str, typed: { type: "boolean" }, name: str, type: str, fingerprint: str }),
       presence: { summary: async () => "Show a code to add a phone" },
       run: async (input, meta = {}) => {
         owner(meta, "adding a phone");
@@ -1514,7 +1514,7 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pairing", {
-      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line } (no `words`: the person types the three the phone shows), or { asking: false, enrol: { device, name, entry, until } } when a phone was added and this server cannot sign its key onto the name's list (the owner's app does, then calls wink.phone.enrolled): `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).",
+      description: "Is a phone asking to be added right now? Answers whether it is asking, and the choices to show the person.",
       input: obj(),
       run: async (_, meta = {}) => {
         owner(meta, "the phone question");
@@ -1552,7 +1552,7 @@ export function createPairing(o) {
       return dev;
     };
     ctx.tool("wink.phone.pair.answer", {
-      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      description: "Answer the phone question. No adds nothing. Yes needs the words the phone shows. A bare yes is refused.",
       input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       presence: { summary: async () => "Add a phone to you" },
       run: async (input, meta = {}) => {

@@ -88,7 +88,7 @@ export function safeArgs(args) {
   const fix = (/** @type {any} */ f, /** @type {any} */ orig) => {
     if (!f || typeof f !== "object" || !orig) return f;
     const name = [orig.label, orig.selector && (orig.selector.name || orig.selector.identifier || orig.selector.text), typeof orig.selector === "string" ? orig.selector : ""].filter(Boolean).join(" ");
-    if (name && (redact.secretName(name) || /pass(word|code)?|pwd|secret|token|otp|cvv|card/i.test(name)) && "value" in f) return { ...f, value: "[redacted:by-name]" };
+    if (name && redact.secretName(name) && "value" in f) return { ...f, value: "[redacted:by-name]" };
     return f;
   };
   if (a && Array.isArray(a.fields) && args && Array.isArray(args.fields)) a.fields = a.fields.map((/** @type {any} */ f, /** @type {number} */ i) => fix(f, args.fields[i]));
