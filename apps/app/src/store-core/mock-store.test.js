@@ -24,16 +24,16 @@ test("the mock store implements the whole Store interface", async () => {
   const s = createMockStore({ now: () => NOON });
   for (const m of METHODS) assert.equal(typeof /** @type {any} */ (s)[m], "function", m);
   assert.deepEqual((await s.spaces()).map(x => x.name), ["Mine", "Juniper Studio"]);
-  assert.deepEqual((await s.actors()).map(a => a.name), ["Alex Rivera", "Chris Park", "juno", "kit", "iris", "rev", "Research", "Intake", "Drafting", "Vyre"]);
+  assert.deepEqual((await s.actors()).map(a => a.name), ["Alex Rivera", "Chris Park", "juno", "kit", "iris", "rev", "Research", "Intake", "Design", "Vyre"]);
   const types = await s.types();
   assert.ok(["contact", "matter", "project", "trip", "template"].every(n => types.some(t => t.name === n)));
   assert.deepEqual((await s.types(SPACE.mine)).map(t => t.name).sort(), ["project", "trip"]);
-  const doe = (await s.list("matter")).find(m => m.data.title === "Doe estate plan");
-  assert.equal(doe?.data.stage, "Engagement");
+  const doe = (await s.list("matter")).find(m => m.data.title === "Doe brand refresh");
+  assert.equal(doe?.data.stage, "Kickoff");
   assert.equal(doe?.urn, aliasUrn("m1"));
   assert.equal(doe?.version, 1);
   assert.equal((await s.list("contact", { space: SPACE.juniper })).some(c => c.data.name === "Jane Doe"), true);
-  assert.equal((await s.list("matter", { filter: { field: "stage", op: "eq", value: "Signing" } })).length, 1);
+  assert.equal((await s.list("matter", { filter: { field: "stage", op: "eq", value: "Review" } })).length, 1);
   assert.equal(await s.get("vyre://spc_juniperaaaaaa/matter/nope"), null);
   assert.equal(await s.task("nope"), null);
 });
@@ -79,9 +79,9 @@ test("a sealed field is never in a read; an assistant's view never holds it; Rev
   assert.equal(/** @type {any} */ ((await s.seesAs(c1, "person")).ssn).ref, held.ref);
 
   // Reveal wants a presence proof, a sealed field, and gives the value for 30 seconds, written down without the value.
-  await assert.rejects(() => s.reveal(c1, "ssn", "Prepare the engagement letter", /** @type {any} */ ({ signer: "none" })), /Face ID/);
+  await assert.rejects(() => s.reveal(c1, "ssn", "Prepare the kickoff letter", /** @type {any} */ ({ signer: "none" })), /Face ID/);
   await assert.rejects(() => s.reveal(c1, "name", "why", proof("reveal")), /not sealed/);
-  const r = await s.reveal(c1, "ssn", "Prepare the engagement letter", proof("reveal"));
+  const r = await s.reveal(c1, "ssn", "Prepare the kickoff letter", proof("reveal"));
   assert.equal(r.value, "412-55-6789");
   assert.equal(r.expires_in_ms, REVEAL_MS);
   assert.equal(REVEAL_MS, 30_000);
@@ -134,7 +134,7 @@ test("an assistant cannot mark a task done without its output, and cannot touch 
 
   const s2 = createMockStore({ world: "empty", now: () => NOON });
   const jane = await s2.create("contact", { name: "Jane Doe", role: "Client" }, { by: WHO.vyre });
-  const m = await s2.create("matter", { title: "Doe estate plan", client: ref(jane.urn) }, { by: WHO.vyre });
+  const m = await s2.create("matter", { title: "Doe brand refresh", client: ref(jane.urn) }, { by: WHO.vyre });
   const r = (await s2.tasks({ record: m.urn })).find(t => aidOf(t.doer) === "research");
   assert.ok(r);
   assert.equal(r.state, "working", "an assistant's task starts by itself");
@@ -211,11 +211,11 @@ test("client pays: Now's Needs-you holds exactly one card, and approving it move
 
   const actors = await s.actors();
   const matter = await s.get(ran.matter);
-  assert.equal(matter?.data.title, "Doe estate plan");
+  assert.equal(matter?.data.title, "Doe brand refresh");
   assert.equal(matter?.data.stage, "Intake");
   // Created from the Kit, with its team's tasks, and Research's findings written onto the record, with sources.
   assert.deepEqual((await s.tasks({ record: ran.matter })).map(t => [aidOf(t.doer), t.state]), [["research", "done"], ["intake", "needs_check"]]);
-  assert.match(String(matter?.data.research), /Sources: Intake form, 8 Sep, County property record/);
+  assert.match(String(matter?.data.research), /Sources: Intake form, 8 Sep, Old site pages/);
   assert.ok(matter?.data.situation && matter?.data.assets && matter?.data.pressure);
   const research = (await s.tasks({ record: ran.matter }))[0];
   assert.equal(research.ext?.result?.note?.sources.length, 3);
@@ -229,15 +229,15 @@ test("client pays: Now's Needs-you holds exactly one card, and approving it move
   assert.equal(aidOf(card.doer), "intake");
   assert.equal(aidOf(card.checker), WHO.alex);
   assert.match(String(card.ext?.result?.draft?.body), /^Hi Jane,/);
-  assert.match(String(card.ext?.result?.draft?.body), /Your matter is Doe estate plan, and Alex Rivera is your attorney/);
+  assert.match(String(card.ext?.result?.draft?.body), /Your matter is Doe brand refresh, and Alex Rivera is your designer/);
 
   // One tap: the checker's approval is the Gate approval. The stage moves on by itself.
   await s.decide(card.id, { outcome: "approved", proof: proof("approve") });
-  assert.equal((await s.get(ran.matter))?.data.stage, "Engagement");
+  assert.equal((await s.get(ran.matter))?.data.stage, "Kickoff");
   const after = await s.tasks({ record: ran.matter });
-  assert.deepEqual(after.map(t => [t.title, t.state]), [["Research the client", "done"], ["Welcome email for Jane Doe", "done"], ["Engagement letter", "working"], ["Review the draft with Jane Doe", "waiting"]]);
-  assert.equal((await s.tasks()).filter(t => needsYou(t, WHO.alex, actors)).length, 0, "nothing needs Alex until the engagement letter is drafted");
-  assert.ok((await s.events({ record: ran.matter })).some(e => /moved Doe estate plan to Engagement by itself/.test(what(e))));
+  assert.deepEqual(after.map(t => [t.title, t.state]), [["Research the client", "done"], ["Welcome email for Jane Doe", "done"], ["Kickoff letter", "working"], ["Review the draft with Jane Doe", "waiting"]]);
+  assert.equal((await s.tasks()).filter(t => needsYou(t, WHO.alex, actors)).length, 0, "nothing needs Alex until the kickoff letter is drafted");
+  assert.ok((await s.events({ record: ran.matter })).some(e => /moved Doe brand refresh to Engagement by itself/.test(what(e))));
   // Every move the run made went through the table: none was made by the wrong party.
   const bad = s.transitions().filter(m => m.to === "done" && m.by !== "kernel" && m.by !== WHO.alex);
   assert.deepEqual(bad, []);

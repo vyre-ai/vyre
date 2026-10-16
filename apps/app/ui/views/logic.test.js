@@ -33,7 +33,7 @@ test("which views a type has: Matter list, board and calendar; Contact list and 
 
 test("the board has a column per stage in order, and a column for rows with none", () => {
   const b = boardColumns(def("matter"), byType.matter);
-  assert.deepEqual(b.columns.map((c) => c.id), ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.deepEqual(b.columns.map((c) => c.id), ["Intake", "Kickoff", "Design", "Review", "Launch", "Closed"]);
   assert.deepEqual(b.cardFields.map((f) => f.name), ["client", "fee", "owner"]);
   const some = [...byType.contact.slice(0, 1), { ...byType.contact[1], data: { ...byType.contact[1].data, role: undefined } }];
   const c = boardColumns(def("contact"), some);
@@ -154,9 +154,9 @@ test("dashboard: sum keeps rows that pass where, count by has a bar per stage, f
   assert.equal(cards[0].total, open.reduce((a, r) => a + numberOf(r.data.fee), 0));
   assert.equal(cards[0].title, "Fee total");
   assert.match(cards[0].hint, /, stage is not Closed$/);
-  assert.deepEqual(cards[1].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.deepEqual(cards[1].bars.map((b) => b[0]), ["Intake", "Kickoff", "Design", "Review", "Launch", "Closed"]);
   assert.equal(cards[1].bars.reduce((a, b) => a + b[1], 0), rows.length);
-  assert.deepEqual(cards[2].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing"]);
+  assert.deepEqual(cards[2].bars.map((b) => b[0]), ["Intake", "Kickoff", "Design", "Review"]);
   assert.equal(cards[2].bars[0][1], rows.length);
   for (let i = 1; i < cards[2].bars.length; i++) assert.ok(cards[2].bars[i][1] <= cards[2].bars[i - 1][1], "a funnel never grows");
   assert.ok(cards[3].rows.length <= 5);
