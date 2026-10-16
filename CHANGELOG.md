@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(install): when two servers use one install line, `wink.install.complete` answers `contested` and `onboard.space.poll` returns `contested: true` with plain words, a hard stop instead of a wait.
 - fix(first-run): the poll for a new server is online only when the server says it is owned. A `wink.install.complete` that has only started the pairing is no longer read as Ready.
 - fix(install): the setup page takes only the install line's own code. A code is accepted at `/setup` only when it carries the same setup code the server was started with, so a code signed by some other identity's published key cannot take the server first. The page opens only after the install line's redeem at boot failed, answers a form posted from another site with 403 and more than ten tries a minute with 429, and stops listening once the server is paired.
 - fix(install): a computer that made an install line no longer reports its own owner as the new server's. `wink.install.status` and `wink.install.complete` say owned only when the line was redeemed on that computer or the server itself answered, so a Mac that already owns its local Vyre does not jump to Ready. The setup offer is refused to anyone but the person the server was paired to.

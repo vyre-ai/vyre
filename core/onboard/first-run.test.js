@@ -73,7 +73,7 @@ function harness(opt = {}) {
       return { line, expires: Math.floor(Date.now() / 1000) + 1800, os: input.os };
     }
     if (name === "wink.install.status") return opt.status || { issued: true, owned: false, locked: false, expires: Math.floor(Date.now() / 1000) + 1800 };
-    if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: "bad_state" });
+    if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: opt.completeCode || "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
@@ -274,4 +274,19 @@ test("first run does not transfer ownership from a phone or ask for a typed code
   for (const text of [src, screen]) {
     assert.equal(/spaces\.owner\.transfer|grants\.transferOwner|wink\.phone\.open|Face ID signature|MatchWords|four words|Solo/.test(text), false);
   }
+});
+
+test("a poll stops hard when another server answered the install line first", async () => {
+  const { tools } = harness({ completeCode: "contested" });
+  await tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
+  const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(polled.online, false);
+  assert.equal(polled.contested, true);
+  assert.match(String(polled.message), /Another server answered/);
+  const waiting = harness();
+  await waiting.tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
+  const w = await waiting.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const p = await waiting.tools.get("onboard.space.poll").run({ id: w.id }, { caller: "cli" });
+  assert.equal(p.contested, undefined, "an ordinary wait is not a hard stop");
 });

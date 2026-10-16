@@ -251,7 +251,7 @@ async function offerTicket(ctx, session) {
   try { found = await setup.resolveSetup(session.secret, { relay: String(url) }); }
   catch (e) {
     const code = /** @type {any} */ (e).code;
-    if (code === "contested") throw fail("denied", "Two servers used this line. Make a new install line in the Vyre app and run it again.");
+    if (code === "contested") throw fail("contested", "Another server answered this install line first. Nothing was paired. Make a new install line in the Vyre app and run it only on your own server.");
     throw fail("bad_state", "The server has not taken the install line yet. Run the line, then ask again.");
   }
   const chan = await channel.connectSetup(
