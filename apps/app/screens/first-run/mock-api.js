@@ -95,3 +95,24 @@ export async function saveProgress(input) {
   progress = { screen: input.screen, stack: input.stack };
   return { ok: true, saved: true, ...progress };
 }
+
+/** @param {any} input */
+export async function signInPassword(input) {
+  const name = String(input.space || "juniper");
+  mock.person = String(input.username || "alex");
+  mock.spaces = [{ id: `spc_${name}`, name, role: "member", server: `https://${name}.vyre.run` }];
+  mock.current = mock.spaces[0].id;
+  return { ok: true, username: mock.person, spaces: mock.spaces.slice() };
+}
+
+export async function signInGithub() {
+  return { ok: true, login: "alexg", spaces: [{ id: "spc_juniper", name: "juniper", role: "owner" }, { id: "spc_studio", name: "studio", role: "admin" }] };
+}
+
+/** @param {string} password */
+export async function unlockGithub(password) {
+  mock.person = "alexg";
+  mock.spaces = [{ id: "spc_juniper", name: "juniper", role: "owner", server: "https://juniper.vyre.run" }, { id: "spc_studio", name: "studio", role: "admin", server: "https://studio.vyre.run" }];
+  mock.current = "spc_juniper";
+  return { ok: true, unlocked: Boolean(password), spaces: mock.spaces.slice() };
+}

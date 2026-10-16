@@ -1,17 +1,17 @@
 // @ts-check
 // The only door the lock screens use. Every name is a registry tool (core/identity), which the MCP server forwards as itself; a model cannot supply the password or the key.
 import { tool } from "../../src/real/box";
-import { unlockRefusal } from "../../src/shell/lock-gate.js";
+import { statusFailure, unlockRefusal } from "../../src/shell/lock-gate.js";
 
 /** @param {any} e */
 const fail = (e) => ({ ok: false, message: unlockRefusal(e && e.code ? String(e.code) : "failed", (e && e.message) || ""), code: e && e.code ? String(e.code) : "failed" });
 /** @param {unknown} value @returns {any} */
 const done = (value) => ({ ok: true, ...(value && typeof value === "object" ? value : {}) });
 
-/** What this device holds: { exists, unlocked, needsMigration, username }. Null when nothing answers (no server here, or a build with no identity tool). */
+/** What this device holds: { exists, unlocked, needsMigration, username }. Null for a build with no identity tool; { unreachable: true } when the read failed (the lock then stays on and says so). */
 export async function identityState() {
   try { return /** @type {any} */ (await tool("identity.status", {})); }
-  catch { return null; }
+  catch (e) { return statusFailure(e); }
 }
 
 /** @param {{ password: string } | { recovery: string }} input */

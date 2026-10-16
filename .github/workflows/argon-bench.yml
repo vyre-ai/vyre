@@ -1,0 +1,28 @@
+# How long the master password's Argon2id takes in a page (apps/app/scripts/argon-bench.mjs): at full speed and with the CPU throttled 4x and 6x. Numbers only; it never fails on a slow result.
+name: argon-bench
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/0.5.3/app53/host-core"]
+    paths: ["apps/app/scripts/argon-bench.mjs", ".github/workflows/argon-bench.yml"]
+permissions:
+  contents: read
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+        working-directory: apps/app
+      - name: A browser (the one pinned version)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.48.2
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Argon2id at the master password's cost, in a page
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/
+        run: node apps/app/scripts/argon-bench.mjs | tee "$GITHUB_STEP_SUMMARY"
