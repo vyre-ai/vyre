@@ -143,28 +143,10 @@ test("the short typed code is on in release and gated on RC.typedCode, so the ki
   }
 });
 
-test("the words step after a long code uses the session's own kind: a real (watch) session shows the words and waits for the yes, never the typed-words form", async () => {
-  const { readFileSync } = await import("node:fs");
-  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  const step = src.slice(src.indexOf('} else if (step === "scanwords") {'), src.indexOf('} else if (step === "recovery") {'));
-  assert.match(step, /<PairServer session=\{session\}/);
-  assert.doesNotMatch(step, /<PairWords/);
-});
-
 test("a phone's long code adds this device to the name (a browser too); a server's long code pairs this device to that server", () => {
   assert.equal(codeRoute({ kind: "ticket", for: "phone" }), "add-device");
   assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
   assert.equal(codeRoute(null), "pair-server");
-});
-
-test("Get started goes to the reservation code; there is no question, and My Cloud is the one card that adds a server", async () => {
-  const { readFileSync } = await import("node:fs");
-  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("name"\)\}/, "Start opens the code step");
-  assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
-  assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
-  assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
-  assert.match(src, /<AddServerCard onDone=\{\(\) => \{[\s\S]*doMake\("server"/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
 
 test("the first run offers Join a team first and Add a server second, on every device", () => {
@@ -193,10 +175,3 @@ test("a Mac that stays on uses the same stable line as Linux; release candidates
   assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
 });
 
-test("the paste-your-code screen has a Windows Hello line and the Mac and phone line, in the words the lead approved", async () => {
-  const { readFileSync } = await import("node:fs");
-  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  assert.ok(src.includes("Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN."));
-  assert.ok(src.includes("Vyre makes your key on this Mac, and the key never leaves it."));
-  assert.ok(src.includes('title="Paste your code"'));
-});

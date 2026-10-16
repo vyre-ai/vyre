@@ -19,7 +19,7 @@
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
 //   world    which sample world renders it: app (the app's web export, sample world), deck (the Deck, from web/test/world.js), onboard
-//            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
+//            (a fresh box in its onboarding, with a fake network and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass)
 //   url      the route to open (deck), or the onboarding step (#you ... #devices)
@@ -46,30 +46,9 @@ const ONBOARD = ["web/onboard/index.html", "web/css/deck.css", "core/onboard/ind
 const BOTH = ["light", "dark"];
 
 
-// The app's first run, shot from the app's own web export built with the sample world (EXPO_PUBLIC_VYRE_MOCK=1:
-// alex, Juniper Studio, juno, kit). A script taps by the words on the buttons, the way a person does.
-const APP_TAP = `const tap = async (t, ms = 6000) => { const t0 = Date.now(); for (;;) {
-    const el = [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === t).pop();
-    if (el) { el.click(); await wait(900); return; }
-    if (Date.now() - t0 > ms) throw new Error("no " + t + " on the screen"); await wait(150); } };`;
-const INSTALL = ["apps/app/screens/install/InstallScreen.tsx", "apps/app/screens/install/data.ts", "apps/app/screens/install/flow.js"];
-const PAIRING = ["apps/app/screens/devices/PairParts.tsx", "apps/app/src/api/pairing-session.ts"];
-const PAIR_SCRIPT = `${APP_TAP}
-  await tap("Continue"); await tap("On a server you have"); await tap("I ran it");`;
-// "Use the sample code" exists only in the sample world (the real app has no such button), so a picture of the screen hides it.
-const HIDE_SAMPLE = `for (const el of [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === "Use the sample code")) { let b = el; while (b.parentElement && b.getAttribute("role") !== "button" && b.tagName !== "BUTTON") b = b.parentElement; (b.getAttribute("role") === "button" || b.tagName === "BUTTON" ? b : el).style.display = "none"; }
-  await wait(300);`;
 
 /** @type {any[]} */
 export const SHOTS = [
-  { name: "first-run-claim", alt: "Choose your Vyre name, with alex-rivera typed and \"is yours to take\" under it", page: "get-started/install.md", heading: "1. Open the Vyre app and choose your name", dir: "get-started", world: "app", url: "/u/install", width: 390, height: 780, phone: true, themes: BOTH,
-    script: `${APP_TAP}\n  await tap("Get started");\n  const f = document.querySelector("input"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; f.focus(); set.call(f, "alex-rivera"); f.dispatchEvent(new Event("input", { bubbles: true })); await wait(900);`, shows: [...INSTALL] },
-  { name: "first-run-space", alt: "Create a space: the name field filled in, its claimed address under it, and \"A team\" chosen", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
-    script: `await wait(600);`, shows: [...INSTALL] },
-  { name: "first-run-pair-code", alt: "Pair your server: the server's terminal shows a long code, and the phone has a field to paste it", page: "get-started/install.md", heading: "4. Pair your server", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
-    script: `${PAIR_SCRIPT}\n  ${HIDE_SAMPLE}`, shows: [...INSTALL, ...PAIRING] },
-  { name: "first-run-pair-words", alt: "Pair your server: the app and the server's terminal show the same three words to pick", page: "get-started/install.md", heading: "4. Pair your server", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
-    script: `${PAIR_SCRIPT}\n  await tap("Use the sample code");`, shows: [...INSTALL, ...PAIRING] },
   { name: "first-run-chat", alt: "The first chat, \"Fix the intake date check\", with the assistant editing and the composer below", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
     script: `await wait(800);`, shows: ["apps/app/app/chat-demo.tsx", "apps/app/src/chat/ChatScreen.tsx", "apps/app/src/chat/mock-stream.ts"] },
   { name: "first-run-now", alt: "Now, \"Good morning, Alex\", with the spaces All spaces, Mine and Juniper Studio, the next call and the things that need you", page: "get-started/install.md", heading: "5. Create a space and finish setting it up", dir: "get-started", world: "app", url: "/u/now", width: 390, height: 844, phone: true, themes: BOTH,

@@ -99,11 +99,11 @@ test("blind: a password manager gives the app and window title, and its text is 
 });
 
 test("blind: the Deck on the paired box, found through link.status and cached for a minute", async t => {
-  const where = { app: { name: "Safari", bundle: "com.apple.Safari", pid: 8 }, window: { title: "Deck" }, url: "https://juno.example.ts.net/deck/vault" };
+  const where = { app: { name: "Safari", bundle: "com.apple.Safari", pid: 8 }, window: { title: "Deck" }, url: "https://juno.example.wink.example/deck/vault" };
   const helper = fake(t, { where });
   const asked = [];
   let now = 0;
-  const call = async tool => { asked.push(tool); return { data: { linked: true, box: { address: "https://juno.example.ts.net" } } }; };
+  const call = async tool => { asked.push(tool); return { data: { linked: true, box: { address: "https://juno.example.wink.example" } } }; };
   const s = new Screen({ helper, call, now: () => now });
   const r = /** @type {any} */ (await s.context());
   assert.equal(r.blind, "a Vyre surface in the browser");

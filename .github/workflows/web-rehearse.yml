@@ -1,0 +1,55 @@
+# The rehearsal for web.vyre.run: before any deploy, the branch's own web export is sealed with a throwaway key, laid out the way the deploy lays
+# out the release, served by the real Worker code on a local port, and checked by the same script the deploy runs afterwards (the exact bytes,
+# the headers, the first screen in a headless browser with the real Content-Security-Policy). Nothing is deployed or published; the throwaway key
+# is made here and thrown away, and web-deploy.yml refuses anything it signed. A throwaway runner, never a Mac.
+name: web-rehearse
+on:
+  push:
+    paths: ["relay/web/**", "scripts/build-web-out.mjs", "scripts/check-web-live.mjs", "apps/app/**", ".github/workflows/web-rehearse.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: web-rehearse-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: node --test relay/web/web.test.js
+      - name: Export the web app (as the release does, no install scripts)
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+      - name: Seal with a throwaway key and lay it out
+        run: |
+          node scripts/build-app-out.mjs --dist apps/app/dist --release 0.0.1 --out app-out --throwaway 2>"$RUNNER_TEMP/seal.txt"
+          cat "$RUNNER_TEMP/seal.txt"
+          PUB=$(sed -E 's/.*\(([A-Za-z0-9_-]+)\)$/\1/' "$RUNNER_TEMP/seal.txt" | tail -1)
+          node scripts/build-web-out.mjs --app-out app-out --out web-out --pub "$(printf %s "$PUB" | tr '_-' '/+')"
+      - name: A browser (the one pinned version)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.48.2
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Serve with the real Worker and check it the way the deploy does
+        env:
+          PW_FROM: ${{ runner.temp }}/pw/
+        run: |
+          node relay/web/serve-local.mjs web-out 8787 &
+          sleep 2
+          node scripts/check-web-live.mjs --app-out app-out --url http://127.0.0.1:8787 --browser --shot "$RUNNER_TEMP/first-screen.png"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: web-rehearsal-first-screen
+          path: ${{ runner.temp }}/first-screen.png
+          if-no-files-found: ignore
+          retention-days: 7

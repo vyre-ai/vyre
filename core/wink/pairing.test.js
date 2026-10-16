@@ -1805,3 +1805,20 @@ test("Sign in by name: a stranger's request never holds the slot against the own
   assert.equal(await w.p.phone.hold(PHONE), true);
   assert.equal((await w.call("wink.phone.pairing")).signin, undefined, "a phone that scans the owner's code is a normal add, not a sign-in");
 });
+
+test("the setup offer is for the one person the server was paired to, and for nobody else", async () => {
+  const SETUP = "setup:aaaaaaaaaaaaaaaa";
+  const OTHER = "per_bbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const ask = (/** @type {ReturnType<typeof world>} */ w) => w.tools.get("wink.server.setup-offer").run({ identity: OTHER }, { caller: SETUP });
+  const owned = (/** @type {any} */ e) => e.code === "owned";
+  const lockedTo = world();
+  lockedTo.p.meta.set("install_setup_locked", { at: 1, person: ME });
+  await assert.rejects(() => ask(lockedTo), owned);
+  const pairTo = world();
+  pairTo.p.meta.set("pair_to", ME);
+  await assert.rejects(() => ask(pairTo), owned);
+  const owner = world();
+  owner.p.meta.set("owner", { kind: "identity", id: ME, identity: ME });
+  await assert.rejects(() => ask(owner), owned);
+  await assert.rejects(() => lockedTo.tools.get("wink.server.setup-offer").run({ identity: ME }, { caller: "device:x" }), (/** @type {any} */ e) => e.code === "denied");
+});

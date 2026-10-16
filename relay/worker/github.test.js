@@ -287,3 +287,25 @@ test("starts are limited per address", async t => {
   assert.equal(last, 429);
   assert.equal((await w.req(`/v1/github/start?cc=${cc}&app=${encodeURIComponent(APP)}`, { ip: "198.51.100.9" })).status, 302, "another address is not held up");
 });
+
+test("assert: the relay vouches for the numeric GitHub id, for one space and two minutes, only for a ticket whose verifier the app holds", async t => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const seed = Buffer.from(privateKey.export({ format: "der", type: "pkcs8" }).subarray(-32)).toString("base64url");
+  const pub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-32)).toString("base64url");
+  const w = world(t);
+  const r = await signIn(w);
+  const off = await w.post("/v1/github/assert", { ticket: r.ticket, cv: r.cv, space: "juniper" });
+  assert.equal(off.status, 503, "no key, no assertion");
+  w.env.GITHUB_ASSERT_KEY = seed;
+  assert.equal((await w.post("/v1/github/assert", { ticket: r.ticket, cv: crypto.randomBytes(32).toString("base64url"), space: "juniper" })).status, 401, "the wrong verifier");
+  assert.equal((await w.post("/v1/github/assert", { ticket: r.ticket, cv: r.cv, space: "Bad Space!" })).status, 400);
+  const ok = await w.post("/v1/github/assert", { ticket: r.ticket, cv: r.cv, space: "juniper" });
+  assert.equal(ok.status, 200);
+  const { assertion } = /** @type {any} */ (await ok.json());
+  const { verifyGithubAssertion } = await import("../../kernel/identity/space-login.js");
+  assert.deepEqual(verifyGithubAssertion(assertion, pub, "juniper", () => w.clock.t), { id: "4242", login: "alex-gh", name: "" });
+  assert.equal(verifyGithubAssertion(assertion, pub, "other", () => w.clock.t), null, "another space does not take it");
+  assert.equal(verifyGithubAssertion(assertion, pub, "juniper", () => w.clock.t + G.ASSERT_MS + 1), null, "it runs out");
+  const other = crypto.generateKeyPairSync("ed25519");
+  assert.equal(verifyGithubAssertion(assertion, Buffer.from(other.publicKey.export({ format: "der", type: "spki" }).subarray(-32)).toString("base64url"), "juniper", () => w.clock.t), null, "only the relay's key");
+});

@@ -217,9 +217,36 @@ test("issue returns the line and never the signing key, and complete pairs from 
   assert.equal(saw.qr, "vyre://wink/2?t=abc");
   assert.equal(saw.person, issued.person);
   assert.equal(JSON.stringify(done).includes("privateKey"), false);
+  // This computer made the line, so its own owner is not the server's: the line was not redeemed here, and complete pairs instead of saying owned.
   meta.set("owner", { kind: "identity", id: issued.person, identity: issued.person });
+  const notYet = await tools.get("wink.install.complete").run();
+  assert.equal(notYet.owned, undefined);
+  assert.equal(notYet.pairing, "pr_test");
+  meta.set("install_setup_locked", { at: NOW(), person: issued.person });
   const owned = await tools.get("wink.install.complete").run();
   assert.equal(owned.owned, true);
+});
+
+test("a computer that made the line does not report its own owner as the server's", async () => {
+  const meta = metaOf();
+  meta.set("install_client", { person: PERSON, exp: Math.floor(NOW() / 1000) + 1800, os: "mac", at: NOW() });
+  meta.set("owner", { kind: "identity", id: PERSON, identity: PERSON });
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const ctx = { tool: (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def), call: async () => ({ data: {} }), events: { emit() {} }, kernel: { space: "spc_bbbbbbbbbb" } };
+  let asked = 0;
+  let answer = /** @type {any} */ (null);
+  registerInstallPair({ ctx, meta, now: NOW, askServer: async () => { asked += 1; return answer; } });
+  const before = await tools.get("wink.install.status").run();
+  assert.equal(before.owned, false, "this Mac owns itself, the new server owns nothing yet");
+  assert.equal(before.locked, false);
+  assert.equal(before.space, null, "the home space of this computer is not the new server's space");
+  assert.equal(asked, 1);
+  answer = { owned: true, locked: true, person: PERSON, space: "spc_aaaaaaaaaa" };
+  const after = await tools.get("wink.install.status").run();
+  assert.equal(after.owned, true);
+  assert.equal(after.space, "spc_aaaaaaaaaa");
+  const later = await tools.get("wink.install.status").run();
+  assert.equal(later.owned, true, "the server's answer is kept, not asked for once");
 });
 
 test("status returns the space id once the server adopts the creator", async () => {
@@ -366,4 +393,99 @@ test("the person's own issue runs, and an agent's issue and complete wait at the
   }
   const unproven = await call("wink.install.issue", { os: "linux" }, "mcp:agent:kit");
   assert.equal(unproven.error && unproven.error.code, "denied");
+});
+
+
+/** @param {number} port @param {string} body @param {Record<string, string>} [headers] */
+function postSetup(port, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: "/setup", method: "POST", headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)), ...headers } }, res => {
+      /** @type {Buffer[]} */ const chunks = [];
+      res.on("data", c => chunks.push(c));
+      res.on("end", () => resolve({ status: res.statusCode, html: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+test("the setup page takes only the install line's own code, opens only after the boot redeem failed, and stops once paired", async t => {
+  const creator = identity();
+  const stranger = identity();
+  const STRANGER = `per_${"b".repeat(26)}`;
+  const line = await mintPairCode({ person: PERSON, publicKey: creator.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => creator.sign(m) });
+  // A code the stranger's own published key signed, for the stranger's own setup material: valid, and the directory confirms it, but it is not this server's line.
+  const theirs = await mintPairCode({ person: STRANGER, publicKey: stranger.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => stranger.sign(m) });
+  let up = true;
+  const directory = { resolveById: async (/** @type {string} */ id) => {
+    if (!up) throw Object.assign(new Error("unreachable"), { code: "unreachable" });
+    return { entries: [{ kind: "device", pub: id === PERSON ? creator.pub : stranger.pub }] };
+  } };
+  const meta = metaOf();
+  const ctx = ctxOf(meta);
+  /** @type {Map<string, any>} */ const tools = new Map();
+  ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def);
+  const keep = { http: process.env.VYRE_SETUP_HTTP, port: process.env.VYRE_SETUP_PORT };
+  process.env.VYRE_SETUP_HTTP = "1";
+  process.env.VYRE_SETUP_PORT = "0";
+  const reg = registerInstallPair({ ctx, meta, now: NOW, directory });
+  t.after(async () => { await reg.stop(); for (const [k, v] of [["VYRE_SETUP_HTTP", keep.http], ["VYRE_SETUP_PORT", keep.port]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  assert.equal(reg.page.listening, false, "nothing listens at registration, before any install line has been redeemed");
+  const redeem = tools.get("wink.server.install-redeem");
+  // The line's own redeem runs first. While the directory is down it fails, and only then does the page open.
+  await assert.rejects(() => redeem.run({ code: line.code }, { caller: "module:relay" }), (/** @type {any} */ e) => e.code === "unavailable");
+  assert.equal(reg.page.listening, true);
+  for (let i = 0; i < 100 && !reg.page.address(); i += 1) await new Promise(r => setTimeout(r, 20));
+  const addr = reg.page.address();
+  const port = addr && typeof addr === "object" ? addr.port : 0;
+  const body = (/** @type {string} */ code) => JSON.stringify({ code });
+  up = true;
+  // First come does not win: a code that verifies and whose key is published, but is not this line's, is refused and owns nothing.
+  const theirsTry = await postSetup(port, body(theirs.code));
+  assert.equal(theirsTry.status, 400);
+  assert.match(String(theirsTry.html), /not for this server/);
+  assert.equal(meta.get("owner"), null);
+  assert.equal(meta.get("install_setup_locked"), null);
+  // Another site's form cannot post for the person.
+  const cross = await postSetup(port, body(line.code), { origin: "http://evil.example" });
+  assert.equal(cross.status, 403);
+  assert.equal(meta.get("owner"), null);
+  const flagged = await postSetup(port, body(line.code), { "sec-fetch-site": "cross-site" });
+  assert.equal(flagged.status, 403);
+  assert.equal(meta.get("owner"), null);
+  // The line's own code pairs the server, and the page stops listening.
+  const mine = await postSetup(port, body(line.code), { origin: `http://127.0.0.1:${port}` });
+  assert.equal(mine.status, 200);
+  assert.equal(meta.get("owner").identity, PERSON);
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(reg.page.listening, false, "paired, so the page is gone");
+  await assert.rejects(() => postSetup(port, body(line.code)), (/** @type {any} */ e) => e.code === "ECONNREFUSED");
+});
+
+test("a pasted code is refused when this server was never started with an install line", async () => {
+  const creator = identity();
+  const made = await mintPairCode({ person: PERSON, publicKey: creator.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => creator.sign(m) });
+  const meta = metaOf();
+  const ctx = ctxOf(meta);
+  await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, directory: chain([creator.pub]) }, made.code, { page: true }), (/** @type {any} */ e) => e.code === "denied" && /not for this server/.test(e.message));
+  assert.equal(meta.get("owner"), null);
+  await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, directory: chain([creator.pub]) }, made.code, { page: true, expect: "x".repeat(43) }), (/** @type {any} */ e) => e.code === "denied");
+  assert.equal(meta.get("owner"), null);
+  const ok = await redeemInstallCode({ ctx, meta, now: NOW, directory: chain([creator.pub]) }, made.code, { page: true, expect: made.setup });
+  assert.equal(ok.person, PERSON);
+});
+
+test("the setup page answers 429 after ten tries in a minute, and the minute ends it", async () => {
+  let clock = 1_000_000;
+  const page = createSetupPage({ redeem: async () => { throw Object.assign(new Error("no"), { code: "denied" }); }, locked: () => false, now: () => clock });
+  const server = page.start({ port: 0, host: "127.0.0.1" });
+  await new Promise((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  try {
+    for (let i = 0; i < 10; i += 1) assert.equal((await postSetup(port, JSON.stringify({ code: "bad" }))).status, 400);
+    assert.equal((await postSetup(port, JSON.stringify({ code: "bad" }))).status, 429);
+    clock += 61_000;
+    assert.equal((await postSetup(port, JSON.stringify({ code: "bad" }))).status, 400);
+  } finally { await page.stop(); }
 });

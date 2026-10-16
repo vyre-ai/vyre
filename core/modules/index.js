@@ -36,8 +36,9 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
+import { mayHop, originApi, FLOW_RUN, FLOW_ACT, onPersonSurface } from "./hop.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
-import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra, modelCaller } from "./needs-you-hold.js";
+import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -644,8 +645,6 @@ export const IN_SPACE = Symbol("vyre.in_space");
 const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by the views and capsule modules, beside `asked`: the person's own confirmation of exactly these words (a fresh preview and its hash). A symbol key cannot come over the wire. */
 const VIEW_ASK = Symbol("vyre.view_ask");
-/** Set only by Registry.callFlow, after the Flows host has spent the task approval a person gave for exactly this act: the call then counts as the person's own yes, as a redeemed card does. A symbol key cannot come over the wire. */
-const FLOW_ACT = Symbol("vyre.flow_act");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
 const RELAY = Symbol("vyre.relay");
 /**
@@ -670,7 +669,7 @@ const RELAY_ALLOWED = Object.freeze({
   mentions: ["vault.mention.search", "vault.mention.resolve"],
   identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
   // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
-  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "vault.put", "vault.", "link.", "relay.", "devices.signin", "sessions.accounts.", "onboard."],
+  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "vault.put", "vault.", "link.", "relay.", "devices.signin", "wink.phone.open", "sessions.accounts.", "onboard."],
 });
 
 export class Registry {
@@ -1170,8 +1169,7 @@ export class Registry {
         },
         // A handler hears the event as the call that raised it was made (RG-2): a model-originated call that emits an event does not become the module's own authority in the handler.
         on: (pattern, fn) => events.on(pattern, (/** @type {any} */ ev) => { const o = captureOrigin(); if (!o) return fn(ev); const r = withOrigin(o, () => fn(ev)); if (r && typeof r.catch === "function") r.catch(() => {}); }),
-        origin: () => captureOrigin(),
-        withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => withOrigin(o, f),
+        ...originApi(firstPartyRec, captureOrigin, withOrigin),
         since: (id, opts) => events.since(id, opts),
         // One thread's own events, oldest first (an indexed read of the log).
         ofThread: (thread, opts) => events.ofThread(thread, opts),
@@ -1251,9 +1249,7 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          const personSurface = isPerson(String(cur.caller)) && !modelCaller(String(cur.caller));
-          // Onboard and identity relay from the person's own surface before a session token exists; every other module needs proven facts or a token.
-          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
+          const personSurface = onPersonSurface(cur.caller), hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
           if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
           const origin = captureOrigin() || (personSurface ? String(cur.caller) : undefined);
           const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
@@ -1449,7 +1445,7 @@ export class Registry {
     if (!def || !def.flowStep) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
     if (def.flowStep.risk === "outward" && !def.outward && !def.flowStep.forced) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
     if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
-    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token, ...(typeof o.task === "string" && def.outward === true ? { [FLOW_ACT]: { task: o.task } } : {}) });
+    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token, [FLOW_RUN]: true, ...(typeof o.task === "string" && def.outward === true ? { [FLOW_ACT]: { task: o.task } } : {}) });
   }
 
   /**
@@ -1546,7 +1542,7 @@ export class Registry {
     // A hosted key (the public /mcp door) never uses the tools hostedKeyMay names: code on the box, credentials and connections, devices, people and roles, keys. Refused here, before anything else, for the key alone.
     if (meta.viaMcp && meta.viaMcpHosted === true && !hostedKeyMay(tool)) return { error: { code: "denied", message: `${tool} is not available to a hosted key: keys cannot install apps, add accounts or touch the vault` } };
     delete meta.relayedBy; delete meta.relayedByFirstParty; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
-    const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
+    const flowRun = meta[FLOW_RUN] === true && String(caller) === "module:flows"; delete meta[FLOW_RUN]; const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1575,8 +1571,7 @@ export class Registry {
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
     delete meta[VIEW_FOR];
-    const spaceHop = Boolean(meta.in_space_chain);
-    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
+    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && mayHop(def, { firstParty: Boolean((m => m && this.isFirstParty(m.dir))(this.modules.get(String(caller).slice(7)))), origin: meta.origin, relayed, spaceHop: Boolean(meta.in_space_chain), flowRun, viewFor: Boolean(viewFor) });
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.

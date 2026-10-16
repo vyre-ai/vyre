@@ -14,7 +14,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
-import { mechanism } from "../../kernel/modules/sandbox.js";
 
 /** Reach "person" in the manifests: reviewer-2's six first, then the rest of the sweep. */
 const PERSON = [
@@ -59,8 +58,7 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
 // With the kernel on, an ADDED module runs in the sandbox supervisor (`export const handlers`, no ctx: kernel/modules/child.js), so it cannot call any vault tool: the refusal is structural. Without the kernel it is the legacy
 // in-process module and the registry's not_declared; the positive control (vault.list is not refused as not_declared) applies only there.
 const KERNEL_ON = process.env.VYRE_KERNEL !== "0"; // the kernel is on by default (a development build)
-const SANDBOX = process.platform === "linux" && mechanism() === "bwrap";
-test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them", { skip: KERNEL_ON && !SANDBOX ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
+test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them", { skip: KERNEL_ON && process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
   const TOOLS = { "vault.put": { name: "bakery-key", value: "x" }, "vault.totp": { name: "bakery-key" }, "vault.relay": { item: "x", request: { url: "https://example.com" } } };

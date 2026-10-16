@@ -58,7 +58,7 @@ test("master password: the password unwraps, a wrong one does not, and the recov
   forgetAll();
 });
 
-test("migration wraps a 0.5.x identity and leaves the vault key file in place", async () => {
+test("migration wraps a 0.5.x identity, seals the vault key and removes the plaintext file", async () => {
   const root = scratch();
   const dir = path.join(root, "spaces");
   const store = fileIdentityStore(dir);
@@ -77,12 +77,12 @@ test("migration wraps a 0.5.x identity and leaves the vault key file in place", 
   assert.equal(after.agreePrivate, undefined);
   assert.equal(after.sealed, true);
   assert.equal(after.publicKey, before.publicKey);
-  assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), vaultHex);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false, "the plaintext file is gone");
+  const { openVaultKey } = await import("./vault-at-rest.js");
+  assert.equal(openVaultKey(root)?.toString("hex"), vaultHex, "the sealed copy opens to the same key");
   lockMaster(file);
   unlockMaster({ root, password: "correct horse battery", identityFile: file });
   assert.equal((await store.sign(Buffer.from("migrated"))).length, 64);
-  const { currentPersonalKey } = await import("./holder.js");
-  const mk = currentPersonalKey();
-  assert.equal(mk && mk.toString("hex"), vaultHex);
+  assert.equal(openVaultKey(root)?.toString("hex"), vaultHex, "unlocking leaves the sealed copy as it was");
   forgetAll();
 });

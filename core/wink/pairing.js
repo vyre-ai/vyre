@@ -835,6 +835,9 @@ export function createPairing(o) {
         await confirmPublished(to);
         const cur = meta.get("owner");
         if (cur && String(cur.identity || cur.id) !== to) throw fail("owned", "This server already belongs to someone.");
+        // Once an install line was redeemed here, or the server was set to pair to one person, the ticket is for that person alone.
+        const spent = meta.get("install_setup_locked"), want = meta.get("pair_to");
+        if ((spent && spent.person && String(spent.person) !== to) || (want && String(want) !== to)) throw fail("owned", "This server is paired to someone else.");
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr({});
