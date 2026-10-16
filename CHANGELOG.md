@@ -9,6 +9,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6
 
 - ci: a draft pull request runs the node tests on Node 24 only (5 shards); marking it ready starts the Node 22 and 24 run (node.yml now listens for ready_for_review), and release branches and main keep both. lumen-mac no longer also runs on a push to a work branch that has a pull request (it ran twice). The other heavy workflows (lumen-win, vault-mac, design, sessions-sdk, app, design-pictures) already run only when their paths change, and box-image decides from the package contents.
+- test(door gate): the team-server rigs of core/modules/door-gate.test.js and door-gate-roles.test.js write a box config (role box) before they start, because the computers and publish tools exist only for that role and a Mac's default is not it: the two files failed on the macOS job (vault-mac) for that reason.
 
 ## 0.5.1
 
