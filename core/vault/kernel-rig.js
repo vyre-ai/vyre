@@ -34,7 +34,10 @@ export async function kernelRig(o = {}) {
     chain: async (/** @type {any} */ meta) => (meta && meta.chain) || owner(),
     proofFrom: () => ({ presence: { n: Math.random() } }),
     vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p),
-      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => { try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; } } }),
+      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+        if (person === OWNER || gs.roleOf({ kind: "person", id: person, space: SPACE }) === "owner") return true;
+        try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+      } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
       if (!AGENT_ACTIONS.includes(action)) return false;

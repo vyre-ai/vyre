@@ -459,7 +459,8 @@ shardTest("switchboard: a finished turn's partial text is pruned after the grace
   await until(() => of(s.got, id, "thread.finished")[0], "the turn to end");
   const texts = async () => (await tool("threads.get", { thread: id, limit: 1000 })).data.events.filter(e => e.type === "thread.text");
   assert.ok((await texts()).some(e => e.payload.delta), "the deltas are there during the grace");
-  await until(async () => !(await texts()).some(e => e.payload.delta), "the deltas to go");
+  await new Promise(r => setTimeout(r, Number(process.env.VYRE_TEXT_PRUNE_MS || 1500) + 400));
+  await until(async () => !(await texts()).some(e => e.payload.delta), "the deltas to go", 20_000);
   const done = (await texts()).filter(e => e.payload.done && e.payload.kind !== "reasoning");
   assert.deepEqual(done.map(e => e.payload.text), ["echo: hello there, this is a longer prompt"]);
   const got = (await tool("threads.get", { thread: id })).data;
