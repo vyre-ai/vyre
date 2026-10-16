@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
 import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData, entryClientData, entryAndroidChallenge } from "./presence-proof.js";
+import { UNREADABLE, clean, proofSummary, summaryOf } from "./sign-summary.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -24,10 +25,12 @@ export type Alias = typeof PERSON | typeof HUMAN;
  *   ERR_BIOMETRIC        the prompt failed (locked out, no hardware)
  *   ERR_NO_ACTIVITY      Android: the prompt needs the app in front
  *   ERR_KEYGEN, ERR_SIGN the platform refused
+ *   ERR_UNREADABLE       the Face ID key was asked to sign bytes the phone cannot read (sign-summary.js): nothing was signed and no prompt was shown
  */
 export type SignerErrorCode =
   | "ERR_NO_KEY"
   | "ERR_NO_BIOMETRICS"
+  | "ERR_UNREADABLE"
   | "ERR_KEY_INVALIDATED"
   | "ERR_CANCELED"
   | "ERR_BIOMETRIC"
@@ -69,9 +72,20 @@ export function ensureKey(alias: Alias, options: { biometric?: boolean; attestCh
   return native.ensureKey(alias, { biometric: options.biometric ?? alias === HUMAN, ...(options.attestChallenge ? { attestChallenge: options.attestChallenge } : {}) });
 }
 
-/** ES256 over the UTF-8 message: the DER signature as base64url. `prompt` titles the biometric prompt. */
-export function sign(alias: Alias, message: string, options: { prompt?: string } = {}): Promise<string> {
+/**
+ * ES256 over the UTF-8 message: the DER signature as base64url. The Face ID key (HUMAN) signs only bytes the phone can read (sign-summary.js), and its prompt is the phone's own words for them; the
+ * caller's `prompt` is never shown for it (KP-3). The request key (PERSON) asks nothing and signs as before.
+ */
+export async function sign(alias: Alias, message: string, options: { prompt?: string } = {}): Promise<string> {
+  if (alias === HUMAN) return native.sign(HUMAN, message, { prompt: readable(new TextEncoder().encode(message)) });
   return native.sign(alias, message, options.prompt ? { prompt: options.prompt } : {});
+}
+
+/** The phone's words for bytes the Face ID key is asked to sign, or the refusal (ERR_UNREADABLE) before any prompt. */
+function readable(message: Uint8Array): string {
+  const said = summaryOf(message);
+  if (!said) throw Object.assign(new Error(UNREADABLE), { code: "ERR_UNREADABLE" });
+  return said;
 }
 
 /** Delete the key; true when there was one. */
@@ -167,7 +181,7 @@ export async function enrolAttestation(token: string): Promise<{ format: "apple-
 
 /**
  * Sign a card: refuse unless its fields hash to its payload_hash, then Face ID signs the proof bytes (ECDSA P-256, r||s, base64url). Where an App Attest key is enrolled
- * the proof also carries an `assertion` over SHA-256 of the same bytes. The Face ID prompt is titled by the card's own title.
+ * the proof also carries an `assertion` over SHA-256 of the same bytes. The Face ID prompt is the phone's words for the card's op and fields (sign-summary.js proofSummary), not the card's title.
  */
 export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
   iosOnly();
@@ -175,7 +189,8 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
   const k = await presenceKey();
   const body = proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   const bytes = proofBytes(body);
-  const der = await native.sign(HUMAN, new TextDecoder().decode(bytes), card.prompt ? { prompt: card.prompt } : {});
+  // the prompt is the phone's words for the card's own op and fields (checked against its hash in proofBody), never the card's caption
+  const der = await native.sign(HUMAN, new TextDecoder().decode(bytes), { prompt: proofSummary(card.op, card.fields as Record<string, unknown>) });
   const proof: PresenceProof = { ...(body as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(der))) };
   const keyId = await SecureStore.getItemAsync(APPATTEST_KEY);
   if (keyId && native.appAttestAssert) {
@@ -197,7 +212,9 @@ export async function signPresenceMany(cards: PresenceCard[]): Promise<PresenceP
     const person = card.person ?? (personProvider ? await personProvider() : null) ?? "";
     return proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   }));
-  const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), cards.length === 1 && cards[0].prompt ? { prompt: cards[0].prompt } : {});
+  // one prompt for the group: one card's own words, or how many acts it approves (never a card's caption)
+  const groupSay = cards.length === 1 ? proofSummary(cards[0].op, cards[0].fields as Record<string, unknown>) : `Approve ${cards.length} actions: ${cards.slice(0, 4).map((c) => clean(String(c.op).replace(/_/g, " "), 60)).join(", ")}${cards.length > 4 ? ", ..." : ""}`;
+  const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), { prompt: groupSay });
   const out: PresenceProof[] = [];
   for (let i = 0; i < cards.length; i++) {
     const proof: PresenceProof = { ...(bodies[i] as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(ders[i]))) };
@@ -256,7 +273,10 @@ export async function entryAttestation(entryPub: string): Promise<string | null>
 export async function enclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
   iosOnly();
   await ensureKey(HUMAN, { biometric: true });
-  return lowS(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
+  // KP-3: the prompt is the phone's own words for the bytes; `prompt` is the caller's and is not shown, and bytes the phone cannot read are not signed
+  void prompt;
+  const said = readable(message);
+  return lowS(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt: said }))));
 }
 
 /** Forget every key of this phone's signer: the presence key, the person (request) key and the App Attest key id. */
