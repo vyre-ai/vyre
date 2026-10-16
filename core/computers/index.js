@@ -26,6 +26,7 @@ import { tellComputerd } from "./helper.js";
 import { SharedBrowser } from "./shared-browser.js";
 import { AgentBrowser } from "./agent-browser.js";
 import { BrowserGlass } from "./browser-glass.js";
+import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY, MEMBER_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
@@ -81,6 +82,20 @@ export default {
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg,
       tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) },
       memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+    const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");
+    pool.browserProfiles = new BrowserProfiles({
+      pool,
+      dataRoot,
+      agentKey: () => ctx.vault.fetch(AGENT_BROWSER_PROFILE_KEY),
+      memberKey: async personId => {
+        const r = await ctx.call("vault.me.get", { name: MEMBER_BROWSER_PROFILE_KEY, person: personId });
+        if (r.error) throw new Error(r.error.message);
+        const v = r.data && r.data.fields && r.data.fields.key;
+        if (!v) throw new Error(`no ${MEMBER_BROWSER_PROFILE_KEY} in the member vault`);
+        return String(v);
+      },
+      log: ctx.log,
+    });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
     const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });

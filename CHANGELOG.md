@@ -4,7 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- feat(glass): Chrome downloads on an agent computer are readable at `downloads/` through computerd `/fs` and Glass Files (`AGENT_DOWNLOADS`).
+- feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
+- feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).
 - feat(hands-chrome): `chrome.api` on the box adds `route` and `call` (in-page fetch over CDP via `api-exec.js`); writes stay held until `approved: true`.
 - feat(browser): `lib/browser-profile-store.js` writes sealed profile blobs under `browser-profiles/<computerId>/`; `lib/browser-profile.js` supplies the vault key names; computerd export/import follows.

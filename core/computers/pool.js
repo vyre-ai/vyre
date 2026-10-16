@@ -120,6 +120,7 @@ export class Pool {
    *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
    *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
    *   memberTokenKey?: () => Promise<string>,
+   *   browserProfiles?: import("./browser-profiles.js").BrowserProfiles | null,
    *   wait?: (ms: number) => Promise<void>, probe?: ((host: string, port: number) => Promise<boolean>) | null }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
@@ -140,6 +141,7 @@ export class Pool {
     this.egress = deps.egress || (() => undefined);
     this.tailnet = deps.tailnet || null;
     this.memberTokenKey = deps.memberTokenKey || null;
+    this.browserProfiles = deps.browserProfiles || null;
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
@@ -457,6 +459,10 @@ export class Pool {
     }
     await this.boot(agent, id);
     this.set(agent, { state: "running" });
+    const row = this.row(agent);
+    if (row && row.kind === "browser" && this.browserProfiles) {
+      await this.browserProfiles.restoreAll(agent).catch(e => this.log(`browser profiles restore: ${/** @type {Error} */ (e).message}`));
+    }
     this.died.delete(agent);
     // A computer that just started or thawed joins the tailnet (when the switch is on), and so
     // does a running one that has no node yet. It never holds up the checkout.
@@ -619,6 +625,9 @@ export class Pool {
       this.idle.delete(agent);
       const r = this.row(agent);
       if (!r || r.state !== "running" || !r.container || !this.driver) return false;
+      if (r.kind === "browser" && this.browserProfiles) {
+        await this.browserProfiles.persistAll(agent).catch(e => this.log(`browser profiles persist: ${/** @type {Error} */ (e).message}`));
+      }
       try { await this.driver.pause(r.container); }
       catch (e) {
         const st = await this.driver.inspect(r.container).catch(() => null);
@@ -644,6 +653,9 @@ export class Pool {
       this.idle.delete(agent);
       const r = this.row(agent);
       if (!r || !r.container) return { stopped: false };
+      if (r.kind === "browser" && this.browserProfiles) {
+        await this.browserProfiles.persistAll(agent).catch(e => this.log(`browser profiles persist: ${/** @type {Error} */ (e).message}`));
+      }
       const st = await d.inspect(r.container);
       const joining = this.joins.get(agent);
       if (joining) { joining.ctl.abort(); await joining.done; }

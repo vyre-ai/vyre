@@ -61,10 +61,7 @@ export class ComputerProvider {
   }
 
   roots() {
-    return [
-      { name: "home", path: "" },
-      { name: "Chrome downloads", path: "downloads" },
-    ];
+    return [{ name: "home", path: "" }];
   }
 
   /** computerd's URL and token, thawing the computer if it was frozen. */

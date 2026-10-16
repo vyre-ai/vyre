@@ -290,26 +290,27 @@ async function readJson(req) {
  * @param {{ root?: string }} [opts]
  * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, url: URL) => Promise<void>}
  */
-const DOWNLOADS_ROOT_NAME = "downloads";
-
 export function createFs(opts = {}) {
   const root = opts.root || process.env.COMPUTERD_FS_ROOT || "/home/agent";
-  const downloadsRoot = opts.downloadsRoot || process.env.AGENT_DOWNLOADS || "";
+  // Chrome saves into $AGENT_HOME/Downloads (AGENT_DOWNLOADS); Glass Files lists it under home/Downloads.
+  const downloadsDir = (process.env.AGENT_DOWNLOADS || "").replace(/\/+$/, "");
+  const homeDownloads = downloadsDir && downloadsDir.startsWith(root.replace(/\/+$/, ""))
+    ? downloadsDir.slice(root.replace(/\/+$/, "").length).replace(/^\//, "").split("/")
+    : ["Downloads"];
 
-  /** @param {string} rel @returns {{ root: string, segments: string[], fsRoot: "home"|"downloads" }} */
+  /** @param {string} rel @returns {{ root: string, segments: string[] }} */
   function pickRoot(rel) {
     const segments = checkRel(rel);
-    if (segments[0] === DOWNLOADS_ROOT_NAME) {
-      if (!downloadsRoot) throw fail(404, "missing", "Chrome downloads are not on this computer");
-      return { root: downloadsRoot, segments: segments.slice(1), fsRoot: "downloads" };
-    }
-    return { root, segments, fsRoot: "home" };
+    return { root, segments };
   }
 
   const innerRel = (segments) => (segments.length ? segments.join("/") : "");
 
-  const refuseWrites = (fsRoot) => {
-    if (fsRoot === "downloads") throw fail(403, "denied", "Chrome downloads are read-only through Glass");
+  const isDownloadsPath = (segments) => segments.length >= homeDownloads.length
+    && homeDownloads.every((s, i) => segments[i] === s);
+
+  const refuseDownloadsWrite = (segments) => {
+    if (isDownloadsPath(segments)) throw fail(403, "denied", "Chrome downloads are read-only through Glass");
   };
 
   const send = (res, status, body) => {
@@ -370,7 +371,7 @@ export function createFs(opts = {}) {
 
   function stat(rel) {
     const picked = pickRoot(rel);
-    refuseWrites(picked.fsRoot);
+    refuseDownloadsWrite(picked.segments);
     const { parentFd, name, segments, realRoot } = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       const fd = name === null ? parentFd : openLeaf(realRoot, parentFd, name, O_RDONLY | O_NOFOLLOW, rel);
@@ -416,7 +417,7 @@ export function createFs(opts = {}) {
   /** @param {import("node:http").IncomingMessage} body */
   async function write(rel, body, size, overwrite) {
     const picked = pickRoot(rel);
-    refuseWrites(picked.fsRoot);
+    refuseDownloadsWrite(picked.segments);
     const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       // lstat, never following a final symlink: an existing entry there is exists/denied to us
@@ -471,8 +472,8 @@ export function createFs(opts = {}) {
   function move(from, to) {
     const fromP = pickRoot(from);
     const toP = pickRoot(to);
-    refuseWrites(fromP.fsRoot);
-    refuseWrites(toP.fsRoot);
+    refuseDownloadsWrite(fromP.segments);
+    refuseDownloadsWrite(toP.segments);
     const src = resolveOpen(fromP.root, innerRel(fromP.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be moved");
@@ -500,7 +501,7 @@ export function createFs(opts = {}) {
 
   function mkdir(rel) {
     const picked = pickRoot(rel);
-    refuseWrites(picked.fsRoot);
+    refuseDownloadsWrite(picked.segments);
     const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       try { fs.mkdirSync(fdPath(parentFd, name)); }
@@ -511,7 +512,7 @@ export function createFs(opts = {}) {
 
   function trash(rel) {
     const picked = pickRoot(rel);
-    refuseWrites(picked.fsRoot);
+    refuseDownloadsWrite(picked.segments);
     const src = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be trashed");
