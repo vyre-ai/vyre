@@ -19,6 +19,18 @@ export async function startAddServer(onChange: (s: AddServerState) => void) {
   return createAddServer({
     client: client as never,
     relay: relayUrl(),
+    autoPair: true,
+    issue: async ({ os }) => {
+      const me = await loadIdentity();
+      if (!me) throw new Error("no identity on this device");
+      const { createSetupKey, setupFingerprint } = await import("@vyre/relay-client/setup.js");
+      const { mintPairCode } = await import("@vyre/relay-client/pair-install.js");
+      const key = await createSetupKey();
+      const secret = globalThis.crypto.getRandomValues(new Uint8Array(16));
+      const fp = await setupFingerprint(key.spki);
+      const minted = await mintPairCode({ publicKey: me.key.publicKey, secret, fingerprint: fp, sign: (m: Uint8Array) => me.key.sign(m) });
+      return { code: minted.code, secret, key, expiresAt: minted.exp * 1000, os };
+    },
     identity: async () => {
       const me = await loadIdentity();
       if (!me) throw new Error("no identity on this device");

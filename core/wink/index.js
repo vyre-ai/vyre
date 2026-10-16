@@ -26,7 +26,8 @@ import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
 import { createGrants, moveLocalGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
-import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
+import { registerInstallPair } from "./install-pair.js";
+import { createPairing, parseServerQr, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
 import { lentRevoked } from "./lent-revoked.js";
@@ -405,6 +406,14 @@ export function createWink(inject = {}) {
       return { relay: url, route: String(route), box: String(box) };
     };
     pairing.tools();
+    const installPair = registerInstallPair({
+      ctx, meta: pairing.meta, now, log: (m) => ctx.log(m),
+      pair: (qr, person) => {
+        const scan = parseServerQr(String(qr));
+        if (!scan) throw fail("bad_input", "The server gave a ticket this computer cannot read. Make a new install line in the Vyre app.");
+        return pairing.startTyping({ seed: scan.seed, relay: scan.relay || undefined, kind: "server", target: { kind: "identity", id: person } });
+      },
+    });
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
     liveLinks = pairing.serverLinks;
@@ -987,6 +996,7 @@ export function createWink(inject = {}) {
         dropHold();
         for (const off of [offSignin, ...offSigninWatch, offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
+        try { await installPair.stop(); } catch {}
         try { pairing.stop(); } catch {}
         try { if (netd) await netd.stop(); } catch {}
         try { if (join) { for (const off of offJoin) { try { off(); } catch {} } await join.stop(); } } catch {}

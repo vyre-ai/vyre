@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(install): a server pairs from one install line. The app, or an agent through the Gate, issues a code the creator's identity key signs. The line carries the code in its environment, works once, and expires in 30 minutes. The server adopts that person. The setup page at /setup takes the same code and locks after pairing. The tools are wink.install.issue, wink.install.status and wink.install.complete, one definition each for MCP, HTTP and CLI. Issuing a line and finishing pairing wait at the Gate, and the signing key stays on the device.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

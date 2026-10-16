@@ -286,19 +286,23 @@ function CreateRunLive({ ctx, go, back, steps }: ScreenProps) {
   const st = useServerRun();
   const [failed, setFailed] = useState("");
   useEffect(() => { beginServerRun(ctx.server).catch((e) => setFailed(whyNot(e))); }, []);
-  useEffect(() => { if (st?.stage === "found") go("create.confirm"); }, [st?.stage]);
+  useEffect(() => { if (st?.stage === "done") go("create.setup"); }, [st?.stage]);
   const stopped = st?.stage === "stopped";
   const failure = failed || (stopped ? st?.error?.message : undefined);
+  const waiting = st?.stage === "install" || st?.stage === "found" || st?.stage === "pairing";
   return (
-    <FlowStep mark="working" steps={steps} onBack={() => { stopServerRun(); back?.(); }} title={ctx.server === "mac" ? "Run this in Terminal on that Mac" : "Run this on your server"} lead="One command installs Vyre. It works once, for one hour. It needs at least 4 GB of memory, and 8 GB is recommended. It ends by printing your space code."
+    <FlowStep mark="working" steps={steps} onBack={() => { stopServerRun(); back?.(); }} title={ctx.server === "mac" ? "Run this in Terminal on that Mac" : "Run this on your server"} lead="One command installs Vyre and pairs this server. It works once, for 30 minutes. It needs at least 4 GB of memory, and 8 GB is recommended."
       failure={failure}
-      primary={failure ? { label: "Start again", onPress: () => { setFailed(""); stopServerRun(); beginServerRun(ctx.server).catch((e) => setFailed(whyNot(e))); } } : { label: "I have the code", onPress: () => go("create.code") }}>
+      primary={failure ? { label: "Start again", onPress: () => { setFailed(""); stopServerRun(); beginServerRun(ctx.server).catch((e) => setFailed(whyNot(e))); } } : undefined}>
       {st?.installLine ? <CodeBlock lang="sh" code={st.installLine} /> : <Text tone="muted">Making your line.</Text>}
-      <Stack gap={2}>
-        <Text strong>Lost the code?</Text>
-        <CodeBlock lang="sh" code="vyre space up" />
-        <Text size="caption" tone="muted">That prints a fresh code at any time. If someone else set up the server, ask them for the code: they run vyre space up. Whoever types the code here and confirms the four words becomes the space's owner.</Text>
-      </Stack>
+      {st?.code ? (
+        <Stack gap={2}>
+          <Text strong>Or use the setup page</Text>
+          <Text size="caption" tone="muted">On the server, open http://its-address/setup and paste this code. The page locks after pairing.</Text>
+          <CodeBlock code={st.code} />
+        </Stack>
+      ) : null}
+      {waiting ? <Text tone="muted">{SERVER_WAIT}</Text> : null}
     </FlowStep>
   );
 }
