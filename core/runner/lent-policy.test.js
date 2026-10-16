@@ -95,3 +95,43 @@ test("the policy return is refused before anything is written when the computer 
   await assert.rejects(w.home.adopt({ session: "s1", thread: "s1", person: "per_a", native: "s1", lines: ["x"], policy: true }), (/** @type {any} */ e) => e.code === "unavailable");
   assert.equal(w.home.book.get("s1")?.where, "server", "nothing moved");
 });
+
+/** Beat well every 5 seconds for `ms` and keep every answer: what the home told the computer to do. */
+async function beatsFor(/** @type {ReturnType<typeof world>} */ w, /** @type {number} */ ms, /** @type {boolean} */ auto = true) {
+  /** @type {any[]} */ const out = [];
+  for (let n = 0; n < ms / 5000; n++) { w.tick(5000); out.push(await w.home.beat(A, { sessions: [], well: true, auto })); }
+  return out;
+}
+const startsOf = (/** @type {any[]} */ answers, /** @type {string} */ session) => answers.filter(a => a.directives.some((/** @type {any} */ d) => d.do === "start" && d.session === session)).length;
+
+test("a session started on the computer with no chat comes back by itself under Always allow, with no tap, by the same rule as a chat", async t => {
+  const w = world(t);
+  await w.home.start(A, { session: "own1", lease: "L1" });
+  assert.equal((await w.home.release(A, { session: "own1", epoch: 1, reason: "lid-closed" })).moved, true);
+  const early = await beatsFor(w, STEADY_MS + 5000);
+  assert.equal(startsOf(early, "own1"), 0, "ready for a minute is not enough: the move is still inside its cooldown");
+  const later = await beatsFor(w, COOLDOWN_MS + 5000);
+  assert.ok(startsOf(later, "own1") >= 1, "steadily ready and past the cooldown: the home tells the computer to start it again");
+  assert.equal(w.home.book.get("own1")?.where, "server", "nothing moved by itself: the computer starts it, and the book follows its lend");
+});
+
+test("a session with no chat does not come back by itself under Ask, nor after a gap, nor when it left for a reason that does not clear", async t => {
+  const ask = world(t);
+  await ask.home.start(A, { session: "own1", lease: "L1" });
+  await ask.home.release(A, { session: "own1", epoch: 1, reason: "lid-closed" });
+  assert.equal(startsOf(await beatsFor(ask, STEADY_MS + COOLDOWN_MS + 10_000, false), "own1"), 0, "Ask: the offer waits for the person");
+  const you = world(t);
+  await you.home.start(A, { session: "own2", lease: "L2" });
+  await you.home.release(A, { session: "own2", epoch: 1, reason: "you" });
+  assert.equal(startsOf(await beatsFor(you, STEADY_MS + COOLDOWN_MS + 10_000), "own2"), 0, "the person moved it: only they move it back");
+});
+
+test("a chat's own session (a lent spawn) is never started by this rule: it goes through the person's next message", async t => {
+  const w = world(t);
+  await beatsFor(w, 10_000);
+  const proc = w.home.spawn({ session: "chat1", person: "per_a", args: [] });
+  proc.on("error", () => {});
+  await w.home.start(A, { session: "chat1", lease: "L3" });
+  await w.home.release(A, { session: "chat1", epoch: 1, reason: "lid-closed" });
+  assert.equal(startsOf(await beatsFor(w, STEADY_MS + COOLDOWN_MS + 10_000), "chat1"), 0);
+});
