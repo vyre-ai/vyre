@@ -1,14 +1,17 @@
 // @ts-check
 // [reviewed: trust] A person in their own app is not held. An assistant's change to people, devices or vault
 // access waits on one Needs-you card (approvals.hold), the same queue an outward send uses. An assistant never
-// receives a vault value, including after Approve. Lending (vault.request, vault.space.use) injects the value
-// and the result is scrubbed. A module calling another module is not held.
+// receives a secret-tagged value (a vault value, a recovery key, master-record material, a token, a sealed
+// record field, a connection credential, an invite token), including after Approve. Lending (vault.request,
+// vault.space.use) injects the value and the result is scrubbed. A module calling another module is not held.
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
 import { momentOf, yes } from "../../lib/one-yes.js";
 import { isSurface } from "../../lib/surface-tools.js";
-import { scrubAll } from "../../lib/scrub.js";
+import { collectSecrets, popSecretScope, pushSecretScope, redactExtra, redactLog, redactSecrets, rememberSecrets } from "../../lib/secret-schema.js";
 import { PERSON_ONLY as reachPersonOnly } from "./agent-reach.js";
+
+export { redactExtra, redactLog };
 
 const AGENT_OR_THREAD = /(?:^|[\s:])(?:agent|thread):/;
 const LENDING = new Set(["vault.request", "vault.space.use"]);
@@ -22,8 +25,6 @@ const DEVICE_ADD = new Set([
   "onboard.computer.add", "onboard.phone.add", "onboard.windows",
   "spaces.devices.enrol", "spaces.devices.restore", "wink.phone.open", "wink.pair.server", "devices.signin",
 ]);
-const SECRET_KEY = /^(password|passwd|passphrase|secret|secretkey|secret_key|recovery|recoverykey|recoverysecret|recoverycode|privatekey|private_key|token|apikey|api_key|credential|accesstoken|access_token|refreshtoken|refresh_token|masterpassword|master_password)$/i;
-
 /** @param {string} caller */
 const kindOf = (caller) => String(caller || "").replace(/[\s:](agent|thread):.*$/s, "");
 
@@ -36,7 +37,7 @@ export function modelCaller(caller) {
   const c = String(caller || "");
   if (c.startsWith("module:")) return false;
   const kind = kindOf(c);
-  return kind === "mcp" || kind === "harness" || AGENT_OR_THREAD.test(c);
+  return kind === "mcp" || kind === "harness" || kind === "hosted" || AGENT_OR_THREAD.test(c);
 }
 
 /** In-the-air lending. The value is injected and does not come back as the result. @param {string} name */
@@ -106,57 +107,40 @@ export function listingMarks(name, d) {
 }
 
 /**
- * Take secret fields out of a result an assistant will see. A person's own caller is unchanged.
- * Lending keeps the vendor body and still drops a secret-named field on the envelope.
+ * Take secret-tagged values out of a result an assistant, model, MCP or hosted caller will see.
+ * The tag is the field type (lib/secret-schema.js), so the tool's name does not decide it.
+ * A person's own caller is unchanged. Lending still drops a secret-tagged field inside the vendor body.
  * [reviewed: trust]
- * @param {string} caller @param {string} tool @param {any} result
+ * @param {string} caller @param {string} tool @param {any} result @param {any} [input] @param {any} [def]
  */
-export function scrubVaultResult(caller, tool, result) {
+export function scrubVaultResult(caller, tool, result, input, def) {
   if (!modelCaller(caller) || result == null || typeof result !== "object") return result;
-  const lend = lending(tool);
-  const stripValue = !lend && String(tool || "").startsWith("vault.");
-  /** @type {string[]} */
-  const pulled = [];
-  /** @param {any} v @returns {any} */
-  const walk = (v) => {
-    if (Array.isArray(v)) return v.map(walk);
-    if (!v || typeof v !== "object") return v;
-    /** @type {Record<string, any>} */
-    const out = {};
-    for (const [k, val] of Object.entries(v)) {
-      if (SECRET_KEY.test(k) || (stripValue && k === "value")) {
-        if (typeof val === "string" && val.length >= 4) pulled.push(val);
-        continue;
-      }
-      out[k] = lend ? val : walk(val);
-    }
-    return out;
-  };
-  if (lend) {
-    /** @type {Record<string, any>} */
-    const out = {};
-    for (const [k, val] of Object.entries(result)) {
-      if (SECRET_KEY.test(k)) {
-        if (typeof val === "string" && val.length >= 4) pulled.push(val);
-        continue;
-      }
-      if (val && typeof val === "object" && !Array.isArray(val)) {
-        /** @type {Record<string, any>} */
-        const inner = {};
-        for (const [ik, iv] of Object.entries(val)) {
-          if (SECRET_KEY.test(ik)) {
-            if (typeof iv === "string" && iv.length >= 4) pulled.push(iv);
-            continue;
-          }
-          inner[ik] = iv;
-        }
-        out[k] = inner;
-      } else out[k] = val;
-    }
-    return pulled.length ? scrubAll(out, pulled) : out;
+  const secrets = collectSecrets(input, def && def.input);
+  rememberSecrets(secrets);
+  const stripVaultValue = !lending(tool) && String(tool || "").startsWith("vault.");
+  return redactSecrets(result, { secrets, schema: def && (def.output || def.input), stripVaultValue }).value;
+}
+
+/**
+ * Remember this call's secret-tagged input for the events, log lines and stream frames it emits.
+ * A caller that is not an agent is left alone. Returns the scope to restore, or null when nothing was armed.
+ * @param {string} caller @param {any} input @param {any} def @param {any} meta
+ */
+export function armSecrets(caller, input, def, meta) {
+  if (!modelCaller(caller)) return null;
+  const secrets = collectSecrets(input, def && def.input);
+  const prev = pushSecretScope(secrets);
+  if (meta && typeof meta.partial === "function") {
+    const raw = meta.partial;
+    meta.partial = (/** @type {any} */ frame) => raw(typeof frame === "string" ? redactLog(frame) : redactSecrets(frame, { secrets }).value);
   }
-  const cleaned = walk(result);
-  return pulled.length ? scrubAll(cleaned, pulled) : cleaned;
+  return { prev };
+}
+
+/** Put back the scope an agent call replaced. `armed` is what armSecrets returned. @param {any} armed */
+export function disarmSecrets(armed) {
+  if (!armed) return;
+  popSecretScope(armed.prev);
 }
 
 /**

@@ -23,6 +23,7 @@ import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
+import { sessionCaller } from "../../lib/agent-adapters.js";
 import { offeredTool } from "./offered.js";
 import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
@@ -46,7 +47,7 @@ const HELD = "(held for approval) ";
 // not the assistant is not even offered the tools that drive other sessions; and recall.search
 // is held inside the folders of the agent's projects.
 const AGENT = process.env.VYRE_AGENT || "";
-const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
+const CALLER = sessionCaller(process.env.VYRE_PROVIDER || "claude", AGENT ? { agent: AGENT } : {});
 /**
  * Claude Code on this computer (core/pluginagent): once the person has granted it, the home holds plugin-agent.json ({ agent, key }, mode 0600) and this server calls as that agent with the key, so vyred
  * binds every call to the agent's own kernel token. Read on each call (the grant can come while a session runs), and never inside a session Vyre started (its own socket binds it). No file: a plain "mcp".
@@ -64,7 +65,7 @@ function ident() {
     } catch { /* not connected (yet) */ }
     try {
       const j = JSON.parse(fs.readFileSync(path.join(home(), "plugin-agent.json"), "utf8"));
-      if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: `mcp:agent:${j.agent}`, headers: { "x-vyre-agent-key": j.key } };
+      if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: sessionCaller(process.env.VYRE_PROVIDER || "claude", { agent: String(j.agent) }), headers: { "x-vyre-agent-key": j.key } };
     } catch { /* not granted (yet) */ }
   }
   return { caller: CALLER };

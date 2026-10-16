@@ -11,6 +11,8 @@ import { createEventLog } from "./core/events.js";
 import { createChainBuilder } from "./core/chain.js";
 import { createKernelSeal } from "./core/seal.js";
 import { credentialAtTokenStart } from "../lib/credential-shapes.js";
+import { scrubScopedPayload } from "../lib/secret-schema.js";
+import { jsonHasSecretField } from "../lib/secret-keys.js";
 
 const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 
@@ -18,8 +20,8 @@ const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 // known prefixes); the vault's own redactor is stricter and is what the vault module uses.
 // A token prefix counts only at the start of a token (not inside a longer word or a random id, where "sk-" or "AKIA" turn up by chance: FL-1), and the prefixes are case-sensitive as the providers issue them.
 const SECRET_PREFIX = { test: credentialAtTokenStart };   // a vendor key that begins a token (lib/credential-shapes.js)
-const SECRET_SHAPE = /-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:password|secret|token|api_?key)"\s*:\s*"[^"]{6,}"/i;
-const LOOKS_SECRET = { test: (/** @type {string} */ json) => SECRET_PREFIX.test(json) || SECRET_SHAPE.test(json) };
+const SECRET_SHAPE = /-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
+const LOOKS_SECRET = { test: (/** @type {string} */ json) => SECRET_PREFIX.test(json) || SECRET_SHAPE.test(json) || jsonHasSecretField(json) };
 
 /** Events one drain delivers before it stops (a loop of listeners emitting each other). */
 export const DRAIN_CAP = 10_000;
@@ -110,10 +112,11 @@ export class Events {
    */
   emit(source, type, payload = {}, where = {}) {
     if (!NAME.test(type)) throw new Error(`event type "${type}" must look like noun.past-verb`);
-    const json = JSON.stringify(payload);
+    const body = scrubScopedPayload(payload);
+    const json = JSON.stringify(body);
     if (LOOKS_SECRET.test(json)) throw new Error(`event ${type} from ${source} carries something that looks like a secret; events are readable by every module`);
     const at = where.at || Date.now();
-    const event = this.#append(source, type, payload, { ...where, at });
+    const event = this.#append(source, type, body, { ...where, at });
     // An event a listener emits while another is being delivered waits its turn: every listener hears events in id order, so a stream that
     // follows an id cursor (the SSE one) never meets 13 before 12 and drops the 12 (a model.switched the settings hub answered with its own
     // event was lost to every live Deck this way, #41).

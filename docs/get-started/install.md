@@ -55,10 +55,10 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 Open the app. It asks for a username and a master password. The username is your page at `vyre.run/u/your-name`.
 The same password unlocks your vault. You can also choose **Continue with GitHub**. GitHub signs you in. The master password is still required.
 
+On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the Mac app shows.
+
 The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
-
-On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the Mac app shows.
 
 
 ## 4. Choose how you will use Vyre
