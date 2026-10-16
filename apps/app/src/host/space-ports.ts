@@ -28,6 +28,12 @@ export async function spacePorts(): Promise<SpacePorts> {
       const made = Object.values((await loadPairings()).items).find((p) => !before.has(p.box)) || null;
       return made ? { box: made.box, route: made.route, relay: made.relay, name: String(made.name || "") } : null;
     },
+    // The one-space-per-server claim the screens use (real/install.ts makeServerSpace): the paired server names its own space and the directory gets the record, signed by the identity the page holds.
+    claim: async (who, { name, route }) => {
+      const { makeServerSpace } = await import("../real/install");
+      return makeServerSpace(name, name, { key: route.box, route }, who as never);
+    },
+    call: async (name, input, box) => (await import("../real/box")).tool(name, input, { server: box }),
     forget: async (box) => {
       const { removePairingFor } = await import("../api/relay");
       await removePairingFor(box);

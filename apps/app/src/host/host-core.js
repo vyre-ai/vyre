@@ -23,8 +23,8 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, progress?: { screen: string, stack: string[] } | null, done?: boolean, spaces?: KeptSpace[], current?: string | null }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  * The outside things stage 2 needs (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
- * the pairing the app already does with a server's ticket (it returns the pairing it made) and forgetting one.
- * @typedef {{ client: any, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, forget: (box: string) => Promise<void> }} SpacePorts
+ * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, and forgetting a pairing.
+ * @typedef {{ client: any, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
 /**
@@ -48,7 +48,7 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
-  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean }>} */
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any }>} */
   const waits = new Map();
   const stopRuns = () => { for (const w of waits.values()) w.run.stop(); };
 
@@ -161,7 +161,7 @@ export function createHost(o) {
         ...(o.random ? { random } : {}), ...(o.now ? { now: o.now } : {}), ...(o.sleep ? { sleep: o.sleep } : {}), ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}), version: o.version ?? null,
       });
       const id = `fr_${Array.from(random(8), (b) => b.toString(16).padStart(2, "0")).join("")}`;
-      waits.set(id, { run, name: label, kind: place, paired: null, saved: false });
+      waits.set(id, { run, name: label, kind: place, paired: null, saved: false, failed: null });
       await run.begin("records", place);
       const st = run.state;
       if (st.stage === "stopped" || !commandOk(st.installLine)) { waits.delete(id); throw bad(st.error ? st.error.message : "The install command is not one this app can show.", st.error ? st.error.code : "bad_input"); }
@@ -174,13 +174,27 @@ export function createHost(o) {
       const st = w.run.state;
       const base = { id: String(id), kind: w.kind, expiresAt: new Date(st.expiresAt || 0).toISOString() };
       if (st.stage === "done") {
-        const k = await o.store.load();
-        if (!k) throw bad("Make your username first.", "no_identity");
+        const { k, ports, key } = await spaceCtx();
         const p = w.paired;
-        const row = /** @type {KeptSpace} */ ({ id: spaceKey("", w.name), name: w.name, role: "owner", server: p && /\.vyre\.run$/.test(p.name) ? `https://${p.name}` : null, paired: p || null });
         const hostname = (p && p.name) || (st.box && st.box.name) || "";
-        if (!w.saved) { await keepSpace(k, row); w.saved = true; }
-        return { ...base, online: true, expired: false, space: row.id, server: { hostname, address: row.server || "", space: row.id, name: hostname, route: (p && p.route) || (st.box && st.box.route) || "", box: (p && p.box) || "" }, canRemove: Boolean(p && p.box) };
+        if (w.failed) return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: Boolean(p && p.box), canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
+        if (!w.saved) {
+          // The server is paired. Now the space is usable: the paired server names its own space and the directory gets the record signed by this identity (so <space>.vyre.run signs in), then the space vault is made on that server.
+          if (!p || !p.box) { w.failed = { code: "pair", message: "Your server did not finish connecting. Start again." }; return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: false }; }
+          let space = "";
+          try {
+            space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } });
+            try { await ports.call("vault.space.create", { space }, p.box); } catch (e) { if (!e || /** @type {any} */ (e).code !== "exists") throw e; }
+          } catch (e) {
+            const x = /** @type {any} */ (e);
+            w.failed = { code: String((x && x.code) || "claim"), message: String((x && x.message) || "The space could not be made.").slice(0, 300) };
+            return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true, canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
+          }
+          await keepSpace(k, { id: space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
+          w.saved = true;
+        }
+        const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
+        return { ...base, online: true, expired: false, space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";
@@ -192,6 +206,16 @@ export function createHost(o) {
       }
       if (st.stage === "found" || st.stage === "pairing") return { ...base, online: false, expired: false, connecting: true, ...(st.box ? { found: { name: st.box.name } } : {}) };
       return { ...base, online: false, expired: false };
+    },
+
+    // The directory said the name is taken: pick another and the claim is tried again on the same paired server.
+    "onboard.space.name": async ({ id, name }) => {
+      const w = waits.get(String(id || ""));
+      if (!w) throw bad("That install is not one this device started.");
+      const label = usernameOf(name);
+      if (!label) throw bad("A space name is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
+      w.name = label; w.failed = null;
+      return { id: String(id), name: label };
     },
 
     "onboard.space.list": async () => {

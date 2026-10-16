@@ -27,7 +27,7 @@ const memoryStore = () => { let kept = null; return { load: async () => (kept ? 
 
 /** The relay, the setup channel and the pairing as a test drives them: a server that answers the line when `serverUp` is set, and one pairing the page makes. */
 function ports() {
-  const seen = { pairs: [], forgot: [], tickets: [], resolveAs: null };
+  const seen = { pairs: [], forgot: [], tickets: [], resolveAs: null, claims: [], calls: [], claimFails: [] };
   const offer = { relay: "wss://relay.example", route: "r".repeat(26), box: new Uint8Array(32) };
   const p = {
     seen,
@@ -46,6 +46,13 @@ function ports() {
       seen.pairs.push({ qr, who: { id: who.id, name: who.name, hasKey: typeof who.key.sign === "function" } });
       return { box: "boxA", route: offer.route, relay: offer.relay, name: "alex-space.vyre.run" };
     },
+    claim: async (who, o) => {
+      seen.claims.push({ who: { id: who.id, name: who.name, hasOps: Array.isArray(who.ops) && who.ops.length > 0, hasKey: typeof who.key.sign === "function" }, name: o.name, box: o.route.box });
+      const fail = seen.claimFails.shift();
+      if (fail) throw Object.assign(new Error("That name is taken. Pick another."), { code: fail });
+      return "spc_abcdefghijkl";
+    },
+    call: async (name, input, box) => { seen.calls.push({ name, input, box }); return {}; },
     forget: async (box) => { seen.forgot.push(box); },
   };
   return p;
@@ -86,15 +93,19 @@ test("create a space from a page: the line carries a code the server's own check
   pp.seen.resolveAs = "one";
   const done = await until(host, open.id, (r) => r.online);
   assert.equal(done.server.name, "alex-space.vyre.run");
-  assert.deepEqual([done.server.hostname, done.server.address, done.server.space], ["alex-space.vyre.run", "https://alex-space.vyre.run", "spc_alex-space"]);
+  assert.deepEqual([done.server.hostname, done.server.address, done.server.space], ["alex-space.vyre.run", "https://alex-space.vyre.run", "alex-space"]);
   assert.equal(done.canRemove, true);
-  assert.equal(done.space, "spc_alex-space");
+  assert.equal(done.space, "spc_abcdefghijkl");
+  assert.equal(done.server.space, "alex-space");
+  // The space is made usable: the directory claim is signed by this identity through the paired server, then the space vault is made on that server.
+  assert.deepEqual(pp.seen.claims, [{ who: { id: made.id, name: "alex", hasOps: true, hasKey: true }, name: "alex-space", box: "boxA" }]);
+  assert.deepEqual(pp.seen.calls, [{ name: "vault.space.create", input: { space: "spc_abcdefghijkl" }, box: "boxA" }]);
   assert.equal(pp.seen.pairs.length, 1);
   assert.deepEqual(pp.seen.pairs[0].who, { id: made.id, name: "alex", hasKey: true });
 
   const list = await host.call("onboard.space.list");
-  assert.deepEqual(list.spaces, [{ id: "spc_alex-space", name: "alex-space", role: "owner", server: "https://alex-space.vyre.run" }]);
-  assert.equal(list.current, "spc_alex-space");
+  assert.deepEqual(list.spaces, [{ id: "spc_abcdefghijkl", name: "alex-space", role: "owner", server: "https://alex-space.vyre.run" }]);
+  assert.equal(list.current, "spc_abcdefghijkl");
   assert.equal(list.id, made.id);
   // A page that reads the list again finds the same single row, and polling twice keeps one.
   await host.call("onboard.space.poll", { id: open.id });
@@ -127,7 +138,7 @@ test("Not your server? Remove it forgets the pairing and the space; a line that 
   pp.seen.resolveAs = "one";
   await until(host, open.id, (r) => r.online);
   await assert.rejects(() => host.call("onboard.space.remove", { space: "spc_nobody" }), /not one this identity belongs to/);
-  assert.deepEqual(await host.call("onboard.space.remove", { space: "spc_alex-space" }), { removed: true, id: "spc_alex-space" });
+  assert.deepEqual(await host.call("onboard.space.remove", { space: "spc_abcdefghijkl" }), { removed: true, id: "spc_abcdefghijkl" });
   assert.deepEqual(pp.seen.forgot, ["boxA"]);
   assert.deepEqual((await host.call("onboard.space.list")).spaces, []);
 
@@ -151,4 +162,39 @@ test("the space steps need the identity unlocked, and locking stops a line that 
   await host.call("identity.unlock", { password: PASSWORD });
   await assert.rejects(() => host.call("onboard.space.open", { kind: "windows" }), /Linux server or an always-on Mac/);
   assert.equal((await host.call("onboard.space.poll", { id: open.id })).online, false);
+});
+
+test("a name the directory refuses leaves the server paired and unnamed: the page says so, offers another name or removal, and a second name finishes the space", async (t) => {
+  const { pp, host } = await ready(t);
+  pp.seen.claimFails.push("taken");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  const failed = await until(host, open.id, (r) => r.failed);
+  assert.equal(failed.canRename, true);
+  assert.equal(failed.canRemove, true);
+  assert.equal(failed.online, false);
+  assert.deepEqual((await host.call("onboard.space.list")).spaces, [], "no space is kept for a name the directory refused");
+  assert.equal(pp.seen.calls.length, 0, "no space vault is made for a space that was not claimed");
+  await assert.rejects(() => host.call("onboard.space.name", { id: open.id, name: "x" }), /3 to 20/);
+  await host.call("onboard.space.name", { id: open.id, name: "alex-two" });
+  const done = await until(host, open.id, (r) => r.online);
+  assert.equal(done.server.space, "alex-two");
+  assert.equal(pp.seen.claims.length, 2);
+  assert.equal(pp.seen.pairs.length, 1, "the server was paired once");
+  assert.equal((await host.call("onboard.space.list")).spaces[0].name, "alex-two");
+});
+
+test("a vault that already exists on the server is fine; any other vault refusal fails the poll and keeps nothing", async (t) => {
+  const { pp, host } = await ready(t);
+  pp.call = async () => { throw Object.assign(new Error("exists"), { code: "exists" }); };
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  assert.equal((await until(host, open.id, (r) => r.online)).space, "spc_abcdefghijkl");
+  const two = await ready(t);
+  two.pp.call = async () => { throw Object.assign(new Error("The server could not make the vault."), { code: "unavailable" }); };
+  const o2 = await two.host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  two.pp.seen.resolveAs = "one";
+  const bad = await until(two.host, o2.id, (r) => r.failed);
+  assert.equal(bad.code, "unavailable");
+  assert.deepEqual((await two.host.call("onboard.space.list")).spaces, []);
 });
