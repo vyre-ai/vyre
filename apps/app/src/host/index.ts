@@ -1,8 +1,9 @@
 // The in-page tool host's one door (host-core.js). A page with no daemon answers first run, unlock and lock itself: the hosted web app (web.vyre.run), and a build made for it (EXPO_PUBLIC_VYRE_HOST=1,
-// which the first-run proof uses). The Mac and Windows windows join in the next stage. A page whose daemon answers (a box's own /app/, a phone paired to a server) never comes here.
+// which the first-run proof uses). Stage 2 adds the space steps (create a space with the one install line, wait for the server, show the paired server). The Mac and Windows windows join in the next stage. A page whose daemon answers (a box's own /app/, a phone paired to a server) never comes here.
 import { Platform } from "react-native";
 import { createHost } from "./host-core.js";
 import { hostStore } from "./host-store";
+import { spacePorts } from "./space-ports";
 
 const HOSTED = /^web\.vyre\.run$/i;
 
@@ -20,6 +21,6 @@ function directory(): string {
 
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
-  if (!host) host = createHost({ store: hostStore, directory: directory() });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), space: { load: spacePorts } });
   return host;
 }

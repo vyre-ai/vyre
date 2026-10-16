@@ -3,10 +3,15 @@
 // core/onboard (onboard.person.*, onboard.first.*) and core/identity (identity.status, unlock, lock), so the screens call one door whether a daemon or this answers. Nothing here is a second design: the
 // identity chain and the directory claim are apps/app/src/identity/claim.js (kernel/identity/chain.js itself), the master record is master-web.js (byte-identical to kernel/identity/master.js), and the
 // shapes come from lib/first-run-shape.js. What is kept at rest is JSON bytes only: the chain (public) and the master record (every key wrapped by the master password or the recovery key). The unlocked
-// key lives in this object's memory until lock. Space steps are the next stage and answer `host_unsupported` until then.
+// key lives in this object's memory until lock. Stage 2 (create a space) answers onboard.space.*: the install line is made here with the identity key (relay/client/pair-install.js, the one mint the
+// app already uses, whose bytes lib/pair-code.js verifies), the server is found and paired through src/real/add-server.js over the relay, and what is kept is the space row and the paired server's
+// name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
-import { passwordOk, personRoutes, usernameOf } from "../../../../lib/first-run-shape.js";
+import { commandOk, passwordOk, personRoutes, placeKind, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
+import { mintPairCode } from "../../../../relay/client/pair-install.js";
+import { createSetupKey, setupFingerprint } from "../../../../relay/client/setup.js";
+import { createAddServer } from "../real/add-server.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
@@ -14,12 +19,17 @@ const b64u = (/** @type {Uint8Array} */ b) => btoa(String.fromCharCode(...b)).re
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
 
 /**
- * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ id: string, name: string, role: string, server: string | null, paired?: { box: string, route: string, relay: string, name: string } | null }} KeptSpace
+ * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, progress?: { screen: string, stack: string[] } | null, done?: boolean, spaces?: KeptSpace[], current?: string | null }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
+ * The outside things stage 2 needs (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
+ * the pairing the app already does with a server's ticket (it returns the pairing it made) and forgetting one.
+ * @typedef {{ client: any, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
 /**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number }} o
+ * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number,
+ *   space?: { load: () => Promise<SpacePorts> }, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -36,6 +46,27 @@ export function createHost(o) {
     if (res.status === 200 && body && body.data && typeof body.data.code === "string") return String(body.data.code);
     const code = body && body.error && body.error.code;
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
+  }
+
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean }>} */
+  const waits = new Map();
+  const stopRuns = () => { for (const w of waits.values()) w.run.stop(); };
+
+  const unsupported = () => Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
+  /** Stage 2 needs the ports, and the unlocked identity: the line is signed by the identity key and the person's own yes is pressing Create. */
+  async function spaceCtx() {
+    if (!o.space) throw unsupported();
+    const k = await o.store.load();
+    if (!k) throw bad("Make your username first.", "no_identity");
+    if (!held) throw bad("Unlock with your master password first.", "locked");
+    return { k, ports: await o.space.load(), key: await fromSeed(held) };
+  }
+  /** @param {KeptSpace[]} rows */
+  const outRows = (rows) => rows.map((s) => ({ id: s.id, name: s.name, role: s.role, server: s.server }));
+  /** Keep the new space and the server it paired with, and make it the current one. */
+  async function keepSpace(/** @type {Kept} */ k, /** @type {KeptSpace} */ row) {
+    const rows = (k.spaces || []).filter((s) => s.id !== row.id && s.name !== row.name);
+    await o.store.save({ ...k, spaces: [...rows, row], current: row.id });
   }
 
   /** @type {Record<string, (input: any) => Promise<any>>} */
@@ -83,7 +114,7 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
-    "identity.lock": async () => { if (held) held.fill(0); held = null; return { locked: true }; },
+    "identity.lock": async () => { stopRuns(); if (held) held.fill(0); held = null; return { locked: true }; },
 
     "onboard.first.progress": async () => {
       const k = await o.store.load();
@@ -104,11 +135,101 @@ export function createHost(o) {
       const k = await o.store.load();
       return { firstRun: k && k.done ? "done" : "open", person: k ? k.username : null };
     },
+
+    "onboard.space.open": async ({ kind, name }) => {
+      const { k, ports, key } = await spaceCtx();
+      const place = placeKind(kind);
+      if (!place) throw bad("Pick a Linux server or an always-on Mac.");
+      const label = usernameOf(name) || "space";
+      stopRuns();
+      const random = o.random || ((n) => crypto.getRandomValues(new Uint8Array(n)));
+      const run = createAddServer({
+        client: ports.client, relay: ports.relay, autoPair: true,
+        issue: async () => {
+          const setupKey = await createSetupKey();
+          const secret = random(16);
+          const minted = await mintPairCode({ person: k.id, publicKey: key.publicKey, secret, fingerprint: await setupFingerprint(setupKey.spki), sign: (m) => key.sign(m), ...(o.now ? { now: o.now } : {}), random });
+          return { code: minted.code, secret, key: setupKey, expiresAt: minted.exp * 1000 };
+        },
+        identity: async () => ({ id: k.id }),
+        connect: ports.connect,
+        pair: async (qr, ctx) => {
+          const made = await ports.pair(qr, ctx || {}, { id: k.id, name: k.username, pin: k.pin, key });
+          const w = waits.get(id);
+          if (w) w.paired = made;
+        },
+        ...(o.random ? { random } : {}), ...(o.now ? { now: o.now } : {}), ...(o.sleep ? { sleep: o.sleep } : {}), ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}), version: o.version ?? null,
+      });
+      const id = `fr_${Array.from(random(8), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+      waits.set(id, { run, name: label, kind: place, paired: null, saved: false });
+      await run.begin("records", place);
+      const st = run.state;
+      if (st.stage === "stopped" || !commandOk(st.installLine)) { waits.delete(id); throw bad(st.error ? st.error.message : "The install command is not one this app can show.", st.error ? st.error.code : "bad_input"); }
+      return { id, command: st.installLine, expiresAt: new Date(st.expiresAt).toISOString(), kind: place, name: label, spaceId: spaceKey("", label) || null, role: "owner" };
+    },
+
+    "onboard.space.poll": async ({ id }) => {
+      const w = waits.get(String(id || ""));
+      if (!w) throw bad("That install is not one this device started.");
+      const st = w.run.state;
+      const base = { id: String(id), kind: w.kind, expiresAt: new Date(st.expiresAt || 0).toISOString() };
+      if (st.stage === "done") {
+        const k = await o.store.load();
+        if (!k) throw bad("Make your username first.", "no_identity");
+        const p = w.paired;
+        const row = /** @type {KeptSpace} */ ({ id: spaceKey("", w.name), name: w.name, role: "owner", server: p && /\.vyre\.run$/.test(p.name) ? `https://${p.name}` : null, paired: p || null });
+        if (!w.saved) { await keepSpace(k, row); w.saved = true; }
+        return { ...base, online: true, expired: false, space: row.id, server: { name: (p && p.name) || (st.box && st.box.name) || "", route: (p && p.route) || (st.box && st.box.route) || "", box: (p && p.box) || "" }, canRemove: Boolean(p && p.box) };
+      }
+      if (st.stage === "stopped") {
+        const code = st.error ? st.error.code : "stopped";
+        const message = st.error ? st.error.message : "The install stopped. Show a new command.";
+        // Two servers answered one line: nothing was paired and nothing will be. The only way on is a new line.
+        if (code === "contested") return { ...base, online: false, expired: false, contested: true, message };
+        if (code === "expired") return { ...base, online: false, expired: true, message: "The install window ended. Go back and show a new command." };
+        return { ...base, online: false, expired: false, failed: true, code, message };
+      }
+      if (st.stage === "found" || st.stage === "pairing") return { ...base, online: false, expired: false, connecting: true, ...(st.box ? { found: { name: st.box.name } } : {}) };
+      return { ...base, online: false, expired: false };
+    },
+
+    "onboard.space.list": async () => {
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      return { person: k.username, id: k.id, current: k.current || null, spaces: outRows(k.spaces || []) };
+    },
+
+    "onboard.space.current": async ({ space }) => {
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      const want = String(space || "");
+      const hit = (k.spaces || []).find((s) => s.id === want || s.name === want);
+      if (!hit) throw bad("That space is not one this identity belongs to.");
+      await o.store.save({ ...k, current: hit.id });
+      return { current: hit.id, name: hit.name, role: hit.role, server: hit.server };
+    },
+
+    // "Not your server? Remove it": forget the pairing this page made and the space row that came with it. The person's own yes was pressing Create; this is the way back from a stand-in.
+    "onboard.space.remove": async ({ space }) => {
+      if (!o.space) throw unsupported();
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      const want = String(space || "");
+      const hit = (k.spaces || []).find((s) => s.id === want || s.name === want);
+      if (!hit) throw bad("That space is not one this identity belongs to.");
+      const ports = await o.space.load();
+      if (hit.paired && hit.paired.box) await ports.forget(hit.paired.box);
+      stopRuns();
+      for (const [wid, w] of waits) if (w.name === hit.name) waits.delete(wid);
+      const rest = (k.spaces || []).filter((s) => s.id !== hit.id);
+      await o.store.save({ ...k, spaces: rest, current: k.current === hit.id ? (rest[0] ? rest[0].id : null) : k.current || null });
+      return { removed: true, id: hit.id };
+    },
   };
 
   return {
     /** Does this host answer that tool name? */
-    has: (/** @type {string} */ name) => name in tools,
+    has: (/** @type {string} */ name) => name in tools && (Boolean(o.space) || !name.startsWith("onboard.space.")),
     /** Answer a tool, or throw what the daemon would throw. Names this stage does not have say so plainly. @param {string} name @param {any} [input] */
     async call(name, input = {}) {
       const fn = tools[name];
