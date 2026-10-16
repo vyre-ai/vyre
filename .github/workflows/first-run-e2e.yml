@@ -10,6 +10,9 @@ name: first-run-e2e
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["release/**", "integrate/**", "work/**/train"]
   pull_request:
     paths: ["scripts/proof-first-run.mjs", "scripts/lib/proof/**", "scripts/lib/first-run/**", "apps/app/screens/first-run/**", "apps/app/screens/unlock/**", "apps/app/src/shell/**", "apps/app/src/host/**", "local/capsule/native/Sources/**", "core/onboard/**", "core/identity/**", "kernel/identity/**", ".github/workflows/first-run-e2e.yml"]
 permissions:

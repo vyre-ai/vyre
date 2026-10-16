@@ -7,7 +7,7 @@
 name: box-image
 on:
   push:
-    branches: ["main", "work/v0.3", "work/launch-*", "work/box*"]
+    branches: ["main", "release/**", "integrate/**", "work/**/train", "work/v0.3", "work/launch-*", "work/box*"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -32,12 +32,15 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          # a push to release/**, integrate/** or the train always builds the image; a pull request builds it only when a file the image is made from changed (the narrow list below)
+          case "${{ github.ref }}" in refs/heads/release/*|refs/heads/integrate/*|refs/heads/work/*/train) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
           from=$BEFORE; [ "${{ github.event_name }}" = "pull_request" ] && from=$BASE
           case "$from" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
           files=$(gh api "repos/${{ github.repository }}/compare/$from...${{ github.sha }}" --paginate --jq '.files[] | .filename, (.previous_filename // empty)') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
           packed=$(npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
           [ -n "$packed" ] || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
-          hit=$( { echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|apps/app/|scripts/build-app\.sh$|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then packed=""; fi
+          hit=$( { [ -n "$packed" ] && echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|apps/app/|scripts/build-app\.sh$|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
           if [ -n "$hit" ]; then
             echo "image inputs changed:"; echo "$hit"; echo run=true >> "$GITHUB_OUTPUT"
           else

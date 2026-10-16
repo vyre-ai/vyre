@@ -5,9 +5,9 @@ name: runner-chaos
 on:
   workflow_dispatch:
   push:
-    branches: [work/runner-chaos]
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: [work/runner-chaos, "release/**", "integrate/**", "work/**/train"]
   pull_request:
-    branches: [integrate/0.5.3]
     paths: ["core/runner/**", "scripts/runner-chaos.mjs", ".github/workflows/runner-chaos.yml"]
 permissions:
   contents: read

@@ -8,10 +8,10 @@
 name: vault-mac
 on:
   push:
-    branches: ["main", "work/vault*", "work/sealing*"]
-    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*", ".github/workflows/vault-mac.yml"]
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["main", "release/**", "integrate/**", "work/**/train"]
   pull_request:
-    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*"]
+    paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*", ".github/workflows/vault-mac.yml"]
   workflow_dispatch:
 permissions:
   contents: read

@@ -4,16 +4,8 @@
 name: design-pictures
 on:
   push:
-    branches: ["work/design-language-*"]
-    paths:
-      - "apps/app/ui/**"
-      - "apps/app/screens/**"
-      - "apps/app/screens/shell/ViewHost.tsx"
-      - "apps/app/app/gallery.tsx"
-      - "apps/app/scripts/design-pictures.mjs"
-      - "lib/views/**"
-      - "design-refs/**"
-      - ".github/workflows/design-pictures.yml"
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["release/**", "integrate/**", "work/**/train", "work/design-language-*"]
   pull_request:
     paths:
       - "apps/app/ui/**"

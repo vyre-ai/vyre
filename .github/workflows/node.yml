@@ -7,7 +7,8 @@ on:
     # The full suite runs once per integration tip, not on every team push (team/FOUNDATION.md,
     # part 7): teams run preflight, the merge queue checks each landing, and this runs the whole
     # suite on what landed. The newest tip cancels an older run.
-    branches: ["main", "work/lead-*", "work/release-*", "release/**", "work/stage-0.2"]
+    # work/** and integrate/** run on push too (fast PR CI): a work branch runs only the tests its change can reach (scripts/ci-select.mjs); main, integrate/**, release/**, the train and the lead's tips run everything.
+    branches: ["main", "work/**", "integrate/**", "release/**"]
   pull_request:
     # ready_for_review starts the run that marking a draft ready asks for (the full matrix). A draft, and any pull request into an integrate/ branch, runs Node 24 only; the integrate branch's own pull request into a release branch, once ready, runs 22 and 24.
     types: [opened, synchronize, reopened, ready_for_review]
@@ -19,8 +20,39 @@ concurrency:
   # The integration tip (work/lead-*) never cancels: a run finishes and the newest tip waits behind it, so a full result always arrives.
   cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2') }}
 jobs:
+  # What this run needs. Everything on main, integrate/**, release/**, the train (work/*/ship53/train), the lead's tips and a manual dispatch; on any other work branch and on pull requests only the tests a change can
+  # reach through imports, with everything when the change reaches every test (a lockfile, a workflow, the kernel core: scripts/ci-select.mjs). It also decides the docs check and the Windows jobs.
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      all: ${{ steps.sel.outputs.all }}
+      any: ${{ steps.sel.outputs.any }}
+      docs: ${{ steps.sel.outputs.docs }}
+      windows: ${{ steps.sel.outputs.windows }}
+      files: ${{ steps.sel.outputs.files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: sel
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            workflow_dispatch:*|*:refs/heads/main|*:refs/heads/integrate/*|*:refs/heads/release/*|*:refs/heads/work/lead-*|*:refs/heads/work/release-*|*:refs/heads/work/stage-0.2|*:refs/heads/work/*/ship53/train)
+              printf 'all=true\nany=true\ndocs=true\nwindows=true\nfiles=\n' >> "$GITHUB_OUTPUT"; echo "full run for $GITHUB_REF"; exit 0;;
+          esac
+          from="${PR_BASE:-$BEFORE}"
+          node scripts/ci-select.mjs --github-output "$from"
   # docs-check harvests every module in a child process; on shard 2 it used to run beside person-only-guard and the rest of the shard under full parallelism, and a slow harvest made the committed reference pages look stale. This job runs it alone; the sharded test job omits the file (VYRE_TEST_OMIT).
   docs:
+    needs: select
+    if: needs.select.outputs.docs == 'true'
     strategy:
       matrix:
         node: ${{ fromJSON(((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
@@ -37,6 +69,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node --test --test-concurrency=1 test/docs-check.test.js
   test:
+    needs: select
+    if: needs.select.outputs.any == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +78,7 @@ jobs:
         # requests run both versions.
         node: ${{ fromJSON(((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
         # Ten shards on the self-hosted runners (twelve of them, so a run takes about half the time), five on GitHub's hosted ones (node --test-shard); the eval and the perf gate run on shard 1 only.
-        shard: ${{ fromJSON((vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && '[1,2,3,4,5,6,7,8,9,10]' || '[1,2,3,4,5]') }}
+        shard: ${{ fromJSON(needs.select.outputs.all != 'true' && '[1]' || (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && '[1,2,3,4,5,6,7,8,9,10]' || '[1,2,3,4,5]') }}
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
@@ -82,7 +116,16 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
       # scripts/test-counts.mjs runs one process per file with a time limit; VYRE_TEST_SHARD takes every fifth file, VYRE_TEST_CONCURRENCY caps the test box's load.
-      - run: npm test
+      # A selective run (a work branch or a pull request) runs only the test files the change can reach, as one shard; a full run is the sharded suite.
+      - if: ${{ needs.select.outputs.all != 'true' }}
+        run: node scripts/test-counts.mjs run $FILES
+        env:
+          FILES: ${{ needs.select.outputs.files }}
+          VYRE_TEST_OMIT: test/docs-check.test.js
+          VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && '2' || '' }}
+          VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
+      - if: ${{ needs.select.outputs.all == 'true' }}
+        run: npm test
         env:
           VYRE_TEST_SHARD: ${{ matrix.shard }}/${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && 10 || 5 }}
           VYRE_TEST_OMIT: test/docs-check.test.js
@@ -98,14 +141,16 @@ jobs:
       - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 && matrix.shard == 1 }}
         # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
         run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
-      - if: ${{ matrix.shard == 1 }}
+      - if: ${{ matrix.shard == 1 && needs.select.outputs.all == 'true' }}
         run: npm run eval:answer
-      - if: ${{ matrix.shard == 1 }}
+      - if: ${{ matrix.shard == 1 && needs.select.outputs.all == 'true' }}
         run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
   # only files that pass there), so a red result means something, and it blocks: a regression cannot
   # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
   test-windows:
+    needs: select
+    if: needs.select.outputs.windows == 'true'
     runs-on: windows-latest
     # The full suite took over 30 minutes here and held up stage landings. This runs the tests
     # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
@@ -135,6 +180,8 @@ jobs:
   # proves the actual security property instead: a real vyred starts, its socket answers, the
   # owner can connect, and a second local user's connection is refused.
   windows-socket-acl:
+    needs: select
+    if: needs.select.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:

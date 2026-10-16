@@ -13,18 +13,8 @@
 name: android-app
 on:
   push:
-    branches: ["main", "work/v0.3", "work/native-android*", "work/ui*", "work/app*"]
-    paths:
-      - "apps/app/app.json"
-      - "apps/app/package.json"
-      - "apps/app/package-lock.json"
-      - "apps/app/modules/**"
-      - "apps/app/src/native/**"
-      - "apps/app/android-permissions.json"
-      - "apps/app/scripts/check-android-permissions.*"
-      - "apps/app/scripts/check-apk-nothing-central.*"
-      - "apps/app/plugins/**"
-      - ".github/workflows/android-app.yml"
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["main", "release/**", "integrate/**", "work/**/train"]
   pull_request:
     paths:
       - "apps/app/app.json"
