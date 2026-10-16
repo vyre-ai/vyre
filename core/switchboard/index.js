@@ -5093,6 +5093,7 @@ export default {
         const sessions = new Set(threads);
         for (const tid of threads) {
           sessions.add(tid);
+          sessions.add(sb.mirrorId(tid));
           for (const r of /** @type {any[]} */ (sb.db.prepare("SELECT native_to, native_from FROM threads_rolls WHERE thread = ?").all(tid))) {
             if (r.native_to) sessions.add(String(r.native_to));
             if (r.native_from) sessions.add(String(r.native_from));
