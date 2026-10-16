@@ -13,9 +13,9 @@ import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
-import { retryReal, startReal } from "./run";
+import { cancelReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
-import { canRetry, retryLimits, startRefusal } from "./run-model";
+import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
 import { listReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
 import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
@@ -30,6 +30,7 @@ export function RealFlow({ id }: { id: string }) {
   // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
+  const [confirmStop, setConfirmStop] = useState<string | null>(null);
   const [def, setDef] = useState<unknown>(null);
   const [nver, setNver] = useState<{ versions: number; active: number | null }>({ versions: 0, active: null });
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
@@ -102,6 +103,12 @@ export function RealFlow({ id }: { id: string }) {
     catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); }
     finally { setBusy(false); }
   };
+  const stop = async (run: string) => {
+    setBusy(true);
+    try { await cancelReal(run); showToast("Stopped."); setN((x) => x + 1); }
+    catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); }
+    finally { setBusy(false); }
+  };
   const picked_run = runs.find((r) => r.id === runId);
   const hb = healthBanner(health);
 
@@ -130,6 +137,9 @@ export function RealFlow({ id }: { id: string }) {
           </Card>
           <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
+          {canStop(picked_run.state) ? (confirmStop === picked_run.id ? (
+            <View className="flex-row gap-s2 pt-s2"><Button kind="primary" size="sm" label={busy ? "Stopping" : "Stop it"} disabled={busy} onPress={async () => { await stop(picked_run.id); setConfirmStop(null); }} /><Button kind="ghost" size="sm" label="Keep it" onPress={() => setConfirmStop(null)} /></View>
+          ) : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Stop this run" onPress={() => setConfirmStop(picked_run.id)} /></View>) : null}
         </Sec>
       ) : null}
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
