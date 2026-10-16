@@ -13,11 +13,11 @@ export function shellSource(call: Call) {
       const [sp, id, mine] = await Promise.all([
         call<SpaceRow[]>("spaces.list"),
         call<IdentityRow>("spaces.identity.status"),
-        call<Listed>("onboard.space.list").catch(() => ({ error: { code: "failed", message: "" } })),
+        call<Listed>("onboard.space.list").catch(() => null),
       ]);
       if (sp.error) throw Object.assign(new Error(sp.error.message), { code: sp.error.code });
       const rows = Array.isArray(sp.data) ? sp.data.slice() : [];
-      const extra = !mine.error && mine.data && Array.isArray(mine.data.spaces) ? mine.data.spaces : [];
+      const extra = mine && !mine.error && mine.data && Array.isArray(mine.data.spaces) ? mine.data.spaces : [];
       const known = new Set(rows.map((r) => r.id));
       const names = new Set(rows.map((r) => String(r.label || r.name || "").replace(/\.vyre\.run$/i, "")));
       for (const s of extra) {

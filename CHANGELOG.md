@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the space switcher still shows the spaces the box already lists when the onboard space list cannot be read.
 - feat(app): one identity can be the owner, an admin or a member of many spaces, and each space keeps its own server. A later join or create uses that identity. The space list is what the switcher shows. Adding a computer signs it into every space the person belongs to.
 - feat(app): first run calls the identity, vault and install tools. Create an identity with identity.create (a username reserves itself; nothing asks for a reservation code), then join with spaces.invites.accept or create with wink.install.issue and wait on wink.install.status. Add a computer with devices.signin. Add a phone with an invite link. A first run never asks for a typed code, four words, a Solo role, or a phone Face ID signature on who owns a space. The same registry tools serve the app and the MCP server, and an agent call that changes people, devices or vault access is held as a Needs-you card until the person approves.
 - test: those seven writes are listed as held, the class for a card the person approves, so a plain session's filled call is not also run as a body refusal.
