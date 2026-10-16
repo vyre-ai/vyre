@@ -2576,6 +2576,28 @@
    "was": "Stop a shared link now and delete the copy it served: { code }. Taking access away is always allowed."
   },
   {
+   "old": "files.drive.list",
+   "name": "files.drive.list",
+   "area": "files",
+   "object": "drive",
+   "verb": "list",
+   "effect": "read",
+   "review": false,
+   "description": "List drive (drive). Needs: share.",
+   "was": "List a folder inside one of the box's VyreDrive shares: name, kind, size and date per entry, folders first, a page at a time."
+  },
+  {
+   "old": "files.drive.read",
+   "name": "files.drive.get",
+   "area": "files",
+   "object": "drive",
+   "verb": "get",
+   "effect": "read",
+   "review": false,
+   "description": "Get drive (drive). Needs: share, path.",
+   "was": "Read one chunk (up to 1 MiB) of a file in a box VyreDrive share, as base64, with its size and an end flag."
+  },
+  {
    "old": "files.drive.restore",
    "name": "files.drive.import",
    "area": "files",
@@ -2585,6 +2607,17 @@
    "review": false,
    "description": "Import drive (drive). Needs: path, version.",
    "was": "Restore an old version of a file in the Space's Drive as a NEW version (nothing is lost): { space?, path, version }. The person's own act wi"
+  },
+  {
+   "old": "files.drive.search",
+   "name": "files.drive.find",
+   "area": "files",
+   "object": "drive",
+   "verb": "find",
+   "effect": "read",
+   "review": false,
+   "description": "Find drive (drive). Needs: q.",
+   "was": "Find files by name or content across the box's offered VyreDrive shares. A named agent searches only shares inside its granted projects."
   },
   {
    "old": "files.drive.space.list",
@@ -2607,6 +2640,17 @@
    "review": false,
    "description": "Get drive space (drive). Needs: path.",
    "was": "Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path"
+  },
+  {
+   "old": "files.drive.status",
+   "name": "files.drive-status.get",
+   "area": "files",
+   "object": "drive",
+   "verb": "get",
+   "effect": "read",
+   "review": false,
+   "description": "Get drive (drive).",
+   "was": "VyreDrive on the box: whether it may share folders with the paired Mac, the shares offered, and what is shared now."
   },
   {
    "old": "files.drive.upload",
@@ -2783,6 +2827,28 @@
    "review": true,
    "description": "Change files (drive). Needs: path.",
    "was": "Bring a file from the box to this Mac (source box). Called on the box itself, returns one chunk at offset and length."
+  },
+  {
+   "old": "files.mentions.resolve",
+   "name": "files.mentions.get",
+   "area": "files",
+   "object": "mentions",
+   "verb": "get",
+   "effect": "read",
+   "review": false,
+   "description": "Get mentions (drive). Needs: id, thread.",
+   "was": "Make a tagged file readable in the chat it was tagged in: records that thread and that one file, and tells the model how to read it. Only th"
+  },
+  {
+   "old": "files.mentions.search",
+   "name": "files.mentions.find",
+   "area": "files",
+   "object": "mentions",
+   "verb": "find",
+   "effect": "read",
+   "review": false,
+   "description": "Find mentions (drive).",
+   "was": "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking."
   },
   {
    "old": "files.preview",

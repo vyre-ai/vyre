@@ -500,6 +500,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; files.linked.versions opened to a model or a module in 92063c9dc (13 Oct 2026); the body decides: a read within the person's own reach: it runs as the person, through the person's own account or linked folder; an agent reads what the person can"
  },
  {
+  "tool": "files.mentions.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
+ },
+ {
   "tool": "files.receive",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns on or off whether the Mac takes in files the box delivers, the receive switch"
  },
