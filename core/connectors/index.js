@@ -126,7 +126,7 @@ export default {
         // where it matters, so no change to the list above can let a model, an agent's thread or a module in.
         const who = String(meta && meta.caller || "");
         if (!PEOPLE.includes(who)) throw fail("only you change who may use a connection, from your own screen", "denied");
-        return conn.setScope(input, { as: who });
+        return conn.setScope(input, personCallOpts(who, meta) || { as: who });
       },
     });
 
@@ -207,7 +207,7 @@ export default {
         const old = (await ctx.call("vault.list", { filter: name })).data?.items?.find(/** @param {any} x */ x => x.name === name);
         // making it again replaces the person's own connector credential (a new key, a new scope); an item of any other kind is never overwritten
         if (old && old.kind !== "api-credential") throw fail(`the vault already has an item named ${name} that is not an api credential; pass name or rename it first`, "exists");
-        const r = await ctx.call("vault.put", { name, kind: "api-credential", description: `${d.label} connector (made by Vyre)`, fields: { config: JSON.stringify(config), ...(input.secret ? { secret: String(input.secret) } : {}) } }, { as: who });
+        const r = await ctx.call("vault.put", { name, kind: "api-credential", description: `${d.label} connector (made by Vyre)`, fields: { config: JSON.stringify(config), ...(input.secret ? { secret: String(input.secret) } : {}) } }, personCallOpts(who, meta) || { as: who });
         if (r.error) throw fail(`could not save the credential in the vault: ${r.error.message}`, r.error.code || "vault");
         return { name, connectors: ids, hosts: ds.map(x => new URL(/** @type {any} */ (x).base_url).hostname), ops: ds.reduce((n, x) => n + Object.keys(/** @type {any} */ (x).ops).length, 0), outward: ds.flatMap(x => Object.entries(/** @type {any} */ (x).ops).filter(([, op]) => isOutward(/** @type {any} */ (op))).map(([n]) => n)),
           next: d.auth.type === "oauth" && !input.as ? "sign in with connectors.connect so the vault holds tokens" : "ready: Flows reach it as the connector " + name };
