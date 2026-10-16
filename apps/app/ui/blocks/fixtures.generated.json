@@ -4103,20 +4103,6 @@
     }
    }
   },
-  "chat-capabilities": {
-   "title": "Chat capabilities (slash, fork, panel, tasks)",
-   "screens": {
-    "full": {
-     "component": "chat-capabilities"
-    },
-    "compact": {
-     "component": "chat-capabilities"
-    },
-    "glance": {
-     "component": "chat-capabilities"
-    }
-   }
-  },
   "signin-card": {
    "title": "Sign in again",
    "screens": {
