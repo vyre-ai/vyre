@@ -36,7 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 26 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
@@ -55,7 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`identity`](#identity) | `core/identity` | `box`, `local` | 9 | 0 | cli |
+| [`identity`](#identity) | `core/identity` | `box`, `local` | 9 | 1 | cli |
 | [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
@@ -108,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 190 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 190 | 60 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -349,11 +349,11 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [31](tools.md#computers), 8 of them only for other modules
+- Tools: [26](tools.md#computers), 7 of them only for other modules
 - Emits: [21 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
-- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`
+- Needs vault: `vyre-shared-computer-member-key`
 
 ## connectors
 
@@ -567,7 +567,7 @@ The username, the master password and the recovery key.
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [9](tools.md#identity)
-- Emits: no events
+- Emits: [1 events](events.md#identity)
 - Shows on: cli
 - Needs tools: `spaces.identity.create`, `spaces.identity.self`, `spaces.identity.device`, `spaces.identity.published-key`, `vault.master.install`
 
@@ -1016,7 +1016,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [122](tools.md#spaces), 36 of them only for other modules
+- Tools: [122](tools.md#spaces)
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
@@ -1175,8 +1175,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [190](tools.md#vault), 25 of them only for other modules
-- Emits: [59 events](events.md#vault)
+- Tools: [190](tools.md#vault), 3 of them only for other modules
+- Emits: [60 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
