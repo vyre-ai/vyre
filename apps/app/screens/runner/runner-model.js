@@ -139,3 +139,13 @@ export function pickPlacement(d) {
   return { where: d.where, ...(typeof d.computer === "string" && d.computer ? { computer: d.computer } : {}), reason: typeof d.reason === "string" ? d.reason : null, since: typeof d.since === "number" ? d.since : null,
     ...(STATES.includes(d.state) ? { state: d.state } : {}), ...(d.offer === "mac" ? { offer: /** @type {"mac"} */ ("mac") } : {}), ...(d.pinned === true ? { pinned: true, pin: d.pin === "mac" ? /** @type {"mac"} */ ("mac") : /** @type {"server"} */ ("server") } : {}), ...(Number.isInteger(d.epoch) ? { epoch: d.epoch } : {}) };
 }
+
+/**
+ * A session on a lent Mac should resume on the server when runner.places shows that chat offline.
+ * @param {Placement | null | undefined} placement @param {unknown} places @param {string} thread
+ */
+export function lentMacOffline(placement, places, thread) {
+  if (!placement || placement.where !== "mac" || !thread) return false;
+  const list = Array.isArray(places) ? places : (places && typeof places === "object" && Array.isArray(/** @type {any} */ (places).places) ? /** @type {any} */ (places).places : []);
+  return list.some((r) => r && (r.chat === thread || r.session === thread) && r.online === false);
+}
