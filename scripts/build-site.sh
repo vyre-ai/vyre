@@ -75,6 +75,8 @@ cp "$src/scripts/install-windows.ps1" "$here/site/w"
   printf '/box /box/install-box.sh 200\n'
   # The install line the app shows: curl -fsSL https://vyre.run/i | VYRE_CODE=... sh
   printf '/i /install.sh 200\n'
+  # An invite link, https://vyre.run/i/<token>, opens the invite page (site/invite), which sends the person on to the web app.
+  printf '/i/* /invite/ 200\n'
   # Onboarding links here for the Capsule, which the Mac builds from the npm install.
   printf '/download/mac /start#mac 302\n'
 } >"$here/site/_redirects"

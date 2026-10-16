@@ -3,6 +3,7 @@
 // it is on only when EXPO_PUBLIC_VYRE_MOCK=1; otherwise a screen shows what the box answers, an empty
 // state when it has nothing, and an error line when it cannot be reached. Never sample people.
 
+import { getHost, hostWanted } from "../host";
 import { REUSE_OPS } from "../../../../lib/one-yes-ops.js";
 import { call } from "../api/box";
 import { ACTIVE, peerCall, peerWanted } from "./peer";
@@ -66,6 +67,8 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   if (MOCK && mockDocumentTools[name]) return mockDocumentTools[name](given) as T; // and the record page's Documents bar (mock-documents.ts)
   if (MOCK && mockMcpTools[name]) return mockMcpTools[name](given) as T; // and the AI keys screen's (mock-mcp.ts)
   if (override) return (await override(name, given)) as T;
+  // A page with no daemon of its own answers first run, unlock and lock itself (src/host): the same tool names and shapes the daemon answers.
+  if (hostWanted() && getHost().has(name)) return (await getHost().call(name, given)) as T;
   if (name === "stream.decrypt") {
     const { resolveDecryptKid } = await import("../chat/private-text.js");
     const { toB64u } = await import("../../../../lib/databox.js");

@@ -23,7 +23,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
 /** `addAnother`: the person pressed "Add another server" on a device that already reaches a server over the relay (a phone, a browser): that press is their yes to pairing a further server with this identity. */
-export type PairExtra = { pageKey?: unknown; addAnother?: boolean };
+export type PairExtra = { pageKey?: unknown; addAnother?: boolean; identity?: PairIdentity };
+
+/** The identity that signs a pairing when this page holds it itself (the in-page host, src/host): its id, name, chain pin and unlocked device key. Without one, the identity this device kept (loadIdentity) signs. */
+export type PairIdentity = { id: string; name: string; pin: { id: string; seq: number; head: string }; key: import("../identity/keys.js").DeviceKey };
 
 export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: PairExtra): PairingSession {
   // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
@@ -130,9 +133,9 @@ async function staleSavedPairing(): Promise<boolean> {
  * What pairing a server needs from this device's own name: who will own it (with the head and length of the chain the server checks the proof against), the signature that proves this device speaks for
  * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (relay/client/join.js `server`) both take it.
  */
-export async function serverPairInputs() {
+export async function serverPairInputs(identity?: PairIdentity | null) {
   const { loadIdentity } = await import("../identity/store");
-  const mine = await loadIdentity();
+  const mine = identity ?? (await loadIdentity());
   if (!mine) return null;
   const { presenceKey } = await import("../api/relay");
   // A phone whose Secure Enclave key (iPhone) or Android Keystore key (StrongBox or the TEE) stands behind Face ID or the fingerprint (a software key does not count) answers as hardware; the chain entry's `enclave` is what the server checks it against.
@@ -163,7 +166,7 @@ export async function serverPairInputs() {
 async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: PairExtra): Promise<PairingSession | null> {
   // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
   const { pairServer } = await import("@vyre/relay-client/serverpair.js");
-  const inputs = await serverPairInputs();
+  const inputs = await serverPairInputs(extra?.identity);
   if (!inputs) return null;
   const { relayCrypto, relayKeyStore, about, deviceName, savePairing, loadPairing } = await import("../api/relay");
   // A person who already has a box (a saved pairing) never takes this path, so a slow box cannot make a scan offer their identity to another server (reviewer-3 PD-D). The press on

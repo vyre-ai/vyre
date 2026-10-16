@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join a space · Vyre</title>
+  <meta name="description" content="You were invited to a Vyre space. This page opens the invite in the Vyre app.">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0E0D0C">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/setup/tokens.css">
+  <link rel="stylesheet" href="/setup/setup.css">
+</head>
+<body>
+<a class="skip" href="#invite">Skip to content</a>
+<header class="bar"><a class="brand" href="/" aria-label="Vyre home">Vyre</a></header>
+<main id="invite" class="col">
+  <p class="lbl">Invite</p>
+  <h1 id="title" tabindex="-1">Opening your invite</h1>
+  <p class="lead" id="lead">You were invited to a space. This opens it in the Vyre app. You do not need to know anything about servers.</p>
+  <noscript><p class="lead">This page needs JavaScript to open the invite. Open the Vyre app and paste the invite link there.</p></noscript>
+  <div class="actions"><a id="open" class="btn primary" href="https://web.vyre.run/" hidden>Open the invite in Vyre</a></div>
+  <p class="note" id="fallback" hidden>The Vyre app did not open. You can try again, or get the app for <a href="/mac/">Mac</a> or <a href="/windows/">Windows</a> and paste this invite link into it. Nothing was joined.</p>
+</main>
+<script type="module" src="/invite/page.js"></script>
+</body>
+</html>

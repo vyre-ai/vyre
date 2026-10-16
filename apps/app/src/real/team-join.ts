@@ -50,8 +50,9 @@ async function enrolment(kind: "shell" | "phone" | "passkey", invite: string, pa
   return { key_id: keyIdOf(spki), spki: b64(spki), signer: shellKind() === "windows" ? "tpm" : "secure_enclave" };
 }
 
-export async function joinDeps(): Promise<JoinDeps | null> {
-  const mine = await loadIdentity();
+/** `identity` is the one the in-page host holds (src/host), when the identity is not in the identity store; otherwise the one this device kept. */
+export async function joinDeps(identity?: { id: string; name: string; eid: string; key: { sign(m: Uint8Array): Promise<Uint8Array>; alg?: string; rp?: string } } | null): Promise<JoinDeps | null> {
+  const mine = identity ?? (await loadIdentity());
   if (!mine) return null;
   const { relayCrypto } = await import("../api/relay");
   const { DIRECTORY } = await import("./install");

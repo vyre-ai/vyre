@@ -58,3 +58,15 @@ test("the held link does not survive an accept or a cancel", () => {
   clearJoin();
   assert.equal(takeJoin(20), null, "even inside the double-run window nothing is left after clearJoin");
 });
+
+test("the link an owner shares, https://vyre.run/i/<token>, is a join link too; vyre.run has no /join/ path and no other path counts", () => {
+  clearJoin();
+  const tok = "https://vyre.run/i/inv_0123456789abcdef0123456789abcdef.eyJjaGFpbiI6e319";
+  assert.equal(joinLink(tok), tok);
+  assert.equal(joinLink(`${tok}/`), `${tok}/`);
+  for (const bad of ["https://vyre.run/join/x", "https://vyre.run/i/", "https://vyre.run/i/a b", "https://vyre.run/i/../x", "http://vyre.run/i/abcdefgh", "https://vyre.run/other/abcdefgh"]) assert.equal(joinLink(bad), null, bad);
+  assert.equal(withoutToken(tok), "https://vyre.run/i/…");
+  assert.equal(joinTarget(tok), "/u/install/join");
+  assert.equal(takeJoin(), tok);
+  clearJoin();
+});

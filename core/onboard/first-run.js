@@ -13,7 +13,7 @@ import { resolveInstallOnline } from "../../lib/install-online.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { loginAdapters } from "../../lib/agent-adapters.js";
 import { canAssign } from "../../lib/spaces/members.js";
-import { commandOk, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
+import { commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { modelCaller } from "../modules/needs-you-hold.js";
 import { httpFetch } from "../../lib/http.js";
@@ -562,13 +562,6 @@ function vaultSpace(raw) {
   return VAULT_SPACE.test(s) || TEST_SPACE.test(s) ? s : "";
 }
 
-/** @param {unknown} raw @param {unknown} name */
-function spaceKey(raw, name) {
-  const s = String(raw || "").trim();
-  if (/^spc_[a-z0-9_]{4,64}$/.test(s)) return s;
-  const n = String(name || "").toLowerCase().replace(/\.vyre\.run$/, "").replace(/[^a-z0-9-]/g, "").slice(0, 24);
-  return n ? `spc_${n}` : "";
-}
 
 /** @param {any} row */
 function labelOf(row) {

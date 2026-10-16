@@ -8,7 +8,9 @@ export function joinLink(raw) {
   const s = Array.isArray(raw) ? String(raw[0] ?? "") : typeof raw === "string" ? raw : "";
   let u;
   try { u = new URL(decodeURIComponent(s) === s ? s : decodeURIComponent(s)); } catch { return null; }
-  return u.protocol === "https:" && /^\/join\/[A-Za-z0-9_.-]+\/?$/.test(u.pathname) ? u.toString() : null;
+  // The link an owner shares is https://vyre.run/i/<token> and names no server; a space's own link is https://<space>.vyre.run/join/<token>. The join resolves the first (lib/invite-link.js) and checks both.
+  const path = u.hostname === "vyre.run" ? /^\/i\/[A-Za-z0-9_.-]+\/?$/ : /^\/join\/[A-Za-z0-9_.-]+\/?$/;
+  return u.protocol === "https:" && path.test(u.pathname) ? u.toString() : null;
 }
 
 /** Where the app goes for that link: the link is held in memory and never put in the address. @param {unknown} raw */
