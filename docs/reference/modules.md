@@ -55,7 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`identity`](#identity) | `core/identity` | `box`, `local` | 12 | 3 | cli |
+| [`identity`](#identity) | `core/identity` | `box`, `local` | 14 | 3 | cli |
 | [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
@@ -566,7 +566,7 @@ The username, the master password and the recovery key.
 - Folder: `core/identity`, version 0.5.3
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [12](tools.md#identity)
+- Tools: [14](tools.md#identity), 2 of them only for other modules
 - Emits: [3 events](events.md#identity)
 - Shows on: cli
 - Needs tools: `spaces.identity.create`, `spaces.identity.self`, `spaces.identity.device`, `spaces.identity.published-key`, `vault.master.install`

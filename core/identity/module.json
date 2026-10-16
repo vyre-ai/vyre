@@ -17,7 +17,9 @@
       { "name": "identity.card", "effect": "read", "reach": "person" },
       { "name": "identity.signins.pending", "effect": "read", "reach": "person" },
       { "name": "identity.signin.revoke", "effect": "write", "reach": "person" },
-      { "name": "identity.signin.ack", "effect": "write", "reach": "person" }
+      { "name": "identity.signin.ack", "effect": "write", "reach": "person" },
+      { "name": "identity.signins.serve", "summary": "a team member's own new-device sign-ins waiting on them, on the team's server, as that member in that Space (the daemon's member door only)", "effect": "read", "reach": "modules", "crossSpace": "records.read" },
+      { "name": "identity.signins.serve-write", "summary": "a team member's own act on a new-device sign-in (sign it out, or say it was them), on the team's server, as that member in that Space (the daemon's member door only)", "effect": "write", "reach": "modules", "crossSpace": "records.create" }
     ]
   },
   "watches": { "emits": ["signin.new-device", "signin.revoked", "signin.acknowledged"] },
