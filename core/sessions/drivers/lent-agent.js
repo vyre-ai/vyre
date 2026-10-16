@@ -3,6 +3,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { list as codexRollouts } from "../../import/formats/codex.js";
 import { AGENTS } from "../../../lib/agent-sandbox.js";
 
@@ -16,6 +17,14 @@ export function lentProcessProvider(provider) {
 }
 
 const slug = (/** @type {string} */ cwd) => String(cwd || "").replace(/[^A-Za-z0-9]/g, "-") || "-";
+/** Grok session folders under `.grok/sessions/`: short paths use encodeURIComponent(cwd); long ones use a stable hash so mkdir never hits ENAMETOOLONG. */
+export const grokCwdKey = (/** @type {string} */ cwd) => {
+  const s = String(cwd || "/");
+  const enc = encodeURIComponent(s);
+  return enc.length <= 120 ? enc : `h-${crypto.createHash("sha256").update(s).digest("hex").slice(0, 32)}`;
+};
+/** Manifest path for a Grok session transcript under `agent/grok/`. @param {string} cwd @param {string} sessionId */
+export const grokSessionRemote = (cwd, sessionId) => `agent/grok/sessions/${grokCwdKey(cwd)}/${sessionId}/vyre-resume.jsonl`;
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SESSION_LENT = /^[A-Za-z0-9_-]{1,100}$/;
 
@@ -109,8 +118,7 @@ export function serverTranscriptPlace(q) {
   }
   if (p === "grok") {
     if (!SESSION_ID.test(id) || !q.cwd) return null;
-    const enc = encodeURIComponent(String(q.cwd));
-    const dir = path.join(home, ".grok", "sessions", enc, id);
+    const dir = path.join(home, ".grok", "sessions", grokCwdKey(String(q.cwd)), id);
     return { file: path.join(dir, "vyre-resume.jsonl"), root: path.join(home, ".grok", "sessions") };
   }
   return null;
@@ -125,9 +133,6 @@ export function workTranscriptPath(provider, work, cwd, session) {
     const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
     return path.join(home, ".codex", "sessions", String(d.getUTCFullYear()), pad(d.getUTCMonth() + 1), pad(d.getUTCDate()), `rollout-${Date.now()}-${session}.jsonl`);
   }
-  if (p === "grok") {
-    const enc = encodeURIComponent(String(cwd || "/"));
-    return path.join(home, ".grok", "sessions", enc, session, "vyre-resume.jsonl");
-  }
+  if (p === "grok") return path.join(home, ".grok", "sessions", grokCwdKey(String(cwd || "/")), session, "vyre-resume.jsonl");
   return path.join(home, ".claude", "projects", slug(cwd), `${session}.jsonl`);
 }

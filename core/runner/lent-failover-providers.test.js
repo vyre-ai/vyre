@@ -10,6 +10,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { coverOf } from "./sync.js";
 import { createResumeLent } from "./resume-lent.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { grokSessionRemote, serverTranscriptPlace } from "../sessions/drivers/lent-agent.js";
 
 const HOME = Object.freeze({ space: SPACE, hops: [] });
 const NATIVE = "7c1f0a52-0000-4000-8000-000000000002";
@@ -24,9 +25,9 @@ const line = (/** @type {number} */ n) => JSON.stringify({ type: "stream", n });
 async function seededHome(t, provider) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, `lfp-${provider}-`));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cwdDir = path.join(dir, "w");
+  const cwdDir = path.join(dir, "Users", "member", "Projects", "vyre-" + (provider === "grok" ? "grok-" : "codex-") + "app-" + "nested/".repeat(20).slice(0, 160));
   fs.mkdirSync(cwdDir, { recursive: true });
-  const cwd = provider === "grok" ? "/w" : cwdDir;
+  const cwd = cwdDir;
   /** @type {string} */ let file;
   /** @type {string} */ let root;
   /** @type {string} */ let remoteRel;
@@ -41,9 +42,11 @@ async function seededHome(t, provider) {
     remoteRel = `agent/codex/sessions/${day}/rollout-fixture-${NATIVE}.jsonl`;
   } else {
     body = "{\"role\":\"user\",\"content\":\"grok failover\"}\n";
-    root = path.join(dir, "server", ".grok", "sessions");
-    file = path.join(root, encodeURIComponent(cwd), NATIVE, "vyre-resume.jsonl");
-    remoteRel = `agent/grok/sessions/${encodeURIComponent(cwd)}/${NATIVE}/vyre-resume.jsonl`;
+    const at = serverTranscriptPlace({ provider: "grok", folders: [], cwd, native: NATIVE, accountHome: path.join(dir, "server") });
+    assert.ok(at);
+    file = at.file;
+    root = at.root;
+    remoteRel = grokSessionRemote(cwd, NATIVE);
   }
   const ownPort = { getCheckpoint: async () => null, putCheckpoint: async () => ({ ok: true }) };
   const resumeLent = createResumeLent({

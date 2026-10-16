@@ -51,7 +51,8 @@ export function createCheckpointStore(o) {
 
   const K = o.key && o.key.length === 32 ? o.key : null;
   const dirOf = s => path.join(o.root, s);
-  const hexOf = rel => (K ? crypto.createHmac("sha256", K).update("name\n" + rel).digest("hex").slice(0, 40) : Buffer.from(rel).toString("hex"));
+  // A bounded directory name for each manifest path (never the path itself: long agent/codex|grok/... keys must not become ENAMETOOLONG hex blobs).
+  const hexOf = rel => crypto.createHmac("sha256", K || Buffer.alloc(32)).update("name\n" + rel).digest("hex").slice(0, 40);
   /** Sealed bytes: iv + ciphertext + tag; `aad` ties them to their place so a file moved to another name opens as nothing. */
   const sealBuf = (b, aad) => { const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", K, iv); c.setAAD(Buffer.from(aad)); return Buffer.concat([iv, c.update(b), c.final(), c.getAuthTag()]); };
   const openBuf = (b, aad) => { const d = crypto.createDecipheriv("aes-256-gcm", K, b.subarray(0, 12)); d.setAAD(Buffer.from(aad)); d.setAuthTag(b.subarray(-16)); return Buffer.concat([d.update(b.subarray(12, -16)), d.final()]); };

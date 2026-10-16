@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { lentProcessProvider, syncRootsFor, workTranscriptPath, serverTranscriptPlace, manifestSessionFilePattern, restorableAgentRel } from "./lent-agent.js";
+import { lentProcessProvider, syncRootsFor, workTranscriptPath, serverTranscriptPlace, manifestSessionFilePattern, restorableAgentRel, grokCwdKey, grokSessionRemote } from "./lent-agent.js";
 
 const ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
@@ -38,4 +38,14 @@ test("lent-agent: server transcript place for claude and codex", () => {
   assert.ok(cx && path.basename(cx.file).includes(ID.slice(0, 8)));
   assert.ok(manifestSessionFilePattern("codex", ID, ID).test(`agent/codex/sessions/2026/01/02/rollout-1-${ID}.jsonl`));
   assert.ok(restorableAgentRel("codex", "sessions/2026/01/02/rollout-x.jsonl"));
+});
+
+test("lent-agent: grok cwd keys stay short for real-length workspace paths", () => {
+  const short = grokCwdKey("/proj");
+  assert.ok(short.length <= 120);
+  const long = "/home/member/" + "deep/nested/".repeat(40);
+  const key = grokCwdKey(long);
+  assert.match(key, /^h-[0-9a-f]{32}$/);
+  assert.ok(grokSessionRemote(long, ID).length < 200);
+  assert.equal(grokCwdKey(long), grokCwdKey(long));
 });
