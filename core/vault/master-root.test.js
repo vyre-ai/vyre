@@ -8,7 +8,8 @@ import crypto from "node:crypto";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { tempHome } from "../../test/helpers.js";
-import { createMaster, TEST_KDF, serverVaultKey, readVaultKeyFile } from "../../kernel/identity/master.js";
+import { createMaster, TEST_KDF, serverVaultKey } from "../../kernel/identity/master.js";
+import { openVaultKey } from "../../kernel/identity/vault-at-rest.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import { clearPersonal, currentPersonalKey, forgetAll, holdPersonal } from "../../kernel/identity/holder.js";
 
@@ -36,10 +37,14 @@ test("the master key is the vault root, and lending still opens with nobody unlo
   const { root, vault } = home(t);
   const made = serverVaultKey(root);
   assert.ok(made && made.length === 32);
-  const fileKey = readVaultKeyFile(path.join(root, "vault", "key"));
-  assert.ok(fileKey && fileKey.equals(made));
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  const sealed = openVaultKey(root);
+  assert.ok(sealed && sealed.equals(made));
+  sealed.fill(0);
+  assert.equal(fs.readFileSync(path.join(root, "vault", "server-wrap.json"), "utf8").includes(made.toString("hex")), false);
   master(root, Buffer.from(made));
   assert.ok(currentPersonalKey()?.equals(made));
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
   clearPersonal();
   await vault.put({ name: "northwind", kind: "secret", fields: { value: "in-the-air-9f3a" } }, "cli");
   const row = /** @type {any} */ (vault.db.prepare("SELECT * FROM vault_items WHERE name = ?").get("northwind"));
@@ -47,13 +52,20 @@ test("the master key is the vault root, and lending still opens with nobody unlo
   assert.equal(currentPersonalKey(), null);
   const body = await vault.open(row);
   assert.equal(body.fields.value, "in-the-air-9f3a");
-  const held = Buffer.from(made);
   fs.writeFileSync(path.join(root, "vault", "key"), `${"ab".repeat(32)}\n`, { mode: 0o600 });
-  holdPersonal(held);
   vault.lock();
   const again = await vault.open(row);
   assert.equal(again.fields.value, "in-the-air-9f3a");
-  assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), made.toString("hex"));
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false, "a planted plaintext key is dropped once a master record exists");
+  fs.writeFileSync(path.join(root, "vault", "server-wrap.json"), "{}\n");
+  holdPersonal(Buffer.from(made));
+  vault.lock();
+  const repaired = await vault.open(row);
+  assert.equal(repaired.fields.value, "in-the-air-9f3a");
+  const back = openVaultKey(root);
+  assert.ok(back && back.equals(made));
+  back.fill(0);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
 });
 
 test("a master key that does not open the agent vault fails closed and leaves the server copy", async (t) => {
@@ -66,8 +78,12 @@ test("a master key that does not open the agent vault fails closed and leaves th
   assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8"), before);
   clearPersonal();
   fs.rmSync(path.join(root, "vault", "key"));
+  const wrapBefore = fs.existsSync(path.join(root, "vault", "server-wrap.json")) ? fs.readFileSync(path.join(root, "vault", "server-wrap.json")) : null;
   master(root, crypto.randomBytes(32));
   clearPersonal();
-  await assert.rejects(vault.key(), (e) => /** @type {any} */ (e).code === "locked" && /no server copy/.test(e.message));
+  const wrapAfter = fs.readFileSync(path.join(root, "vault", "server-wrap.json"));
+  await assert.rejects(vault.key(), (e) => /** @type {any} */ (e).code === "locked" && /does not open this vault/.test(e.message));
   assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  assert.equal(fs.readFileSync(path.join(root, "vault", "server-wrap.json")).equals(wrapAfter), true);
+  assert.equal(wrapBefore, null);
 });

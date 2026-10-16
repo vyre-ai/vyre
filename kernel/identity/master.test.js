@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { argon2id } from "./stretch.js";
 import { MASTER_KDF, TEST_KDF, createMaster, unlockMaster, lockMaster, migrateLegacy, linkGithub, masterStatus, signinCarry, readMaster } from "./master.js";
-import { forgetAll, identityHeld } from "./holder.js";
+import { currentPersonalKey, forgetAll, identityHeld } from "./holder.js";
 import { fileIdentityStore } from "../../core/spaces/identity.js";
 import { newRecoveryCode } from "./code.js";
 
@@ -43,8 +43,13 @@ test("master password: the password unwraps, a wrong one does not, and the recov
   const sig = await store.sign(Buffer.from("hi"));
   assert.equal(sig.length, 64);
   lockMaster(file);
-  const viaCode = unlockMaster({ root, recoveryCode: code, identityFile: file });
+  const pending = unlockMaster({ root, recoveryCode: code, identityFile: file });
+  assert.equal(pending.needsConfirm, true);
+  assert.equal(pending.unlocked, false);
+  assert.equal(identityHeld(file), false);
+  const viaCode = unlockMaster({ root, recoveryCode: code, confirm: true, identityFile: file });
   assert.equal(viaCode.unlocked, true);
+  assert.equal(viaCode.vault, false);
   assert.equal((await store.sign(Buffer.from("hi"))).length, 64);
   const gh = linkGithub(root, { login: "alex-studio", subject: "gh_12345" }, file);
   assert.equal(gh.linked, true);
@@ -58,7 +63,7 @@ test("master password: the password unwraps, a wrong one does not, and the recov
   forgetAll();
 });
 
-test("migration wraps a 0.5.x identity and leaves the vault key file in place", async () => {
+test("migration wraps a 0.5.x identity and drops the plaintext vault key", async () => {
   const root = scratch();
   const dir = path.join(root, "spaces");
   const store = fileIdentityStore(dir);
@@ -77,11 +82,21 @@ test("migration wraps a 0.5.x identity and leaves the vault key file in place", 
   assert.equal(after.agreePrivate, undefined);
   assert.equal(after.sealed, true);
   assert.equal(after.publicKey, before.publicKey);
-  assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), vaultHex);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  const sealed = fs.readFileSync(path.join(root, "vault", "server-wrap.json"), "utf8");
+  assert.equal(sealed.includes(vaultHex), false);
+  assert.equal(fs.statSync(path.join(root, "identity", "seals", "personal-vault.kek")).mode & 0o077, 0);
+  lockMaster(file);
+  const asked = unlockMaster({ root, recoveryCode: code, identityFile: file });
+  assert.equal(asked.needsConfirm, true);
+  assert.equal(currentPersonalKey(), null);
+  const byCode = unlockMaster({ root, recoveryCode: code, confirm: true, identityFile: file });
+  assert.equal(byCode.unlocked, true);
+  assert.equal(currentPersonalKey(), null, "a confirmed recovery key holds the identity and not the vault");
+  assert.equal((await store.sign(Buffer.from("by-code"))).length, 64);
   lockMaster(file);
   unlockMaster({ root, password: "correct horse battery", identityFile: file });
   assert.equal((await store.sign(Buffer.from("migrated"))).length, 64);
-  const { currentPersonalKey } = await import("./holder.js");
   const mk = currentPersonalKey();
   assert.equal(mk && mk.toString("hex"), vaultHex);
   forgetAll();

@@ -79,12 +79,13 @@ export default {
         return forCaller(meta, { username: name, id: legacy.id, url: `https://vyre.run/u/${name}`, recoveryKey });
       });
 
-    tool("identity.unlock", "Unlock this device with your master password or recovery key. An agent cannot supply either.",
-      obj({ password: str, recovery: str }),
+    tool("identity.unlock", "Unlock this device with your master password. A recovery key unlocks the identity only after you confirm it here.",
+      obj({ password: str, recovery: str, confirm: { type: "boolean" } }),
       async (input, meta) => {
         refuseModel(meta, input);
         if ((input.password == null || input.password === "") && (input.recovery == null || input.recovery === "")) throw refuse("Enter your master password on this device.", "person_enters");
-        return M.unlockMaster({ root, password: input.password, recoveryCode: input.recovery, identityFile: idFile });
+        if (input.recovery && input.confirm === true && !isPerson(meta && meta.caller)) throw refuse("Confirm the recovery key on this device.", "needs_presence");
+        return M.unlockMaster({ root, password: input.password, recoveryCode: input.recovery, confirm: input.confirm === true, identityFile: idFile });
       });
 
     tool("identity.lock", "Lock this device and forget the unlocked keys in memory.",

@@ -1,7 +1,7 @@
 // @ts-check
 // The master password (ADR 0054). One Argon2id stretch, the same function as the recovery code (kernel/identity/stretch.js), unlocks the
-// root key. The root key wraps the identity halves, the personal vault master key and the member box key. The recovery key is a bearer for
-// that root key: one screen, shown once. GitHub is a login name stored beside the record, never a key.
+// root key. The root key wraps the identity halves, the personal vault master key and the member box key. The recovery key unwraps that
+// root key only after a confirmation on the device, and then it holds the identity only. GitHub is a login name stored beside the record, never a key.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -11,6 +11,7 @@ import { aesWrap, aesUnwrap, hkdf32, x25519Pair } from "./wrap.js";
 import { writePrivate, readJson } from "./files.js";
 import { holdIdentity, holdPersonal, forgetIdentity, clearPersonal, identityHeld } from "./holder.js";
 import { checkUsername, personUrl } from "./username.js";
+import { adoptVaultKey, openVaultKey, plainVaultKeyPath } from "./vault-at-rest.js";
 
 /** RFC 9106's second recommendation, one lane: this file's Argon2id is one lane only. */
 export const MASTER_KDF = Object.freeze({ memoryKiB: 65536, passes: 3, lanes: 1, tagLength: 32 });
@@ -111,7 +112,10 @@ export function createMaster(o) {
     holdIdentity(o.identityFile, { privateKeyB64: o.privateKeyB64, agreePrivateB64: o.agreePrivateB64 || null });
     stripIdentityFile(o.identityFile);
   }
-  if (o.vaultKey) holdPersonal(o.vaultKey);
+  if (o.vaultKey) {
+    holdPersonal(o.vaultKey);
+    adoptVaultKey(o.root, o.vaultKey);
+  }
   rk.fill(0);
   return { username, id: o.id, url: personUrl(username) };
 }
@@ -126,17 +130,23 @@ function stripIdentityFile(file) {
   writePrivate(file, JSON.stringify(r) + "\n");
 }
 
-/** @param {any} rec @param {Buffer} rk @param {string} [identityFile] */
-function holdFrom(rec, rk, identityFile) {
+/**
+ * @param {any} rec @param {Buffer} rk @param {string} [identityFile]
+ * @param {{ vault?: boolean }} [opts] vault false holds the identity and clears any personal key
+ */
+function holdFrom(rec, rk, identityFile, opts = {}) {
   const id = JSON.parse(aesUnwrap(rk, rec.identityWrap, AAD_ID).toString("utf8"));
   if (identityFile) holdIdentity(identityFile, { privateKeyB64: id.privateKey, agreePrivateB64: id.agreePrivate || null });
-  if (rec.vaultWrap) holdPersonal(aesUnwrap(rk, rec.vaultWrap, AAD_VAULT));
+  if (opts.vault === false) clearPersonal();
+  else if (rec.vaultWrap) holdPersonal(aesUnwrap(rk, rec.vaultWrap, AAD_VAULT));
   else clearPersonal();
   return id;
 }
 
 /**
- * @param {{ root: string, password?: string, recoveryCode?: string, identityFile?: string }} o
+ * A password holds the identity and the personal vault. A recovery key is checked first and holds nothing until
+ * confirm is set, and then it holds the identity only.
+ * @param {{ root: string, password?: string, recoveryCode?: string, confirm?: boolean, identityFile?: string }} o
  */
 export function unlockMaster(o) {
   const rec = readMaster(o.root);
@@ -147,13 +157,19 @@ export function unlockMaster(o) {
     const recovery = checkRecovery(o.recoveryCode);
     try { rk = aesUnwrap(recoveryKek(recovery), rec.recoveryWrap, AAD_RE); }
     catch { throw refuse("That recovery key does not unlock this identity. Check it and enter it again on this device.", "bad_recovery"); }
-  } else {
-    const password = checkPassword(o.password);
-    const kek = passwordKek(rec.kdf, Buffer.from(rec.kdf.salt, "base64url"), password);
-    try { rk = aesUnwrap(kek, rec.passwordWrap, AAD_PW); }
-    catch { kek.fill(0); throw refuse("That password does not unlock this identity. Try again, or enter your recovery key on this device.", "bad_password"); }
-    kek.fill(0);
+    if (o.confirm !== true) {
+      rk.fill(0);
+      return { needsConfirm: true, unlocked: false, username: rec.username, id: rec.id };
+    }
+    holdFrom(rec, rk, file, { vault: false });
+    rk.fill(0);
+    return { unlocked: true, vault: false, username: rec.username, id: rec.id };
   }
+  const password = checkPassword(o.password);
+  const kek = passwordKek(rec.kdf, Buffer.from(rec.kdf.salt, "base64url"), password);
+  try { rk = aesUnwrap(kek, rec.passwordWrap, AAD_PW); }
+  catch { kek.fill(0); throw refuse("That password does not unlock this identity. Try again, or enter your recovery key on this device.", "bad_password"); }
+  kek.fill(0);
   holdFrom(rec, rk, file);
   rk.fill(0);
   return { unlocked: true, username: rec.username, id: rec.id };
@@ -215,7 +231,7 @@ export function setDiscoverable(root, on, identityFile) {
 }
 
 /**
- * Wrap a 0.5.x identity file under a new master password. The vault key file is copied into the wrap and left in place, so lending keeps its key.
+ * Wrap a 0.5.x identity file under a new master password. The plaintext vault key is sealed and the file is removed.
  * @param {{ root: string, identityFile: string, password: string, recoveryCode: string, vaultKey?: Buffer|null, kdf?: any }} o
  */
 export function migrateLegacy(o) {
@@ -252,18 +268,19 @@ export function readVaultKeyFile(hexFile) {
 }
 
 /**
- * The device key the master record wraps. An existing vault/key is that key.
- * A home with no key file and no agent vault yet receives one here, so the master password is the root and the file is its server copy.
- * A home that already has an agent vault and has lost the key file returns null: a new random key would not open it.
+ * The device key the master record wraps. An existing plaintext vault/key is that key, and createMaster seals it and deletes the file.
+ * A sealed server wrap is opened when the plaintext file is already gone. A home with no key and no agent vault yet receives one, sealed, with no plaintext file.
+ * A home that already has an agent vault and has lost the key returns null: a new random key would not open it.
  * @param {string} root
  * @returns {Buffer|null}
  */
 export function serverVaultKey(root) {
-  const file = path.join(root, "vault", "key");
-  const existing = readVaultKeyFile(file);
+  const existing = readVaultKeyFile(plainVaultKeyPath(root));
   if (existing) return existing;
+  const wrapped = openVaultKey(root);
+  if (wrapped) return wrapped;
   if (fs.existsSync(path.join(root, "vault", "vaults", "agents.json"))) return null;
   const mk = crypto.randomBytes(32);
-  writePrivate(file, mk.toString("hex") + "\n");
+  adoptVaultKey(root, mk);
   return mk;
 }
