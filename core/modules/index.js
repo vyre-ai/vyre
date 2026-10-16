@@ -1251,9 +1251,11 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || (isPerson(String(cur.caller)) && !modelCaller(String(cur.caller))));
+          const personSurface = isPerson(String(cur.caller)) && !modelCaller(String(cur.caller));
+          // First-run onboard relays from the person's own surface before a session token exists; every other module needs proven facts or a token.
+          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || (m.name === "onboard" && personSurface));
           if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
-          const origin = captureOrigin() || (isPerson(cur.caller) ? String(cur.caller) : undefined);
+          const origin = captureOrigin() || (personSurface ? String(cur.caller) : undefined);
           const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
           return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: relayed });
         }
