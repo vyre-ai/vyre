@@ -10,6 +10,7 @@ import { passwordOk, personRoutes, spaceAddressOf, usernameOf } from "../../../.
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
+import { githubSay } from "../identity/github-core.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
@@ -19,10 +20,12 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 /**
  * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: { id: string, name: string, role: string, server: string | null }[], current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
+ * The GitHub leg of sign-in, bound in the app (host/index.ts): `start` runs the GitHub sign-in (src/real/github.ts signInWithGithub: who GitHub says this is, and the session the relay holds), `assert` asks the relay for a short assertion
+ * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  */
 
 /**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string } }} o
+ * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string }, github?: GithubPorts }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -67,6 +70,9 @@ export function createHost(o) {
     if (state.id !== id) throw bad("That identity's chain does not match.", "bad_login");
     return { ops: d.ops, pin: C.pinOf(state) };
   }
+
+  /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
+  let pendingGithub = null;
 
   /** @type {Record<string, (input: any) => Promise<any>>} */
   const tools = {
@@ -115,7 +121,7 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
-    "identity.lock": async () => { if (held) held.fill(0); held = null; return { locked: true }; },
+    "identity.lock": async () => { if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
     // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
     // opens the returned record with the same key. Every refusal for a wrong name or password is the door's one bad_login answer.
@@ -142,6 +148,60 @@ export function createHost(o) {
       await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
       held = seed;
       return { username: name, id: String(done.bundle.id), spaces: [row] };
+    },
+
+    // Sign in with GitHub: the relay vouches for the GitHub account with a short assertion; the names directory answers with the spaces that account's linked username belongs to (only to a valid assertion);
+    // the master password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
+    "onboard.signin.github": async () => {
+      if (!o.github) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      const started = await o.github.start();
+      if (!started.ok || !started.session) throw Object.assign(new Error(githubSay(started.code)), { code: started.code || "denied" });
+      const assertion = await o.github.assert(started.session, "names");
+      let res;
+      try { res = await f(`${base}/v1/ids/spaces`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assertion }) }); } catch { throw bad("Cannot reach the names directory right now.", "unreachable"); }
+      /** @type {any} */ let body = null;
+      try { body = await res.json(); } catch { /* not JSON */ }
+      const d = body && body.data;
+      // Not linked, wrong, expired and foreign assertions are one answer, so GitHub sign-in reveals nothing about who has a Vyre name.
+      if (!res.ok || !d || !Array.isArray(d.spaces) || !d.spaces.length) throw Object.assign(new Error(githubSay("not_linked")), { code: "not_linked" });
+      const spaces = d.spaces.map((/** @type {any} */ x) => spaceAddressOf(String(x.address || `${x.name}.vyre.run`))).filter(Boolean);
+      if (!spaces.length) throw Object.assign(new Error(githubSay("not_linked")), { code: "not_linked" });
+      pendingGithub = { session: started.session, username: String(d.username || ""), spaces: /** @type {{ space: string, address: string }[]} */ (spaces), at: Date.now() };
+      return { login: pendingGithub.username, spaces: spaces.map((x) => ({ id: x.space, name: x.space, role: "member", server: x.address })) };
+    },
+
+    // The master password, once, after GitHub: log in to each space the directory listed (each asks for its own assertion), stretch the password with the first space's salt, and open its bundle.
+    "onboard.signin.unlock": async ({ password }) => {
+      const BAD = "That password does not unlock this identity. Try again.";
+      const pend = pendingGithub;
+      if (!pend || Date.now() - pend.at > 10 * 60_000 || !o.github) throw bad("Start with GitHub again.", "expired");
+      if (!password) throw bad("Enter your master password on this device.", "person_enters");
+      /** @type {{ space: string, address: string, role: string }[]} */ const opened = [];
+      /** @type {any} */ let first = null, keys = null;
+      for (const sp of pend.spaces) {
+        let done;
+        try {
+          const assertion = await o.github.assert(pend.session, sp.space);
+          done = await door(sp.space, { op: "github", assertion, device: { label: (o.signin && o.signin.label) || "This browser" } });
+        } catch (e) { if (!first) throw e; continue; }
+        if (!done.bundle) continue;
+        if (!first) {
+          const d = await deriveLogin(String(password).normalize("NFKC"), String(done.salt), acceptKdf(done.kdf));
+          try { keys = await openMasterRecord(done.bundle, { kek: d.K }).catch(() => { throw Object.assign(new Error(BAD), { code: "bad_password" }); }); }
+          finally { d.close(); }
+          first = done;
+        }
+        opened.push({ space: sp.space, address: sp.address, role: String(done.role || "member") });
+      }
+      if (!first || !keys) throw bad("None of your spaces answered. Try again.", "unreachable");
+      const chain = await chainOf(String(first.bundle.id));
+      const seed = unb64(keys.privateKey);
+      const rows = opened.map((x) => ({ id: x.space, name: x.space, role: x.role, server: x.address }));
+      await o.store.save({ master: first.bundle, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
+      held = seed;
+      pendingGithub = null;
+      return { username: String(first.bundle.username), id: String(first.bundle.id), spaces: rows };
     },
 
     "onboard.first.progress": async () => {

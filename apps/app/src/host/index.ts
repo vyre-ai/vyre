@@ -3,6 +3,7 @@
 import { Platform } from "react-native";
 import { createHost } from "./host-core.js";
 import { hostStore } from "./host-store";
+import { relayUrl } from "../api/relay-url";
 
 const HOSTED = /^web\.vyre\.run$/i;
 
@@ -18,8 +19,24 @@ function directory(): string {
   return set || "https://names.vyre.run";
 }
 
+/** The GitHub leg, from the app's own sign-in (real/github.ts) and the relay's assertion route. */
+const github = {
+  async start() {
+    const { signInWithGithub } = await import("../real/github");
+    const r = await signInWithGithub({ signin: true });
+    return r.ok ? { ok: true, session: r.session, user: { id: r.user.id, login: r.user.login } } : { ok: false, code: (r as { code?: string }).code };
+  },
+  async assert(session: { ticket: string; cv: string }, audience: string): Promise<string> {
+    const base = (process.env.EXPO_PUBLIC_VYRE_RELAY_HTTP || relayUrl().replace(/^ws/, "http")).replace(/\/+$/, "");
+    const res = await fetch(`${base}/v1/github/assert`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: session.ticket, cv: session.cv, space: audience }) });
+    const body = (await res.json().catch(() => null)) as { assertion?: string } | null;
+    if (!res.ok || !body || typeof body.assertion !== "string") throw Object.assign(new Error("GitHub sign-in has run out. Start again."), { code: "expired" });
+    return body.assertion;
+  },
+};
+
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
-  if (!host) host = createHost({ store: hostStore, directory: directory() });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), github });
   return host;
 }

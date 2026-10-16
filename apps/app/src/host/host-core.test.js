@@ -100,12 +100,17 @@ function spaceWorld(t) {
       assert.equal(init.headers["content-type"], "text/plain", "text/plain keeps the browser from sending a preflight");
       const body = JSON.parse(init.body);
       posts.push(body);
-      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? svc.finish(body, "203.0.113.5") : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
+      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? svc.finish(body, "203.0.113.5")
+        // GitHub (the relay's assertion for this space, stood in by a fixed string here): the record comes back with its salt and cost, to be opened with the password on the device.
+        : body.op === "github" ? (body.assertion === "assert:juniper" ? { ok: true, session: "s", salt: rec.get("login:alex").salt, kdf: rec.get("login:alex").kdf, bundle: rec.get("login:alex").bundle, role: "admin" } : { error: { code: "bad_login", message: "That username and password do not match." } })
+        : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
       return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
     }
+    // The names directory's list of a GitHub-linked username's spaces, given only to a valid assertion for "names".
+    if (u.pathname === "/v1/ids/spaces") return new Response(JSON.stringify(JSON.parse(init.body).assertion === "assert:names" ? { data: { username: "alex", spaces: [{ name: "juniper", address: "juniper.vyre.run" }] } } : { error: { code: "bad_login" } }), { status: JSON.parse(init.body).assertion === "assert:names" ? 200 : 403 });
     return d.fetch(url, init);
   };
-  return { ...d, fetch: fetchAll, svc, posts };
+  return { ...d, fetch: fetchAll, svc, posts, rec };
 }
 
 test("sign in from another device: register the record at a space, then a new page with nothing on it signs in with the address, the username and the master password", { timeout: 240000 }, async (t) => {
@@ -148,4 +153,37 @@ test("a hostile space that asks for cheap password settings is refused before an
   };
   const host = createHost({ store: memoryStore(), directory: d.base, fetch: fetchCheap, now: d.now });
   await assert.rejects(() => host.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_kdf");
+});
+
+test("sign in with GitHub: the directory lists the spaces for a valid assertion, the master password is asked once, and the bundle opens on the device", { timeout: 240000 }, async (t) => {
+  const w = spaceWorld(t);
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  const made = await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const asked = [];
+  const github = { start: async () => ({ ok: true, session: { ticket: "t", cv: "c" }, user: { id: 7, login: "alexg" } }), assert: async (_s, audience) => { asked.push(audience); return `assert:${audience}`; } };
+  const store = memoryStore();
+  const two = createHost({ store, directory: w.base, fetch: w.fetch, now: w.now, github });
+  const found = await two.call("onboard.signin.github");
+  assert.equal(found.login, "alex");
+  assert.deepEqual(found.spaces.map((x) => x.name), ["juniper"]);
+  assert.equal(await store.load(), null, "nothing is kept until the master password opens the bundle");
+  await assert.rejects(() => two.call("onboard.signin.unlock", { password: "zebra quartz mango pillow staple" }), (e) => e.code === "bad_password");
+  assert.equal(await store.load(), null);
+  const opened = await two.call("onboard.signin.unlock", { password: PASSWORD });
+  assert.deepEqual([opened.username, opened.id], ["alex", made.id]);
+  assert.equal(opened.spaces[0].role, "admin");
+  assert.deepEqual(asked, ["names", "juniper", "juniper"], "an assertion for the directory, then one per space and per try");
+  assert.equal((await two.call("identity.status")).unlocked, true);
+  assert.ok(!JSON.stringify(await store.load()).includes(PASSWORD));
+  assert.equal(w.posts.some((p) => JSON.stringify(p).includes(PASSWORD)), false);
+});
+
+test("GitHub sign-in with no link, or a cancelled GitHub window, says so in the words and keeps nothing", async (t) => {
+  const w = spaceWorld(t);
+  const bad = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now, github: { start: async () => ({ ok: true, session: {}, user: { id: 1, login: "x" } }), assert: async () => "wrong" } });
+  await assert.rejects(() => bad.call("onboard.signin.github"), (e) => e.code === "not_linked" && /not linked/.test(e.message));
+  const cancelled = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now, github: { start: async () => ({ ok: false, code: "denied" }), assert: async () => "x" } });
+  await assert.rejects(() => cancelled.call("onboard.signin.github"), (e) => e.code === "denied" && /cancelled/.test(e.message));
+  await assert.rejects(() => cancelled.call("onboard.signin.unlock", { password: PASSWORD }), (e) => e.code === "expired");
 });
