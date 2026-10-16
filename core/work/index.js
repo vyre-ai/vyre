@@ -768,6 +768,19 @@ export default {
         ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
+        // A chat with more than one person always runs on the server: before anyone new is added, a chat running on a computer moves (one line in the chat, no question). Nothing is added if it cannot move.
+        if (Array.isArray(input.add_people) && input.add_people.length) {
+          const now = await kernelOf().chats.read(chain, String(input.chat)).catch(() => null);
+          const fresh = now ? input.add_people.map(String).filter((/** @type {string} */ x) => !now.people.includes(x)) : [];
+          const me = chain && Array.isArray(chain.hops) && chain.hops.length === 1 ? String(chain.hops[0].actor && chain.hops[0].actor.id || "") : "";
+          if (fresh.length && me) {
+            const roster = /** @type {any} */ (await ctx.call("spaces.members.list", {}).catch(() => null));
+            const rows = roster && roster.data && Array.isArray(roster.data.members) ? roster.data.members : [];
+            const nameOf = (/** @type {string} */ id) => { const m = rows.find((/** @type {any} */ r) => r && (r.person === id || r.id === id)); return m && (m.name || m.label) ? String(m.name || m.label) : "someone"; };
+            const moved = /** @type {any} */ (await ctx.call("runner.group-move", { chat: String(input.chat), person: me, names: fresh.map(nameOf) }).catch((/** @type {any} */ e) => ({ error: e })));
+            if (moved && moved.error && moved.error.code !== "no_such_tool") throw Object.assign(new Error(String((moved.error && moved.error.message) || "This chat could not move to the server, so nobody was added.")), { code: (moved.error && moved.error.code) || "unavailable" });
+          }
+        }
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },

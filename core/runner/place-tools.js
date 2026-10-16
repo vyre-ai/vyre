@@ -42,7 +42,7 @@ export function settingsReader(get) {
 
 /**
  * @param {any} ctx the module's context
- * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string>, platform?: string }} d
+ * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string>, platform?: string, groupWaitMs?: number }} d
  */
 export function registerPlaceTools(ctx, d) {
   /** The one person a call is, in a Space, or a refusal: the home tells a person about their own chats only. */
@@ -182,6 +182,33 @@ export function registerPlaceTools(ctx, d) {
       if (!at) return { moved: false };
       { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) return { moved: false, why: "busy" }; }
       try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { return { moved: false, why: String(/** @type {any} */ (e).message || "not ready") }; }
+      return { moved: true };
+    },
+  });
+
+  // A chat with more than one person always runs on the space's server. When a person is about to be added to a chat that runs on a computer, the chat says so in one line, the computer hands it over, and only then does the work module
+  // add the person: no question, no tap. A chat working in a folder of the computer cannot move, so people are not added to it.
+  ctx.tool("runner.group-move", {
+    description: "Move a chat to the server before people are added to it. Internal: the work module, just before work.chat.change adds someone. Input: chat, person (the one adding), names (who is joining). Answers { moved }.",
+    internal: true, callers: ["module"],
+    input: obj({ chat: str, person: str, names: { type: "array", items: str } }, ["chat", "person"]),
+    run: async (i, meta) => {
+      if (!meta || meta.caller !== "module:work") throw refuse("only the work module moves a chat to the server so people can join: add people with work.chat.change", "denied");
+      const chat = threadOf({ thread: i.chat }), person = String(i.person);
+      const hit = find(chat, undefined, person);
+      if (!hit || hit.row.where !== "mac") return { moved: false };
+      if (hit.row.folder) throw refuse("This chat works in a folder on your computer, so it stays there. Start a new chat to talk with others.", "conflict");
+      const p = placements();
+      const names = (Array.isArray(i.names) ? i.names.map((/** @type {any} */ n) => String(n).trim()).filter(Boolean) : []).slice(0, 5);
+      const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] || "someone";
+      await ctx.call("threads.notice", { thread: hit.row.session, text: `This chat moves to the server so ${who} can join.` }).catch(() => null);
+      p.askRelease(hit.space, hit.row.session, "you", person);
+      const until = Date.now() + (Number.isInteger(d.groupWaitMs) ? Number(d.groupWaitMs) : 90_000);
+      const left = () => { const now = p.find(hit.space, hit.row.session, person); return !now || now.where !== "mac"; };
+      while (Date.now() < until && !left()) await new Promise(r => setTimeout(r, 100));
+      // a computer that did not hand it over in time is overruled, as the sweep would: the server carries on from the last synced turn
+      if (!left() && typeof p.takeBack === "function") await p.takeBack(hit.space, hit.row.session, "you").catch(() => null);
+      if (!left()) throw refuse("This chat could not move to the server yet, so nobody was added. Try again in a moment.", "unavailable");
       return { moved: true };
     },
   });
