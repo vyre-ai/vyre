@@ -139,7 +139,7 @@ export function createLentHome(o) {
     const l = lenders.get(row.device), t = now();
     if (!l || l.person !== person || !l.well || !l.auto || t - l.at > LENDER_FRESH_MS || l.wellSince === null || t - l.wellSince < STEADY_MS) return false;
     if (row.movedAt !== null && t - row.movedAt < COOLDOWN_MS) return false;
-    return canResume() && stands({ person, device: row.device }, keys.get(row.device)) && underSessionCap(person, row.device, row.session);
+    return canResume() && stands({ person, device: row.device }, keys.get(row.device) || row.key || undefined) && underSessionCap(person, row.device, row.session);
   };
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
