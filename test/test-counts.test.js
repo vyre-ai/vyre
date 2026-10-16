@@ -2,7 +2,7 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { declared, problems, mustRunProblems, MUST_RUN } from "../scripts/test-counts.mjs";
+import { declared, problems, mustRunProblems, MUST_RUN, NODE_TEST_EXEC_FLAGS } from "../scripts/test-counts.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -41,6 +41,20 @@ test("test/must-run.json names real test files", () => {
   const list = JSON.parse(fs.readFileSync(MUST_RUN, "utf8")).tests;
   assert.ok(Object.keys(list).length >= 5);
   for (const f of Object.keys(list)) assert.ok(fs.existsSync(path.join(path.dirname(MUST_RUN), "..", f)), `${f} is in must-run.json and is gone`);
+});
+
+test("the runner passes type stripping on Node 22 so apps/app tests can import .ts", async () => {
+  if (process.features.typescript) return;
+  assert.deepEqual(NODE_TEST_EXEC_FLAGS, ["--experimental-strip-types"]);
+  const { spawnSync } = await import("node:child_process");
+  const repo = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
+  const r = spawnSync(process.execPath, ["scripts/test-counts.mjs", "run", "apps/app/src/auth/paired.test.js"], {
+    encoding: "utf8",
+    cwd: repo,
+    timeout: 120_000,
+    env: Object.fromEntries(Object.entries({ ...process.env, VYRE_TEST_FILE_LIMIT_MS: "60000" }).filter(([k]) => !["NODE_TEST_CONTEXT", "VYRE_TEST_SHARD", "VYRE_TEST_COUNTS_KEEP", "VYRE_MUST_RUN"].includes(k))),
+  });
+  assert.equal(r.status, 0, r.stderr || r.stdout);
 });
 
 test("a red file's first failing test and its error block are in the runner's summary, not only its name", async () => {

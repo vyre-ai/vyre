@@ -30,6 +30,9 @@ export function mustRunProblems(skipped, mustRun) {
 }
 export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/**/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "updates/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js", "scripts/**/*.test.js", "site/**/*.test.js", "harness/**/*.test.js", "examples/**/*.test.js"];
 
+/** Flags for each per-file test process. Node 24 turns on type stripping by default; Node 22 needs the switch so apps/app tests can import .ts. @type {string[]} */
+export const NODE_TEST_EXEC_FLAGS = process.features.typescript ? [] : ["--experimental-strip-types"];
+
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {
   const src = fs.readFileSync(path.join(REPO, file), "utf8");
@@ -124,7 +127,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           const rep = path.join(dir, `rep-${i}`);
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
-          const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
+          const child = spawn(process.execPath, [...NODE_TEST_EXEC_FLAGS, "--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
             { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f, VYRE_TEST_SKIPS_OUT: `${out}.skips` } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };
