@@ -12,7 +12,8 @@
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ action: string, label: string, risk: string, inputs: Record<string, string> }} ActionOpt */
+/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
@@ -72,6 +73,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "document", icon: "file", label: "Make a document", hint: "Fill a Word template from the Flow's records and values", words: "word docx template contract letter pdf generate document" },
     { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
     { kind: "subflow", icon: "flows", label: "Run another Flow", hint: "Use a Flow you already made", words: "subflow call nested" },
+    { kind: "action", icon: "bolt", label: "Do something else in Vyre", hint: "Any action a module offers, written as module.action", words: "action module call tool api other custom" },
   ] },
 ]);
 
@@ -91,7 +93,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -151,6 +153,7 @@ export function stepSummary(s, o, d) {
     case "classify": return `Sort the text into ${String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean).join(" or ") || "groups"}`;
     case "extract": return `Pull out ${(s.fields || []).map((/** @type {any} */ f) => f.name).filter(Boolean).join(", ") || "facts"} from the text`;
     case "subflow": return `Run the flow ${named(o.flows || [], s.flow) || "chosen"}`;
+    case "action": return `Do ${(s.action || "").trim() || "an action"}`;
     case "decide": return `If ${condWords(s.cond, d ? d.trigger : { kind: "manual" })}: ${(s.then || []).length} step${(s.then || []).length === 1 ? "" : "s"}, otherwise ${(s.else || []).length}`;
     case "repeat": return `For each item${s.over ? ` of ${s.over}` : ""}: ${(s.steps || []).length} step${(s.steps || []).length === 1 ? "" : "s"}`;
     case "parallel": return `Do ${(s.lanes || []).length} things side by side, then carry on`;
@@ -210,6 +213,7 @@ function kindProblem(s, o) {
     case "classify": return !(s.input || "").trim() ? "Say what to read." : String(s.labels || "").split(",").filter((x) => x.trim()).length < 2 ? "Give at least two groups, separated by commas." : null;
     case "extract": return !(s.input || "").trim() ? "Say what to read." : !(s.fields || []).some((/** @type {any} */ f) => (f.name || "").trim()) ? "Name at least one fact to pull out." : null;
     case "subflow": return s.flow ? null : "Choose the flow to run.";
+    case "action": return !ACTION_WORDS.test((s.action || "").trim()) ? "Write the action as module.action, for example records.create." : !RESOURCE_WORDS.test((s.resource || "").trim()) ? "Write where it acts, starting with vyre://." : null;
     case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
     case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
     default: return null;
@@ -478,6 +482,7 @@ function kindDefinition(s, d) {
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
     case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
+    case "action": { const input = Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return { id: s.id, kind: "call", action: (s.action || "").trim(), resource: (s.resource || "").trim(), ...(Object.keys(input).length ? { input } : {}) }; }
     case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: repeatLimit(s.max), steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
@@ -570,6 +575,7 @@ export function newStep(kind, d, o) {
     case "classify": return { id, kind, input: "", labels: "" };
     case "extract": return { id, kind, input: "", fields: [{ name: "", kind: "text" }] };
     case "subflow": return { id, kind, flow: o.flows?.[0]?.name || "", fields: [{ field: "", value: "" }] };
+    case "action": return { id, kind, action: "", resource: "", fields: [{ field: "", value: "" }] };
     case "decide": return { id, kind, cond: { mode: "build", source: "trigger", field: "", op: ">", value: "" }, then: [], else: [] };
     case "repeat": return { id, kind, over: "", as: "item", max: 50, steps: [] };
     case "parallel": return { id, kind, lanes: [{ steps: [] }, { steps: [] }] };
@@ -653,6 +659,20 @@ function triggerFromKind(t) {
 }
 
 /** Stored field values back to editable rows, or null when one is something the rows cannot say. @param {Record<string, any>} o */
+/** The actions to pick from, filtered by what was typed in the search box (the action's name or its label), by name. @param {Options} o @param {string} q @returns {[string, string][]} */
+export const actionChoices = (o, q) => {
+  const w = String(q || "").trim().toLowerCase();
+  return (o.actions || []).filter((a) => !w || a.action.toLowerCase().includes(w) || a.label.toLowerCase().includes(w)).map((a) => /** @type {[string, string]} */ ([a.action, `${a.label} (${a.action})${a.risk === "read" ? "" : ", held for a yes"}`]));
+};
+/** What picking an action fills in: where it acts and a row for each input that is a plain value (text, number, yes or no). @param {Options} o @param {string} action */
+export const actionPick = (o, action) => {
+  const a = (o.actions || []).find((x) => x.action === action);
+  return { action, resource: `vyre://space/${action.split(".")[0]}`, fields: a ? Object.entries(a.inputs).filter(([, ty]) => ty === "string" || ty === "number" || ty === "boolean").map(([field]) => ({ field, value: "" })) : [{ field: "", value: "" }] };
+};
+/** The shape of an action and of the address it acts on, as the engine checks them; the actions the editor has a step of its own for stay those steps. */
+const ACTION_WORDS = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
+const RESOURCE_WORDS = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
+export const SPECIAL_ACTIONS = new Set(["documents.generate", "work.start-project", "comms.send", "comms.email"]);
 const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
 
 /** @param {any} s */
@@ -726,6 +746,7 @@ function stepFromKind(s) {
       if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unvalAddr(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unvalAddr(i.to), body: unval(i.body) };
       if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
       if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
+      if (!SPECIAL_ACTIONS.has(s.action) && keys(s, ["id", "kind", "action", "resource", "input", "label"]) && typeof s.action === "string" && ACTION_WORDS.test(s.action) && typeof s.resource === "string" && RESOURCE_WORDS.test(s.resource) && Object.values(i).every((v) => unval(v) !== null)) return { id: s.id, kind: "action", action: s.action, resource: s.resource, fields: rowsOf(i) };
       return adv;
     }
     case "agent": {

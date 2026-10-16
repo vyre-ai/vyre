@@ -32,6 +32,7 @@ const WHAT = {
   "flows.health": "One-line health of a Flow: last run, this week, next run, what needs a person, red if a Connection is red. No id lists all.",
   "flows.access.get": "Who a Flow is shared with: { id }. Only its creator, an owner or an admin.",
   "flows.access.set": "Share a Flow with a person: { id, subject (the person), level: use | edit | null }. Can use runs and sees it; Can edit changes it too; null takes the access away. Only its creator, an owner or an admin.",
+  "flows.actions": "The actions a Flow's call step can name: every tool the running modules offer as a Flow step, with what it takes and gives. Read it to pick the action for a call step.",
   "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, step kinds, retries, checks, expressions, limits. Read it before writing a Flow.",
   "flows.from-chat": "Turn a chat's hand-made calls into a draft Flow: { name, calls: [{ tool, input }], variables?, propose? }. Never approved; propose also proposes it.",
   "flows.connections": "Which Flows use which Connections, with their health, so a red Connection shows what it stops. Name one Connection or list all.",
