@@ -290,8 +290,27 @@ async function readJson(req) {
  * @param {{ root?: string }} [opts]
  * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, url: URL) => Promise<void>}
  */
+const DOWNLOADS_ROOT_NAME = "downloads";
+
 export function createFs(opts = {}) {
   const root = opts.root || process.env.COMPUTERD_FS_ROOT || "/home/agent";
+  const downloadsRoot = opts.downloadsRoot || process.env.AGENT_DOWNLOADS || "";
+
+  /** @param {string} rel @returns {{ root: string, segments: string[], fsRoot: "home"|"downloads" }} */
+  function pickRoot(rel) {
+    const segments = checkRel(rel);
+    if (segments[0] === DOWNLOADS_ROOT_NAME) {
+      if (!downloadsRoot) throw fail(404, "missing", "Chrome downloads are not on this computer");
+      return { root: downloadsRoot, segments: segments.slice(1), fsRoot: "downloads" };
+    }
+    return { root, segments, fsRoot: "home" };
+  }
+
+  const innerRel = (segments) => (segments.length ? segments.join("/") : "");
+
+  const refuseWrites = (fsRoot) => {
+    if (fsRoot === "downloads") throw fail(403, "denied", "Chrome downloads are read-only through Glass");
+  };
 
   const send = (res, status, body) => {
     const text = JSON.stringify(body);
@@ -300,7 +319,8 @@ export function createFs(opts = {}) {
   };
 
   async function list(rel) {
-    const { parentFd, name, segments } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    const { parentFd, name, segments } = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       let dirFd = parentFd, ownFd = false;
       if (name !== null) {
@@ -312,7 +332,7 @@ export function createFs(opts = {}) {
         }
       }
       try {
-        const realRoot = fs.realpathSync(root);
+        const realRoot = fs.realpathSync(picked.root);
         /** @type {any[]} */
         const entries = [];
         let truncated = false;
@@ -343,13 +363,15 @@ export function createFs(opts = {}) {
           entries.push({ name: d.name, kind, size: kind === "file" ? st.size : null, mtime: st.mtimeMs });
         }
         entries.sort((a, b) => Number(b.kind === "dir" || b.to === "dir") - Number(a.kind === "dir" || a.to === "dir") || a.name.localeCompare(b.name));
-        return { entries, truncated };
+        return { entries, truncated, root: picked.fsRoot };
       } finally { if (ownFd) fs.closeSync(dirFd); }
     } finally { fs.closeSync(parentFd); }
   }
 
   function stat(rel) {
-    const { parentFd, name, segments, realRoot } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    refuseWrites(picked.fsRoot);
+    const { parentFd, name, segments, realRoot } = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       const fd = name === null ? parentFd : openLeaf(realRoot, parentFd, name, O_RDONLY | O_NOFOLLOW, rel);
       try {
@@ -361,7 +383,8 @@ export function createFs(opts = {}) {
 
   /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
   async function read(rel, req, res) {
-    const { parentFd, name, realRoot } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    const { parentFd, name, realRoot } = resolveOpen(picked.root, innerRel(picked.segments));
     let fd;
     try {
       if (name === null) throw fail(400, "not_a_file", `"${rel}" is not a file`);
@@ -392,7 +415,9 @@ export function createFs(opts = {}) {
 
   /** @param {import("node:http").IncomingMessage} body */
   async function write(rel, body, size, overwrite) {
-    const { parentFd, name } = resolveOpen(root, rel, { create: true });
+    const picked = pickRoot(rel);
+    refuseWrites(picked.fsRoot);
+    const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       // lstat, never following a final symlink: an existing entry there is exists/denied to us
       // whatever it is, the same way a plain file or folder would be. checked and used through
@@ -444,10 +469,14 @@ export function createFs(opts = {}) {
   }
 
   function move(from, to) {
-    const src = resolveOpen(root, from);
+    const fromP = pickRoot(from);
+    const toP = pickRoot(to);
+    refuseWrites(fromP.fsRoot);
+    refuseWrites(toP.fsRoot);
+    const src = resolveOpen(fromP.root, innerRel(fromP.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be moved");
-      const dst = resolveOpen(root, to, { create: true });
+      const dst = resolveOpen(toP.root, innerRel(toP.segments), { create: true });
       try {
         let dstExists = false;
         try { fs.lstatSync(fdPath(dst.parentFd, dst.name)); dstExists = true; }
@@ -470,7 +499,9 @@ export function createFs(opts = {}) {
   }
 
   function mkdir(rel) {
-    const { parentFd, name } = resolveOpen(root, rel, { create: true });
+    const picked = pickRoot(rel);
+    refuseWrites(picked.fsRoot);
+    const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       try { fs.mkdirSync(fdPath(parentFd, name)); }
       catch (e) { throw /** @type {any} */ (e).code === "EEXIST" ? fail(409, "exists", `"${rel}" already exists`) : fail(500, "failed", `could not make "${rel}"`); }
@@ -479,12 +510,14 @@ export function createFs(opts = {}) {
   }
 
   function trash(rel) {
-    const src = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    refuseWrites(picked.fsRoot);
+    const src = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be trashed");
       if (src.segments[0] === TRASH) throw fail(400, "bad_path", "that is already in the trash");
       let realRoot;
-      try { realRoot = fs.realpathSync(root); } catch { throw fail(404, "missing", "the home folder is not there"); }
+      try { realRoot = fs.realpathSync(picked.root); } catch { throw fail(404, "missing", "the home folder is not there"); }
       const rootFd = fs.openSync(realRoot, O_DIRECTORY);
       try {
         fs.mkdirSync(fdPath(rootFd, TRASH), { recursive: true });

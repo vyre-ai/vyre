@@ -60,7 +60,12 @@ export class ComputerProvider {
     this.call = call;
   }
 
-  roots() { return [{ name: "home", path: "" }]; }
+  roots() {
+    return [
+      { name: "home", path: "" },
+      { name: "Chrome downloads", path: "downloads" },
+    ];
+  }
 
   /** computerd's URL and token, thawing the computer if it was frozen. */
   async helper() {
@@ -100,7 +105,7 @@ export class ComputerProvider {
     const segments = checkRel(rel);
     const r = await json(await this.request("GET", "/fs/list", { path: segments.join("/") }));
     const entries = (Array.isArray(r.entries) ? r.entries : []).filter(e => e && typeof e.name === "string" && !hidden(e.name, segments));
-    return { root: "home", path: segments.join("/"), entries, truncated: Boolean(r.truncated) };
+    return { root: String(r.root || "home"), path: segments.join("/"), entries, truncated: Boolean(r.truncated) };
   }
 
   async stat(rel) {

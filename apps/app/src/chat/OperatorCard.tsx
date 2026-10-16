@@ -15,6 +15,7 @@ type Op = { block: "operator"; run: string; computer: string; title: string; sta
 export function OperatorCard({ block, sample }: { block: Op; sample?: string }) {
   const { color } = useUiTheme();
   const [watch, setWatch] = useState(false);
+  const [privateSignIn, setPrivateSignIn] = useState(false);
   const [big, setBig] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +45,7 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
   return (
     <View style={{ borderWidth: 1, borderColor: block.state === "stuck" ? color["edge-strong"] : color.edge, backgroundColor: block.state === "stuck" ? color["warn-wash"] : color["surface-2"], borderRadius: 14, marginVertical: 4, maxWidth: 560, overflow: "hidden" }}>
       {watch ? (
-        <View style={{ padding: 10 }}><LiveScreen computer={block.computer} /></View>
+        <View style={{ padding: 10 }}><LiveScreen computer={block.computer} private={privateSignIn} autoTake={privateSignIn} onHandedBack={() => setPrivateSignIn(false)} /></View>
       ) : (
         <Pressable accessibilityRole="button" accessibilityLabel={`Open ${block.title} larger`} onPress={() => setBig(true)} style={{ aspectRatio: 16 / 10, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
           {still.src ? <Image accessibilityLabel={`What ${block.computer} is showing`} source={{ uri: still.src }} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
@@ -78,14 +79,15 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {block.state === "stuck" && block.ask ? <Button kind={wantsCode && seeds.length ? "ghost" : "primary"} size="sm" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /> : null}
-          <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => setWatch((w) => !w)} />
+          <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => { setPrivateSignIn(false); setWatch((w) => !w); }} />
+          {block.state === "stuck" && block.ask ? <Button kind="ghost" size="sm" icon="key" label="Sign in privately" onPress={() => { setPrivateSignIn(true); setWatch(true); }} /> : null}
           {!watch ? <Button kind="ghost" size="sm" icon="globe" label="Open larger" onPress={() => setBig(true)} /> : null}
         </View>
       </View>
       <Modal visible={big} transparent animationType="fade" onRequestClose={() => setBig(false)}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setBig(false)} style={{ flex: 1, backgroundColor: color.scrim, alignItems: "center", justifyContent: "center", padding: 16 }}>
           <View style={{ width: "100%", maxWidth: 960, gap: 10 }} onStartShouldSetResponder={() => true}>
-            <LiveScreen computer={block.computer} />
+            <LiveScreen computer={block.computer} private={privateSignIn} autoTake={privateSignIn} onHandedBack={() => { setPrivateSignIn(false); setBig(false); }} />
             <Text tone="inverse" size="caption">{block.line}</Text>
           </View>
         </Pressable>

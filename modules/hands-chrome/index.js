@@ -28,6 +28,7 @@ import * as selector from "./selector.js";
 import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
 import { watchNetwork } from "./net-tool.js";
 import { hostOf, mergeApiCatalog, watchApiTraffic } from "./api-tool.js";
+import { callApi, pruneDead, routeApi } from "./api-exec.js";
 
 const AGENT = AGENT_NAME_RE;
 const str = { type: "string" };
@@ -278,8 +279,18 @@ export default {
     /** @type {Map<string, any[]>} */
     const apiCatalogs = new Map();
 
-    tool("chrome.api", "An app's own API on the box, learned from page traffic. learn: capture XHR/fetch and reduce to a catalog (shapes only, no secrets). catalog: read the catalog for a host. route and call are not on the box yet.",
-      obj({ agent: str, action: str, host: str }, ["action"]), async (i, meta) => {
+    const catalogForAgent = (/** @type {string} */ agent) => {
+      const out = [];
+      for (const [k, v] of apiCatalogs) if (k.startsWith(`${agent}|`)) out.push(...v);
+      return pruneDead(out);
+    };
+    const trafficForAgent = (/** @type {string} */ agent) => {
+      const w = apiNets.get(agent);
+      return w ? w.all() : [];
+    };
+
+    tool("chrome.api", "An app's own API on the box, learned from page traffic. learn: capture XHR/fetch and reduce to a catalog (shapes only, no secrets). catalog: read the catalog for a host. route: try the best matching GET for a hint. call: invoke one catalog entry from inside the page (writes need approved: true).",
+      obj({ agent: str, action: str, host: str, hint: str, entryId: str, entry: str, params: { type: "object" }, approved: { type: "boolean" } }, ["action"]), async (i, meta) => {
         const agent = await resolveAgent(i, meta.caller, ctx.call);
         const action = String(i.action || "");
         if (action === "learn") {
@@ -304,7 +315,28 @@ export default {
           const catalog = apiCatalogs.get(`${agent}|${host}`) || [];
           return { host, catalog };
         }
-        throw new Error(`chrome.api on the box supports learn and catalog only; "${action}" is not available here yet`);
+        if (action === "route") {
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const hint = String(i.hint || "");
+          const res = await routeApi(catalogForAgent(agent), hint, i.params && typeof i.params === "object" ? i.params : {}, trafficForAgent(agent),
+            (entry, params) => callApi(entry, params, trafficForAgent(agent), {}, cdp, sessionId));
+          act_(meta, agent, "api", res.route === "api", res.route === "api" ? undefined : String(res.why || res.route), { summary: `route ${res.route} for ${hint.slice(0, 40)}` });
+          return res;
+        }
+        if (action === "call") {
+          const id = String(i.entryId || i.entry || "");
+          if (!id) throw new Error("entryId is required for call");
+          const entry = catalogForAgent(agent).find(e => e.id === id);
+          if (!entry) throw new Error("no catalog entry with that id (run chrome.api learn first)");
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const res = await callApi(entry, i.params && typeof i.params === "object" ? i.params : {}, trafficForAgent(agent),
+            { approved: i.approved === true }, cdp, sessionId);
+          act_(meta, agent, "api", !res.held, res.held ? String(res.why || "held") : undefined, { summary: `${entry.method} ${entry.pathTemplate}` });
+          return res;
+        }
+        throw new Error(`chrome.api does not know action "${action}"; use learn, catalog, route, or call`);
       });
 
     tool("chrome.net", "The agent page's network traffic on the box (CDP). start: capture; list: recent requests (URLs only, no secrets).",
