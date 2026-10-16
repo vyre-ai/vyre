@@ -131,6 +131,19 @@ test("store: a full disk refuses the call with storage_full, leaves nothing half
   } finally { rm(root); }
 });
 
+test("store: a long agent manifest path is kept under a bounded hex directory name, not the path hex-encoded", async () => {
+  const root = tmp();
+  try {
+    const S = mk(root);
+    const long = `agent/grok/sessions/${encodeURIComponent("/home/member/" + "deep/nested/".repeat(30))}/${"a".repeat(36)}/vyre-resume.jsonl`;
+    await S.putFile(A, "s1", long, Buffer.from("payload"));
+    const dirs = fs.readdirSync(path.join(root, "s1", "files"));
+    assert.equal(dirs.length, 1);
+    assert.match(dirs[0], /^[0-9a-f]{40}$/);
+    assert.equal((await S.getFile(A, "s1", long, 1)).toString(), "payload");
+  } finally { rm(root); }
+});
+
 test("store: the per-session cap and the per-file cap refuse with quota before anything is written", async () => {
   const root = tmp();
   try {

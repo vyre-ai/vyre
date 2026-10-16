@@ -86,7 +86,7 @@ fn shell_signal(version: &str, boxless: bool) -> String {
     forget: function () {{ return inv("identity_forget", {{}}); }},
     setupDone: function () {{ return inv("setup_finished", {{}}); }},
     enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
-    enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }},
+    enclaveSign: function (message, prompt, card) {{ var a = {{ message: message, prompt: prompt }}; if (card && card.fields && typeof card.fields === "object") a.fields = card.fields; if (card && typeof card.space === "string") a.space = card.space; return inv("enclave_sign", a); }},
     agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
     agree: function (epk) {{ return inv("agree_secret", {{ epk: epk }}); }}
   }});
@@ -499,7 +499,7 @@ fn identity_forget(app: AppHandle, webview: tauri::Webview, request: tauri::ipc:
 #[tauri::command]
 fn enclave_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
-    Ok(b64u(&logged("enclave_public", ncrypt::public_point(create))?))
+    Ok(b64u(&logged("enclave_public", ncrypt::public_point(create).map(|(p, _store)| p))?))
 }
 
 /// The shell's own yes or no, in a Windows message box the page cannot draw over, with the words the shell wrote from the bytes.
@@ -514,15 +514,15 @@ fn confirm_native(said: &str) -> bool {
 #[cfg(not(windows))]
 fn confirm_native(_said: &str) -> bool { false }
 
-/// The TPM key signs only after Windows has asked the person (Windows Hello). `prompt` is the words the page gave for it; Windows shows its own.
+/// The computer's key signs only after the shell has asked the person in its own window. `prompt` is the words the page gave; they are never shown. `fields` and `space` are the card's, for a yes-moment proof.
 #[tauri::command]
-fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>) -> Result<String, String> {
+fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>, fields: Option<serde_json::Value>, space: Option<String>) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
-    // KP-3: the page's `prompt` is never shown. The shell reads the bytes (an identity-list change or a server ownership proof), says what they are in its own window, and signs nothing it cannot read. (Yes-moment proofs are not read here, so they are not signed.)
+    // KP-3: the page's `prompt` is never shown. The shell reads the bytes (an identity-list change, a server ownership proof, or a yes-moment proof whose card matches), says what they are in its own window, and signs nothing it cannot read.
     let _ = prompt;
     let m = unb64u(&message)?;
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
-    let said = vyre_capsule_win::identity::sign_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
+    let said = vyre_capsule_win::identity::sign_summary(&m, fields.as_ref(), space.as_deref()).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
     if !confirm_native(&said) { return Err("Not approved. Nothing was changed.".into()); }
     Ok(b64u(&logged("enclave_sign", ncrypt::sign(&m))?))
 }
@@ -640,7 +640,8 @@ fn selftest(out: &str) {
         if back == secret { Ok(format!("{} byte blob", sealed.len())) } else { Err("did not round-trip".into()) }
     })());
     // The TPM key, as a real PC does it: what the provider says at each step is the proof of what this machine can do. A hosted runner has no TPM, so the honest result there is the refusal and its status.
-    check("tpm-key", match ncrypt::public_point(true) { Ok(p) => Ok(format!("a TPM key was made ({} bytes)", p.len())), Err(e) => Ok(format!("no TPM key: {e}")) });
+    // The store name is the result: windows_hello, tpm, or software. A software key is not a TPM key.
+    check("tpm-key", match ncrypt::public_point(true) { Ok((p, store)) => Ok(format!("store={store} key ({} bytes)", p.len())), Err(e) => Ok(format!("no key: {e}")) });
     check("agreement-key", match ncrypt::agree_public(true) { Ok(p) => Ok(format!("an agreement key was made ({} bytes)", p.len())), Err(e) => Err(e) });
     check("taskbar-theme", Ok(if taskbar_is_light() { "light".into() } else { "dark".into() }));
     check("tray-icons-decode", (|| {

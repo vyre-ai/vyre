@@ -428,8 +428,7 @@ const deviceRowOf = async (w, id) => (await w.d.registry.call("relay.devices.lis
 
 test("Add a device: the phone redeems the computer's typed code, the server holds no identity, the owner's app signs the phone's key onto the name's list, and the phone hears enrolled", async t => {
   typedOn(t);
-  const w = await world(t);
-  const ident = await standinIdentity(t);
+  const { ident, w } = await setup(t);
   // the name's chain is in the stand-in directory and in the OWNER'S APP (here: ident); the server below never made an identity
   const opened = await w.call("wink.phone.open", { typed: true });
   assert.equal(opened.error, undefined, JSON.stringify(opened.error));
@@ -448,7 +447,9 @@ test("Add a device: the phone redeems the computer's typed code, the server hold
   const sk = ident.store.sign.bind(ident.store);
   const done = await enrolDevice({ name: "alex", eid: ident.store.status().eid, pin: ident.store.pin(), base: "http://127.0.0.1:1", fetch: ident.fetch, now: () => ident.clock.t, sign: async m => sk(Buffer.from(m)), entry: ask.entry });
   assert.equal(done.already, false);
-  assert.equal((await w.call("wink.phone.enrolled", { device: ask.device, ok: true, identity: { id: ident.id, vyre: "alex" } })).data.ok, true);
+  const enR = await w.call("wink.phone.enrolled", { device: ask.device, ok: true, identity: { id: ident.id, vyre: "alex" } });
+  assert.equal(enR.error, undefined, JSON.stringify(enR));
+  assert.equal(enR.data.ok, true);
   const r = await joining;
   assert.equal(r.enrolled, true, JSON.stringify(r));
   assert.deepEqual(r.identity, { id: ident.id, vyre: "alex" });

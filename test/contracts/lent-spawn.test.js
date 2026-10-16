@@ -27,7 +27,7 @@ test("lent-spawn v1: the numbers the contract promises are the code's, and the b
 
 test("lent-spawn v1: a chat spawned for a ready lender: the heartbeat says start, lent.start answers the SDK's flags, and lent.pipe carries the bytes in the shapes the fixtures give", { timeout: 60_000 }, async t => {
   keepAlive(t);
-  const r = await rig(t);
+  const r = await rig(t, { specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   const c = r.as(BOB, "dev_laptop");
   await c.vault.lease();
   await r.home.status(r.bob, { device_key: "KEY_LAPTOP" });

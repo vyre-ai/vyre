@@ -384,6 +384,7 @@ export async function register({ ctx, vault }) {
     // The Deck's "new ssh key" form calls it too.
     callers: ["cli", "local", "deck", "capsule", "mcp"],
     run: async ({ name, type = "ed25519", comment, description }, { caller }) => {
+      if (isAsker(caller)) throw new Error("SSH keys are generated from your own surfaces; ask the person to add one in the vault");
       if (!NAME.test(String(name))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
       if (vault.row(name)) throw new Error(`${name} already exists; generate into a new name`);
       return { key: await storeKey(name, generateKey(type, comment || description || name), caller, "ssh-generate") };

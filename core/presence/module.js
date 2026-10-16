@@ -341,7 +341,7 @@ export default {
     ctx.tool("presence.person.locked", {
       effect: "read",
       description: "The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.",
-      callers: ["cli", "local", "deck", "capsule"],
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
       input: obj({}),
       run: async () => {
         const out = [];
@@ -351,7 +351,7 @@ export default {
     });
     ctx.tool("presence.person.renew-allow", {
       effect: "write",
-      description: "Lift the lock on a paired device that answered its sign-in challenge wrongly three times, from the owner's own device. The device then renews itself with its key.",
+      description: "Lift the lock on a paired device that answered its sign-in wrongly, from the owner's own device.",
       presence: { summary: async input => `Let ${String((input && input.device) || "that device")} sign in again` },
       callers: ["cli", "local", "deck", "capsule"],
       input: obj({ device: str }, ["device"]),

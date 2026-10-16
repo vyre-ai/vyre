@@ -25,6 +25,7 @@ import fs from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
@@ -738,7 +739,8 @@ export default {
         const sendWords = async thread => {
           await capNotice(thread);
           if (!byPerson || herAccountThread) return use("threads.send", { thread, text: i.text, surface });
-          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
+          const relay = personCallOpts(caller, meta0) || { as: String(caller) };
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, relay);
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };
@@ -788,7 +790,10 @@ export default {
           // the one process vyred owns, so there is no second writer on the transcript; holding
           // the lease past the reply would only lock the user's other screens out of the agent.
           // Released as the one who typed: the person for a person's ask (the lease is theirs), this module otherwise (a surface name is never an identity).
-          if (thread && i.wait !== false) await ctx.call("threads.release", { thread, surface }, ...(byPerson ? [{ as: String(caller) }] : []));
+          if (thread && i.wait !== false) {
+            const relay = personCallOpts(caller, meta0);
+            await ctx.call("threads.release", { thread, surface }, ...(byPerson && relay ? [relay] : []));
+          }
         }
       },
     });

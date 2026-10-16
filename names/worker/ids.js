@@ -4,7 +4,7 @@
 // `harlow.vyre.run`: one namespace with the box names, so a name is taken once.
 //
 //   POST   /v1/ids/claim          {name, ops, sealed, rec}          claim a name for an identity: its genesis chain and a sealed record
-//   GET    /v1/ids/resolve        ?name= or ?alias=                 the whole chain and the sealed record. Exact name only: no list, no search
+//   GET    /v1/ids/resolve        ?name= or ?alias= or ?id=         the whole chain and the sealed record. Exact name, or the person id the chain already published. No list, no search
 //   POST   /v1/ids/append         {name, ops}                       new ops on the chain (add, remove, replace-code, recover), each verified
 //   POST   /v1/ids/update         {name, sealed, rec}               an entry replaces the sealed record (the home moved)
 //   POST   /v1/ids/alias          {name, domain}                    verify an own domain by a TXT at _vyre-id.<domain> signed by an entry
@@ -254,8 +254,16 @@ export const idOps = {
     return { name: v.name, kind: state.kind, id: state.id, mine: true };
   },
 
-  /** Exact name only. A missing, released and invalid name answer alike, so a probe learns only what a holder published. @this {any} */
+  /** Exact name, an own-domain alias, or a person id (`ii/` already maps the chain id to its name). A missing, released and invalid name answer alike, so a probe learns only what a holder published. @this {any} */
   async op_idResolve(_b, _a, _ip, q) {
+    if (q.id) {
+      const id = String(q.id);
+      if (!/^per_[a-z2-7]{26}$/.test(id)) throw err(404, "not_found", "no such name");
+      const held = await this.store.get(`ii/${id}`);
+      const rec = held ? await this.idLiveRecord(held) : null;
+      if (!rec || rec.id !== id || rec.kind !== "person") throw err(404, "not_found", "no such name");
+      return { name: rec.name, kind: rec.kind, id: rec.id, ops: rec.ops, sealed: rec.sealed, rec: rec.rec, aliases: rec.aliases };
+    }
     let name = null;
     if (q.alias) {
       const d = aliasDomain(q.alias);

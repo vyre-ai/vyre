@@ -37,17 +37,15 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
+import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra, modelCaller } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
-// wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
-// relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
-// presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
 /** The sign-in tools: they authenticate a person (a passkey or the device's own key) and open a person session; the presence verifier still checks that proof. */
 const SIGN_IN = new Set(["presence.person.start"]);
-export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status", "wink.install.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -94,6 +92,7 @@ export function checkRelayTool(module, tool, input, as) {
     // and runs one operation of a Connection as the person who asked (a view over a wrapped app): vault.request of that Connection's own credential, by operation. The send/change/delete gate judges the operation there.
     && !(tool === "vault.request" && obj && /^conn-[a-z0-9-]+$/.test(String(input.credential)) && typeof input.operation === "string" && input.operation !== "request" && input.url === undefined && input.method === undefined)) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, to vault.delete for a connection's own conn-<id> credential, and to vault.request of a connection's own credential by operation, only`);
   if (module === "appmods" && !["connectors.connection.create", "connectors.connection.delete"].includes(tool)) throw new Error(`appmods may not call ${tool} as ${as}: it relays an installing person to the app's own Connection (create and delete) only`);
+  if ((module === "threads" || module === "switchboard") && (as === "module:sessions" || as === "module:assistant") && !["mentions.search", "mentions.resolve"].includes(tool)) throw new Error(`${module === "switchboard" ? "sessions" : module} may not call ${tool} as ${as}: ingress reaches mentions only`); // internal-word: module id in code, never drawn
 }
 
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
@@ -106,20 +105,25 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
   stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // threads.slash and ingress tags relay the person, or reach mentions.resolve as module:sessions (lib/person-relay.js).
+  switchboard: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
-  term: (/** @type {string} */ as) => isPerson(as) };
+  term: (/** @type {string} */ as) => isPerson(as),
+  // threads replays the asking person to planner, recall and mentions on a composer's / line and on ingress tags, never the module's own chain.
+  threads: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant" || /^link:[^\s:]+$/.test(String(as)) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
- * with `config.machine` -- the person's actual choice, "solo", "server" or "device" -- and this
+ * with `config.machine` -- "server" or "device" (a stored "solo" is rewritten to a device) -- and this
  * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
  * caller, mostly tests, that still passes one directly) passes straight through unchanged.
  * @param {string} role @returns {string[]}
  */
 export function roleBuckets(role, platform = process.platform) {
   if (role === "box" || role === "local") return [role];
+  if (role === "solo") return roleBuckets("device", platform);
   // Module API 1 (ADR 0047): a manifest's "mac" or "windows" is "local" on that OS only.
   if (role === "mac") return platform === "darwin" ? ["local"] : [];
   if (role === "windows") return platform === "win32" ? ["local"] : [];
@@ -565,7 +569,7 @@ const AGENT_SURFACES = new Set(["mcp", "harness", "cli", "local"]);
  * tool at all (reviewer-2 R-1), while the open and ask-first lists apply to a proven one.
  */
 const proven = (/** @type {any} */ meta) => Boolean(meta && typeof meta.thread === "string" && meta.thread);
-export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && (!proven(meta) || (!AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool)));
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && (!proven(meta) || (!AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool))) && !surfaceAllows(caller, tool);
 /** A person-reach tool that is open to this PROVEN assistant even though the surface label is not one of the person's own. */
 export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && proven(meta) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
 /** An open-but-ask-first tool called by an assistant (proven or not): held for a one-tap task, like an outward one, and never run unproven. */
@@ -601,7 +605,7 @@ export const classReach = (caller, tool, setupExtra) => {
 export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(caller, tool, setupExtra) ?? (!callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
-  || (callers.includes("device") && deviceLabel(caller)));
+  || (callers.includes("device") && deviceLabel(caller)) || surfaceAllows(caller, tool));
 
 /**
  * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
@@ -642,7 +646,7 @@ const inRepo = (dir, paths) => {
 };
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
-const IN_SPACE = Symbol("vyre.in_space");
+export const IN_SPACE = Symbol("vyre.in_space");
 /** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
 const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by the views and capsule modules, beside `asked`: the person's own confirmation of exactly these words (a fresh preview and its hash). A symbol key cannot come over the wire. */
@@ -656,7 +660,7 @@ const RELAY = Symbol("vyre.relay");
  * module relays them to the chat and memory ports, and those relay them on to the per-member storage. Nothing else is open, and a relay needs a running call that has a person.
  */
 const RELAY_ALLOWED = Object.freeze({
-  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
+  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
   memory: ["spaces.storage."],
   work: ["spaces.storage.", "vault.uses.for"], // vault.uses.for: the timeline asks, as the person looking
   publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
@@ -670,6 +674,11 @@ const RELAY_ALLOWED = Object.freeze({
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
+  // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
+  mentions: ["vault.mention.search", "vault.mention.resolve"],
+  identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
+  // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
+  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "vault.put", "vault.", "link.", "relay.", "devices.signin", "sessions.accounts.", "onboard."],
 });
 
 export class Registry {
@@ -1250,9 +1259,13 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
-          const origin = captureOrigin();
-          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token, ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) } });
+          const personSurface = isPerson(String(cur.caller)) && !modelCaller(String(cur.caller));
+          // Onboard and identity relay from the person's own surface before a session token exists; every other module needs proven facts or a token.
+          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
+          if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
+          const origin = captureOrigin() || (personSurface ? String(cur.caller) : undefined);
+          const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
+          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: relayed });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
@@ -1280,7 +1293,10 @@ export class Registry {
         const relayed = m.name === "pluginagent" && tool === "agents.delete" && opts && opts.relay && typeof opts.relay === "object" ? { ...(opts.relay.kernelFacts ? { kernelFacts: opts.relay.kernelFacts } : {}), ...(opts.relay.kernel_proof ? { kernel_proof: opts.relay.kernel_proof } : {}) } : {};
         // agents relays the asking person to threads.send and threads.release WITH that person's own verified facts (the ones their agents.ask arrived with): the chat gate judges the person, and a
         // relay without them would be refused for every person who asks an agent from a device.
-        const cur = (m.name === "agents" && agentsMayRelay(tool)) || m.name === "mentions" ? currentCall() : null;   // mentions replays the asking person to a provider's search, so a provider answers for that person
+        const personAs = as && isPerson(String(as));
+        const mentionsRelay = m.name === "mentions" && (String(as) === "module:sessions" || String(as) === "module:assistant");
+        const sessionsRelay = (m.name === "threads" || m.name === "switchboard") && (String(as) === "module:sessions" || String(as) === "module:assistant");
+        const cur = (personAs || mentionsRelay || sessionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
@@ -1411,7 +1427,7 @@ export class Registry {
         const effect = effectOf(name, declaredEffect, reach);
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect), needsYou: Boolean(def.needsYou),
           internal: Boolean(def.internal) || reach === "modules",
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
@@ -1567,7 +1583,8 @@ export class Registry {
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
     delete meta[VIEW_FOR];
-    const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
+    const spaceHop = Boolean(meta.in_space_chain);
+    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
@@ -1729,6 +1746,7 @@ export class Registry {
     // The one yes (DESIGN-one-yes, inventory item 4 step B). A tool the floor guards is one of two kinds. One of the THREE MOMENTS (momentOf: pairing or widening reach, a vault secret, an outward send)
     // takes a yes, and nothing else: an approved card, a device's signed yes, a reuse window a yes opened, or a 0.3.0 client's old header turned into a card at the edge (admitLegacy). Every other tool the floor
     // used to guard needs the PERSON and no proof: the callers list and the person-session checks above are what judge that, and an agent, a module acting for one or a guest is refused here.
+    let presenceOff = false; { const h = await holdNeedsYou(this, { tool, def, caller, meta, input, approval }); if (h) { if (h.error) return h; input = h.input; meta = h.meta; presenceOff = true; } }
     const presence = this.deps.presence;
     const isOut = (/** @type {string} */ n) => Boolean((this.tools.get(n) || {}).outward);
     const moment = momentOf(tool, isOut);
@@ -1741,7 +1759,7 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && !switchedOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+    } else if (presence && !switchedOff && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
       if (SIGN_IN.has(tool)) {
         // Signing in is authentication, not one of the three moments: the passkey or device key that opens a person session is checked by the presence verifier, as before (BACKLOG 0.3.2: move sign-in to the yes form too).
         const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
@@ -1757,7 +1775,7 @@ export class Registry {
         meta = { ...meta, presence: { method: "pending", keyId: null } };
       } else {
         const got = await this.yesFloor({ tool, moment, caller, meta, input, approval, proof, yesProof, presence, def });
-        if (got.error) return got;
+        if (got.error) return scrubVaultResult(caller, tool, got, input, def);
         meta = { ...meta, presence: got.presence };
       }
     }
@@ -1794,7 +1812,7 @@ export class Registry {
         let card;
         try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
-        return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
+        return scrubVaultResult(caller, tool, { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } }, input, def);
       }
     }
     // A Flow's call step: the Flows host spent the person's approval for exactly this act (bound to this input) before it got here, so the act is the person's own yes, and a send the tool files at the Gate
@@ -1823,8 +1841,10 @@ export class Registry {
     // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
     // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
     // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
+    let armed = /** @type {any} */ (null);
     const askedGate = this.deps.gates ? await this.deps.gates.needsAsk({ tool, def, caller, meta, input }) : def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
+      armed = armSecrets(caller, input, def, meta);
       if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
         return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
       }
@@ -1844,8 +1864,8 @@ export class Registry {
       try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: coveredRide(this.tools, cur, tool, caller) || cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
-    const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
-    return result;
+    const result = await (async () => { try { return idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run(); } finally { if (armed) disarmSecrets(armed); } })();
+    return scrubVaultResult(caller, tool, result, input, def);
   }
 
   /**
@@ -2034,7 +2054,7 @@ export class Registry {
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
     return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((isViaMcp(meta) && mcpPersonMay(name) && (!isViaMcpHosted(meta) || hostedKeyMay(name))) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
-      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
+      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}), ...listingMarks(name, d),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));
   }

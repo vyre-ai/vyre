@@ -12,6 +12,9 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
+  ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],
+  ["identity.lock", "locks the unlocked session: the person's own act"],
   ["mcp.mine.list", "lists the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
   ["mcp.mine.add", "adds an MCP server and its token to the person's own vault: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
   ["mcp.mine.remove", "removes one of the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
@@ -167,7 +170,6 @@ export const PERSON_ONLY = new Map([
   ["spaces.members.computers", "an owner's or an admin's own act on the Space"],
   ["spaces.devices.remove", "the person's own devices"],
   ["spaces.devices.restore", "the person's own devices"],
-  ["spaces.devices.enrol", "the person's own devices"],
   ["spaces.devices.set", "the person's own devices"],
   ["spaces.setup.save", "the person's own setup"],
   ["spaces.setup.claim", "the person's own setup"],
@@ -367,7 +369,6 @@ export const PERSON_ONLY = new Map([
   ["spaces.cancel", "cancels a Space move"],
   ["spaces.compute.accept", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.compute.allow", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.create", "needs the person's Face ID or presence: makes a Space and its root key"],
   ["spaces.bundle.enrol", "the owner gives their recovery code: a code is the person's own secret, never a model's"],
   ["spaces.bundle.export", "writes the Space bundle, which holds every sealed value of the Space under the owner's key: the owner's own act"],
   ["spaces.bundle.status", "tells whether the Space bundle is set up: the owner's own view"],
@@ -383,13 +384,8 @@ export const PERSON_ONLY = new Map([
   ["spaces.identity.recover.code", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.identity.recover.finish", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.invites.accept", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.invites.create", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.invites.revoke", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.members.add", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.members.extend", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.members.remove", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.members.set-role", "needs the person's Face ID or presence: grants, roles and offers"],
-  ["spaces.members.transfer", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.resume", "runs a Space move"],
   ["spaces.server.install", "controls the person's own machine: installs a server"],
   ["team.charter.revert", "would let an assistant widen its own authority: sets the assistant's own charter and duties"],
@@ -631,11 +627,19 @@ export const OPEN = new Set([
   "wink.code.status",
   "wink.offers",
   "wink.pair.status",
+  "wink.install.status", // whether an install line is outstanding and whether this server is owned: a read
+  "spaces.pair.install", // the Create step's install line; a proven assistant is held at the Gate, and the person's own call runs now
+  "wink.install.issue", // the same mint as spaces.pair.install; a proven assistant is held at the Gate, and the signing key stays on this device
+  "wink.install.complete", // a proven assistant may ask; the outward flag holds the call at the Gate, and the signing key stays on this device
   "wink.storage.card",
   "wink.storage.discover",
   "wink.storage.offers",
   "wink.storage.status",
   "work.team.add",
+  "identity.status",
+  "identity.card",
+  "vault.space.status",
+  "vault.space.list",
 ]);
 
 /** @type {ReadonlyMap<string, string>} */
@@ -658,6 +662,25 @@ export const ASK_FIRST = new Map([
   ["hooks.open", "opens the Space to the outside"],
   ["appmods.domain.add", "opens an app's public pages to the outside at the person's own domain"],
   ["appmods.domain.remove", "takes the person's own domain from an app, so its public pages stop answering at that address"],
+  ["identity.create", "makes the username and wraps the keys; held so the person enters the master password on their device"],
+  ["identity.unlock", "unlocks the identity; held so the person enters the master password on their device"],
+  ["identity.vault.install", "installs the held master key into the running vault and returns the space's published key; held so the person who unlocked on this device is the one who installs it"],
+  ["identity.migrate", "wraps an existing identity under a master password; held so the person enters it on their device"],
+  ["identity.github.link", "links a GitHub login to the username; held for the person's one tap, and it does not unlock the vault"],
+  ["identity.discover", "opts the username into the public directory; held for the person's one tap"],
+  ["devices.signin", "signs a computer in to a space server; held so the person enters the master password on their device"],
+  ["spaces.owner.transfer", "hands a space to another member; held for the person's one tap and audited by the kernel"],
+  ["spaces.create", "makes a space; an agent's proposal is held for the person's one tap"],
+  ["spaces.invites.create", "invites a person to a space; an agent's proposal is held for the person's one tap"],
+  ["spaces.members.add", "adds a member; an agent's proposal is held for the person's one tap"],
+  ["spaces.members.set-role", "changes a member's role; an agent's proposal is held for the person's one tap"],
+  ["spaces.members.remove", "removes a member and rotates the space vault; an agent's proposal is held for the person's one tap"],
+  ["spaces.members.transfer", "hands a space to another member; an agent's proposal is held for the person's one tap"],
+  ["spaces.devices.enrol", "adds a computer or phone to a space; an agent's proposal is held for the person's one tap"],
+  ["vault.space.create", "makes a space vault; an agent's proposal is held for the person's one tap and the key stays wrapped"],
+  ["vault.space.grant", "wraps the space vault key to a member; an agent's proposal is held for the person's one tap"],
+  ["vault.space.rotate", "rotates the space vault key; an agent's proposal is held for the person's one tap"],
+  ["vault.space.put", "stores a space vault item; an agent's proposal is held and the value is entered on the device"],
 ]);
 
 // The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,
@@ -702,15 +725,24 @@ export function mcpPersonMay(tool) {
  * keeps missing tools). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the person's own computer) keeps mcpPersonMay's reach. Outward acts stay held at the Gate.
  * A tool is usable when it is on the allowlist BY NAME (the work surface: records read/write without define or forget, projects read, chats and threads send/read without a shell, files read and versions write, flows run and read without define or kits, tasks and approvals listing, memory read/file, recall, mentions, held sends) and is on no never-list; a tool nobody has placed is refused. core/modules/hosted-allow.json holds the list with one reason each, and test/hosted-keys.test.js pins it.
  */
-export const HOSTED_ALLOW_REASONS = Object.freeze(/** @type {Record<string, string>} */ (JSON.parse(readFileSync(new URL("./hosted-allow.json", import.meta.url), "utf8")).allow));
+const HOSTED_FILE = JSON.parse(readFileSync(new URL("./hosted-allow.json", import.meta.url), "utf8"));
+export const HOSTED_ALLOW_REASONS = Object.freeze(/** @type {Record<string, string>} */ (HOSTED_FILE.allow));
 export const HOSTED_ALLOW = Object.freeze(new Set(Object.keys(HOSTED_ALLOW_REASONS)));
+/**
+ * The outward setup tools a hosted key may propose, declared once in hosted-allow.json under gate.
+ * The registry holds each one for the person's one tap. identity.unlock is not on it: unlocking is the person entering the master password.
+ * vault.space.use is not on it: it lends, and holding it would stop lending. Every other name on HOSTED_NEVER stays refused.
+ * @type {ReadonlySet<string>}
+ */
+export const HOSTED_GATE_REASONS = Object.freeze(/** @type {Record<string, string>} */ (HOSTED_FILE.gate));
+export const HOSTED_GATE = Object.freeze(new Set(Object.keys(HOSTED_GATE_REASONS)));
 export const HOSTED_NEVER = Object.freeze({
   code: ["appmods.", "term.", "hooks.", "runner.", "code.", "threads.shell", "agents.spawn", "team.duties.run-now", "learn.skill-", "work.template.install", "flows.kit.", "bridges.kit.install", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute.", "mcp.add", "mcp.update", "mcp.call"],
   desktop: ["hands-", "hands.", "computer.", "chrome.", "glass.", "screen."],
   credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside.", "settings.", "onboard.", "push.", "memory.backup."],
-  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
+  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "spaces.pair.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
   people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access.", "work.chat.keys.", "work.team.", "work.project.level", "work.know.move-", "work.chat.upgrade-", "work.chat.history-import"],
   keys: ["mcpconn.", "pluginagent."],
 });
 /** May a call on a hosted key use this tool? @param {string} tool */
-export const hostedKeyMay = tool => HOSTED_ALLOW.has(tool) && !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p)));
+export const hostedKeyMay = tool => HOSTED_GATE.has(tool) || (HOSTED_ALLOW.has(tool) && !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p))));

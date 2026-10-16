@@ -28,6 +28,7 @@ export const NEEDS_PRESENCE = [
   "vault.device.approve", "vault.agent.grant", "vault.codes", "vault.codes.import", "vault.sweep", "vault.rotate",
   "vault.emergency.add", "vault.emergency.refresh", "vault.emergency.request", "vault.emergency.status",
   "vault.connect", "vault.connections.grant", "vault.connections.update", "vault.mcp.pass.create", "vault.mcp.reveal.allow",
+  "vault.space.create", "vault.space.grant", "vault.space.put", "vault.space.rotate",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
@@ -44,6 +45,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.autobackup.status",
   "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",
   "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed",
+  "vault.space.status", "vault.space.list", "vault.space.attention",
   // a module asks whether it holds a grant: a boolean about its own grant, no value (module-only)
   "vault.granted", "vault.mcp.status", "vault.mcp.base", "vault.connections.lend", "vault.connections.end"];
 
@@ -77,8 +79,24 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // The outside-agents module serves the pass's own tools to a registered agent (module-only; the pass was made with the person's yes).
     "vault.mcp.agent.tools", "vault.mcp.agent.call",
     // computers module reads wrap keys (internal only; key never returned to agents via these tools' callers).
-    "vault.person.browser-profile-key", "vault.space.browser-profile-key"]);
-  for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
+    "vault.person.browser-profile-key", "vault.space.browser-profile-key",
+    // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
+    "vault.space.use"]);
+  // Internal tools (vault.release, vault.master.install, …): modules-only plumbing, no presence card.
+  for (const n of tools.keys()) {
+    const def = tools.get(n);
+    if (def && def.internal) continue;
+    assert.ok(known.has(n) || def.presence, `${n} is new: decide whether it needs presence`);
+  }
+});
+
+// vault.master.install: identity.vault.install relays here after the person approved unlock; it takes no value out and is registered internal: true (see core/vault/index.js).
+test("vault.master.install is internal module plumbing for identity.vault.install and needs no presence", async t => {
+  const { tools } = await recorded(t);
+  const def = tools.get("vault.master.install");
+  assert.ok(def, "registered");
+  assert.equal(def.internal, true);
+  assert.ok(!def.presence, "installs a held key already approved elsewhere; it takes no value out");
 });
 
 test("presence: summaries name items and destinations and never a value, and never throw", async t => {

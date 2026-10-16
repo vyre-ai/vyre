@@ -43,6 +43,18 @@ export const COMMANDS = Object.freeze([
   { name: "goal", description: "Set a goal with milestones, notified as each one is done", hint: "<goal>", source: "session", local: "goal" },
   { name: "vyre", description: "Vyre status, ask an agent, recall past sessions, remember a lesson", hint: "[status | ask | recall | remember]", source: "vyre" },
   { name: "skills", description: "Open the skills and plugins library", source: "vyre", local: "skills" },
+  { name: "help", description: "List commands and what they do", source: "session" },
+  { name: "status", description: "This session's model, mode and where it runs", source: "session" },
+  { name: "export", description: "Export this conversation", hint: "[format]", source: "session" },
+  { name: "usage", description: "Tokens and cost for this session", source: "session" },
+  { name: "agents", description: "Agents in this project", source: "session" },
+  { name: "permissions", description: "What this session may do without asking", source: "session" },
+  { name: "plan", description: "Show or set the session plan", hint: "[text]", source: "session" },
+  { name: "mcp", description: "MCP tools connected to this session", source: "session" },
+  { name: "memory", description: "Open memory for this chat", hint: "[search]", aliases: ["mem"], source: "session" },
+  { name: "resume", description: "Resume a stopped session", source: "session" },
+  { name: "effort", description: "Reasoning effort for this session", hint: "[low|medium|high|max]", source: "session" },
+  { name: "roll", description: "Roll the context window now", source: "session" },
 ]);
 
 /** @typedef {{ start: number, end: number, query: string }} CommandRange */

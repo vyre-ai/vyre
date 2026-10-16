@@ -81,7 +81,7 @@ export function harvest({ root = REPO, tmp = os.tmpdir() } = {}) {
     const out = path.join(home, "harvest.json");
     const none = path.join(home, "no-such-binary");
     const env = { PATH: process.env.PATH || "/usr/bin:/bin", HOME: home, TMPDIR: path.join(home, "tmp"), VYRE_HOME: path.join(home, ".vyre"),
-      VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: none, VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
+      VYRE_DOCS_HARVEST: "1", VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: none, VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
       VYRE_HANDS_BIN: none, VYRE_NO_OPEN: "1", VYRE_NO_UP: "1" };
     fs.mkdirSync(env.TMPDIR);
     const r = spawnSync(process.execPath, [path.join(HERE, "harvest.mjs"), root, out], { env, encoding: "utf8", timeout: 120_000 });
@@ -188,6 +188,43 @@ function staticDescription(root, dir, name) {
   return "";
 }
 
+/** Flags read from source when harvest did not register the tool (or registered with a partial start). */
+function staticToolMeta(root, dir, name) {
+  for (const file of sources(path.join(root, dir))) {
+    const text = fs.readFileSync(file, "utf8");
+    const needle = `ctx.tool("${name}"`;
+    const i = text.indexOf(needle);
+    if (i < 0) continue;
+    const block = balanced(text, text.indexOf("{", i + needle.length)) || "";
+    return { internal: /\binternal:\s*true\b/.test(block) };
+  }
+  return { internal: false };
+}
+
+/**
+ * Which role a tool is registered on, from harvest. When only one role's start finished, do not
+ * infer box-only vs Mac-only from the other role's missing tools (a failed migration on one role
+ * must not make a tool that runs on both look Mac-only).
+ * @param {any} m module.json manifest
+ * @param {string} name tool name
+ * @param {Map<string, any>} box
+ * @param {Map<string, any>} local
+ * @param {any} harvested harvest output
+ */
+function roleOnly(m, name, box, local, harvested) {
+  const roles = m.roles || ["box", "local"];
+  if (roles.length < 2) return null;
+  const boxOk = !harvested.box[m.name]?.error;
+  const localOk = !harvested.local[m.name]?.error;
+  if (!boxOk || !localOk) return null;
+  const inBox = box.has(name);
+  const inLocal = local.has(name);
+  if (inBox && inLocal) return null;
+  if (inBox) return "box";
+  if (inLocal) return "local";
+  return null;
+}
+
 /** Every VYRE_ environment variable the shipped code reads, the files that read it, and whether Vyre sets it too. */
 export function environment(root = REPO) {
   /** @type {Map<string, Set<string>>} */
@@ -256,6 +293,8 @@ const ENV_MEANING = {
   SCOPE_CWDS: "The folders an agent's `recall.search` is held to, as JSON.",
   SOCKET: "The path of vyred's socket, for Lumen.",
   SSH_BIN: "The `ssh` binary to run.",
+  SETUP_HTTP: "`1`: vyred serves the setup page, where the person pastes the install code. Inside Docker the page is served without this.",
+  SETUP_PORT: "The port the setup page listens on. Default 8080.",
   SUPERVISOR: "What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it.",
   TAILSCALE_BIN: "The `tailscale` binary to run. A path that does not exist means no tailnet.",
   TAILSCALE_UP_FLAGS: "Extra flags for `tailscale up`, space separated.",
@@ -265,6 +304,7 @@ const ENV_MEANING = {
   WRAPPER: "Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`.",
   TEST_DIALOGS: "`1`: allow dialogs under tests, for a person at the machine running one test on purpose.",
   TEST_HOSTED: "`1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`.",
+  TEST_MASTER_KDF: "`cheap`: the identity tools use a tiny Argon2id for tests. Production always uses the master-password parameters. A tool never accepts this from its input.",
   TEST_REAL_TAILSCALE: "`1`: let a test use the real tailscale binary.",
 };
 
@@ -410,12 +450,12 @@ function collectTools(root, mods, harvested) {
   for (const { dir, manifest: m } of mods) {
     const box = new Map((harvested.box[m.name]?.tools || []).map(t => [t.name, t]));
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
-    const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
     for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
-      if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
-      else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
+      const meta = staticToolMeta(root, dir, name);
+      if (t) out.push({ ...t, internal: Boolean(t.internal || meta.internal), only: roleOnly(m, name, box, local, harvested) });
+      else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: meta.internal, hook: false, presence: false, only: null, unregistered: true });
     }
     // A name shared by two modules (the box's chrome and the Mac's) is one entry, tools once each.
     const have = byModule.get(m.name) || [];

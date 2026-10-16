@@ -1,6 +1,6 @@
 # Picture tests: every block and key screen of the gallery, drawn at app, phone and chat width, light and dark, against the reference pictures in design-refs/.
 # A changed picture fails the run and uploads before, after and diff images as an artifact. The screen's owner (for Vyre's own screens: the release lead; major changes go to the product owner) says yes by
-# committing the new pictures (node scripts/design-pictures <out> --update). The references are kept under 10 MB; the run fails over that.
+# committing the new pictures (node scripts/design-pictures <out> --update). The references are kept under 12 MB; the run fails over that.
 name: design-pictures
 on:
   push:

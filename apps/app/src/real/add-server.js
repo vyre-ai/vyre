@@ -2,11 +2,10 @@
 import { installLine } from "../../screens/install/first-run.js";
 // add-server: the ONE way a server joins a person's Vyre (spec 0.3.0 part 10). It serves an upgrade from Home to Cloud, a second server, a replacement server and a team space's first server alike.
 //
-//   1. The app makes a one-time setup code (relay/client/setup.js: a key only this app holds, and a secret) and shows the install line that carries it, with the Records choice.
-//   2. The server's installer registers a sealed offer at the code's place on the relay and posts its progress there, and prints four check words. Nothing needs copying back.
-//   3. The app finds the offer and shows its own four words; the person says they match the server's terminal (that is the confirm, in the app, never at the server).
-//   4. Only then does the app open the setup channel (admitted for its key alone), ask the unowned server for a pairing ticket for THIS identity (wink.server.setup-offer), and pair with it the way
-//      a scanned code does: the identity's signature is the proof, so nobody answers a question at the terminal.
+//   1. The app makes an install code bound to this device's identity key (relay/client/pair-install.js) and shows the one install line that carries it, with the Records choice.
+//   2. The server's installer registers a sealed offer at the code's place on the relay, redeems the code, and adopts this person.
+//   3. The app finds the offer and opens the setup channel (admitted for its key alone), asks for a pairing ticket for THIS identity (wink.server.setup-offer), and pairs.
+//      The identity's signature is the proof. A caller that does not pass `issue` keeps the older confirm, where the person matches four words before anything opens.
 //
 // What comes after (the space on the server, and moving everything onto it) is the existing My Cloud card's: spaces.create with the server as home, then spaces.upgrade.*. This file is pure: every
 // outside thing (the relay client, the channel, the pairing) comes in as a port, so Node tests it against fakes and against a real server over a real relay.
@@ -66,7 +65,7 @@ export const joinNotes = (...notes) => notes.filter(Boolean).join(" ") || null;
 
 /** Plain words by code; nothing a server or the network says reaches the screen. */
 export const MESSAGES = Object.freeze({
-  expired: "The hour for this line ran out. Start again for a new one.",
+  expired: "This line ran out. Start again for a new one.",
   mismatch: "Those words are different, so this may not be your server. Nothing was connected. Start again.",
   contested: "Two servers used this line. Start again for a new one.",
   relay: "Vyre could not connect. Check your internet, then start again.",
@@ -83,7 +82,8 @@ export const MESSAGES = Object.freeze({
 
 /**
  * @param {{ client: SetupClient, relay: string, identity: () => Promise<{ id: string }>, connect: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<{ call: (tool: string, input?: object) => Promise<any>, close: () => void }>,
- *   pair: (qr: string, opts?: { pageKey?: any }) => Promise<void>, random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
+ *   pair: (qr: string, opts?: { pageKey?: any }) => Promise<void>, issue?: (o: { os: string, store: string }) => Promise<{ code: string, secret: Uint8Array, key: any, expiresAt: number }>, autoPair?: boolean,
+ *   random?: (n: number) => Uint8Array, now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, onChange?: (s: AddServerState) => void }} o
  */
 export function createAddServer(o) {
   const now = o.now || Date.now;
@@ -103,14 +103,20 @@ export function createAddServer(o) {
     const mine = ++run;
     pending = null;
     const c = choiceOf(choice);
-    let key, secret, code;
+    let key, secret, code, expiresAt;
     try {
-      key = await o.client.createSetupKey();
-      secret = random(16);
-      code = await o.client.setupCode(secret, key.spki);
+      if (typeof o.issue === "function") {
+        const issued = await o.issue({ os, store: c.store });
+        key = issued.key; secret = issued.secret; code = issued.code; expiresAt = issued.expiresAt;
+      } else {
+        key = await o.client.createSetupKey();
+        secret = random(16);
+        code = await o.client.setupCode(secret, key.spki);
+        expiresAt = now() + SETUP_TTL_MS;
+      }
     } catch { return stop("key"); }
     if (mine !== run) return;
-    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store, os }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt: now() + SETUP_TTL_MS });
+    set({ stage: "install", choice: c.id, code, installLine: installLine(o.version, { code, store: c.store, os }), lines: [], box: null, memoryMb: null, note: null, error: null, expiresAt });
     void followMailbox(mine, key, secret);
     void waitForBox(mine, key, secret);
     void (async () => {
@@ -143,15 +149,17 @@ export function createAddServer(o) {
     }
   }
 
-  /** The server's own sealed offer at the code's place is the one sign that a server used this code. Anyone who saw the code could have put one there first, so nothing opens until the words are confirmed. */
+  /** The server's own sealed offer at the code's place is the one sign that a server used this code. With autoPair the connection opens as soon as that offer is found. A run that is not autoPair waits for confirmWords. */
   async function waitForBox(/** @type {number} */ mine, /** @type {any} */ key, /** @type {Uint8Array} */ secret) {
     while (mine === run && state.stage === "install") {
       try {
         const r = await o.client.resolveSetup(secret, { relay: o.relay });
         if (mine !== run) return;
-        const words = await o.client.setupWords(r.offer.box, secret);
+        const words = o.autoPair ? [] : await o.client.setupWords(r.offer.box, secret);
         pending = { mine, offer: r.offer, key, secret };
-        return set({ stage: "found", box: { name: r.name, fingerprint: r.fingerprint, words, route: r.offer.route }, error: null });
+        set({ stage: "found", box: { name: r.name, fingerprint: r.fingerprint, words, route: r.offer.route }, error: null });
+        if (o.autoPair) await confirmWords();
+        return;
       } catch (e) {
         const code = /** @type {any} */ (e).code;
         if (code === "contested" || code === "bad_record") return stop("contested");

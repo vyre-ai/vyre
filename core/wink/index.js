@@ -26,7 +26,8 @@ import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
 import { createGrants, moveLocalGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
-import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
+import { registerInstallPair } from "./install-pair.js";
+import { createPairing, parseServerQr, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
 import { lentRevoked } from "./lent-revoked.js";
@@ -83,8 +84,8 @@ export function createWink(inject = {}) {
   /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
-    // A server runs all of this. A person's computer that belongs to a server (machine "device") runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
-    // lends itself to them, and holds the connection a storage drive on its network is reached through. A computer on its own (machine "solo") stays out: nothing here is for it.
+    // A server runs all of this. A person's computer (machine "device", including one that used to be solo) runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
+    // lends itself to them, and holds the connection a storage drive on its network is reached through.
     if (ctx.config.role !== "box" && ctx.config.machine !== "device") return { async stop() {} };
     const now = () => Date.now();
     ctx.store.migrate([
@@ -302,7 +303,7 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Type back the code the new device is showing. The right one adds the device. A wrong one closes the code.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
       run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed, meta.presence || null); },
@@ -405,6 +406,19 @@ export function createWink(inject = {}) {
       return { relay: url, route: String(route), box: String(box) };
     };
     pairing.tools();
+    const installPair = registerInstallPair({
+      ctx, meta: pairing.meta, now, log: (m) => ctx.log(m),
+      askServer: async () => {
+        const sid = pairing.homeServerId();
+        if (!sid) return null;
+        return pairing.serverLinks().sessionFor(sid).call("wink.install.status", {});
+      },
+      pair: (qr, person) => {
+        const scan = parseServerQr(String(qr));
+        if (!scan) throw fail("bad_input", "The server gave a ticket this computer cannot read. Make a new install line in the Vyre app.");
+        return pairing.startTyping({ seed: scan.seed, relay: scan.relay || undefined, kind: "server", target: { kind: "identity", id: person } });
+      },
+    });
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
     liveLinks = pairing.serverLinks;
@@ -655,7 +669,7 @@ export function createWink(inject = {}) {
       return { id: g.id, source: g.source, since: g.created_at, status: g.status, subject: g.subject, resource: g.resource.prefix, lastUsed: g.last_used || null, card: c };
     };
     ctx.tool("wink.access", {
-      description: "What you have added with a Wink: your devices (a phone, a computer, a server, a storage device, each with its kind, who it belongs to and what it offers) and the grants given to people, as cards. Devices belong to you, not to a space. Answers { devices, grants }.",
+      description: "Devices you have added and the grants given to people. Devices belong to you, not to a space.",
       input: obj({ status: { type: "string", enum: ["active", "revoked"] } }),
       run: async (input, meta = {}) => {
         owner(meta, "the access list");
@@ -987,6 +1001,7 @@ export function createWink(inject = {}) {
         dropHold();
         for (const off of [offSignin, ...offSigninWatch, offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
+        try { await installPair.stop(); } catch {}
         try { pairing.stop(); } catch {}
         try { if (netd) await netd.stop(); } catch {}
         try { if (join) { for (const off of offJoin) { try { off(); } catch {} } await join.stop(); } } catch {}

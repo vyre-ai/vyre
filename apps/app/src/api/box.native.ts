@@ -137,6 +137,7 @@ const primed = primeServers();
 export const { connect, listen, prove, disconnect, socket } = b;
 export const call: typeof b.call = async (...a) => { await primed; return b.call(...a); };
 export const send: typeof b.send = async (...a) => { await primed; return b.send(...a); };
+export { tool } from "../real/box";
 
 /** The phone proves presence with its biometric key inside call(); it has no route of its own to post. */
 export async function post(_path: string, _input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {
@@ -162,5 +163,7 @@ export async function signIn(): Promise<void> {
 /** End the person session on the box. */
 export async function signOut(): Promise<void> {
   if (person) await person.end();
+  const { clearAllSessionCaches } = await import("../chat/session-cache.js");
+  clearAllSessionCaches();
   connection.signIn(true);
 }

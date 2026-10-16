@@ -48,6 +48,8 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/comms -> core/mail` | imap.js | the sending service reuses the mail module's IMAP adapter; it becomes a ctx.call when the adapter has a tool | ctx.call |
 | `core/files -> core/google` | drive-seam.js | linked Google Drive folders use the Drive seam's client directly; it goes through google.drive.* tools when the bridge is split | ctx.call |
+| `core/runner -> core/sessions` | lent-agent.js | the runner reads per-provider lent layout (runner, resume-lent, sync) from the sessions module | lib |
+| `core/sessions -> core/import` | codex.js | lent-agent lists Codex rollout files for resume paths | lib |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
@@ -58,7 +60,8 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/daemon -> core/runner` | homesandbox.js, sandbox.js, lent-home.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
-| `core/daemon -> core/wink` | node/peer-wire.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |
+| `core/daemon -> core/wink` | node/peer-wire.js, homemove.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |
+| `core/devices -> core/spaces` | identity.js | devices.signin dials the space server through the same identity store pairing uses | ctx.call |
 | `core/files -> core/link` | transport.js | the legacy folder-as-a-disk path looks up a program the Mac may have (drive.js); it goes with that path | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
@@ -70,7 +73,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/sessions -> core/switchboard` | runner.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/sessions -> core/transcripts` | sanitize.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/harness` | rules.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
-| `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
+| `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js, lent-agent.js | sessions/switchboard split (ADR 0030); adopt uses lent-agent transcript paths for failover | ctx.call |
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |

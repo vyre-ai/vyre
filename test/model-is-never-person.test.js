@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** Files that ARE the one answer, or measure the label itself before any tool runs. */
-const THE_ONE = new Set(["lib/caller.js", "core/modules/index.js", "core/presence/index.js", "core/daemon/index.js", "core/daemon/peer.js", "local/hands-chrome-mac/caller.js", "lib/person-body.js" /* the shared body guard: it asks lib/caller.js isPerson and lets a module through, so it is one answer for every tool that uses it */]);
+const THE_ONE = new Set(["lib/caller.js", "lib/member-scope.js", "core/modules/index.js", "core/presence/index.js", "core/daemon/index.js", "core/daemon/peer.js", "local/hands-chrome-mac/caller.js", "lib/person-body.js" /* the shared body guard: it asks lib/caller.js isPerson and lets a module through, so it is one answer for every tool that uses it */]);
 const LIST_WITH_MCP = [
   /\[[^\]]*"(?:cli|local|deck|capsule)"[^\]]*"mcp"[^\]]*\]\s*\.includes\(/,
   /\[\s*\.\.\.[A-Z_]*PEOPLE[A-Z_]*\s*,\s*"mcp"\s*\]\s*\.includes\(/,

@@ -97,7 +97,7 @@ function saveSoon() {
 
 function onEvent(e: BoxEvent) {
   // A vault reset made a new Secret Key: the copy GitHub sign-in holds would go stale, so it is stored again (nothing happens when GitHub is not linked).
-  if (e.type === "vault.secretkey-changed" && JSON.stringify(e).indexOf('"why":"import"') < 0) void import("../../screens/onboard/real-github").then((m) => m.reEscrowSecretKey());
+  if (e.type === "vault.secretkey-changed" && JSON.stringify(e).indexOf('"why":"import"') < 0) void import("../real/github").then((m) => m.reEscrowSecretKey());
   if (NEEDS_EVENTS.test(e.type)) {
     const before = needsStore.get().items;
     const r = applyNeedsEvent(before, e, ctx);

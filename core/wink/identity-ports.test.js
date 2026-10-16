@@ -10,6 +10,7 @@ test("Wink's identity ports read the spaces module live and answer null when it 
   const spaces = {
     "spaces.identity.state": i => ({ data: { entries: i.person === "per_alex" ? [{ eid: "e1", kind: "device", pub: "PUB" }, { eid: "r1", kind: "recovery", pub: "R" }] : [] } }),
     "spaces.identity.sign": i => ({ data: { eid: "e1", sig: "S:" + i.message } }),
+    "spaces.identity.confirm-key": () => ({ data: { ok: true, id: "per_alex" } }),
     "spaces.identity.entry": i => (i.eid === "e1" ? { data: { eid: "e1", kind: "device", pub: "PUB" } } : { data: null }),
     "spaces.identity.self": () => ({ data: { label: "alex", id: "per_alex" } }),
   };
@@ -31,6 +32,17 @@ test("Wink's identity ports read the spaces module live and answer null when it 
   assert.deepEqual(await none.network.self(), { signedIn: false });
   const refusing = identityPorts({ call: async () => ({ error: { code: "forbidden" } }), space: async () => "harlow" });
   assert.equal(await refusing.signIdentity(msg), null);
+});
+
+test("a published-key refusal is a refusal, and an unreachable directory stays unreachable", async () => {
+  const ports = (code) => identityPorts({
+    call: async (tool) => tool === "spaces.identity.state"
+      ? { data: { entries: [{ eid: "e1", kind: "device", pub: "PUB" }] } }
+      : { error: { code, message: code === "denied" ? "That key is not one this person has published. Pair again from the Vyre app." : "The directory could not confirm this key. Wait a minute and try again." } },
+    space: () => "spc_aaaaaaaaaaaa",
+  });
+  await assert.rejects(() => ports("denied").identityEntry("per_alex", "e1"), (e) => e.code === "refused" && /published/.test(e.message));
+  await assert.rejects(() => ports("unavailable").identityEntry("per_alex", "e1"), (e) => e.code === "unreachable");
 });
 
 test("a directory address the guarded client refused is a refusal with its reason, not 'out of reach'; a real outage stays unreachable", async () => {

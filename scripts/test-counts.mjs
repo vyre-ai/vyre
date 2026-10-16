@@ -113,7 +113,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     try { assertTestNode(); } catch (/** @type {any} */ e) { console.error("test-counts: " + e.message); process.exit(2); }
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
-    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).sort();
+    const omit = (process.env.VYRE_TEST_OMIT || "").split(",").map(s => s.trim()).filter(Boolean);
+    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).filter(f => !omit.includes(f)).sort();
     // The boot tests run first, and always in shard 1, so a broken boot fails in minutes; the other files are sharded as before.
     const boot = BOOT_FIRST.filter(f => all.includes(f)), others = all.filter(f => !boot.includes(f));
     const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...others.filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1)];
@@ -139,7 +140,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           const rep = path.join(dir, `rep-${i}`);
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
-          const child = spawn(process.execPath, [...NODE_TEST_EXEC_FLAGS, "--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
+          // docs-check harvest is heavy; run its subtests serially (Node has no test.configure on our version).
+          const serial = f === "test/docs-check.test.js" ? ["--test-concurrency=1"] : [];
+          const child = spawn(process.execPath, [...NODE_TEST_EXEC_FLAGS, "--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", ...serial, "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
             { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f, VYRE_TEST_SKIPS_OUT: `${out}.skips` } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };

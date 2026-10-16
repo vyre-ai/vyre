@@ -6,22 +6,12 @@
 // module's call never reach this file (the caller check is in personTurn).
 
 import crypto from "node:crypto";
-import { isPerson } from "../../lib/caller.js";
+import { personTurn } from "../../lib/caller.js";
+
+export { personTurn };
 
 /** Most mentions one turn can carry. */
 export const MAX_MENTIONS = 8;
-
-/**
- * A caller that is the person at their own surface: lib/caller's isPerson (cli, local, deck,
- * capsule, the owner's device over the tailnet; never an agent or thread label, a bare mcp,
- * harness, hook or guest) or the box's link. Labels are matched whole, never by prefix.
- * @param {unknown} caller
- */
-export function personTurn(caller) {
-  const c = String(caller || "");
-  if (isPerson(c)) return true;
-  return /^link:[^\s:]+$/.test(c);
-}
 
 /**
  * The names a turn mentions, in order, once each: `#Name` or `#"Name with spaces"`, only after the
@@ -67,7 +57,7 @@ const flat = data => {
  * refuses or is absent means plain text, no grant. Before the mentions mechanism exists, a name is
  * a vault item alone (vault.mention.resolve by exact name, which records the "use"
  * intent with the item's own hosts; sessions never records a use intent itself).
- * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any) => Promise<any> }} o
+ * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any, opts?: any) => Promise<any> }} o
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
  */
 export async function resolveTags({ names, chips = [], thread, said, call }) {
@@ -83,8 +73,8 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
     if (r && r.error && ["no_such_tool", "denied"].includes(String(r.error.code))) mentions = false;
     if (mentions && r && !r.error) {
       const hits = flat(r.data).filter(x => x.name.toLowerCase() === name.toLowerCase());
-      if (hits.length === 1) picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name });
-      continue;
+      if (hits.length === 1) { picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name }); continue; }
+      if (hits.length > 1) continue;
     }
     // No mentions mechanism yet: vault is a provider on its own. Sessions cannot search it (that is for
     // person surfaces), so the typed name is tried as an item name: vault.mention.resolve matches

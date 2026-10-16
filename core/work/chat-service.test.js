@@ -32,7 +32,7 @@ async function world(t) {
 }
 
 test("chat is a group of the Space kernel's remote calls", () => {
-  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read"]);
+  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read", "open"]);
 });
 
 test("a member starts their own chat and sees it; another member does not see it", { timeout: 90_000 }, async t => {

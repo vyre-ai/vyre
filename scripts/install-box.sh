@@ -783,6 +783,7 @@ mbx_send() {
 # cannot be read are said so, with the one command that shows them: the page asks for them either way.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  if [ "${#CODE}" -eq 239 ]; then say "  This server pairs itself. Go back to the Vyre app."; return 0; fi
   n=0; told=
   # A first start (the record store, the relay link) can take a few minutes: wait up to three, saying so once, before giving the fallback (the 0.2.12 live walk saw both).
   while [ "$n" -lt "${VYRE_WORDS_TRIES:-180}" ]; do
@@ -807,14 +808,13 @@ show_words() {
   say "  The four words did not show yet. To see them, run: ${BOLD}${SUDO:+sudo }vyre words${RESET}"
 }
 
-# intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
-# thing this installer asks a person is nothing: the Vyre app does the pairing (the four words), by the ruling that setup is one place. Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+# intake_code: the setup code from VYRE_CODE. Never an argument, never echoed. A 43-character code is the older setup code. A 239-character code is an install code the server redeems itself.
 intake_code() {
   CODE=${VYRE_CODE:-}
   unset VYRE_CODE
   [ "$UNINSTALL" = 1 ] && { CODE=""; return 0; }
   [ -n "$CODE" ] || return 0
-  printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
+  printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$|^[A-Za-z0-9_-]{239}$' \
     || die "that setup code does not look right. Copy the install line from your browser again."
 }
 
