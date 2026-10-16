@@ -131,7 +131,7 @@ export class Share {
   async myCard() {
     const id = await this.vault.identity();
     const card = relay.encodeCard({ acct: await this.accountId(), name: this.vault.name, sign: id.sign.public, box: id.box.public,
-      relay: this.vault.relayUrl || "", ...(this.vault.login ? { login: this.vault.login } : {}), devices: [] }, id.sign.private);
+      relay: this.vault.relayUrl || "", devices: [] }, id.sign.private);
     return { card, name: this.vault.name, relay: this.vault.relayUrl || null, fingerprint: fingerprint({ sign: id.sign.public, box: id.box.public }) };
   }
 
@@ -158,7 +158,7 @@ export class Share {
 
   personOut(r) {
     return { name: r.name, fingerprint: this.fp(r), version: Number(r.version) || 1, verified: Boolean(r.verified),
-      ...(r.relay ? { relay: r.relay } : {}), ...(r.login ? { login: r.login } : {}),
+      ...(r.relay ? { relay: r.relay } : {}),
       firstSeen: r.first_seen ?? r.added, ...(r.changed ? { changed: r.changed } : {}), blocked: Boolean(this.blockedWhy(r)) };
   }
 

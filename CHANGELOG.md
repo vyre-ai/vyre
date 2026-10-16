@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(vault): a relayed pass binds to its holder's identity key and the signed, single-use, audience-bound request, and to nothing on a network. The Tailscale binding is gone: the relay listener takes no login from a header, a pass is not bound to a VPN login or checked against a network policy (`vault.relay.identity`, `vault.relay.grants`, `grantCovers`, `checkBind` removed), and `vault.grants.status` lists who holds a live pass and for what, without logins or capabilities. A card that still carries a `login` field is read so it verifies, and nothing uses it.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.

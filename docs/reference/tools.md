@@ -15187,7 +15187,7 @@ Whether an item is granted to the calling module, and to exactly this watcher wh
 
 ### `vault.grants.status`
 
-Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.
+Who holds a live pass, and for which items and in which mode. Reads names only, never a value.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
