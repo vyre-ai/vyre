@@ -1,9 +1,10 @@
 // @ts-check
-// Server install pairing. The creator's app, or an agent through the Gate, issues one code bound to the creator's identity key.
-// The server redeems it once, writes the owner, then asks spaces.owner.adopt. The private key never leaves the identity store, and never appears in a tool result.
-// Workstream A: a published-key check by person id (not by name) would let a redeem fail closed when the directory disagrees. Until that tool exists, the signature and the id derived from the key are the binding.
+// Server install pairing. The creator's app issues one code bound to the identity chain's id and this device's key.
+// An agent's issue or complete waits at the Gate. The person's own call runs now. The private key never leaves the identity store, and never appears in a tool result.
+// Redeem reads the published chain for that person id (the directory's ii/ index, the same chain identity.create stores) and adopts only when the key in the code is a current device key. A miss, or a directory that cannot be reached, leaves the server unowned.
 
 import { mintPairCode, verifyPairCode, installCommand } from "../../lib/pair-code.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { createSetupKey, setupFingerprint } from "../../relay/client/setup.js";
 import { createSetupPage } from "./setup-http.js";
 
@@ -11,15 +12,36 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 const str = { type: "string" };
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 
+/** Current full device keys on a verified person chain: the published Ed25519 keys, not a passkey and not a key the web or the relay holds. @param {{ entries?: { kind?: string, held?: string, alg?: string, pub?: string }[] }} state */
+export function publishedDeviceKeys(state) {
+  return (state && state.entries || []).filter(e => e && e.kind === "device" && !e.held && !e.alg && typeof e.pub === "string").map(e => e.pub);
+}
+
+/** The directory's published device keys for a person id. Unreachable stays unreachable. A missing id is not_found. @param {string} personId */
+export async function directoryPublishedKeys(personId) {
+  const state = await idDirectory({ seen: memorySeen() }).resolveById(personId);
+  return publishedDeviceKeys(state);
+}
+
 /**
- * Redeem one install code on this server. The owner record is written before spaces.owner.adopt. A second redeem is refused.
- * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function }, meta: { get: Function, set: Function, del: Function }, now?: () => number }} o
+ * Redeem one install code on this server. The published key is checked before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
+ * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function }, meta: { get: Function, set: Function, del: Function }, now?: () => number, publishedKeys?: (personId: string) => Promise<string[]> }} o
  * @param {string} code
  */
 export async function redeemInstallCode(o, code) {
   const now = o.now || Date.now;
   const v = verifyPairCode(String(code || ""), now);
   if (!v.ok) throw fail(v.code, v.message);
+  const keysOf = o.publishedKeys || directoryPublishedKeys;
+  /** @type {string[]} */
+  let pubs;
+  try { pubs = await keysOf(v.person); }
+  catch (e) {
+    const c = /** @type {any} */ (e).code;
+    if (c === "not_found" || c === "denied") throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
+    throw fail("unavailable", "The directory could not confirm this key. Wait a minute and run the install line again.");
+  }
+  if (!Array.isArray(pubs) || !pubs.includes(Buffer.from(v.pub).toString("base64url"))) throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
   const meta = o.meta;
   const spent = `install-nonce:${v.nonceHash}`;
   if (meta.get("install_setup_locked") || meta.get(spent)) throw fail("locked", "This code was already used. Make a new install line in the Vyre app and run it again.");
@@ -46,8 +68,9 @@ export async function redeemInstallCode(o, code) {
 
 /**
  * The install tools (one definition each: MCP, HTTP and CLI) and the setup page.
- * Issue and complete are outward, so an agent is held at the Gate. Status is a read.
- * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, ticket?: (session: any) => Promise<string> }} o
+ * Issue and complete are outward, so an agent is held at the Gate. The person's own call runs now. Status is a read.
+ * `wink.install.issue` is the mint. The Create step's name, `spaces.pair.install`, lives on the spaces module and calls this mint.
+ * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, ticket?: (session: any) => Promise<string>, publishedKeys?: (personId: string) => Promise<string[]> }} o
  */
 export function registerInstallPair(o) {
   const now = o.now || Date.now;
@@ -67,20 +90,25 @@ export function registerInstallPair(o) {
     },
   });
 
-  ctx.tool("wink.install.issue", {
-    description: "Make a one-time install line bound to your identity. Returns the line and when it expires. Your signing key stays on this device.",
-    input: obj({ os: { type: "string", enum: ["linux", "mac"] }, store: str }),
+  const issue = {
+    input: obj({
+      os: { type: "string", enum: ["linux", "mac"] },
+      kind: { type: "string", enum: ["linux", "mac"] },
+      name: str,
+      store: str,
+    }),
     run: async (input) => {
       const dev = await ctx.call("spaces.identity.device", {});
       const self = await ctx.call("spaces.identity.self", {});
       const pub = dev && dev.data && dev.data.deviceKey;
       const person = self && self.data && self.data.id;
-      if (!pub || !person) throw fail("unavailable", "This device has no identity yet. Open the Vyre app and finish starting, then ask again.");
+      if (!pub || !/^per_[a-z2-7]{26}$/.test(String(person || ""))) throw fail("unavailable", "This device has no identity yet. Open the Vyre app and finish starting, then ask again.");
       const key = await createSetupKey();
       const secret = new Uint8Array(16);
       cryptoRandom(secret);
       const fp = await setupFingerprint(key.spki);
       const minted = await mintPairCode({
+        person: String(person),
         publicKey: String(pub),
         secret, fingerprint: fp, now,
         sign: async (m) => {
@@ -90,11 +118,16 @@ export function registerInstallPair(o) {
         },
       });
       if (minted.person !== person) throw fail("denied", "The identity on this device does not match the key it signed with. Open the Vyre app and try again.");
-      const os = input && input.os === "mac" ? "mac" : "linux";
+      const os = input && (input.kind === "mac" || input.os === "mac") ? "mac" : "linux";
       session = { person, exp: minted.exp, os, secret, key };
       o.meta.set("install_client", { person, exp: minted.exp, os, at: now() });
-      return { code: minted.code, line: installCommand(os, minted.code), expires: minted.exp, person, os };
+      const line = installCommand(os, minted.code);
+      return { command: line, code: minted.code, line, expires: minted.exp, person, os };
     },
+  };
+  ctx.tool("wink.install.issue", {
+    description: "Make a one-time install line bound to your identity. Returns the line and when it expires. Your signing key stays on this device.",
+    ...issue,
   });
 
   ctx.tool("wink.install.status", {

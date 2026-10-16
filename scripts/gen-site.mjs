@@ -454,7 +454,7 @@ const dlBtn = (file, label, fill = false) => `<a class="btn btn-sm${fill ? ' btn
       ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}
       <p class="sm" style="margin:6px 0 22px">Linux with Docker Compose 2.24 or newer. <a href="/linux/">More on the Linux server</a></p>
       <p class="lbl" style="margin:0 0 6px">A Mac that stays on</p>
-      ${term('curl -fsSL vyre.run/box/install-mac-server.sh | sh', 'curl -fsSL vyre.run/box/install-mac-server.sh | sh')}
+      ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}
       <p class="sm" style="margin:6px 0 0">Run it in Terminal. The Mac asks for its password once so Vyre starts when the Mac does. <a href="/start/">The steps in order</a></p>
     </div>
   </div>

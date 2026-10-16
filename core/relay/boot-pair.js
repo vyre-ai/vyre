@@ -1,6 +1,6 @@
 // @ts-check
 // The install line's boot. A 43-character setup code starts the setup session, as before.
-// An install code (199 characters) starts that session from the embedded setup material, then redeems the code so the server adopts its owner.
+// An install code (239 characters) starts that session from the embedded setup material, then redeems the code so the server adopts its owner.
 // The code is never logged.
 
 import { PAIR_CODE_LEN, verifyPairCode } from "../../lib/pair-code.js";

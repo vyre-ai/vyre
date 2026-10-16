@@ -81,10 +81,9 @@ On Windows the app offers **Join a team** and **Add a server**. A home on Window
 2. Choose **With Records** (recommended) or **Without Records** (a small server). Records is where your contacts, projects and
    tasks live, so pick it unless the server is small.
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
-   - On Linux it looks like `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
-   - On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=... VYRE_STORE=auto sh`. It asks for the
-     Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
-     Touch ID key approves new devices.
+   Linux and a Mac that stays on use the same line: `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
+   On a Mac it asks for the Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
+   Touch ID key approves new devices.
 
    The line works once and expires in 30 minutes. It carries a one-time code made by the app. The server installs Vyre and
    adopts the person who approved the line.
