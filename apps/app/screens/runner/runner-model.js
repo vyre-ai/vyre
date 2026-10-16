@@ -152,3 +152,29 @@ export function lentMacOffline(placement, places, thread) {
 
 /** How many 15s placement polls must see the lent Mac offline before auto-moving to the server (stops flapping). */
 export const LENT_OFFLINE_TICKS = 4;
+
+/** What a computer does on its own when it is allowed (`runner.mode`). Never is the switch, not a mode. */
+export const MODES = /** @type {const} */ (["always", "ask"]);
+/** The three choices on the Computer page, in the order the person reads them. */
+export const CHOICES = /** @type {[ "always" | "ask" | "never", string ][]} */ ([["always", "Always allow"], ["ask", "Ask"], ["never", "Never"]]);
+
+/** The mode the box sent; an older box sends none and runs as Always allow always did. @param {any} d @returns {"always" | "ask"} */
+export const pickMode = (d) => (d && d.mode === "ask" ? "ask" : "always");
+
+/** The choice the page shows: Never when the switch is off, else the mode. @param {MacSettings | null | undefined} s @param {"always" | "ask"} mode @returns {"always" | "ask" | "never"} */
+export const choiceOf = (s, mode) => (s && s.enabled ? mode : "never");
+
+/**
+ * The plain status line under the choice: what this computer does now, and what is running on it. No limits, no numbers a person must manage.
+ * @param {"always" | "ask" | "never"} choice @param {{ running?: number, spaces?: string[] }} [x]
+ */
+export function statusLine(choice, x = {}) {
+  const n = x.running || 0;
+  const names = x.spaces || [];
+  const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] || "";
+  if (choice === "never") return "Sessions run on the server.";
+  const base = choice === "always"
+    ? "New chats start on this computer. A session that left comes back at your next message once this computer has been ready for a minute."
+    : "A session runs on this computer when you put it here from its chat.";
+  return `${base}${who ? ` Shared with ${who}.` : ""} ${n ? `${n === 1 ? "1 session is" : `${n} sessions are`} running here now.` : "Nothing is running here now."}`;
+}
