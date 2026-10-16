@@ -4,29 +4,33 @@
 // Send an email is `call comms.send`, Wait for a yes is `ask`, Update a record is `update`.
 
 /** @typedef {{ name: string, label: string }} Named */
-/** @typedef {{ name: string, label: string, kind?: string }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
+/** @typedef {{ name: string, label: string, kind?: string, options?: string[] }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
-/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
+/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
-import { findStep, flat } from "./tree.js";
+import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
+import { formulaProblem } from "./preview.js";
+import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
+
+export { policyWords };
 
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
   { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
   { id: "removed", icon: "trash", label: "A record is removed", hint: "For example a client is deleted" },
-  { id: "stage", icon: "board", label: "A record enters a stage", hint: "For example a matter enters Drafting" },
+  { id: "stage", icon: "board", label: "A record moves to a stage", hint: "For example a matter enters Drafting" },
   { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
   { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
-  { id: "schedule", icon: "clock", label: "On a schedule", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
+  { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
   { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
-  { id: "manual", icon: "play", label: "Someone runs it", hint: "A person or an agent presses Run" },
+  { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
 
 /** The step palette, grouped. `soon` ones are shown and cannot be picked yet. Words are what a person searches for. */
@@ -39,7 +43,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer", words: "ask approve approval question decision" },
   ] },
   { name: "Records", items: [
-    { kind: "find", icon: "search", label: "Find records", hint: "Look records up in an object", words: "search lookup query fetch get" },
+    { kind: "find", icon: "search", label: "Look up records", hint: "Look records up in an object", words: "search lookup query fetch get" },
     { kind: "pick", icon: "search", label: "Look up one record", hint: "The first record that matches, or none", words: "find one first single lookup get match" },
     { kind: "filter", icon: "filter", label: "Keep only some of a list", hint: "Narrow records you found to those that match", words: "filter narrow keep where subset" },
     { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects", words: "add new insert" },
@@ -65,8 +69,9 @@ export const STEP_GROUPS = /** @type {const} */ ([
   ] },
   { name: "Work", items: [
     { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent", words: "todo give delegate" },
+    { kind: "document", icon: "file", label: "Make a document", hint: "Fill a Word template from the Flow's records and values", words: "word docx template contract letter pdf generate document" },
     { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
-    { kind: "subflow", icon: "flows", label: "Run another flow", hint: "Use a flow you already made", words: "subflow call nested" },
+    { kind: "subflow", icon: "flows", label: "Run another Flow", hint: "Use a Flow you already made", words: "subflow call nested" },
   ] },
 ]);
 
@@ -86,7 +91,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -122,6 +127,7 @@ export function whoWords(who, o) {
 export function stepSummary(s, o, d) {
   switch (s.kind) {
     case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ")}` : ""}`;
+    case "document": return `Make a document from the ${s.template || "chosen"} template${s.format === "pdf" ? " as a PDF" : ""}`;
     case "project": {
       const t = o.templates.find((x) => x.id === s.template);
       return `Start a project from the ${t ? t.name : "chosen"} playbook${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
@@ -176,16 +182,22 @@ export function flowSentence(d, o) {
 
 /** What a step still needs before the Flow can be saved, in words, or null. @param {DraftStep} s @param {Options} o */
 export function stepProblem(s, o) {
+  return kindProblem(s, o) || policyProblem(s, formulaProblem);
+}
+
+/** @param {DraftStep} s @param {Options} o */
+function kindProblem(s, o) {
   void o;
   switch (s.kind) {
     case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which object to create a record in.";
+    case "document": return !s.template ? "Choose the template." : (s.fields || []).some((/** @type {any} */ f) => f.field && !(f.value || "").trim()) ? "Give every placeholder of the template a value, or remove it." : (s.records || []).some((/** @type {any} */ r) => r.alias && !r.ref) ? "Choose the record for each kind of record the template reads." : null;
     case "project": return s.template ? null : "Choose a project playbook.";
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : String(s.to).startsWith("agent:") ? "A question goes to a person or a team or role. Choose one, or use Assign a task for an agent." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
-    case "filter": return !s.from ? "Choose the list to narrow. Add a Find records step first." : !(s.where || "").trim() ? "Say which ones to keep." : null;
+    case "filter": return !s.from ? "Choose the list to narrow. Add a Look up records step first." : !(s.where || "").trim() ? "Say which ones to keep." : null;
     case "find": case "pick": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
@@ -217,7 +229,7 @@ export function draftProblems(d, o) {
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
   if (!d.steps.length) out.push("Add a first step.");
-  flat(d.steps).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
+  flat([...d.steps, ...(d.onFailure || [])]).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
   return out;
 }
 
@@ -238,15 +250,78 @@ const cronAt = (every, at) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(at |
 /** Things Vyre's own modules announce that a Flow can start from. */
 export const EVENT_CHOICES = /** @type {[string, string][]} */ ([["documents.generated", "A document is made"], ["documents.sent", "A document is sent"], ["documents.signed", "A document is signed"], ["comms.sent", "A message is sent"], ["comms.held", "A message is held for a yes"], ["mail.sent", "An email is sent"], ["mail.held", "An email is held for a yes"]]);
 
+/** The stages an object has, from its stage field, or an empty list when it has none or the box did not say. @param {Options} o @param {string | undefined} type @returns {string[]} */
+export function stagesOf(o, type) {
+  const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.kind === "stage" && Array.isArray(x.options));
+  return f && f.options ? f.options.map(String) : [];
+}
+/** The fields of an object a Create or Update step may set, as [stored name, label], a stored one that is no longer there kept so opening a Flow shows what it says. Fields the kernel computes or owns are not offered. @param {Options} o @param {string | undefined} type @param {string} [current] @returns {[string, string][]} */
+export function fieldChoices(o, type, current) {
+  const fs = ((o.types.find((x) => x.name === type) || {}).fields || []);
+  const out = /** @type {[string, string][]} */ (fs.map((f) => [f.name, f.label || f.name]));
+  const cur = slug(current || "");
+  if (current && current.trim() && !out.some(([n]) => n === cur) && !out.some(([, l]) => l === current)) out.push([current, `${current} (not an object field)`]);
+  return out;
+}
+
+/** The stages as [value, label] for a Select, a stored one the object no longer has kept. @param {Options} o @param {string | undefined} type @param {string} [current] @returns {[string, string][]} */
+export function stageChoices(o, type, current) {
+  const out = /** @type {[string, string][]} */ (stagesOf(o, type).map((s) => [s, s]));
+  if (current && !out.some(([v]) => v === current)) out.push([current, `${current} (not a stage of this object)`]);
+  return out;
+}
+
+/** Which choice a typed field name is: its stored name when it is one of the object's fields (by name or by label), else what was typed. @param {Options} o @param {string | undefined} type @param {string | undefined} current */
+export function fieldValue(o, type, current) {
+  const cur = current || "";
+  const hit = fieldChoices(o, type).find(([n, l]) => n === slug(cur) || l === cur);
+  return hit ? hit[0] : cur;
+}
+
+/**
+ * What a document template asks for, split the way a step gives it: a plain placeholder ({client_name}) is a value, a dotted one ({contact.name}, {contact.spouse.name}) reads a record under the name before the first dot (its alias).
+ * `brand` is the Space's own and is never asked for. @param {string[]} names @returns {{ values: string[], aliases: string[] }}
+ */
+export function placeholderPlan(names) {
+  const values = [], aliases = [];
+  for (const n of [...new Set((names || []).map(String))]) {
+    const dot = n.indexOf(".");
+    if (dot < 0) values.push(n);
+    else { const a = n.slice(0, dot); if (a !== "brand" && !aliases.includes(a)) aliases.push(a); }
+  }
+  return { values, aliases };
+}
+/** A document step's rows made to match a template: one row for each placeholder and each alias, what was already filled in kept, what the template no longer asks for dropped. @param {any} s @param {string[]} names */
+export function syncDocumentRows(s, names) {
+  const plan = placeholderPlan(names);
+  const have = new Map((s.fields || []).map((/** @type {any} */ f) => [f.field, f.value]));
+  const refs = new Map((s.records || []).map((/** @type {any} */ r) => [r.alias, r.ref]));
+  return { fields: plan.values.map((field) => ({ field, value: have.get(field) ?? "" })), records: plan.aliases.map((alias) => ({ alias, ref: refs.get(alias) ?? "" })) };
+}
+
+/** Every event a Flow can start from: the plain-worded ones first, then every other event the running modules announce (the event catalog), named as the module says it; a stored event the catalog no longer lists stays choosable. @param {Options} o @param {string} [current] @returns {[string, string][]} */
+export function eventChoices(o, current) {
+  const known = new Set(EVENT_CHOICES.map(([v]) => v));
+  const rest = (o.events || []).filter((e) => e && typeof e.type === "string" && !known.has(e.type) && !(/** @type {any} */ (e)).deprecated).map((e) => /** @type {[string, string]} */ ([e.type, e.module ? `${e.type} (from ${e.module})` : e.type])).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const out = [...EVENT_CHOICES, ...rest];
+  if (current && !out.some(([v]) => v === current)) out.push([current, current]);
+  return out;
+}
+
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
-const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t}`);
+const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
 const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
 const FORMATS = ["date", "time", "datetime", "weekday", "weekdaytime", "iso"];
 /** `{ref}`, `{ref + 2 hours}`, `{ref - 1 day}`, each optionally `as date`, `as time`, `as datetime`, `as weekday`, `as weekdaytime` or `as iso`. The ref is a field, `{now}` or `{today}`. */
-const TOKEN = /\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}/gi;
+/** Braces doubled are braces and nothing else: `{{name}}` prints as {name} and fills nothing. The one place that reads and writes it (the author's escape for a literal token). */
+const INNER = "[a-z0-9_.]+(?: [+-] \\d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?";
+const unesc = (/** @type {string} */ s) => s.replace(new RegExp(`\\{\\{(${INNER})\\}\\}`, "gi"), "{$1}");
+/** Text as the author sees it: a brace that would be read as a token is shown doubled, so what was stored as plain text stays plain text when the Flow is saved again. */
+const esc = (/** @type {string} */ s) => s.replace(new RegExp(`(?<!\\{)\\{(${INNER})\\}(?!\\})`, "gi"), "{{$1}}");
+const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}(?!\})/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
 const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
@@ -261,7 +336,7 @@ const partExpr = (t, sign, n, unit, fmt) => {
   const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
   if (!sign && !fmt) {
     if (HELPERS[t]) return HELPERS[t];
-    if (kind === "emails" || kind === "phones") return `first(${base})`;
+    if (kind === "emails" || kind === "phones" || kind === "urls") return `first(${base})`;   // a list field prints its main item, not the list as JSON
     return kind === "datetime" ? `datetime(${base}, tz)` : kind === "date" ? `date(${base})` : `text(${base})`;
   }
   const dateOnly = kind === "date";
@@ -285,25 +360,25 @@ export const val = (t) => {
   const s = String(t ?? "");
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(s.trim());
   if (m) return { expr: HELPERS[m[1]] || tokenExpr(m[1]) };
-  if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return t; }
+  if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return typeof t === "string" ? unesc(t) : t; }
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
-  if (at < s.length) parts.push(lit(s.slice(at)));
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(unesc(s.slice(at, x.index)))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
+  if (at < s.length) parts.push(lit(unesc(s.slice(at))));
   return { expr: parts.join(" + ") };
 };
 const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|first\\([a-z0-9_.]+\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
-const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item)\./.test(n) ? n : null);
+const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
   let out = "";
   for (const p of e.match(TEMPLATE_PART) || []) {
-    if (p.startsWith('"')) { out += unlit(p); continue; }
+    if (p.startsWith('"')) { out += esc(unlit(p)); continue; }
     const f = /^format\(([a-z0-9_.]+), "([a-z]+)", (tz|"UTC")(?:, (-?\d+), "([a-z]+)")?\)$/.exec(p);
     if (f) {
       const ref = refToken(f[1]);
@@ -321,9 +396,9 @@ function templateText(e) {
   return out;
 }
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
-const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -334,6 +409,14 @@ const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g,
 
 /** @param {Trigger} t */
 export function triggerDefinition(t) {
+  const base = triggerBase(t);
+  // an optional condition on what started it (a formula over `trigger`), for a record, event or watcher trigger
+  return WHERE_KINDS.has(t.kind) && typeof t.where === "string" && t.where.trim() ? { ...base, where: t.where.trim() } : base;
+}
+/** The triggers that take an optional `where` condition (kernel/flows/triggers.js: record events and watchers). */
+const WHERE_KINDS = new Set(["created", "changed", "removed", "event", "watcher"]);
+/** @param {Trigger} t */
+function triggerBase(t) {
   switch (t.kind) {
     case "created": return { on: "event", event: `${t.type}.created` };
     case "changed": return { on: "event", event: [`${t.type}.created`, `${t.type}.updated`], ...(t.field ? { field: t.field } : {}), when_record_changes: t.again === "keep" ? "keep" : "replace" };
@@ -348,19 +431,39 @@ export function triggerDefinition(t) {
   }
 }
 
+/** The reference a record urn expression stands for: what started the Flow, or a record an earlier step made; null for anything else. @param {any} v @returns {string | null} */
+const urnRef = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.urn$/i.exec(e); return m ? m[1] : null; };
+/** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
+const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
+/** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
+const skillsFrom = (v) => (v === undefined ? "" : Array.isArray(v) && v.every((x) => typeof x === "string" && x && !x.includes(",")) ? v.join(", ") : null);
+/** The placeholder rows of a document step that name one. @param {any[] | undefined} rows */
+const placeholderRows = (rows) => (rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim());
+/** The urn of a record: what started the Flow (the event's subject), or one an earlier step made. A document is filled from records named by their address. @param {string | undefined} ref */
+const recUrn = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `steps.${ref}.record.urn` });
+
 /** The expression for the record an earlier step made, or what started the Flow. @param {string | undefined} ref */
 const rec = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `steps.${ref}.record.id` });
 
 /** The doer string the kernel takes. @param {string} who */
 const doer = (who) => (who.startsWith("agent:") ? `teammate:${who.slice(6)}` : who);
 
-/** @param {DraftStep} s @param {Draft} d */
+/** How many a For each goes through: what the author set, 50 by default, at most 1000 (the engine's own limit). @param {any} v */
+export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 1 ? Math.min(n, 1000) : 50; };
+
+/** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
+  if (s.kind === "advanced") return s.raw;
+  return { ...kindDefinition(s, d), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+}
+
+/** @param {DraftStep} s @param {Draft} d */
+function kindDefinition(s, d) {
   const label = s.label || undefined;
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
-    case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20 };
+    case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20, ...((s.sortField || "").trim() ? { sort: [{ field: s.sortField.trim(), dir: s.sortDir === "desc" ? "desc" : "asc" }] } : {}) };
     case "pick": return { id: s.id, kind: "pick", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}) };
     case "filter": return { id: s.id, kind: "filter", from: s.from, where: (s.where || "").trim() };
     case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields), ...(s.updateFields ? { update: pairs(s.updateFields) } : {}) };
@@ -373,15 +476,16 @@ export function stepDefinition(s, d) {
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
-    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text" })) };
+    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
     case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
-    case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: 50, steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+    case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: repeatLimit(s.max), steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
     case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
+    case "document": return { id: s.id, kind: "call", action: "documents.generate", resource: "vyre://space/documents", input: { template: s.template, ...(s.format === "pdf" ? { format: "pdf" } : {}), ...(placeholderRows(s.fields).length ? { values: Object.fromEntries(placeholderRows(s.fields).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])) } : {}), ...((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).length ? { records: Object.fromEntries((s.records || []).filter((/** @type {any} */ r) => r.alias && r.ref).map((/** @type {any} */ r) => [r.alias, recUrn(r.ref)])) } : {}) } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
-    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
-    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
+    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
+    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
@@ -426,20 +530,20 @@ export function toDefinition(d, o) {
 function dateTokens(d, o) {
   /** @type {Map<string, string>} */ const out = new Map();
   if (!o) return out;
-  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones") out.set(token(f.name), f.kind); };
+  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones" || f.kind === "urls") out.set(token(f.name), f.kind); };
   if (isRecordTrigger(d.trigger)) add(d.trigger.type, (f) => `after.${f}`);
-  for (const s of flat(d.steps)) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
+  for (const s of flat([...d.steps, ...(d.onFailure || [])])) if (s.kind === "create" || s.kind === "upsert" || s.kind === "pick") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
   return out;
 }
 
 /** @param {Draft} d */
 function writeDefinition(d) {
-  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.rest || {}) };
+  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.onFailure && d.onFailure.length ? { on_failure: d.onFailure.map((s) => stepDefinition(s, d)) } : {}), ...(d.rest || {}) };
 }
 
 /** A fresh step with sensible choices from the others. @param {string} kind @param {Draft} d @param {Options} o @returns {DraftStep} */
 export function newStep(kind, d, o) {
-  const all = flat(d.steps);
+  const all = flat([...d.steps, ...(d.onFailure || [])]);
   let n = all.length + 1;
   while (all.some((s) => s.id === `${kind}${n}`)) n++;
   const id = `${kind}${n}`;
@@ -448,6 +552,7 @@ export function newStep(kind, d, o) {
   switch (kind) {
     case "create": return { id, kind, type: d.trigger.kind === "created" || d.trigger.kind === "changed" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
     case "project": return { id, kind, template: o.templates[0]?.id || "", name: "", link };
+    case "document": return { id, kind, template: "", format: "docx", fields: [], records: lastMade || isRecordTrigger(d.trigger) ? [{ alias: "record", ref: link }] : [] };
     case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link };
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "email": return { id, kind, to: "", subject: "", body: "" };
@@ -466,7 +571,7 @@ export function newStep(kind, d, o) {
     case "extract": return { id, kind, input: "", fields: [{ name: "", kind: "text" }] };
     case "subflow": return { id, kind, flow: o.flows?.[0]?.name || "", fields: [{ field: "", value: "" }] };
     case "decide": return { id, kind, cond: { mode: "build", source: "trigger", field: "", op: ">", value: "" }, then: [], else: [] };
-    case "repeat": return { id, kind, over: "", as: "item", steps: [] };
+    case "repeat": return { id, kind, over: "", as: "item", max: 50, steps: [] };
     case "parallel": return { id, kind, lanes: [{ steps: [] }, { steps: [] }] };
     default: return { id, kind, record: link, type: lastMade?.type || d.trigger.type || "", field: "", value: "" };
   }
@@ -507,8 +612,18 @@ const exprOf = (/** @type {any} */ v) => (v && typeof v === "object" && typeof v
 const refOf = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.id$/i.exec(e); return m ? m[1] : null; };
 const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.keys(o).every((k) => allowed.includes(k));
 
-/** @param {any} t @returns {Trigger} */
+/** A stored trigger as a draft trigger: its kind's settings and its optional `where` condition. @param {any} t @returns {Trigger} */
 function triggerFrom(t) {
+  if (t && typeof t === "object" && t.where !== undefined) {
+    const { where, ...rest } = t;
+    const d = triggerFromKind(rest);
+    return d.kind !== "advanced" && WHERE_KINDS.has(d.kind) && typeof where === "string" ? { ...d, where } : { kind: "advanced", raw: t };
+  }
+  return triggerFromKind(t);
+}
+
+/** @param {any} t @returns {Trigger} */
+function triggerFromKind(t) {
   const raw = { kind: "advanced", raw: t };
   if (!t || typeof t !== "object") return raw;
   if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };
@@ -550,14 +665,24 @@ function condFrom(e) {
   return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
-/** @param {any} s @returns {DraftStep} */
+/** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
+  const { plain, policy } = splitPolicy(s);
+  const d = stepFromKind(plain);
+  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...policyDraft(policy, stepFrom) };
+}
+
+/** @param {any} s @returns {DraftStep} */
+function stepFromKind(s) {
   const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
     case "pick": return keys(s, ["id", "kind", "type", "where", "label"]) ? { id: s.id, kind: "pick", type: s.type, where: s.where || "" } : adv;
     case "filter": return keys(s, ["id", "kind", "from", "where", "label"]) && typeof s.from === "string" && typeof s.where === "string" ? { id: s.id, kind: "filter", from: s.from, where: s.where } : adv;
-    case "find": return keys(s, ["id", "kind", "type", "where", "limit", "label"]) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20 } : adv;
+    case "find": {
+      const one = Array.isArray(s.sort) && s.sort.length === 1 && s.sort[0] && typeof s.sort[0].field === "string" && (s.sort[0].dir === "asc" || s.sort[0].dir === "desc") && Object.keys(s.sort[0]).length === 2 ? s.sort[0] : null;
+      return keys(s, ["id", "kind", "type", "where", "limit", "sort", "label"]) && (s.sort === undefined || one) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20, ...(one ? { sortField: one.field, sortDir: one.dir } : {}) } : adv;
+    }
     case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "update", "label"]) && rowsOf(s.match) && rowsOf(s.set) && (s.update === undefined || rowsOf(s.update)) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set), ...(s.update === undefined ? {} : { updateFields: s.update && Object.keys(s.update).length ? rowsOf(s.update) : [] }) } : adv;
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
@@ -572,14 +697,14 @@ function stepFrom(s) {
     }
     case "service": return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body) } : adv;
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
-    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text" })) } : adv;
+    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
     case "fn": return s.source === FORMULA_SOURCE && exprOf(s.inputs && s.inputs.value) !== null && keys(s, ["id", "kind", "language", "source", "hash", "inputs", "outputs", "label"]) ? { id: s.id, kind: "formula", formula: exprOf(s.inputs.value) } : adv;
     case "decide": {
       const cond = condFrom(s.if);
       return typeof s.if === "string" && keys(s, ["id", "kind", "if", "then", "else", "label"]) ? { id: s.id, kind: "decide", cond, then: (s.then || []).map(stepFrom), else: (s.else || []).map(stepFrom) } : adv;
     }
-    case "repeat": return typeof s.over === "string" && typeof s.as === "string" && (s.max === undefined || s.max === 50) && keys(s, ["id", "kind", "over", "as", "max", "steps", "label"]) ? { id: s.id, kind: "repeat", over: s.over, as: s.as, steps: (s.steps || []).map(stepFrom) } : adv;
+    case "repeat": return typeof s.over === "string" && typeof s.as === "string" && (s.max === undefined || (Number.isInteger(s.max) && s.max >= 1 && s.max <= 1000)) && keys(s, ["id", "kind", "over", "as", "max", "steps", "label"]) ? { id: s.id, kind: "repeat", over: s.over, as: s.as, max: s.max === undefined ? 50 : s.max, steps: (s.steps || []).map(stepFrom) } : adv;
     case "parallel": return (s.steps || []).every((/** @type {any} */ b) => b.kind === "branch" && keys(b, ["id", "kind", "steps"])) && keys(s, ["id", "kind", "steps", "label"]) ? { id: s.id, kind: "parallel", lanes: (s.steps || []).map((/** @type {any} */ b) => ({ steps: (b.steps || []).map(stepFrom) })) } : adv;
     case "create": {
       const set = s.set || {};
@@ -588,6 +713,11 @@ function stepFrom(s) {
     }
     case "call": {
       const i = s.input || {};
+      if (s.action === "documents.generate" && s.resource === "vyre://space/documents" && keys(s, ["id", "kind", "action", "resource", "input"]) && keys(i, ["template", "format", "values", "records"]) && typeof i.template === "string" && (i.format === undefined || i.format === "pdf")) {
+        const vals = Object.entries(i.values || {}).map(([field, v]) => ({ field, value: unval(v) }));
+        const recs = Object.entries(i.records || {}).map(([alias, v]) => ({ alias, ref: urnRef(v) }));
+        if (vals.every((x) => x.value !== null) && recs.every((x) => x.ref !== null)) return { id: s.id, kind: "document", template: i.template, format: i.format === "pdf" ? "pdf" : "docx", fields: vals, records: recs };
+      }
       if (s.action === "work.start-project" && s.resource === "vyre://space/work" && typeof i.template === "string" && keys(i, ["template", "name", "client"])) {
         const link = i.client === undefined ? "" : refOf(i.client);
         const name = exprOf(i.name) === "trigger.name" ? "" : unval(i.name);
@@ -601,10 +731,10 @@ function stepFrom(s) {
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "label", "checker", "followers", "notes"])
-        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...ppl } : adv;
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
+        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "brief", "checker", "followers", "notes"]) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "brief", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
@@ -620,8 +750,10 @@ function stepFrom(s) {
  * @param {any} flow @returns {Draft}
  */
 export function fromDefinition(flow) {
-  const { format: _f, name, label, authorship: _a, group, trigger, steps, ...rest } = flow;
-  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
+  const { format: _f, name, label, authorship: _a, group, trigger, steps, on_failure, ...rest } = flow;
+  const handler = Array.isArray(on_failure) && on_failure.length ? { onFailure: on_failure.map(stepFrom) } : {};
+  const kept = Array.isArray(on_failure) && on_failure.length ? rest : on_failure === undefined ? rest : { ...rest, on_failure };
+  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...handler, ...(Object.keys(kept).length ? { rest: kept } : {}) };
 }
 
 /** Who a question can go to: a person or a team or role. The engine refuses an agent for a question. @param {Options} o @returns {[string, string][]} */
@@ -662,13 +794,21 @@ export function condWords(c, t) {
 void fieldExpr;
 
 
+/** Whether a step runs only when something failed: it is in the Flow's "If the run fails" steps or in a step's "If this fails" steps (where `error` can be read). @param {Draft} d @param {string} id */
+export function inFailurePath(d, id) {
+  /** @param {DraftStep[]} list @param {boolean} inside @returns {boolean} */
+  const walk = (list, inside) => list.some((s) => s.id === id ? inside : [...lanesOf(s)].some((l) => walk(laneSteps(s, l.key), inside || l.key === "on_fail")));
+  return walk(d.steps, false) || walk(d.onFailure || [], true);
+}
+
 /** The values a box can insert from before this step: what started the Flow and what earlier steps made, as [token, words]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
 export function valueSources(d, stepId, o) {
   /** @type {[string, string][]} */ const out = [];
   const t = d.trigger;
   if (isRecordTrigger(t)) for (const f of o.types.find((x) => x.name === t.type)?.fields || []) out.push([`{after.${f.name}}`, `${f.label} of the record that started it`]);
   else if (t.kind === "form" || t.kind === "signup") for (const f of ["name", "email", "phone", "message"]) out.push([`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)} from the form`]);
-  for (const s of flat(d.steps)) {
+  if (inFailurePath(d, stepId)) out.push(["{error.message}", "What went wrong, in words"], ["{error.code}", "The short name of what went wrong"], ["{error.step}", "The step that failed"]);
+  for (const s of flat([...d.steps, ...(d.onFailure || [])])) {
     if (s.id === stepId) break;
     if (s.kind === "create" || s.kind === "upsert") out.push([`{steps.${s.id}.record.id}`, s.kind === "upsert" ? `The record found or made by ${s.id}` : `The record made by ${s.id}`]);
     if (s.kind === "upsert") out.push([`{steps.${s.id}.created}`, `Whether ${s.id} made a new record (true) or found one (false)`]);
@@ -679,8 +819,29 @@ export function valueSources(d, stepId, o) {
       out.push([`{steps.${s.id}.record.id}`, `The record looked up by ${s.id}`], [`{steps.${s.id}.found}`, `Whether ${s.id} found one (true or false)`]);
       for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record looked up by ${s.id}`]);
     }
+    if (s.kind === "classify") out.push([`{steps.${s.id}.label}`, `The group ${s.id} picked`]);
+    if (s.kind === "extract") for (const f of s.fields || []) if ((f.name || "").trim()) out.push([`{steps.${s.id}.fields.${slug(f.name)}}`, `${f.name.trim()}, pulled out by ${s.id}`]);
+    if (s.kind === "document") out.push([`{steps.${s.id}.path}`, `Where the document made by ${s.id} is filed`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
   out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);
   return out;
+}
+
+/** The Flow-level settings the editor shows, as the words typed: a description, how many runs go at once, a key that keeps runs with the same key apart, and how long a run may sit before it is called stuck (in minutes). @param {Draft} d */
+export function flowSettings(d) {
+  const r = d.rest || {};
+  return { description: typeof r.description === "string" ? r.description : "", concurrency: Number.isInteger(r.concurrency) ? String(r.concurrency) : "", lock: typeof r.lock === "string" ? r.lock : "", stuckMinutes: Number.isInteger(r.stuck_after_ms) ? String(Math.round(r.stuck_after_ms / 60_000)) : "" };
+}
+
+/** A copy of the draft with one setting changed; an empty value removes the key so the engine's own default applies. Numbers are held to the engine's range. @param {Draft} d @param {"description" | "concurrency" | "lock" | "stuckMinutes"} key @param {string} value @returns {Draft} */
+export function setFlowSetting(d, key, value) {
+  const rest = { ...(d.rest || {}) };
+  const text = String(value ?? "");
+  const num = Math.floor(Number(text));
+  if (key === "description") { if (text.trim()) rest.description = text; else delete rest.description; }
+  else if (key === "lock") { if (text.trim()) rest.lock = text.trim(); else delete rest.lock; }
+  else if (key === "concurrency") { if (text.trim() && num > 0) rest.concurrency = Math.min(32, num); else delete rest.concurrency; }
+  else if (text.trim() && num > 0) rest.stuck_after_ms = Math.min(86_400_000, Math.max(10_000, num * 60_000)); else delete rest.stuck_after_ms;
+  return { ...d, rest };
 }

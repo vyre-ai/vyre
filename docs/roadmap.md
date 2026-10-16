@@ -33,7 +33,7 @@ Plan and acceptance tests: [roadmap/0.6.md](../roadmap/0.6.md).
 - [ ] R051-01 One chat per Flow, with a divider per run.
 - [ ] R051-02 Credentials lent to a woken agent for one job, use only.
 - [ ] R051-03 Agent step deadlines that stop the agent, with a timeout path.
-- [ ] R051-04 Failure panel on every step in the Flows editor.
+- [x] R051-04 Failure panel on every step in the Flows editor.
 - [ ] R051-05 Flows split into a library behind a golden replay.
 - [x] R051-06 Per-record privacy for custom record types.
 - [x] R051-07 Write-once fields and totals.
