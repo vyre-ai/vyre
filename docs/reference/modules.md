@@ -69,7 +69,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 25 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
@@ -721,7 +721,7 @@ The built-in network as the person sees it: whether this machine is signed in, p
 - Folder: `core/onboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#onboard)
+- Tools: [25](tools.md#onboard)
 - Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 

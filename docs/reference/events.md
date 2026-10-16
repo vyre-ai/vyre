@@ -472,7 +472,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | --- | --- |
 | `onboard.claude-changed` | `signedIn` |
 | `onboard.finished` | none |
-| `onboard.stepped` | `state`, `step` |
+| `onboard.stepped` | `step`; sometimes `state`, `username` |
 
 ## outside
 

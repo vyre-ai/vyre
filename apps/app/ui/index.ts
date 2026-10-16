@@ -122,6 +122,13 @@ export type { ProviderState } from "./components/ProviderRow";
 export { ChoiceList } from "./components/ChoiceList";
 export type { Choice } from "./components/ChoiceList";
 export { passwordStrength } from "./lib/strength.js";
+export { ChoiceHero } from "./components/ChoiceHero";
+export { RecoveryKeySheet } from "./components/RecoveryKeySheet";
+export { InviteShare } from "./components/InviteShare";
+export { ServerUrlField } from "./components/ServerUrlField";
+export { PasswordStrength } from "./components/PasswordStrength";
+export { ProviderSignInButton } from "./components/ProviderSignInButton";
+export { NeedsYouCard, publicFacts } from "./components/NeedsYouCard";
 export { formatCode, codeComplete } from "./lib/code.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).

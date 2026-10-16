@@ -182,13 +182,12 @@ test("identity: create makes a 0600 key file, claims the name, shows the recover
   const wrong = await other.reg.call("spaces.identity.create", { code: "VYRE-AAAA-AAAA-AAAA-AAAA" }, "cli", {});
   assert.equal(wrong.error?.code, "bad_code");
   assert.equal((await other.ok("spaces.identity.status")).exists, false);
-  // a release build takes a reservation code and nothing else (the self-reserve switch is a development one)
+  // a username with no pasted code reserves itself, on a release build too
   delete process.env.VYRE_TEST_SELF_RESERVE;
-  try { assert.equal((await other.reg.call("spaces.identity.create", { name: "carol" }, "cli", {})).error?.code, "code_needed"); } finally { process.env.VYRE_TEST_SELF_RESERVE = "1"; }
-  // and with a real code the name it holds is made
-  const held = await reserve("carol");
-  const made2 = await other.ok("spaces.identity.create", { code: held.code });
-  assert.equal(made2.address ?? made2.name, "carol.vyre.run");
+  try {
+    const made2 = await other.ok("spaces.identity.create", { name: "carol" });
+    assert.equal(made2.address ?? made2.name, "carol.vyre.run");
+  } finally { process.env.VYRE_TEST_SELF_RESERVE = "1"; }
   void w;
 });
 

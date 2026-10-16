@@ -30,12 +30,12 @@ function kdf() {
 
 /** @param {any} meta @param {any} input */
 function refuseModel(meta, input) {
-  if (modelSuppliedSecret(meta && meta.caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
+  if (modelSuppliedSecret(meta && meta.caller, input, meta && meta.origin)) throw refuse(SECRET_REFUSED, "secret_refused");
 }
 
 /** @param {any} meta @param {any} body */
 function forCaller(meta, body) {
-  if (isPerson(meta && meta.caller)) return body;
+  if (isPerson(meta && meta.origin) || isPerson(meta && meta.caller)) return body;
   const rest = { ...body };
   delete rest.recoveryKey;
   return { ...rest, note: "The recovery key is shown on your device." };
