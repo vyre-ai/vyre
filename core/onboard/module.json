@@ -23,7 +23,18 @@
       "onboard.assistant",
       "onboard.setup",
       "onboard.passkey",
-      "onboard.link"
+      "onboard.link",
+      { "name": "onboard.person.lookup", "effect": "read", "reach": "anyone" },
+      { "name": "onboard.person.create", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.github.start", "effect": "read", "reach": "anyone" },
+      { "name": "onboard.github.finish", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.join.read", "effect": "read", "reach": "anyone" },
+      { "name": "onboard.space.join", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.space.open", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.space.poll", "effect": "read", "reach": "anyone" },
+      { "name": "onboard.member.link", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.computer.add", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.phone.add", "effect": "write", "reach": "anyone", "outward": true }
     ]
   },
   "watches": {

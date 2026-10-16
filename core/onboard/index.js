@@ -17,6 +17,7 @@ import { anthropicKind } from "../../lib/credential-shapes.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
+import { registerFirstRun } from "./first-run.js";
 
 export const STEPS = ["you", "claude", "pair", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -163,6 +164,7 @@ export default {
       return r.data;
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
+    registerFirstRun(ctx, { call, tryCall, save });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things
@@ -269,7 +271,7 @@ export default {
       // guess from role/machine. relayJoin is false everywhere now (see
       // RELAY_JOIN_GONE_REASON above).
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, needsServer: Boolean(ctx.config.needsServer), ...(ctx.config.needsServer ? { notice: config.SOLO_RETIRED } : {}), ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned, ownerFirst: owned ? null : config.isServer(ctx.config.machine) ? "pair" : "name",
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
@@ -319,12 +321,12 @@ export default {
     ctx.tool("onboard.machine", {
       effect: "write",
       needsYou: true,
-      description: "Choose server or device for this computer. An assistant's call waits for your one tap. Solo is no longer a way to run Vyre.",
+      description: "Choose server or device for this computer. An assistant's call waits for your one tap.",
       // "device" stays in the type (checkInput has no per-caller schema, and removing it would
       // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
       // run() guard below, not the schema, is what actually stops a person or an agent choosing
       // it -- reviewer, 28 Sep round 2.
-      input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      input: obj({ machine: { type: "string", enum: ["server", "device"] } }, ["machine"]),
       // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
       // never an agent's or a third-party module's. "onboard" is the pre-owner loopback session
       // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
@@ -342,7 +344,6 @@ export default {
       presence: { when: input => Boolean(input && input.machine === "server" && !(ctx.config.role === "box" && !net().ownerSeen)) },
       run: async ({ machine }, { caller }) => {
         const raw = String(caller);
-        if (machine === "solo") throw Object.assign(new Error(config.SOLO_RETIRED), { code: "solo_retired" });
         if (machine === "device") {
           // Only onboard's own onboard.join step, or relay's relay.join, ever sets this, each
           // after its own person-gated, presence-proved pairing (ADR 0039 section 5) -- never a
@@ -357,7 +358,6 @@ export default {
         // yet"; this tool only ever records an actual choice, so calling it with the value
         // already in effect is a safe no-op, not an error.
         save({ machine });
-        ctx.config.needsServer = false;
         // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
         // this tool records the choice now so onboarding and Settings have something to call.
         return { machine: ctx.config.machine, service: null };

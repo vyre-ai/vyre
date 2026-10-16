@@ -1,8 +1,7 @@
 // @ts-check
-// A model that drives onboarding, a device or an invite does not change anything until the person taps once.
-// A person-only read of one of those (a vault value, a device list, a pairing) waits for the same tap, so the
-// value is not returned first. The card is the same approvals queue an outward send already uses (approvals.hold).
-// A module calling another module is not held: onboard and the relay still set a machine to device themselves.
+// [reviewed: trust] A person in their own app is not held. An assistant's change to people, devices or vault
+// access waits on one Needs-you card (approvals.hold), the same queue an outward send uses. An assistant never
+// receives a vault value, and a tap does not reveal one. A module calling another module is not held.
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
 import { momentOf, yes } from "../../lib/one-yes.js";
@@ -27,7 +26,23 @@ export function modelCaller(caller) {
 }
 
 /**
+ * A vault value: anything under vault. except a change to who can use a vault. An assistant is never given one.
+ * @param {string} name
+ */
+export function vaultValue(name) {
+  const n = String(name || "");
+  if (!n.startsWith("vault.")) return false;
+  if (/^vault\.vaults\./.test(n)) return false;
+  if (/^vault\.grant/.test(n)) return false;
+  if (/^vault\.agent\.grant/.test(n)) return false;
+  if (/^vault\.members\./.test(n)) return false;
+  if (/^vault\.connections\.grant/.test(n)) return false;
+  return true;
+}
+
+/**
  * May this MCP or harness caller see a surface tool even when the tool's callers list is only the person's?
+ * Seeing the name is not receiving a vault value: holdNeedsYou refuses that call.
  * @param {string} caller @param {string} tool
  */
 export function surfaceAllows(caller, tool) {
@@ -39,13 +54,12 @@ export function surfaceAllows(caller, tool) {
 }
 
 /**
- * What listTools tells the MCP server, so a person-only name still appears when the call will wait for a tap.
+ * What listTools tells the MCP server. A surface write can wait for a tap. A vault value is not marked that way.
  * @param {string} name @param {{ effect?: string, needsYou?: boolean }} d
  */
 export function listingMarks(name, d) {
   const surface = isSurface(name);
-  // A person-only surface read waits for the same tap. An agent does not receive the value first.
-  const needsYou = Boolean(d && d.needsYou) || (surface && ((d && d.effect === "write") || reachPersonOnly.has(name)));
+  const needsYou = !vaultValue(name) && (Boolean(d && d.needsYou) || (surface && Boolean(d && d.effect === "write")));
   return { ...(surface ? { surface: true } : {}), ...(needsYou ? { needsYou: true } : {}) };
 }
 
@@ -60,9 +74,12 @@ export async function holdNeedsYou(registry, o) {
   const { tool, def, caller } = o;
   if (!def || def.internal || def.hook || def.outward === true) return null;
   if (!modelCaller(caller)) return null;
+  // A vault value is refused here, never held: a tap must not hand it to an assistant.
+  if (isSurface(tool) && vaultValue(tool)) return { error: { code: "denied", message: "An assistant does not receive a vault value." } };
   const write = def.effect === "write" || def.needsYou === true;
-  const personSurface = isSurface(tool) && reachPersonOnly.has(tool);
-  if (!((isSurface(tool) && write) || def.needsYou === true || personSurface)) return null;
+  // A person-only read stays refused. Holding it used to return the value after a tap.
+  if (isSurface(tool) && reachPersonOnly.has(tool) && !write) return { error: { code: "denied", message: "That stays with you." } };
+  if (!((isSurface(tool) && write) || def.needsYou === true)) return null;
   const meta = o.meta || {};
   const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
   const named = momentOf(tool, () => false);
