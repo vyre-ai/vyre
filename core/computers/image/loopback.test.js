@@ -13,7 +13,7 @@ const read = f => fs.readFileSync(path.join(dir, f), "utf8");
 /** Lines that install or run something, with comments dropped. */
 const code = f => read(f).split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 
-const FORWARDERS = /\b(tailscaled?|socat|redir|rinetd|haproxy|nginx|ncat|netcat|sshd|dropbear|stunnel|gost|3proxy|squid|microsocks)\b/;
+const FORWARDERS = /\b(wireguard|openvpn|wg-quick|zerotier|socat|redir|rinetd|haproxy|nginx|ncat|netcat|sshd|dropbear|stunnel|gost|3proxy|squid|microsocks)\b/;
 
 test("image: nothing that forwards remote traffic to loopback is installed or started", () => {
   for (const f of ["Dockerfile", "entrypoint.sh"]) {
@@ -22,7 +22,3 @@ test("image: nothing that forwards remote traffic to loopback is installed or st
   }
 });
 
-test("image: computerd's tailnet node is not started by the image, and says shields up", () => {
-  assert.doesNotMatch(code("entrypoint.sh"), /tailnet|tailscale/);
-  assert.match(read("computerd/tailnet.js"), /shields up/);
-});

@@ -5,10 +5,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { claim as claimGithub } from "../../lib/github-verified.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import * as M from "../../kernel/identity/master.js";
 import { checkUsername, publicCard } from "../../kernel/identity/username.js";
+import { startLogin } from "./login-start.js";
+import { registerSignins } from "./signins.js";
 
 const MIGRATIONS = [
   `CREATE TABLE identity_master (
@@ -152,7 +155,11 @@ export default {
 
     tool("identity.github.link", "Link a GitHub login to your username. The vault still needs your master password.",
       obj({ login: str, subject: str }, ["login", "subject"]),
-      async (input) => M.linkGithub(root, { login: input.login, subject: input.subject }, idFile));
+      async (input) => {
+        // Only an account GitHub confirmed (onboard.github.finish vouches after the token exchange) is linked. A login and an id typed here, or sent by an agent, are not.
+        if (!claimGithub(String(input.login || "").trim().toLowerCase(), String(input.subject || "").trim())) throw refuse("Sign in with GitHub first. A GitHub login typed here is not linked.", "github_unverified");
+        return M.linkGithub(root, { login: input.login, subject: input.subject }, idFile);
+      });
 
     tool("identity.discover", "Choose whether the public directory shows your username.",
       obj({ on: { type: "boolean" } }, ["on"]),
@@ -165,6 +172,11 @@ export default {
         return publicCard({ name: rec.username, id: rec.id, discoverable: rec.discoverable === true, github: rec.github });
       });
 
-    return { async stop() { M.lockMaster(idFile); } };
+    // The sign-ins on a new device that wait on the person: read, vouch for or sign out, for the owner's own username (signins.js).
+    registerSignins(ctx, { username: () => { try { const r = M.readMaster(root); return r && typeof r.username === "string" ? r.username : null; } catch { return null; } } });
+
+    let login = { async stop() {} };
+    try { login = await startLogin(ctx); } catch (e) { ctx.log && ctx.log(`identity: no sign-in door (${/** @type {Error} */ (e).message})`); }
+    return { async stop() { await login.stop(); M.lockMaster(idFile); } };
   },
 };

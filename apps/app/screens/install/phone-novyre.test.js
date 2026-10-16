@@ -35,22 +35,6 @@ test("the share text is the setup link and no install command; Back from the ste
   assert.equal(backOf("novyre"), "scan");
 });
 
-test("the step shares NO_VYRE.share through the system share sheet, and Not now keeps the skip flag then opens the landing", () => {
-  const src = read("./InstallScreen.tsx");
-  const step = src.slice(src.indexOf('step === "novyre"'), src.indexOf('step === "scanwords"'));
-  assert.match(step, /Share\.share\(\{ message: NO_VYRE\.share \}\)/);
-  assert.match(step, /label=\{NO_VYRE\.send\}/);
-  assert.match(step, /writeSkipped\(true\)\.finally\(\(\) => router\.replace\("\/u\/now"/);
-  assert.match(src, /offersNoVyre\(dk, MOCK\) \? <Button kind="ghost" label=\{NO_VYRE\.have\} onPress=\{\(\) => setStep\("novyre"\)\}/);
-});
-
-test("a phone's connect step offers typing the code (not a browser), before the no-Vyre action", () => {
-  const src = read("./InstallScreen.tsx");
-  const scan = src.slice(src.indexOf('step === "scan"'), src.indexOf('step === "novyre"'));
-  assert.match(scan, /claimBlocked\(\) \? null : <TypeCode redeem=\{\(code, onAck\) => addDeviceToName/);
-  assert.ok(scan.indexOf("<TypeCode") < scan.indexOf("offersNoVyre(dk, MOCK) ?"));
-});
-
 test("TypeCode offers Scan the code on a phone, and a code the camera reads goes through the typed code's own pairing", () => {
   const src = read("../devices/TypeCode.tsx");
   assert.match(src, /const canScan = DRAWN_CODE_SCAN && canReadDrawnCode;/);

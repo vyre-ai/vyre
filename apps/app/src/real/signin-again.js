@@ -2,8 +2,11 @@
 // "Sign in again" cards on Now (G26): a website whose login ran out, a security check on a site, a browser with no login, a Connection whose key the service refused. The box already writes each as one `signin` item in the one
 // waiting list (approvals.items, core/approvals/items.js) with the words and the buttons; this reads them, keeps only what the app may run, and says where a check left things. Nothing here holds a cookie or a key.
 
-/** The calls a card's button may make: a re-check of the Connection, and "I cleared the security check". Anything else the box names is not run from here. */
-const RUNS = new Set(["connectors.connection.check", "connectors.site.resume"]);
+/** The calls a card's button may make, each with the one input it takes: a re-check of the Connection, "I cleared the security check", and for a sign-in on a new device, signing that device out or saying it was the person.
+ * Anything else the box names is not run from here, and an input is rebuilt from that one key, never passed on whole. */
+const RUNS = new Map([["connectors.connection.check", "id"], ["connectors.site.resume", "id"], ["identity.signin.revoke", "device"], ["identity.signin.ack", "device"]]);
+/** A device id is the client's own stable id: letters, digits, dash and underscore. A Connection id is whatever the box named, as before. */
+const INPUT_OK = { id: /^.*$/s, device: /^[A-Za-z0-9_-]{8,64}$/ };
 
 /** @typedef {{ label: string, open?: string, tool?: string, input?: Record<string, unknown> }} Button */
 /** @typedef {{ id: string, title: string, detail: string, at: number, buttons: Button[] }} SignInCard */
@@ -13,7 +16,8 @@ function buttonOf(b) {
   const label = typeof b?.label === "string" ? b.label.trim().slice(0, 40) : "";
   if (!label) return null;
   if (typeof b.open === "string" && /^\/u\/[A-Za-z0-9_\/-]{1,80}$/.test(b.open)) return { label, open: b.open };
-  if (typeof b.tool === "string" && RUNS.has(b.tool) && b.input && typeof b.input.id === "string") return { label, tool: b.tool, input: { id: b.input.id } };
+  const key = typeof b.tool === "string" ? RUNS.get(b.tool) : undefined;
+  if (key && b.input && typeof b.input[key] === "string" && /** @type {any} */ (INPUT_OK)[key].test(b.input[key])) return { label, tool: b.tool, input: { [key]: b.input[key] } };
   return null;
 }
 

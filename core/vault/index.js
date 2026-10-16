@@ -125,10 +125,8 @@ export default {
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      // The caller's identity on this listener is whatever the request carries and the pass binds to (the holder's device key). The old modes that took a login from a
-      // VPN's `whois` answer or a proxy header are retired with that VPN (removal plan, step 4): a pass binds to the device key and the signed envelope.
-      if (vault.relayGrants === "require") ctx.log("vault: vault.relay.grants is require, which needs a network policy that no longer exists, so every relayed request is refused; switch it off");
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
+      // The caller on this listener is whoever signed the request: a pass binds to the holder's identity key and the signed, single-use, audience-bound envelope (vault.onRelay).
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0),
         onRelay: async (env, meta) => {
           return vault.onRelay(env, meta);
         },
@@ -475,7 +473,7 @@ export default {
 
     // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
     // callers only: an agent caller has no business mapping who can reach what.
-    tool("vault.grants.status", [...SURFACES, "mcp"], "Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.",
+    tool("vault.grants.status", [...SURFACES, "mcp"], "Who holds a live pass, and for which items and in which mode. Reads names only, never a value.",
       obj({}), async (_input, { caller }) => {
         if (/(?:^|[\s:])agent:/.test(String(caller))) throw new Error("vault.grants.status is for the owner, not an agent");
         return vault.grantsStatus();

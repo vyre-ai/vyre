@@ -207,6 +207,7 @@
   ],
   "watches": {
     "emits": [
+      "vault.space.used",
       "vault.item-added",
       "vault.item-changed",
       "vault.item-deleted",

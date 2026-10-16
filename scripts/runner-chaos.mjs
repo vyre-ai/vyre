@@ -32,7 +32,7 @@ if (role === "home") {
   const { startSealer } = await import("../kernel/seal/client.js");
   const { createRemoteServer } = await import("../kernel/remote/server.js");
   const { withKernelCall } = await import("../kernel/remote/wink.js");
-  const { admitPeer, socketPipe } = await import("../core/wink/node/peer-wire.js");
+  const { admitPeer, socketPipe, streamPipe } = await import("../core/wink/node/peer-wire.js");
   const { createLentHome } = await import("../core/runner/lent-home.js");
   const { createResumeLent } = await import("../core/runner/resume-lent.js");
   const { createCheckpointStore } = await import("../core/runner/checkpoint-store.js");
@@ -56,6 +56,8 @@ if (role === "home") {
   const resumeLent = createResumeLent({ target: async thread => placeOf(thread), port: () => own });
   const chats = new Map();
   const home = createLentHome({ space: SPACE, root: path.join(root, "lent"), offers: g.offers, leases: k.gateway.leases, lapseMs: LAPSE_MS,
+    // the steady stretch and the cooldown before a session comes back by the person's standing choice, short enough to wait for
+    steadyMs: 3000, returnCooldownMs: 3000,
     // a chat's session reaches Vyre's tools through the home (lent.http): here the home answers with what it was asked
     http: async (thread, method, p) => ({ status: 200, body: JSON.stringify({ data: { thread, method, path: p } }) }), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } },
     emit: (type, payload) => console.log(JSON.stringify({ ev: type, ...payload })),
@@ -73,8 +75,25 @@ if (role === "home") {
   home.watch(500);
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const dispatch = withKernelCall(async () => { throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); }, { serverFor: s => (s === SPACE ? server : null), personOf: d => (d === DEVICE ? BOB : null), pathOf: () => "wink" });
-  net.createServer(sock => { admitPeer(socketPipe(sock), { id: { nodeKey: NK }, box: "home", entry: eid => (eid === DEVICE ? { eid, kind: "device", pub: pubOf(eid) } : null), serve: (c, tool, input) => dispatch(c, tool, input) }).catch(() => {}); sock.on("error", () => {}); })
+  const admitOpts = { id: { nodeKey: NK }, box: "home", entry: eid => (eid === DEVICE ? { eid, kind: "device", pub: pubOf(eid) } : null), serve: (c, tool, input) => dispatch(c, tool, input) };
+  net.createServer(sock => { admitPeer(socketPipe(sock), admitOpts).catch(() => {}); sock.on("error", () => {}); })
     .listen(Number(port), "127.0.0.1");
+  // the same peer door through the real relay Worker: the home's outbound link to the relay, and a bridge that hands a device's wink `peer` stream to the door
+  /** @type {any} */ let relayInfo = null;
+  if (process.env.CHAOS_RELAY_URL) {
+    const { relayLink } = await import("../core/relay/link.js");
+    const { bridge } = await import("../core/relay/bridge.js");
+    const { newRouteKey, routeId } = await import("../core/relay/wire.js");
+    const { keyPair } = await import("../core/relay/noise.js");
+    const rk = newRouteKey(), boxKey = keyPair(), route = routeId(rk.pub);
+    const refuse = (req, res) => { res.statusCode = 404; res.end(); };
+    const link = relayLink({ url: process.env.CHAOS_RELAY_URL, route, routeKey: rk, boxKey, pingMs: 5000, log: m => { if (process.env.CHAOS_VERBOSE) console.error("relay link:", m); },
+      admit: async () => ({ ok: true }),
+      onchannel: (channel, info) => bridge(channel, { handler: refuse, caller: `device:${DEVICE}`, peer: { node: DEVICE, stableId: DEVICE, login: null, tags: [], caps: {}, kind: "device" }, log: () => {},
+        peers: { space: SPACE, allow: id => id === DEVICE, accept: stream => { admitPeer(streamPipe(stream), admitOpts).catch(() => {}); } } }) });
+    await link.ready(60_000);
+    relayInfo = { route, box: boxKey.pub.toString("base64url") };
+  }
   // the orchestrator's window onto the home: one JSON line in, one out
   net.createServer(sock => {
     let buf = "";
@@ -91,8 +110,11 @@ if (role === "home") {
           else if (c.cmd === "resumes") out = fs.existsSync(resumes) ? fs.readFileSync(resumes, "utf8").split("\n").filter(Boolean).map(x => JSON.parse(x)) : [];
           else if (c.cmd === "forget") { home.book.forget(c.session); out = true; }
           // a chat's process on the lender (lent spawn): spawn it, write its stdin, read what it said, kill it
+          else if (c.cmd === "may") out = home.mayReturn(c.session, BOB);
+          // the person's next message puts the chat back on the computer it left (policy), then the chat's process starts there
+          else if (c.cmd === "adopt") { const p = await home.adopt({ session: c.session, thread: c.session, person: BOB, native: c.native, lines: [c.line], provider: c.provider, policy: true }); out = p; }
           else if (c.cmd === "spawn") {
-            const proc = home.spawn({ session: c.session, person: BOB, args: ["--output-format", "stream-json"] });
+            const proc = home.spawn({ session: c.session, person: BOB, ...(c.command ? { command: c.command } : {}), args: ["--output-format", "stream-json"] });
             const rec = { proc, lines: [], buf: "", closed: null, error: null };
             proc.stdout.on("data", d => { rec.buf += d; let i; while ((i = rec.buf.indexOf("\n")) >= 0) { rec.lines.push(rec.buf.slice(0, i)); rec.buf = rec.buf.slice(i + 1); } });
             proc.on("close", (code, sig) => { rec.closed = [code, sig]; }); proc.on("error", e => { rec.error = e.code; });
@@ -107,7 +129,7 @@ if (role === "home") {
       }
     });
     sock.on("error", () => {});
-  }).listen(Number(ctlPort), "127.0.0.1", () => console.log(JSON.stringify({ ev: "home.ready" })));
+  }).listen(Number(ctlPort), "127.0.0.1", () => console.log(JSON.stringify({ ev: "home.ready", relay: relayInfo })));
 }
 
 // ---- the lender -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -122,8 +144,17 @@ else if (role === "lender") {
   fs.copyFileSync(path.join(HERE, "..", "core", "runner", "testing", "fake-agent.js"), path.join(agentDir, "agent.js"));
   const faults = { skew: 0, renewFails: false, shortLeaseMs: Number(process.env.SHORT_LEASE_MS || 0) };
   /** @type {any} */ let wink = null;
+  // CHAOS_RELAY says to reach the home through the relay Worker instead of the TCP door: { url, route, box }
+  const viaRelay = process.env.CHAOS_RELAY ? JSON.parse(process.env.CHAOS_RELAY) : null;
+  const relayKeys = viaRelay ? (await import("../core/relay/noise.js")).keyPair() : null;
+  const relayDial = viaRelay ? (await import("../core/wink/node/relay-peer.js")).relayPeer({ deviceSide: (await import("../core/relay/channel.js")).deviceSide, url: viaRelay.url, route: viaRelay.route, box: Buffer.from(viaRelay.box, "base64url"), keys: relayKeys, connectMs: 4000 }) : null;
   const sessionFor = async () => {
     if (wink && !wink.closed) return wink;
+    if (relayDial) {
+      let pipe; try { pipe = await relayDial.open(SPACE); } catch (e) { relayDial.close(); throw e; }
+      wink = await joinPeer(pipe, { device: DEVICE, nodeKey: NK, timeoutMs: 1500, sign: m => crypto.sign(null, m, privOf(DEVICE)).toString("base64url") });
+      return wink;
+    }
     const sock = net.connect(Number(proxyPort), "127.0.0.1");
     await new Promise((res, rej) => { sock.once("connect", res); sock.once("error", rej); });
     sock.on("error", () => {});
@@ -178,6 +209,9 @@ else {
   const homeRoot = path.join(work, "home"), agentHome = path.join(work, "agent-home");
   fs.mkdirSync(agentHome, { recursive: true });
   fs.copyFileSync(path.join(HERE, "..", "core", "runner", "testing", "fake-agent.js"), path.join(agentHome, "agent.js"));
+  // a second agent kind: a program named codex that is the same fake agent, found on the PATH the lenders inherit
+  fs.writeFileSync(path.join(agentHome, "codex"), `#!/bin/sh\nexec "${process.execPath}" "${path.join(agentHome, "agent.js")}" "$@"\n`, { mode: 0o755 });
+  process.env.PATH = `${agentHome}${path.delimiter}${process.env.PATH}`;
   const free = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); }); });
   const [homePort, ctlPort, proxyPort] = [await free(), await free(), await free()];
   const children = new Set();
@@ -189,6 +223,27 @@ else {
     children.add(c); c.on("exit", () => children.delete(c));
     return { c, events, send: o => c.stdin.write(JSON.stringify(o) + "\n") };
   };
+  // the relay scenario runs the real relay Worker (workerd, by wrangler dev) and the home links to it: for the whole suite, or when comeBackRelay is asked for by name
+  /** @type {{ stop: () => void } | null} */ let worker = null;
+  let relayPort = 0, relayProxyPort = 0;
+  if (!process.argv.slice(2).length || process.argv.slice(2).includes("comeBackRelay")) {
+    relayPort = await free(); relayProxyPort = await free();
+    const bin = path.join(HERE, "..", "tools", "wrangler", "node_modules", ".bin", "wrangler"), dir = path.join(HERE, "..", "relay", "worker");
+    // the deployed config, made fit for a local run: the entry that exports only what workerd accepts, no custom domain, no rate-limit bindings
+    const devToml = fs.readFileSync(path.join(dir, "wrangler.toml"), "utf8").replace('main = "index.js"', 'main = "dev-entry.js"').replace(/workers_dev = false\nroutes = \[[^\n]*\]\n/, "").replace(/\[\[ratelimits\]\]\nname = "[A-Z_]+"\nnamespace_id = "\d+"\nsimple = \{[^}]*\}\n/g, "");
+    fs.writeFileSync(path.join(dir, ".wrangler.dev.toml"), devToml);
+    const state = path.join(work, "wrangler-state");
+    const child = spawn(bin, ["dev", "--config", ".wrangler.dev.toml", "--local", "--ip", "127.0.0.1", "--port", String(relayPort), "--persist-to", state], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+    let wlog = ""; child.stdout.on("data", d => { wlog += d; }); child.stderr.on("data", d => { wlog += d; });
+    worker = { stop: () => { try { child.kill("SIGKILL"); } catch { /* gone */ } fs.rmSync(path.join(dir, ".wrangler.dev.toml"), { force: true }); } };
+    for (let i = 0; ; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${relayPort}/health`)).ok) break; } catch { /* not up yet */ }
+      if (child.exitCode !== null || i > 240) { worker.stop(); throw new Error("the relay Worker did not come up: " + wlog.slice(-800)); }
+      await sleep(500);
+    }
+    log("relay worker up on", relayPort);
+    process.env.CHAOS_RELAY_URL = `http://127.0.0.1:${relayPort}`;
+  }
   const home = spawnLogged("home", [SELF, "home", homeRoot, String(homePort), String(ctlPort), path.join(agentHome, "agent.js")]);
   const until = async (what, fn, ms = 30_000) => { const s = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - s > ms) throw new Error("timed out waiting for " + what); await sleep(100); } };
   await until("the home", () => home.events.some(e => e.ev === "home.ready"), 60_000);
@@ -203,6 +258,18 @@ else {
       const end = () => { c.destroy(); u.destroy(); socks.delete(c); socks.delete(u); };
       c.pipe(u); u.pipe(c); for (const s of [c, u]) { s.on("error", end); s.on("close", end); }
     }).listen(proxyPort, "127.0.0.1");
+    return { cut: () => { cut = true; for (const s of socks) s.destroy(); }, heal: () => { cut = false; }, close: () => srv.close() };
+  })();
+  // the same cut for the relay path: the lender reaches the Worker through this, so cutting it drops the lender's channel while the relay and the home stay up
+  const relayProxy = (() => {
+    if (!relayProxyPort) return { cut() {}, heal() {}, close() {} };
+    const socks = new Set(); let cut = false;
+    const srv = net.createServer(c => {
+      if (cut) { c.destroy(); return; }
+      const u = net.connect(relayPort, "127.0.0.1"); socks.add(c); socks.add(u);
+      const end = () => { c.destroy(); u.destroy(); socks.delete(c); socks.delete(u); };
+      c.pipe(u); u.pipe(c); for (const s of [c, u]) { s.on("error", end); s.on("close", end); }
+    }).listen(relayProxyPort, "127.0.0.1");
     return { cut: () => { cut = true; for (const s of socks) s.destroy(); }, heal: () => { cut = false; }, close: () => srv.close() };
   })();
   const psList = () => { try { return execFileSync("ps", ["-axo", "pid=,args="], { encoding: "utf8" }).split("\n").map(l => /^\s*(\d+)\s+(.*)$/.exec(l)).filter(Boolean).map(m => ({ pid: Number(m[1]), args: m[2] })); } catch { return []; } };
@@ -232,6 +299,39 @@ else {
   };
   const mountedIn = base => { const dir = path.join(base, "runner", "spaces", crypto.createHash("sha256").update(SPACE).digest("hex").slice(0, 16)); try { return driverFor(process.platform, { base: path.join(base, "runner") }).isMounted(dir); } catch { return false; } };
   const killAll = needle => { for (const p of sandboxOf(needle)) { try { process.kill(p.pid, "SIGKILL"); } catch { /* gone */ } } };
+
+  const homeRelay = home.events.find(e => e.ev === "home.ready")?.relay || null;
+  const comeBackVia = async via => {
+      const net_ = via === "relay" ? relayProxy : proxy;
+      const relayEnv = via === "relay" ? { CHAOS_RELAY: JSON.stringify({ url: `http://127.0.0.1:${relayProxyPort}`, route: homeRelay.route, box: homeRelay.box }) } : {};
+      for (const kind of ["claude", "codex"]) {
+        const l = await lend("back" + kind + via, relayEnv);
+        const sess = `chatback_${kind}_${via}`;
+        await ctl({ cmd: "spawn", session: sess, ...(kind === "claude" ? {} : { command: kind }) });
+        await until(`${kind}: the chat's process to start on the lender`, async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+        const said = async (text, s = sess) => (await ctl({ cmd: "read", session: s })).lines.filter(x => x.includes(text)).length;
+        await ctl({ cmd: "write", session: sess, text: "turn alpha\n" });
+        await until(`${kind}: the first answer`, async () => (await said("did alpha")) >= 1, 30_000);
+        net_.cut(); log(kind, via, "link cut");
+        await until(`${kind}: the server to take the chat`, async () => (await ctl({ cmd: "book", session: sess }))?.where === "server", 40_000);
+        const taken = await ctl({ cmd: "book", session: sess });
+        check(taken.reason === "offline", `${kind}: the server took the chat by itself (reason ${taken.reason})`);
+        check(!(await ctl({ cmd: "may", session: sess })), `${kind}: while the computer is away nothing comes back`);
+        net_.heal(); log(kind, via, "link healed");
+        await until(`${kind}: the computer to be offered the chat back`, async () => (await ctl({ cmd: "book", session: sess }))?.offer === "mac", 40_000);
+        await until(`${kind}: the computer to stay ready long enough`, async () => ctl({ cmd: "may", session: sess }), 40_000);
+        const placed = await ctl({ cmd: "adopt", session: sess, line: JSON.stringify({ type: "user", text: "carried back" }), provider: kind, native: kind === "claude" ? "00000000-0000-4000-8000-000000000001" : "00000000-0000-4000-8000-000000000002" });
+        check(placed && placed.where === "mac" && placed.epoch >= 3, `${kind}: the chat goes out to the computer again (${JSON.stringify(placed)})`);
+        await ctl({ cmd: "spawn", session: sess, ...(kind === "claude" ? {} : { command: kind }) });
+        await until(`${kind}: the chat's process to start again on the computer`, async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+        await ctl({ cmd: "write", session: sess, text: "turn beta\n" });
+        await until(`${kind}: the next turn is answered on the computer`, async () => (await said("did beta")) >= 1, 30_000);
+        await sleep(1500);
+        check((await said("did beta")) === 1, `${kind}: the next turn was answered once`);
+        await ctl({ cmd: "kill", session: sess });
+        l.send({ cmd: "exit" });
+      }
+    };
 
   const scenarios = {
     async kill9() {
@@ -279,6 +379,9 @@ else {
       await ctl({ cmd: "kill", session: sess });
       l.send({ cmd: "exit" });
     },
+    // The computer drops off the network, the home takes the chat, the computer comes back and stays ready, and at the person's next message the chat goes out to it again: for two agent kinds. No turn answered twice or lost.
+    async comeBack() { await comeBackVia("tcp"); },
+    async comeBackRelay() { await comeBackVia("relay"); },
     async sleep() {
       const l = await lend("sleep");
       signalTree(l.pid, "SIGSTOP"); log("lender stopped (the lid is shut)");
@@ -402,7 +505,7 @@ else {
       proxy.heal();
     }
   } catch (e) { crashed = e; }
-  proxy.close();
+  proxy.close(); relayProxy.close(); if (worker) worker.stop();
   for (const c of children) { try { c.kill("SIGKILL"); } catch { /* gone */ } }
   killAll(work);
   try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* a mount still closing */ }

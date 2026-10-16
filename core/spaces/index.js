@@ -50,7 +50,7 @@ import { sealExportApproveRequest } from "../../kernel/remote/proof.js";
 import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS, ROLE_DEMOTE_TO } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
-import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
+import { createInvites, parseJoinLink, previewInvite, acceptMessage, daemonJoinLink, publicInviteLink } from "../../lib/spaces/invites.js";
 import { createRoleAuthorize, personChain } from "../../lib/spaces/authz.js";
 import {
   createSpaceFlow, assessThisComputer, planMoveHome, PAIRING_DEFAULTS, INSTALL_COMMAND, PAIR_PROMPT,
@@ -2089,11 +2089,12 @@ export default {
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
           const link = `https://${row.name}/join/${token}`;
-          return { id: rec.id, link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
+          // The link to share names no server (vyre.run/i/<token>); the space's own join link rides beside it, and is what the typed code carries.
+          return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
         }
         if (!ROLE_IDS.includes(i.role) && i.role !== "guest") throw refuse("A custom role can be invited into only on a space with its own server. Invite as Member, then give the role (roles.assign).", "not_kernel");
         const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role === "guest" ? "temp" : i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
-        return { id: r.id, link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
+        return { id: r.id, link: i.alias ? r.link : publicInviteLink(r.token), join_link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
       });
     tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
       const row = spaceOf(i.space);
@@ -2137,7 +2138,7 @@ export default {
       return s.exists && s.id === id ? identity.ops() : null;
     };
     /** A join link, with an own-domain host resolved through the directory when this device does not know it. @param {string} link */
-    const parseLink = async link => {
+    const parseLink = async rawLink => { const link = await daemonJoinLink(rawLink, { spaces, chainOf, dir, refuse });
       const known = Object.fromEntries(spaces.all().flatMap(r => r.aliases.map((/** @type {string} */ a) => [a, r.name])));
       try { return parseJoinLink(link, { aliases: known }); } catch (e) {
         let host = "";

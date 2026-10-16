@@ -39,10 +39,14 @@ export async function startGithub() {
   catch (e) { return fail(e); }
 }
 
-/** @param {string} login */
-export async function finishGithub(login) {
+/** @param {string} [login] @param {string} [code] */
+export async function finishGithub(login, code) {
   if (MOCK) return mock.finishGithub(login);
-  try { return done(await tool("onboard.github.finish", { login })); }
+  /** @type {Record<string, string>} */
+  const input = {};
+  if (login) input.login = login;
+  if (code) input.code = code;
+  try { return done(await tool("onboard.github.finish", input)); }
   catch (e) { return fail(e); }
 }
 
@@ -138,5 +142,26 @@ export async function loadProgress() {
 export async function saveProgress(input) {
   if (MOCK) return mock.saveProgress(input);
   try { return done(await tool("onboard.first.progress.save", input)); }
+  catch (e) { return fail(e); }
+}
+
+/** Sign in from any device: a space's address, the username and the master password. The space gives the person's wrapped identity, the device opens it with the password, and the person is in every space they belong to. @param {{ space: string, username: string, password: string }} input */
+export async function signInPassword(input) {
+  if (MOCK) return mock.signInPassword(input);
+  try { return done(await tool("onboard.signin", input)); }
+  catch (e) { return fail(e); }
+}
+
+/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The master password is asked once, next (unlockGithub). @param {string} [space] */
+export async function signInGithub(space) {
+  if (MOCK) return mock.signInGithub();
+  try { return done(await tool("onboard.signin.github", space ? { space } : {})); }
+  catch (e) { return fail(e); }
+}
+
+/** @param {string} password */
+export async function unlockGithub(password) {
+  if (MOCK) return mock.unlockGithub(password);
+  try { return done(await tool("onboard.signin.unlock", { password })); }
   catch (e) { return fail(e); }
 }

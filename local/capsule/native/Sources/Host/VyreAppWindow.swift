@@ -119,6 +119,41 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         view.load(URLRequest(url: Self.start))
     }
 
+    // MARK: The driven mode (AgentDrive.swift), for the first-run proof
+    // Only the driven mode calls these, and it starts only in a test home (DriveGuard). A person's app has no way to reach them.
+
+    /// Runs a script in the page and answers its value as a JSON string, or the page's own error.
+    func driveEval(_ script: String, done: @escaping (String?, String?) -> Void) {
+        guard let web else { return done(nil, "the window is not open") }
+        web.callAsyncJavaScript("return JSON.stringify(await (async () => { \(script) })());", arguments: [:], in: nil, in: .page) { result in
+            switch result {
+            case .success(let v): done(v as? String, nil)
+            case .failure(let e): done(nil, e.localizedDescription)
+            }
+        }
+    }
+
+    /// A left click at a point of the page (CSS pixels from its top left), sent to this window alone as a mouse event, the way a person's mouse would arrive.
+    func driveClick(x: Double, y: Double) -> Bool {
+        guard let web, let w = window else { return false }
+        let p = web.convert(NSPoint(x: x, y: y), to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) else { return false }
+            w.sendEvent(e)
+        }
+        return true
+    }
+
+    /// The window's picture, as a PNG file.
+    func driveShot(path: String, done: @escaping (Bool) -> Void) {
+        guard let web else { return done(false) }
+        web.takeSnapshot(with: nil) { image, _ in
+            guard let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return done(false) }
+            done((try? png.write(to: URL(fileURLWithPath: path))) != nil)
+        }
+    }
+
     // MARK: Splash
 
     private var splashView: NSView?

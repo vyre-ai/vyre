@@ -12,7 +12,7 @@ import { devSwitch } from "../../kernel/devbuild.js";
 import { STRENGTHS } from "./strengths.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
-import { isServer } from "../config/index.js";
+import { hostedOrigins, isServer } from "../config/index.js";
 import { deviceIdOf } from "../../lib/caller.js";
 
 // A paired phone reaches presence.person.start-paired, pair-challenge and rotate over its relay or tailnet channel: only those labels, never a model, a guest or MCP.
@@ -78,7 +78,7 @@ export default {
         if (input.device !== undefined) {
           if (meta.caller !== "module:relay") throw Object.assign(new Error("only the relay enrolls a device's passkey"), { code: "denied" });
           if (input.kind !== "passkey" || !/^[a-z2-7]{16}$/.test(String(input.device))) throw Object.assign(new Error("a device's key here is a passkey for a relay device id"), { code: "bad_input" });
-          const origins = ((ctx.config.network || {}).origins || ["https://app.vyre.run"]).map(String);
+          const origins = hostedOrigins(ctx.config.network);
           const origin = origins.find(o => { try { return new URL(o).hostname === String(input.rp_id || "").toLowerCase(); } catch { return false; } });
           if (!origin) throw Object.assign(new Error(`a device's passkey must be for an allowed app (${origins.join(", ")})`), { code: "denied" });
           const k = presence.enroll({ ...input, origin });
@@ -180,7 +180,7 @@ export default {
           // that names itself: that page would hold the verifier and trade the code for the person.
           let back;
           try { back = new URL(String(input.return || "")); } catch { throw Object.assign(new Error("return must be the app's address"), { code: "bad_input" }); }
-          const allowed = ((ctx.config.network || {}).origins || ["https://app.vyre.run"]).map(String);
+          const allowed = hostedOrigins(ctx.config.network);
           // A paired Mac's vyred (`vyre link signin`) listens on its own loopback, as a native
           // app does (RFC 8252). Its code is traded by vyred itself, never by a browser page.
           const loop = back.protocol === "http:" && back.hostname === "127.0.0.1" && /^\/cb\/[\w-]{16,}$/.test(back.pathname);

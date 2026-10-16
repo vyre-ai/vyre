@@ -95,7 +95,10 @@ test("each onboarding door calls an onboard tool, and the native shells open tha
   assert.doesNotMatch(show, /first-run\.html/);
   const mac = fs.readFileSync(path.join(ROOT, "local/capsule/native/Sources/Host/Shell.swift"), "utf8");
   assert.match(mac, /web app's own first-run/);
-  for (const rel of ["apps/app/app/u/install/index.tsx", "apps/app/app/u/install/join.tsx", "apps/app/app/u/install/create.tsx", "apps/app/app/u/install/setup.tsx", "apps/app/app/u/install/phone.tsx", "apps/app/app/u/install/connect.tsx", "apps/app/app/u/setup/server.tsx"]) {
+  for (const rel of ["apps/app/app/u/setup/server.tsx"]) {
     assert.match(fs.readFileSync(path.join(ROOT, rel), "utf8"), /\/onboard/);
   }
+  // The old first-run addresses are no route files: the two not-found routes send them to /onboard through the one map.
+  for (const rel of ["apps/app/app/+not-found.tsx", "apps/app/app/u/+not-found.tsx"]) assert.match(fs.readFileSync(path.join(ROOT, rel), "utf8"), /oldRouteTarget/);
+  assert.equal(fs.existsSync(path.join(ROOT, "apps/app/app/u/install")), false);
 });

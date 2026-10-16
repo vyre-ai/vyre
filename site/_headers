@@ -13,6 +13,23 @@
   X-Content-Type-Options: nosniff
   Cache-Control: no-store
 
+# The invite page: vyre.run/i/<token> is served as /invite/ (a rewrite in _redirects). The token is in the path the owner shared, so the page is never cached, sends no referrer, and loads nothing but its own files; it talks to
+# the Vyre web app's address alone, and sends the person there with the token in the URL fragment. (/i without a slash is the install line, not this.)
+/i/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src https://web.vyre.run; img-src 'self' data:; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=()
+  X-Content-Type-Options: nosniff
+  X-Robots-Tag: noindex
+  Cache-Control: no-store
+/invite/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src https://web.vyre.run; img-src 'self' data:; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Robots-Tag: noindex
+  Cache-Control: no-store
+
 # The Windows installer script, `irm https://vyre.run/w | iex`: plain text, never cached for long (a fix must reach people at once), never sniffed.
 /w
   Content-Type: text/plain; charset=utf-8

@@ -1,5 +1,6 @@
 // @ts-check
 import "../../scripts/mac-test-guard.mjs";
+import { claim } from "../../lib/github-verified.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -40,7 +41,7 @@ test("the join path never names a server, and identity leads to the path the per
   assert.equal(afterAi({ path: "phone" }), "phone.add");
 });
 
-/** @param {{ status?: any }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[] }} */
+/** @param {{ status?: any, config?: any, fetch?: typeof fetch }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[], ctx: any }} */
 function harness(opt = {}) {
   const tools = new Map();
   const saved = [];
@@ -58,6 +59,7 @@ function harness(opt = {}) {
       try { return { data: await dispatch(tool, input) }; }
       catch (e) { return { error: { code: /** @type {any} */ (e).code || "failed", message: String(/** @type {any} */ (e).message || e) } }; }
     },
+    config: opt.config || {},
   };
   const dispatch = async (name, input) => {
     if (name === "identity.status") return person ? { exists: true, username: person.username, id: person.id } : { exists: false, username: null, id: null };
@@ -73,8 +75,10 @@ function harness(opt = {}) {
       return { line, expires: Math.floor(Date.now() / 1000) + 1800, os: input.os };
     }
     if (name === "wink.install.status") return opt.status || { issued: true, owned: false, locked: false, expires: Math.floor(Date.now() / 1000) + 1800 };
-    if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: "bad_state" });
+    if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: opt.completeCode || "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
+    if (name === "spaces.invites.preview") { if (opt.preview) return opt.preview(input); throw Object.assign(new Error("no card"), { code: "not_found" }); }
+    if (name === "wink.phone.open") return { qr: "vyre://wink/2?p=phoneseed", link: "vyre://wink/2?p=phoneseed", expires: 1_900_000_000_000, code: "WINK-ABCD-EFGH" };
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
       if (link.includes("adminlink")) return { space: "spc_juniper", name: "juniper", role: "admin", server: "https://juniper.vyre.run" };
@@ -92,7 +96,7 @@ function harness(opt = {}) {
     if (name === "identity.github.link") return { login: input.login };
     throw Object.assign(new Error(`missing ${name}`), { code: "no_such_tool" });
   };
-  registerFirstRun(ctx, { save: (p) => saved.push(p) });
+  registerFirstRun(ctx, { save: (p) => saved.push(p), fetch: opt.fetch });
   return { tools, saved, calls, ctx };
 }
 
@@ -136,6 +140,80 @@ test("github start returns the address from the kernel config and nothing else",
   assert.equal(refused.url, null);
 });
 
+test("github finish reads the numeric account id from GitHub and does not take it from the caller", async () => {
+  /** @type {{ url: string, body: any, method: string }[]} */
+  const seen = [];
+  const token = "gho_testtokenvalue";
+  const fetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(String(init.body)) : null;
+    seen.push({ url: String(url), body, method: String(init && init.method || "GET") });
+    if (String(url) === "https://github.com/login/oauth/access_token") return { ok: true, status: 200, json: async () => ({ access_token: token, token_type: "bearer" }) };
+    if (String(url) === "https://api.github.com/user") {
+      assert.equal(init && init.headers && init.headers.authorization, `Bearer ${token}`);
+      return { ok: true, status: 200, json: async () => ({ id: 4242, login: "Alex-GH" }) };
+    }
+    if (String(url).startsWith("https://api.github.com/applications/") && init && init.method === "DELETE") return { ok: true, status: 204, json: async () => ({}) };
+    throw new Error(String(url));
+  };
+  const { tools, calls } = harness({
+    fetch,
+    config: { github: { clientId: "Ov23ct6h9OU5wJHjbqBl", clientSecret: "secret-value-not-returned", redirect: "https://vyre.example/github" } },
+  });
+  const skipped = await tools.get("onboard.github.finish").run({ login: "alex-gh", subject: "99999" }, { caller: "cli" });
+  assert.equal(skipped.linked, false);
+  assert.deepEqual(skipped.pending, ["github.start"]);
+  assert.equal(calls.some((c) => c.name === "identity.github.link"), false);
+  const done = await tools.get("onboard.github.finish").run({ login: "alex-gh", code: "the-login-code", subject: "99999" }, { caller: "cli" });
+  assert.equal(done.linked, true);
+  assert.equal(done.login, "alex-gh");
+  assert.equal(done.vault, "password");
+  assert.equal(JSON.stringify(done).includes(token), false);
+  assert.equal(JSON.stringify(done).includes("secret-value"), false);
+  const link = calls.find((c) => c.name === "identity.github.link");
+  assert.ok(link);
+  assert.equal(link.input.login, "alex-gh");
+  assert.equal(link.input.subject, "4242");
+  assert.equal(claim("alex-gh", "99999"), false, "an id the caller typed has no receipt");
+  assert.equal(claim("alex-gh", "4242"), true, "the id GitHub returned was vouched for the link");
+  const exchange = seen.find((s) => s.url === "https://github.com/login/oauth/access_token");
+  assert.ok(exchange);
+  assert.equal(exchange.body.code, "the-login-code");
+  assert.equal(exchange.body.client_id, "Ov23ct6h9OU5wJHjbqBl");
+  assert.equal(seen.some((s) => s.method === "DELETE"), true);
+  const line = lineOfOp("onboard.github.finish", { login: "alex-gh", code: "the-login-code", subject: "99999" }, "An assistant");
+  assert.match(line, /alex-gh/);
+  assert.doesNotMatch(line, /the-login-code/);
+  assert.doesNotMatch(line, /99999/);
+  await assert.rejects(() => tools.get("onboard.github.finish").run({ login: "other-person", code: "the-login-code" }, {}), /not the account/);
+});
+
+test("github finish after start reads the account id from the device sign-in", async () => {
+  const fetch = async (url, init) => {
+    const u = String(url);
+    const body = init && init.body ? JSON.parse(String(init.body)) : null;
+    if (u === "https://github.com/login/device/code") return { ok: true, status: 200, json: async () => ({ device_code: "devicecodevalue", user_code: "ABCD-EFGH", verification_uri: "https://github.com/login/device", expires_in: 900 }) };
+    if (u === "https://github.com/login/oauth/access_token") {
+      assert.equal(body.device_code, "devicecodevalue");
+      assert.equal(body.grant_type, "urn:ietf:params:oauth:grant-type:device_code");
+      assert.equal(body.client_secret, undefined);
+      return { ok: true, status: 200, json: async () => ({ access_token: "gho_device" }) };
+    }
+    if (u === "https://api.github.com/user") return { ok: true, status: 200, json: async () => ({ id: 4242, login: "alex-gh" }) };
+    throw new Error(u);
+  };
+  const { tools, calls } = harness({ fetch, config: { github: { start: "https://github.com/login/device", clientId: "Ov23ct6h9OU5wJHjbqBl" } } });
+  const started = await tools.get("onboard.github.start").run({}, {});
+  assert.equal(started.url, "https://github.com/login/device");
+  assert.equal(started.exchange, true);
+  const done = await tools.get("onboard.github.finish").run({ login: "alex-gh" }, { caller: "cli" });
+  assert.equal(done.linked, true);
+  assert.equal(JSON.stringify(done).includes("gho_device"), false);
+  const link = calls.find((c) => c.name === "identity.github.link");
+  assert.ok(link);
+  assert.equal(link.input.subject, "4242");
+  assert.equal(link.input.login, "alex-gh");
+});
+
 test("creating a person calls identity.create and never puts the password in the card line", async () => {
   const { tools, calls } = harness();
   const made = await tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
@@ -172,14 +250,21 @@ test("the install command is the pairing line, and an invite goes through the sp
   const join = await tools.get("onboard.space.join").run({ link: link.link }, {});
   assert.equal(join.joined, true);
   assert.equal(calls.some((c) => c.name === "spaces.invites.accept"), true);
+  const invitesBefore = calls.filter((c) => c.name === "spaces.invites.create").length;
   const phone = await tools.get("onboard.phone.add").run({ space: "juniper" }, {});
-  assert.match(phone.link, /^https:\/\/vyre\.run\/i\//);
+  assert.equal(phone.link, "vyre://wink/2?p=phoneseed");
+  assert.equal(phone.role, "device");
+  assert.equal(phone.code, "WINK-ABCD-EFGH");
+  assert.equal(calls.some((c) => c.name === "wink.phone.open"), true, "a phone is paired as the person's own device");
+  assert.equal(calls.filter((c) => c.name === "spaces.invites.create").length, invitesBefore, "adding a phone makes no invite for a second person");
   const computer = await tools.get("onboard.computer.add").run({ url: "https://juniper.vyre.run", username: "alex", password: "correct horse battery" }, {});
   assert.equal(computer.url, "https://juniper.vyre.run");
   assert.equal(computer.username, "alex");
   assert.equal("password" in computer, false);
   assert.equal(calls.some((c) => c.name === "devices.signin"), true);
   assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
+  // The card for adding a computer names the server it will sign in to.
+  assert.match(lineOfOp("onboard.computer.add", { url: "https://juniper.vyre.run", username: "alex" }, "An assistant"), /juniper\.vyre\.run/);
 });
 
 test("one identity is owner of one space and admin of another, and a computer signs into both servers", async () => {
@@ -274,4 +359,32 @@ test("first run does not transfer ownership from a phone or ask for a typed code
   for (const text of [src, screen]) {
     assert.equal(/spaces\.owner\.transfer|grants\.transferOwner|wink\.phone\.open|Face ID signature|MatchWords|four words|Solo/.test(text), false);
   }
+});
+
+test("a shared vyre.run/i link names no server, so the review still shows the space and the role from the invite card; a card that cannot be read leaves the name empty", async () => {
+  const link = "https://vyre.run/i/inv_0123456789abcdef0123456789abcdef.eyJjaGFpbiI6e319";
+  const { tools, calls } = harness({ preview: (/** @type {any} */ input) => (input.link === link ? { space: "juniper.vyre.run", label: "Juniper Studio", role: "admin" } : null) });
+  const read = await tools.get("onboard.join.read").run({ link }, {});
+  assert.deepEqual([read.space, read.role, read.link], ["juniper", "admin", link]);
+  assert.ok(calls.some((c) => c[0] === "spaces.invites.preview" || (c.name === "spaces.invites.preview")), "the invite card was asked");
+  const blind = harness().tools;
+  const none = await blind.get("onboard.join.read").run({ link }, {});
+  assert.deepEqual([none.space, none.role], [null, "member"]);
+  const own = await blind.get("onboard.join.read").run({ link: "https://juniper.vyre.run/join/abcdefgh.ijklmnop" }, {});
+  assert.deepEqual([own.space, own.role], ["juniper", "member"], "a space's own link names its space without asking");
+});
+
+test("a poll stops hard when another server answered the install line first", async () => {
+  const { tools } = harness({ completeCode: "contested" });
+  await tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
+  const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(polled.online, false);
+  assert.equal(polled.contested, true);
+  assert.match(String(polled.message), /Another server answered/);
+  const waiting = harness();
+  await waiting.tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
+  const w = await waiting.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const p = await waiting.tools.get("onboard.space.poll").run({ id: w.id }, { caller: "cli" });
+  assert.equal(p.contested, undefined, "an ordinary wait is not a hard stop");
 });

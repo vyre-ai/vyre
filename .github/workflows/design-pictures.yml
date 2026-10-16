@@ -38,7 +38,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   pictures:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 40
     # The picture's pixels depend on the browser build and the fonts, so the references are made and checked in one pinned image, never on a person's machine.
     # To make or refresh them, push a commit whose message contains [pictures-update]; the run writes them and uploads design-refs as an artifact to commit after the owner's yes.

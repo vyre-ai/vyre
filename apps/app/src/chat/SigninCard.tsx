@@ -11,7 +11,7 @@ import { loginsFor, signinWords, vaultItemLabel } from "./screen-model.js";
 type Sign = { block: "signin"; id: string; computer: string; site: string; why: string; state: "waiting" | "done" | "cancelled" | "expired" };
 
 /** `sample` stands in for the Vault's matching logins in the sample world (the shots); a real card asks the Vault. */
-export function SigninCard({ block, sample, hideVaultNames }: { block: Sign; sample?: { name: string; origin: string; exact: boolean }[] }) {
+export function SigninCard({ block, sample, hideVaultNames }: { block: Sign; sample?: { name: string; origin: string; exact: boolean }[]; hideVaultNames?: boolean }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);

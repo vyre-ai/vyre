@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome, pairDevice } from "../../test/helpers.js";
 import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
-import { refusal } from "./door-gate.js";
+import { refusal, memberSees } from "./door-gate.js";
 import { request } from "../daemon/client.js";
 import { WEB_REACH } from "./agent-reach.js";
 
@@ -90,7 +90,9 @@ test("a server with nobody but the owner gates nothing", { timeout: 200_000 }, a
 
 test("every tool the registry holds is on exactly one list, and no list names a tool that is not there", { timeout: 200_000 }, async t => {
   const { d } = await rig(t, false);
-  const held = [...d.registry.tools.entries()].filter(([, def]) => !def.internal && !def.hook).map(([n]) => n);
+  // A module that runs only on a person's own computer (roles: ["local"]: chrome, hands, voice ...) is never on a team server's box, so it has no member to place. The gate is closed by default: unlisted means refused to a member, which the last assertion holds.
+  const onBox = (/** @type {string} */ name) => { const m = d.registry.modules.get(name); return !m || !Array.isArray(m.manifest.roles) || m.manifest.roles.includes("box"); };
+  const held = [...d.registry.tools.entries()].filter(([, def]) => !def.internal && !def.hook && onBox(def.module)).map(([n]) => n);
   const lonely = held.filter(n => !MEMBER_MAY.has(n) && !OWNER_ONLY.has(n) && !PLUMBING.has(n) && !SELF_GATED.has(n));
   assert.deepEqual(lonely, [], `place these tools in core/modules/door-lists.js (MEMBER_MAY only with a test that calls it as a member; otherwise OWNER_ONLY): ${lonely.join(", ")}`);
   const twice = held.filter(n => [MEMBER_MAY.has(n), OWNER_ONLY.has(n), PLUMBING.has(n), SELF_GATED.has(n)].filter(Boolean).length > 1);
@@ -98,6 +100,7 @@ test("every tool the registry holds is on exactly one list, and no list names a 
   const all = new Set(d.registry.tools.keys());
   const stale = [...MEMBER_MAY, ...OWNER_ONLY, ...PLUMBING, ...SELF_GATED].filter(n => !all.has(n));
   assert.deepEqual(stale, [], `named on a list but not registered: ${stale.join(", ")}`);
+  for (const n of d.registry.tools.keys()) if (!onBox(/** @type {any} */ (d.registry.tools.get(n)).module) && !MEMBER_MAY.has(n) && !PLUMBING.has(n) && !SELF_GATED.has(n)) assert.equal(memberSees(n), false, `${n} runs only on a person's own computer and is unlisted: a member must not see it`);
 });
 
 test("a member's tool list leaves off the owner's tools; the owner's list is whole", { timeout: 200_000 }, async t => {

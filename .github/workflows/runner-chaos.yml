@@ -1,11 +1,14 @@
 name: runner-chaos
 # The lent computer under attack (R031-95): kill -9, sleep, network drops, lease expiry and clock skew against a real runner (sandbox and encrypted workspace) and a real home, on hosted Linux and hosted macOS.
 # scripts/runner-chaos.mjs asserts no turn is lost or repeated, the server resumes from the last whole turn, a computer that woke up writes nothing, and a workspace is closed before "locked". Never on a person's Mac.
-# Runs on a push to work/runner-chaos, or by hand. Owner: link.
+# Runs on a push to work/runner-chaos, on a pull request into integrate/0.5.3 that touches the runner, or by hand. Owner: link.
 on:
   workflow_dispatch:
   push:
     branches: [work/runner-chaos]
+  pull_request:
+    branches: [integrate/0.5.3]
+    paths: ["core/runner/**", "scripts/runner-chaos.mjs", ".github/workflows/runner-chaos.yml"]
 permissions:
   contents: read
 concurrency:
@@ -34,6 +37,8 @@ jobs:
           sudo apt-get install -y -qq bubblewrap gocryptfs fuse3
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci --no-audit --no-fund
+      - name: wrangler, pinned from its lockfile, for the real relay Worker the comeBackRelay scenario runs locally
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/wrangler
       - name: the chaos suite
         shell: bash
         run: node scripts/runner-chaos.mjs 2>&1 | tee chaos.txt

@@ -57,7 +57,8 @@ export function lentServiceFor(o) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work: ask the owner of this home to set up storage for that space"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http", "preview"].map(n => [n, refuse])));
     }
-    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.computeStatus ? { compute: { status: (/** @type {string} */ person) => Promise.resolve(o.computeStatus?.(space, person)).then(st => st || { active: false }) } } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
+    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.computeStatus ? { compute: { status: (/** @type {string} */ person) => Promise.resolve(o.computeStatus?.(space, person)).then(st => st || { active: false }) } } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } },
+      groupChat: (/** @type {string} */ chat) => { const p = k.grants && typeof k.grants.chatPeople === "function" ? k.grants.chatPeople(chat) : null; return Array.isArray(p) && p.length > 1; }, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => {
         const spec = o.lentSpec ? await o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null);
         // the person's own MCP servers (member-mcp), read for the person this lease is for and no one else; none when they have none, are locked, or the reader fails
@@ -92,7 +93,11 @@ export function lentPlacements(registry, extra = {}) {
     find: (/** @type {string} */ space, /** @type {string} */ id, /** @type {string} */ person) => { const h = homeOf(space); return h ? h.book.find(id, person) : null; },
     askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason, /** @type {string} */ person) => book(space).askRelease(session, reason, person),
     cancelRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).cancelAsk(session, person),
-    bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).bringBack(session, person),
+    bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => {
+      const h = homeOf(space), row = h ? h.book.find(session, person) : null;
+      if (h && row && row.chat && h.isGroup(row.chat)) throw Object.assign(new Error("a chat with more than one person always runs on the server"), { code: "conflict" });
+      return book(space).bringBack(session, person);
+    },
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
     /** A chat that began on this server goes to one of the person's computers: { thread, person } -> { where: "mac", device, epoch }. The daemon says how (it holds the server's own store). */
     ...(typeof extra.adopt === "function" ? { adopt: extra.adopt } : {}),
@@ -106,6 +111,8 @@ export function lentPlacements(registry, extra = {}) {
     foldersOf: (/** @type {string} */ space, /** @type {string} */ person) => { const h = homeOf(space); return h && typeof h.foldersOf === "function" ? h.foldersOf(person) : []; },
     /** The server takes a chat back from a computer now (the book moves it, the lender is fenced, the pipe ends as a move to the server, the server carries on). @param {string} space @param {string} session @param {string} reason */
     takeBack: async (space, session, reason) => { const h = homeOf(space); return h && typeof h.takeOver === "function" ? h.takeOver(session, reason) : { changed: false, why: "unavailable" }; },
+    /** May the person's standing choice (Always allow) put this session back on its computer now? @param {string} space @param {string} session @param {string} person */
+    mayReturn: (space, session, person) => { const h = homeOf(space); return Boolean(h && typeof h.mayReturn === "function" && h.mayReturn(session, person)); },
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }

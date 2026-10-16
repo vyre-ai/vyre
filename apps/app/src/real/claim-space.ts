@@ -11,6 +11,9 @@ import { tool } from "./box";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 
+/** An identity that signs the space's record: its id, name, device entry id, chain and key. */
+export type ClaimIdentity = { id: string; name: string; eid: string; ops: unknown[]; key: import("../identity/keys.js").DeviceKey };
+
 /** The stored route: where this device reaches its paired server. Throws unreachable when not paired. */
 export async function pairedRoute(): Promise<{ relay: string; route: string; box: string }> {
   const { loadPairing } = await import("../api/relay");
@@ -48,9 +51,10 @@ export async function makeSpaceOnPairedServer(o: { name: string; displayName?: s
  * ONE SPACE PER SERVER: make the paired server's OWN Space the team's. The server makes the Space's root key if it has none (spaces.name-here), the same names-directory record a hosted Space gets is published
  * for the EXISTING id, and the server then keeps the name for its listing ("<Name>'s Cloud"). Nothing is hosted and nothing is ever retired: a refusal at the directory leaves the Space as it was.
  */
-export async function nameServerOwnSpace(o: { name: string; displayName?: string; server?: { key: string; route: { relay: string; route: string; box: string } | null } }) {
+export async function nameServerOwnSpace(o: { name: string; displayName?: string; server?: { key: string; route: { relay: string; route: string; box: string } | null }; identity?: ClaimIdentity }) {
   // With several servers the person picked one: it is named by `server`, and its own route (not the active pairing's) goes in the directory record. No pick means the one paired server, as before.
-  const [mine, route] = await Promise.all([loadIdentity().catch(() => null), o.server ? chosenRoute(o.server) : pairedRoute()]);
+  // The in-page host passes the identity it holds (src/host); otherwise it is the one this device kept.
+  const [mine, route] = await Promise.all([o.identity ? Promise.resolve(o.identity) : loadIdentity().catch(() => null), o.server ? chosenRoute(o.server) : pairedRoute()]);
   if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   const claimed = await claimServerSpace({
     identity: { id: mine.id, name: mine.name, eid: mine.eid, ops: mine.ops as any[], key: mine.key },

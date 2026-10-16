@@ -14,7 +14,7 @@ export const PANELS = Object.freeze([
   { id: "agents", title: "Agents", root: "/u/assistants", prefixes: ["/u/assistants"] },
   { id: "flows", title: "Flows", root: "/u/flows", prefixes: ["/u/flows"] },
   { id: "build", title: "Build", root: "/u/playbooks", prefixes: ["/u/playbooks", "/u/templates", "/u/skills", "/u/settings/customize", "/u/documents", "/u/kits"] },
-  { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about", "/u/install"] },
+  { id: "settings", title: "Settings", root: "/u/settings", prefixes: ["/u/settings", "/u/appearance", "/u/spaces", "/u/access", "/u/about"] },
 ]);
 
 const clean = (/** @type {string} */ p) => (String(p || "").split("?")[0].replace(/\/+$/, "") || "/");

@@ -109,9 +109,11 @@ const shoot = async (cur, s, t, id) => {
       await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
       const el = page.locator("#fixture");
       if (!(await el.count())) return { missing: true };
+      // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same.
+      let after = await el.screenshot();
+      for (let i = 0; i < 20; i++) { await page.waitForTimeout(250); const next = await el.screenshot(); const still = next.equals(after); after = next; if (still) break; }
       // A slow runner shows #fixture before its content has painted, and a picture of that is one flat colour. Wait for it, a little longer each time; a fixture that still draws
       // nothing is a rule fault, never a reference picture.
-      let after = await el.screenshot();
       let flat = await isFlat(page, after);
       for (let wait = 1; flat && wait <= 6; wait++) { await page.waitForTimeout(wait * 500); after = await el.screenshot(); flat = await isFlat(page, after); }
       const bad = await rules(page, s.name !== "app");

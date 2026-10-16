@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { buildManifest, verifyManifest, signManifest, canonical, newer, folderOf, sha256Hex, MANIFEST, SIGNATURE } from "./manifest.js";
 import { keygen, build, loader, verify, loadKey, entriesOf } from "./release.js";
-import worker, { CSP } from "./worker.js";
+import worker, { KILL_SWITCH, SECURITY, TARGET, destination } from "./worker.js";
 import { GONE } from "./pair/pair.js";
 
 const scratch = t => {
@@ -106,39 +106,58 @@ test("release: the loader is sealed, pinned by SRI in its page, and sw.js carrie
 
 // ---- the Worker ----
 
-const assets = files => ({
-  async fetch(req) {
-    const p = new URL(req.url).pathname;
-    return p in files ? new Response(files[p], { headers: { "content-type": "text/plain", "set-cookie": "x=1" } }) : new Response("nope", { status: 404 });
-  },
+const ask = (p, init) => worker.fetch(new Request(`https://app.vyre.run${p}`, init));
+
+test("worker: app.vyre.run only redirects to web.vyre.run, and a phone's old link keeps its meaning", async () => {
+  assert.equal(TARGET, "https://web.vyre.run");
+  const room = await ask("/");
+  assert.equal(room.status, 308);
+  assert.equal(room.headers.get("location"), "https://web.vyre.run/");
+  for (const [from, to] of [
+    ["/app/join/abc123XYZ?x=1", "https://web.vyre.run/join/abc123XYZ?x=1"],
+    ["/app/pair", "https://web.vyre.run/pair"],
+    ["/join/abc123XYZ", "https://web.vyre.run/join/abc123XYZ"],
+    ["/github-return", "https://web.vyre.run/github-return"],
+    ["/onboard", "https://web.vyre.run/onboard"],
+    [`/v/${"a".repeat(40)}/app.js`, "https://web.vyre.run/"],
+    ["/app/assets/font.ttf", "https://web.vyre.run/"],
+    ["/anything/else?token=secret", "https://web.vyre.run/"],
+    ["/app/join/../../etc", "https://web.vyre.run/"],
+  ]) assert.equal((await ask(from)).headers.get("location"), to, from);
+  assert.equal(destination(new URL("https://app.vyre.run/app/joinery")), "https://web.vyre.run/", "a path that only starts like a route is not that route");
+  const head = await ask("/pair", { method: "HEAD" });
+  assert.equal(head.status, 308);
+  for (const [k, v] of Object.entries(SECURITY)) assert.equal(room.headers.get(k), v, k);
+  assert.equal(room.headers.get("set-cookie"), null);
+  assert.equal((await ask("/", { method: "POST" })).status, 405);
 });
 
-test("worker: strict headers everywhere, immutable folders, the loader for any app route", async () => {
-  const sha = "a".repeat(40);
-  const env = { ASSETS: assets({ "/index.html": "loader page", "/sw.js": "sw", [`/v/${sha}/app.js`]: "app" }) };
-  const get = (p, init) => worker.fetch(new Request(`https://app.vyre.run${p}`, init), env);
-
-  const page = await get("/pair");
-  assert.equal(await page.text(), "loader page", "a route the app owns gets the loader, fragment intact in the browser");
-  assert.equal(page.headers.get("content-security-policy"), CSP);
-  assert.match(CSP, /script-src 'self';/);
-  assert.doesNotMatch(CSP, /unsafe/);
-  // CSP-1: the claim, the append and the name check go to the names directory, exactly that origin and no wildcard (published sites live under *.vyre.run).
-  const connect = (CSP.split("; ").find(d => d.startsWith("connect-src")) || "").split(" ").slice(1);
-  assert.ok(connect.includes("https://names.vyre.run"));
-  assert.ok(!connect.some(x => /^https?:\/\/\*\.vyre\.run$/.test(x) || x === "https://*" || x === "*"), "no wildcard host");
-  assert.equal(page.headers.get("cache-control"), "no-cache");
-  assert.equal(page.headers.get("set-cookie"), null);
-  assert.equal(page.headers.get("x-content-type-options"), "nosniff");
-  assert.match(String(page.headers.get("permissions-policy")), /camera=\(self\)/);
-
-  const app = await get(`/v/${sha}/app.js`);
-  assert.equal(await app.text(), "app");
-  assert.match(String(app.headers.get("cache-control")), /immutable/);
-  assert.equal((await get("/v/nothex/app.js")).status, 404);
-  assert.equal((await get("/app/assets/font.ttf")).status, 404, "the built app's files are never the loader page");
-  assert.equal((await get("/sw.js")).headers.get("cache-control"), "no-cache");
-  assert.equal((await get("/", { method: "POST" })).status, 405);
+test("worker: /sw.js takes the old app down (clears its caches, unregisters, moves open windows), and nothing else is served", async () => {
+  const r = await ask("/sw.js");
+  assert.equal(r.status, 200);
+  assert.match(String(r.headers.get("content-type")), /javascript/);
+  assert.equal(r.headers.get("cache-control"), "no-cache");
+  const body = await r.text();
+  assert.equal(body, KILL_SWITCH);
+  // Run it in a vm with fake caches and clients: it deletes every cache, unregisters, and navigates each window to the new app.
+  const handlers = /** @type {Record<string, (e: any) => void>} */ ({});
+  const deleted = [], navigated = [];
+  let unregistered = false, skipped = false;
+  const self = {
+    addEventListener: (t, fn) => { handlers[t] = fn; },
+    skipWaiting: () => { skipped = true; },
+    registration: { unregister: async () => { unregistered = true; } },
+    clients: { matchAll: async () => [{ navigate: async u => { navigated.push(u); } }, { navigate: async u => { navigated.push(u); } }] },
+  };
+  vm.runInNewContext(body, { self, caches: { keys: async () => ["vyre-loader", "vyre-app-v1"], delete: async n => { deleted.push(n); return true; } } });
+  handlers.install({});
+  assert.equal(skipped, true);
+  let work;
+  handlers.activate({ waitUntil: p => { work = p; } });
+  await work;
+  assert.deepEqual(deleted, ["vyre-loader", "vyre-app-v1"]);
+  assert.equal(unregistered, true);
+  assert.deepEqual(navigated, ["https://web.vyre.run/", "https://web.vyre.run/"]);
 });
 
 // ---- the pair page ----

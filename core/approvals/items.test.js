@@ -252,3 +252,30 @@ test("fromJobs: a live job whose last run failed is one card that names it and r
   assert.deepEqual(rows[0].answer, { tool: "publish.job.run", input: { deployment: "dep_0123456789abcdef" }, fill: [] });
   assert.ok(OWNERS.some(o => o.name === "publish-jobs" && o.tool === "publish.job.attention"));
 });
+
+test("a sign-in on a new device is one `signin` card that names the device, answered by signing that device out, and it closes when the person says it was them or the device is signed out", async () => {
+  const { fromNewDevices, createItems, OWNERS } = await import("./items.js");
+  const rows = fromNewDevices([
+    { device: "abcd1234abcd1234", label: "Kit's Windows laptop", at: 1_800_000_000_000 },
+    { device: "short", label: "ignored: not a device id" },
+    { device: "ffff0000ffff0000", label: "x".repeat(300), at: 5 },
+    { device: "eeee1111eeee1111", label: "pk_live_0123456789abcdef0123456789abcdef" },
+  ]);
+  assert.deepEqual(rows.map((r) => r.id), ["signins:abcd1234abcd1234", "signins:ffff0000ffff0000", "signins:eeee1111eeee1111"]);
+  const [a, long, secretish] = rows;
+  assert.equal(a.kind, "signin");
+  assert.equal(a.title, "Signed in on Kit's Windows laptop");
+  assert.equal(a.at, 1_800_000_000_000);
+  assert.deepEqual(a.answers.map((/** @type {any} */ x) => [x.label, x.tool]), [["Not me, sign it out", "identity.signin.revoke"], ["It was me", "identity.signin.ack"]]);
+  assert.deepEqual(a.answer, { tool: "identity.signin.revoke", input: { device: "abcd1234abcd1234" }, fill: [] });
+  assert.ok(long.title.length <= 120, "a long device name is cut");
+  assert.equal(secretish.title, "Signed in on a new device", "a name shaped like a key is dropped whole, never shown");
+  assert.ok(!JSON.stringify(a).includes("session") && !JSON.stringify(a).includes("token"), "no session or secret rides on a card");
+  const owner = OWNERS.find((o) => o.tool === "identity.signins.pending");
+  assert.ok(owner && owner.map === fromNewDevices && owner.watch.some(([pat]) => pat === "signin.*"), "the queue is read from the identity module and follows its events");
+  const outcome = owner.watch.find(([pat]) => pat === "signin.*")[1];
+  assert.deepEqual(outcome("signin.revoked", { device: "abcd1234abcd1234" }), ["signins:abcd1234abcd1234", "signed out"]);
+  assert.deepEqual(outcome("signin.acknowledged", { device: "abcd1234abcd1234" }), ["signins:abcd1234abcd1234", "it was you"]);
+  assert.equal(outcome("signin.new-device", { device: "abcd1234abcd1234" }), null, "a new device opens a card by listing, not by closing one");
+  assert.equal(typeof createItems, "function");
+});

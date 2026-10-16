@@ -596,6 +596,31 @@ test("gate ingress, person MCP: POST /mcp reaches the mcpconn listener with the 
   assert.equal(be.seen.length, 0);
 });
 
+// ---- sign in from any device: exactly POST /login, text/plain or json, 4 KB, its own listener ----
+
+test("gate ingress, login: POST /login reaches the identity listener with the real address and the page's Origin; any other shape is the same 404, and it is off while the listener is not up", async t => {
+  const l = await mcpListener(), a = await mcpListener(); t.after(() => { l.close(); a.close(); });
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, agentsmcp: () => a.port, login: () => l.port } });
+  const at = (/** @type {string} */ body, /** @type {string} */ extra = "") => mcpPost(body, extra).replace("POST /vault-mcp ", "POST /login ");
+  const r = (await raw(port, at('{"op":"begin","username":"alex"}', "Origin: https://web.vyre.run\r\nX-Forwarded-For: 6.6.6.6\r\n"))).toString();
+  assert.match(r, /^HTTP\/1\.1 200 /);
+  assert.deepEqual(l.seen.map(s => [s.method, s.url, s.body]), [["POST", "/login", '{"op":"begin","username":"alex"}']]);
+  assert.equal(l.seen[0].headers.origin, "https://web.vyre.run", "the listener decides CORS from the page's origin");
+  assert.equal(l.seen[0].headers["x-forwarded-for"], "127.0.0.1", "the real address, not the client's claim");
+  assert.match((await raw(port, at("{}").replace("application/json", "text/plain"))).toString(), /^HTTP\/1\.1 200 /, "a simple POST with no preflight");
+  const big = "x".repeat(4 * 1024 + 1);
+  const bad = [get("/login", "Connection: close\r\n"), at("{}").replace("POST /login ", "POST /login?x=1 "), at("{}").replace("POST /login ", "POST /login/ "), at("{}").replace("POST /login ", "POST /Login "),
+    at("{}").replace("application/json", "text/html"), at(big), `OPTIONS /login HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`];
+  for (const c of bad) assert.deepEqual(await raw(port, c), NOT_FOUND, c.split("\r\n")[0]);
+  assert.equal(l.seen.length, 2);
+  assert.deepEqual(a.seen, []);
+  assert.equal(be.seen.length, 0);
+  const off = await setup(t, { ingress: { hooks: () => null, share: () => null } });
+  assert.deepEqual(await raw(off.port, at("{}")), NOT_FOUND);
+  const down = await setup(t, { ingress: { hooks: () => null, share: () => null, login: () => null } });
+  assert.deepEqual(await raw(down.port, at("{}")), NOT_FOUND);
+});
+
 // ---- the outside agents' MCP: exactly POST /agents-mcp, the same discipline as /vault-mcp, its own listener and its own budget ----
 
 test("gate ingress, agents MCP: POST /agents-mcp reaches the outside module's listener with the agent's token and the real address; the vault's route is its own", async t => {

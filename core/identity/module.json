@@ -14,10 +14,13 @@
       { "name": "identity.migrate", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.github.link", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.discover", "effect": "write", "reach": "person", "outward": true },
-      { "name": "identity.card", "effect": "read", "reach": "person" }
+      { "name": "identity.card", "effect": "read", "reach": "person" },
+      { "name": "identity.signins.pending", "effect": "read", "reach": "modules" },
+      { "name": "identity.signin.revoke", "effect": "write", "reach": "person" },
+      { "name": "identity.signin.ack", "effect": "write", "reach": "person" }
     ]
   },
-  "watches": { "emits": [] },
+  "watches": { "emits": ["signin.new-device", "signin.revoked", "signin.acknowledged"] },
   "shows": { "cli": [] },
   "needs": { "tools": ["spaces.identity.create", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key", "vault.master.install"] },
   "teaches": {}

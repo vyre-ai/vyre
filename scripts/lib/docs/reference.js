@@ -293,7 +293,7 @@ const ENV_MEANING = {
   SCOPE_CWDS: "The folders an agent's `recall.search` is held to, as JSON.",
   SOCKET: "The path of vyred's socket, for Lumen.",
   SSH_BIN: "The `ssh` binary to run.",
-  SETUP_HTTP: "`1`: vyred serves the setup page, where the person pastes the install code. Inside Docker the page is served without this.",
+  SETUP_HTTP: "`1`, or inside Docker: vyred may serve the setup page. It opens only after the install line's own pairing at boot failed, takes only the code that carries the install line's setup code, and stops listening once the server is paired.",
   SETUP_PORT: "The port the setup page listens on. Default 8080.",
   SUPERVISOR: "What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it.",
   TAILSCALE_BIN: "The `tailscale` binary to run. A path that does not exist means no tailnet.",

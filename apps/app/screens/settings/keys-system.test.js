@@ -113,7 +113,7 @@ test("system: webhooks off offers Turn on, on lists the routes with a way to ope
   assert.ok(!JSON.stringify(on).toLowerCase().includes("tailscale"), "no Tailscale wording");
 });
 
-test("system: the Wink network card and the egress card say what is connected and what is wrong", { skip: !strip }, async () => {
+test("system: the Wink network card says what is connected and what is wrong", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
   // network.wink.status's real shape (core/network/wink.js, as the doctor test builds it).
   const w = m.winkCard({ at: 1, otherVpn: false, identity: { signedIn: true, name: "alex.vyre.run", devices: 3 }, spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: "direct", latencyMs: 12, peers: 2 }], relay: { enabled: true, reachable: true, latencyMs: 38 }, clock: { skewMs: 800 } });
@@ -124,9 +124,6 @@ test("system: the Wink network card and the egress card say what is connected an
   assert.equal(bad.warn.length, 2);
   assert.equal(m.winkCard({ spaces: [] }).state, "No spaces linked");
   assert.ok(!JSON.stringify([w, bad]).toLowerCase().match(/tailscale|tailnet/), "no Tailscale wording");
-  const e = m.egressCard({ enabled: true, sites: ["a.com"], sidecar: { answers: false, why: "refused" } });
-  assert.equal(e.state, "On, 1 site");
-  assert.match(e.warn[0], /does not answer \(refused\)/);
 });
 
 test("system: hand-back keeps its choices; shares flip between read only and read and write; the audit names what it found", { skip: !strip }, async () => {
