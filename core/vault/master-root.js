@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { currentPersonalKey } from "../../kernel/identity/holder.js";
 import { readMaster } from "../../kernel/identity/master.js";
-import { adoptVaultKey, plainVaultKeyPath } from "../../kernel/identity/vault-at-rest.js";
+import { adoptVaultKey, openVaultKey, plainVaultKeyPath } from "../../kernel/identity/vault-at-rest.js";
 import { keyObject, unwrapVaultKey } from "./crypto.js";
 import { readJsonFile } from "./store.js";
 
@@ -83,6 +83,11 @@ export async function deviceKey(vault) {
     return raw;
   }
   if (readMaster(path.dirname(vault.dir))) {
+    const sealed = openVaultKey(path.dirname(vault.dir));
+    if (sealed) {
+      await syncServerCopy(vault, sealed);
+      return sealed;
+    }
     throw locked("The master password is set and this vault has no server copy of its key. Unlock on this device so the vault can adopt it.");
   }
   const raw = await vault.keys.create();
@@ -111,6 +116,7 @@ export async function installHeldKey(vault) {
     throw locked("Set a master password on this device before the vault can take the master key.");
   }
   try {
+    if (!vault.vk && !readJsonFile(vault.dir, AGENT_VK)) adoptVaultKey(root, held);
     if (!vault.vk) await vault.key();
     adoptVaultKey(root, held);
   } finally {
