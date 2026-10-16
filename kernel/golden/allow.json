@@ -2118,5 +2118,117 @@
  {
   "tool": "work.timeline",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.timeline opened to a model or a module in 021a571ef (10 Oct 2026); the body decides: read-only: tasks, files, messages, documents and chats that link to a record or project, each only if the caller may read it; a chat shows by title only to its people or when shared; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+ },
+ {
+  "tool": "files.dirs",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.audit",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.candidates",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.list",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.measure",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.read",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.search",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.drive.status",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.fetch",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.preview",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.recent",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.search",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "files.stat",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "onboard.person.status",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "onboard.space.list",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.eval",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.index",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.related",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.search",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.sessions",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.setup",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.status",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.thread",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.transcript",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.unwatch",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "recall.watch",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "threads.slash",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
+ },
+ {
+  "tool": "work.chat.prefs",
+  "reason": "integrate 0.5.3: hosted and member read reach; callers gate and tool body enforce person scope (MEMBER_MAY, hosted-allow.json, reach guards)"
  }
 ]
