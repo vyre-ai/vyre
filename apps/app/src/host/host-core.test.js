@@ -42,6 +42,8 @@ test("first run on a page with no daemon: create an identity, lock, and open it 
   const kept = JSON.stringify(store.peek());
   assert.ok(!kept.includes(PASSWORD) && !kept.includes(made.recoveryKey));
   assert.equal(typeof store.peek().master.passwordWrap.ct, "string");
+  assert.match(store.peek().device.pub, /^[A-Za-z0-9_-]{43}$/, "a device key was made, and kept only wrapped");
+  assert.deepEqual(Object.keys(store.peek().device.wrapped).sort(), ["ct", "iv"]);
 
   const again = await host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
   assert.deepEqual([again.already, again.recoveryKey], [true, null]);

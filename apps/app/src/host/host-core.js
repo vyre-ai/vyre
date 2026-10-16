@@ -8,13 +8,14 @@ import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { passwordOk, personRoutes, usernameOf } from "../../../../lib/first-run-shape.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
+import { makeDeviceKey } from "./device-key.js";
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
 const b64u = (/** @type {Uint8Array} */ b) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
 
 /**
- * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  */
 
@@ -63,7 +64,7 @@ export function createHost(o) {
       const code = await reserve(name);
       const made = await claimIdentity({ name, code, base, key, fetch: f, ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
       const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: null, ...(o.kdf ? { kdf: o.kdf } : {}) });
-      await o.store.save({ master, username: name, id: made.id, ops: made.ops, pin: made.pin });
+      await o.store.save({ master, username: name, id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
       held = seed;
       return { username: name, id: made.id, ...personRoutes(name), recoveryKey: made.recoveryCode, once: true, already: false };
     },
@@ -80,6 +81,8 @@ export function createHost(o) {
       if (!k) throw bad("There is no master password on this device yet. Create your username first.", "no_identity");
       const keys = await openMasterRecord(k.master, recovery ? { recovery } : { password });
       held = unb64(keys.privateKey);
+      // A record made before the device key existed gets one now, wrapped under the identity just opened.
+      if (!k.device) await o.store.save({ ...k, device: makeDeviceKey(held, o.random) });
       return { unlocked: true, username: k.username, id: k.id };
     },
 
