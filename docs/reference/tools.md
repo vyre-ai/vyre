@@ -15799,6 +15799,7 @@ Make a space vault key, wrapped for the server so agents work while you are away
 - Input:
   - `space` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `vault.space.grant`
 
@@ -15809,6 +15810,7 @@ Wrap the space vault key to a member so their access carries to the space.
   - `pub` string, required
   - `space` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `vault.space.list`
 
@@ -15828,6 +15830,7 @@ Store a space vault item. The value is sealed and never returned.
   - `space` string, required
   - `value` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `vault.space.rotate`
 
@@ -15837,6 +15840,7 @@ Rotate the space vault key and drop one member. Remaining members still open ite
   - `space` string, required
   - `person` string
 - Callers: any caller
+- Needs a person present.
 
 ### `vault.space.status`
 

@@ -259,7 +259,9 @@ Who you are, how machines find each other, and who may do what.
 | --- | --- | --- | --- |
 | `approvals` | `core/approvals/` | box and local | Approve on your phone: a paired phone signs a request's exact words. |
 | `bridges` | `core/bridges/` | box and local | Sharing between Spaces on purpose: a shared view, a reference, a copy, a Kit. |
+| `devices` | `core/devices/` | box and local | Sign in on another computer with the space server, the username and the master password. |
 | `gate` | `core/gate/` | box and local | The outbound Gate: what an agent wants to send, spend or delete waits here for a person. |
+| `identity` | `core/identity/` | box and local | One username and one master password, with a recovery key and a link to GitHub. |
 | `link` | `core/link/` | box and local | Makes a Mac and a server one system: pairing, tools and events both ways. |
 | `names` | `core/names/` | box | Your name on vyre.run: claiming it and publishing its address. |
 | `network` | `core/network/` | box | The built-in network as the person sees it: signed in or not, and each link. |
