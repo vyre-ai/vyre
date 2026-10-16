@@ -82,3 +82,19 @@ test("the app runs only the buttons it knows: a tool or a route the box names th
   assert.deepEqual(c.buttons.map(b => b.label), ["Check it now", "Open the computer's screen"]);
   assert.equal(afterCheck({ light: "green" }), "");
 });
+
+test("a sign-in on a new device is a card whose two buttons the app runs, each with the device id and nothing else; a tool named with the wrong key is left out", () => {
+  const items = { items: [{ id: "signins:abcd1234abcd1234", kind: "signin", title: "Signed in on Kit's laptop", at: 5, answers: [
+    { label: "Not me, sign it out", tool: "identity.signin.revoke", input: { device: "abcd1234abcd1234", session: "leak" } },
+    { label: "It was me", tool: "identity.signin.ack", input: { device: "abcd1234abcd1234" } },
+    { label: "Wrong key", tool: "identity.signin.revoke", input: { id: "abcd1234abcd1234" } },
+    { label: "Connector tool with a device", tool: "connectors.connection.check", input: { device: "abcd1234abcd1234" } },
+    { label: "Not a device id", tool: "identity.signin.ack", input: { device: "../x" } },
+  ] }] };
+  const [c] = signinCards(items);
+  assert.deepEqual(c.buttons, [
+    { label: "Not me, sign it out", tool: "identity.signin.revoke", input: { device: "abcd1234abcd1234" } },
+    { label: "It was me", tool: "identity.signin.ack", input: { device: "abcd1234abcd1234" } },
+  ]);
+  assert.equal(c.title, "Signed in on Kit's laptop");
+});
