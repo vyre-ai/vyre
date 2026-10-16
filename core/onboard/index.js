@@ -200,15 +200,22 @@ export default {
     const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
-      const [version, names, recall, wink, accounts] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status"), tryCall("sessions.accounts.list", { provider: "claude" })]);
+      const [version, names, recall, wink, accountsRelay] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status"), tryCall("sessions.accounts.list", { provider: "claude" })]);
       const n = names.__error ? null : names;
+      /** @type {any[]} */
+      let accounts = Array.isArray(accountsRelay) ? accountsRelay : [];
+      if (!accounts.length && accountsRelay && accountsRelay.__error) {
+        const who = personOrPage(caller) ? String(caller) : "local";
+        const listed = await ctx.call("sessions.accounts.list", { provider: "claude" }, who);
+        if (!listed.error && Array.isArray(listed.data)) accounts = listed.data;
+      }
 
       const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: heldAddress() ? (ob().person || null) : ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
       // Claude can be signed in two ways: the Claude step's own token (ob().claude), or an account the sign-in tool made (the setup page's "Sign in to your AI", `vyre sessions`). Both count: a doctor that read only
       // the first said "not signed in" right after the page had signed Claude in (IR-17).
-      const acct = (Array.isArray(accounts) ? accounts : []).find((/** @type {any} */ a) => a && a.provider === "claude" && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
+      const acct = accounts.find((/** @type {any} */ a) => a && a.provider === "claude" && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
         signedIn: Boolean(auth) || Boolean(acct), via: auth === "api-key" ? "api-key" : auth ? "setup-token" : acct ? (acct.kind === "api-key" ? "api-key" : "account") : null };
       if (claude.auth || acct) claude.state = "done";
@@ -480,7 +487,11 @@ export default {
       run: async ({ action = "status", node, becomeDevice = false }, meta) => {
         const { caller } = meta;
         joinOwnerOnly(caller, meta, "adding a device or a server");
-        if (action === "relay") return call("relay.pair.start");
+        if (action === "relay") {
+          const r = await ctx.call("relay.pair.start", {}, String(caller));
+          if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+          return r.data;
+        }
         if (action === "verify") {
           const health = await call("link.health", node ? { node } : {});
           if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });

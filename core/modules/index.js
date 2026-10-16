@@ -670,7 +670,7 @@ const RELAY_ALLOWED = Object.freeze({
   mentions: ["vault.mention.search", "vault.mention.resolve"],
   identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
   // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
-  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "devices.signin", "sessions.accounts.signin"],
+  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "vault.put", "vault.", "link.", "relay.", "devices.signin", "sessions.accounts.", "onboard."],
 });
 
 export class Registry {

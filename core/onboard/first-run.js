@@ -99,7 +99,7 @@ export function registerFirstRun(ctx, io) {
   const persist = (/** @type {string | null} */ personId, /** @type {ReturnType<typeof emptyHeld>} */ held) => persistHeld(personId, held);
 
   /** The spaces this identity belongs to: the ones recorded here, plus whatever spaces.list already knows. @returns {Promise<{ id: string, name: string, role: string, server: string | null }[]>} */
-  async function spacesNow(held, personId) {
+  async function spacesNow(held, personId, { persist: doPersist = true } = {}) {
     /** @type {any[]} */
     let remote = [];
     try { const got = await personCall("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
@@ -122,7 +122,7 @@ export function registerFirstRun(ctx, io) {
     }
     held.spaces = out.map(membershipOf).filter(Boolean);
     if (held.current && !held.spaces.some((s) => s.id === held.current)) held.current = held.spaces[0] ? held.spaces[0].id : null;
-    persist(personId, held);
+    if (doPersist) persist(personId, held);
     return held.spaces.map((s) => ({ ...s }));
   }
 
@@ -173,8 +173,8 @@ export function registerFirstRun(ctx, io) {
     run: async (_i, meta) => {
       const { held, personId } = await heldOf(meta);
       const existing = await identityNow(personCall);
-      if (existing) { held.person = existing.username; held.personId = existing.id || held.personId; persist(personId, held); }
-      return { exists: Boolean(existing), username: held.person, id: held.personId, current: held.current, spaces: await spacesNow(held, personId), ...(held.person ? personRoutes(held.person) : {}) };
+      if (existing) { held.person = existing.username; held.personId = existing.id || held.personId; }
+      return { exists: Boolean(existing), username: held.person, id: held.personId, current: held.current, spaces: await spacesNow(held, personId, { persist: false }), ...(held.person ? personRoutes(held.person) : {}) };
     },
   });
 
@@ -325,7 +325,7 @@ export function registerFirstRun(ctx, io) {
     callers: [...OPEN],
     run: async (_i, meta) => {
       const { held, personId } = await heldOf(meta);
-      return { person: held.person, id: held.personId, current: held.current, spaces: await spacesNow(held, personId) };
+      return { person: held.person, id: held.personId, current: held.current, spaces: await spacesNow(held, personId, { persist: false }) };
     },
   });
 

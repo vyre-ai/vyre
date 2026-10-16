@@ -44,8 +44,9 @@ export class PeopleVaults {
     const root = path.join(this.dir, "people");
     const f = path.join(root, crypto.createHash("sha256").update("vyre-person-vault\0" + PeopleVaults.check(id)).digest("hex").slice(0, 40));
     ensureDir(root);
-    const real = fs.existsSync(f) ? fs.realpathSync(f) : f;
-    if (path.dirname(real) !== fs.realpathSync(root)) throw new Error("not a person folder");
+    const rootReal = fs.realpathSync(root);
+    const real = fs.existsSync(f) ? fs.realpathSync(f) : path.resolve(rootReal, path.basename(f));
+    if (path.dirname(real) !== rootReal) throw new Error("not a person folder");
     return f;
   }
 

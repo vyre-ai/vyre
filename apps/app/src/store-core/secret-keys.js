@@ -111,9 +111,17 @@ function matched(key, take) {
  * refuses that payload. Numbers, booleans and objects are left to the caller.
  * @param {string} json
  */
+/** A vault pass id in an event payload (`pass.created`, `pass.revoked`, …): the field is named `pass`, not a password. */
+function eventPassId(key, val) {
+  return key === "pass" && /^p_[A-Za-z0-9_-]+$/.test(val);
+}
+
 export function jsonHasSecretField(json) {
   const re = /"([^"\\]+)"\s*:\s*"([^"\\]{6,})"/g;
   let m;
-  while ((m = re.exec(String(json)))) if (egressNameIsSecret(m[1])) return true;
+  while ((m = re.exec(String(json)))) {
+    if (eventPassId(m[1], m[2])) continue;
+    if (egressNameIsSecret(m[1])) return true;
+  }
   return false;
 }
