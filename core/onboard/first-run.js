@@ -11,8 +11,9 @@
 // Until those answer, the older vault and install calls are tried, and the line is the plain installer with no code in it.
 
 import { randomBytes } from "node:crypto";
-import { isPerson } from "../../lib/caller.js";
 import { commandOk, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
+import { PLAIN_INSTALL_URL } from "../../lib/install-line.js";
+import { resolveInstallOnline } from "../../lib/install-online.js";
 
 const OPEN = Object.freeze(["cli", "local", "deck", "capsule", "device", "mcp", "harness"]);
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -155,7 +156,7 @@ export function registerFirstRun(ctx, io) {
         const inst = await tryCall("spaces.server.install", { space: label });
         if (inst && !inst.__error && typeof inst.installCommand === "string") command = String(inst.installCommand).trim();
       }
-      if (!command) command = place === "mac" ? "curl -fsSL vyre.run/box/install-mac-server.sh | sh" : "curl -fsSL vyre.run/i | sh";
+      if (!command) command = PLAIN_INSTALL_URL;
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
       const id = `fr_${randomBytes(8).toString("hex")}`;
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -173,18 +174,7 @@ export function registerFirstRun(ctx, io) {
       const row = waits.get(String(id || ""));
       if (!row) throw bad("That install is not one this device started.");
       if (Date.parse(row.expiresAt) < Date.now()) return { id, online: false, expired: true };
-      let online = false;
-      const st = await tryCall("wink.install.status", {});
-      if (st && !st.__error && (st.owned || st.locked)) online = true;
-      // The person's own screen may finish pairing. An agent calls wink.install.complete, which is held for a tap.
-      if (!online && isPerson(meta && meta.caller)) {
-        const done = await tryCall("wink.install.complete", {});
-        if (done && !done.__error && done.ok) online = true;
-        if (!online) {
-          const again = await tryCall("wink.install.status", {});
-          if (again && !again.__error && (again.owned || again.locked)) online = true;
-        }
-      }
+      const online = await resolveInstallOnline({ tryCall, meta });
       return { id, online, expired: false, kind: row.kind };
     },
   });

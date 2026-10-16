@@ -1,5 +1,6 @@
 // @ts-check
 // First run, per platform (team/0.3/DESIGN-first-run-per-platform.md, the prototype's "Not built" rows). Pure, so Node tests it.
+import { buildInstallLine } from "../../../../lib/install-line.js";
 // Each device offers only what it can do: a phone holds the key and connects, a Mac can host Vyre, a browser holds nothing.
 
 /** @typedef {"ios"|"android"|"mac"|"web"} DeviceKind */
@@ -33,13 +34,7 @@ export const SERVER_SETUP_ROUTE = "/u/setup/server";
  * @param {string | null | undefined} version @param {{ code?: string, store?: string, os?: string }} [vars]
  */
 export function installLine(version, vars = {}) {
-  const v = String(version ?? "").trim();
-  const rc = /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v);
-  const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
-  const env = [rc ? `VYRE_BOX_URL=${base}` : "", vars.code ? `VYRE_CODE=${vars.code}` : "", vars.code ? "VYRE_STORE=auto" : ""].filter(Boolean).join(" ");
-  // A Mac server runs its own installer (the full mode: LaunchDaemons, started at boot); it takes the same code and Records choice, and the server pairs itself.
-  if (vars.os === "mac") return `curl -fsSL ${rc ? `${base}install-mac-server.sh` : "vyre.run/box/install-mac-server.sh"} | ${env ? `${env} ` : ""}sh`;
-  return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
+  return buildInstallLine({ version, code: vars.code, os: vars.os });
 }
 
 /** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */

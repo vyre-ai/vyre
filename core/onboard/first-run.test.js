@@ -102,7 +102,7 @@ test("the install command is one curl line, and an invite link is the public for
   assert.equal(opened.command, "curl -fsSL vyre.run/i | sh");
   assert.deepEqual(opened.pending, ["wink.install.issue", "spaces.pair.install"]);
   const mac = await tools.get("onboard.space.open").run({ kind: "mac" }, {});
-  assert.match(mac.command, /install-mac-server\.sh/);
+  assert.match(mac.command, /vyre\.run\/i/);
   const link = await tools.get("onboard.member.link").run({ role: "member", ttlDays: 7, space: "juniper" }, {});
   assert.match(link.link, /^https:\/\/vyre\.run\/i\/[A-Za-z0-9_-]+$/);
   const read = await tools.get("onboard.join.read").run({ link: link.link }, {});

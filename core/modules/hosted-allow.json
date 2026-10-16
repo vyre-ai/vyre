@@ -132,6 +132,7 @@
   "work.chat.link": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.list": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.pin": "reads or starts a chat the person is in, or names and pins it",
+  "work.chat.prefs": "reads or sets the person's mute and list-pin for chats on every device; nothing leaves the team",
   "work.chat.pinned": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.rename": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.span": "reads or starts a chat the person is in, or names and pins it",

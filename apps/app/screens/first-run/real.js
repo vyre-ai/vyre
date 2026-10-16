@@ -80,7 +80,7 @@ export async function openSpace(input) {
     const row = { id: `spc_${name}`, name, role: "owner", server: /** @type {string | null} */ (null) };
     mock.spaces = mock.spaces.filter((s) => s.id !== row.id).concat([row]);
     mock.current = row.id;
-    return { ok: true, id: "fr_sample", spaceId: row.id, role: "owner", kind: input.kind, command: input.kind === "mac" ? "curl -fsSL vyre.run/box/install-mac-server.sh | sh" : "curl -fsSL vyre.run/i | sh" };
+    return { ok: true, id: "fr_sample", spaceId: row.id, role: "owner", kind: input.kind, command: "curl -fsSL vyre.run/i | sh" };
   }
   try { return done(await tool("onboard.space.open", { kind: input.kind, ...(input.name ? { name: input.name } : {}) })); }
   catch (e) { return fail(e); }
