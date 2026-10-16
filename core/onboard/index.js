@@ -186,7 +186,7 @@ export default {
         try { ctx.store.db.prepare("DELETE FROM onboard_flow WHERE person = ?").run(id); } catch { /* empty */ }
       },
     };
-    registerFirstRun(ctx, { call, tryCall, save, flow, adapters: () => ctx.registry.providers.keys() });
+    registerFirstRun(ctx, { save, flow, adapters: () => ctx.registry.providers.keys() });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things

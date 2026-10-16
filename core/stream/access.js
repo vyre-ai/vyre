@@ -33,10 +33,15 @@ export function createAccess({ ctx, groups, logs }) {
 
   /** The thread, read as the caller. Returns true (it is a thread the caller may read), false (no such thread), or throws the refusal. @param {string} session @param {any} meta */
   async function thread(session, meta) {
+    if (groups && groups.known(session)) return false;
     const caller = String((meta && meta.caller) || "");
     let r;
     try { r = await ctx.call("threads.get", { thread: session, limit: 1 }, personCallOpts(caller, meta) || undefined); }
-    catch (e) { throw fail("denied", `${/** @type {Error} */ (e).message}`); }
+    catch (e) {
+      const code = /** @type {any} */ (e).code;
+      if (code === "not_found" || code === "not_available" || code === "no_such_tool") return false;
+      throw fail("denied", `${/** @type {Error} */ (e).message}`);
+    }
     if (!r || !r.error) return Boolean(r && r.data);
     const code = String(r.error.code || "");
     if (code === "denied" || code === "forbidden" || code === "person_session_required") throw fail("denied", "you may not read this session");

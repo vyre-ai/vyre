@@ -73,8 +73,8 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
     if (r && r.error && ["no_such_tool", "denied"].includes(String(r.error.code))) mentions = false;
     if (mentions && r && !r.error) {
       const hits = flat(r.data).filter(x => x.name.toLowerCase() === name.toLowerCase());
-      if (hits.length === 1) picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name });
-      continue;
+      if (hits.length === 1) { picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name }); continue; }
+      if (hits.length > 1) continue;
     }
     // No mentions mechanism yet: vault is a provider on its own. Sessions cannot search it (that is for
     // person surfaces), so the typed name is tried as an item name: vault.mention.resolve matches

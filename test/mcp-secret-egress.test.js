@@ -128,6 +128,24 @@ test("tagged secrets are stripped for an agent and kept for the person, whatever
   assert.equal(lent.data.body, "ok");
 });
 
+test("nested secret strings are stripped at any depth; metadata objects named secret or credential stay", () => {
+  const secret = P.token;
+  const body = {
+    plan: { secret: { name: "STRIPE_KEY", class: "secret", ref: "vault://harlow/stripe", use: ["build"] } },
+    credential: { item: "" },
+    nested: { arr: [{ token: secret }, { label: "ok" }], deep: { wrap: { password: secret } } },
+  };
+  const mcp = scrubVaultResult("mcp", "publish.secret.grant", { data: body });
+  assert.equal(leaked(mcp).length, 0, JSON.stringify(mcp));
+  assert.equal(mcp.data.plan.secret.class, "secret");
+  assert.equal(mcp.data.credential.item, "");
+  assert.equal(mcp.data.nested.arr[0].token, undefined);
+  assert.equal(mcp.data.nested.arr[1].label, "ok");
+  assert.equal(mcp.data.nested.deep.wrap.password, undefined);
+  const person = scrubVaultResult("cli", "publish.secret.grant", { data: body });
+  assert.ok(leaked(person).length > 0);
+});
+
 test("every registered tool, called as an agent with planted secrets, keeps them out of the result, the error, the card, events, the log and stream frames", async (t) => {
   const root = tempHome(t);
   /** @type {string[]} */ const logs = [];

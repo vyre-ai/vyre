@@ -90,7 +90,10 @@ export function showable(v) {
     if (depth > 6) return "\u2026";
     if (typeof x === "string") return redactText(x);
     if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, nameIsSecret(k) && typeof y !== "object" ? "[hidden]" : walk(y, depth + 1)]));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => {
+      const sealed = typeof y === "string" && /^\{\{field:[^}]+\}\}$/.test(y);
+      return [k, nameIsSecret(k) && typeof y !== "object" && !sealed ? "[hidden]" : walk(y, depth + 1)];
+    }));
     return x;
   };
   const out = walk(v, 0);

@@ -678,8 +678,8 @@
    "why": "an outbound request with a space vault item: the server wrap opens it while nobody is unlocked, and the response redacts the value"
   },
   "vault.ssh.generate": {
-   "class": "review",
-   "why": "a plain session stores a new SSH key in the vault with no presence: vault owner to hold it or list why"
+   "class": "refused",
+   "why": "refused in the body for a plain session: SSH keys are generated from the person's own surfaces, not a model session"
   },
   "watchers.create": {
    "class": "refused",
@@ -720,6 +720,94 @@
   "work.template.install": {
    "class": "own",
    "why": "writes a draft template as the person the call carries; going live is the owner's yes"
+  },
+  "spaces.create": {
+   "class": "held",
+   "why": "Needs-you hold on a surface tool once input is valid; __probe__ stops at bad_input"
+  },
+  "spaces.setup.save": {
+   "class": "held",
+   "why": "Needs-you hold for setup on a paired device or invite"
+  },
+  "spaces.setup.claim": {
+   "class": "held",
+   "why": "Needs-you hold to claim a setup reservation"
+  },
+  "spaces.devices.remove": {
+   "class": "held",
+   "why": "Needs-you hold to remove a device from a space"
+  },
+  "spaces.devices.lend": {
+   "class": "held",
+   "why": "Needs-you hold to lend a device to a space"
+  },
+  "spaces.members.computers": {
+   "class": "held",
+   "why": "held_unavailable without approvals queue on probe-shaped calls"
+  },
+  "spaces.resume": {
+   "class": "held",
+   "why": "held_unavailable without valid resume payload from a plain session"
+  },
+  "spaces.invites.create": {
+   "class": "held",
+   "why": "held_unavailable until the person approves an invite"
+  },
+  "spaces.invites.confirm": {
+   "class": "held",
+   "why": "held_unavailable until the person confirms an invite"
+  },
+  "spaces.invites.revoke": {
+   "class": "held",
+   "why": "held_unavailable until the person revokes an invite"
+  },
+  "spaces.invites.accept": {
+   "class": "held",
+   "why": "held_unavailable until the person accepts an invite"
+  },
+  "onboard.agent.signin": {
+   "class": "held",
+   "why": "held_unavailable: onboarding sign-in is the person's own act"
+  },
+  "onboard.machine": {
+   "class": "held",
+   "why": "held_unavailable: machine enrolment waits for the person"
+  },
+  "onboard.windows": {
+   "class": "held",
+   "why": "bad_input until real Windows enrolment fields; ownerWrite refuses plain mcp with valid input"
+  },
+  "presence.person.renew-allow": {
+   "class": "held",
+   "why": "held_unavailable without a person session"
+  },
+  "sessions.accounts.key": {
+   "class": "held",
+   "why": "held_unavailable without a person session"
+  },
+  "relay.devices.remove": {
+   "class": "held",
+   "why": "held_unavailable without a person session and approval"
+  },
+  "wink.code.ack": {
+   "class": "held",
+   "why": "held_unavailable without a valid pairing code"
+  },
+  "wink.pair.server": {
+   "class": "held",
+   "why": "bad_input until a real server pairing payload; held or refused once input is valid"
+  },
+  "wink.phone.open": {
+   "class": "held",
+   "why": "bad_input until a real phone pairing payload; held or refused once input is valid"
+  },
+  "wink.phone.pair.answer": {
+   "class": "held",
+   "why": "held_unavailable without an active phone pairing"
+  },
+  "wink.access": {
+   "class": "held",
+   "why": "held_unavailable without a person session"
   }
  }
 }

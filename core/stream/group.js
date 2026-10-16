@@ -690,7 +690,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         return;
       }
       closeStep(m);
-      if (!b.h && !(await begin(m, b, message))) { projectionStuck(m); return; }
+      if (!b.h && !(await begin(m, b, message))) { if (!m.dead && !refused.has(message)) projectionStuck(m); return; }
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
       if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat: a person in the chat adds it again (work.chat.change)"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
       const text = String(s.data.text);
@@ -701,7 +701,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
     if (!b.h && !b.reply && blocks.length === 0) { b.items.push({ ...s, data: { ...s.data, message } }); return; } // reasoning so far: held until the turn ends
     // The reply is opened first: opening it reads the kernel's list for this room (begin), so the decision below is made on the room as it is now, not on a mirror that may be stale.
-    if (!b.h && !(await begin(m, b, message))) { projectionStuck(m); return; }
+    if (!b.h && !(await begin(m, b, message))) { if (!m.dead && !refused.has(message)) projectionStuck(m); return; }
     // A room of more than one person (the kernel's own list, mirrored here), or one this group cannot count: the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
     if (inRoom(m.grp) && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
       log(`text-done for ${m.who} in ${m.grp}: a field value was dropped (cite it as a field-ref)`);

@@ -52,9 +52,14 @@ function harness(opt = {}) {
   const ctx = {
     tool: (name, def) => tools.set(name, def),
     events: { emit() {} },
+    call: async (tool, input, opts) => {
+      assert.deepEqual(opts, { relay: true });
+      calls.push({ name: tool, input });
+      try { return { data: await dispatch(tool, input) }; }
+      catch (e) { return { error: { code: /** @type {any} */ (e).code || "failed", message: String(/** @type {any} */ (e).message || e) } }; }
+    },
   };
-  const call = async (name, input) => {
-    calls.push({ name, input });
+  const dispatch = async (name, input) => {
     if (name === "identity.status") return person ? { exists: true, username: person.username, id: person.id } : { exists: false, username: null, id: null };
     if (name === "identity.create") {
       person = { username: input.username, id: "id_alex" };
@@ -87,7 +92,7 @@ function harness(opt = {}) {
     if (name === "identity.github.link") return { login: input.login };
     throw Object.assign(new Error(`missing ${name}`), { code: "no_such_tool" });
   };
-  registerFirstRun(ctx, { call, tryCall: async () => ({ __error: "missing" }), save: (p) => saved.push(p) });
+  registerFirstRun(ctx, { save: (p) => saved.push(p) });
   return { tools, saved, calls, ctx };
 }
 

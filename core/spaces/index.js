@@ -40,7 +40,7 @@
 import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
-import { devKindSwitch } from "../../lib/release-build.js";
+import { devKindSwitch, isReleaseBuild } from "../../lib/release-build.js";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
@@ -618,8 +618,8 @@ export default {
         if (st.exists) throw refuse(st.name ? `This device already has the name ${st.name}.vyre.run.` : "This device already has a Vyre identity.", "exists");
         const password = passwordOf(i);
         let made, label, code = typeof i.code === "string" ? i.code.trim() : "";
-        // Development builds only (never a release): the walks and tests that make many people reserve each name themselves. A release build takes a code and nothing else.
-        if (!code && devKindSwitch(process.env.VYRE_TEST_SELF_RESERVE) && typeof i.name === "string") {
+        // A checkout reserves the typed name itself; a release build takes a pasted code unless VYRE_TEST_SELF_RESERVE is on for walks.
+        if (!code && typeof i.name === "string" && (!isReleaseBuild() || devKindSwitch(process.env.VYRE_TEST_SELF_RESERVE))) {
           const want = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
           try { code = String((await dir.reserve(want)).code); } catch (e) { const c = /** @type {any} */ (e).code; throw refuse(c === "taken" ? "That name is taken. Pick another." : "That name can't be used.", c === "taken" ? "name_taken" : "bad_name"); }
         }
