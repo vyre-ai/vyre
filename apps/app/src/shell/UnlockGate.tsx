@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
+import { ThemeProvider as UiThemeProvider } from "@vyre/ui";
 import { MOCK } from "../real/box";
 import { useTheme } from "../theme/theme";
 import { UnlockScreen } from "../../screens/unlock/UnlockScreen";
@@ -59,7 +60,8 @@ export function UnlockGate({ children }: { children: ReactNode }) {
       <View ref={under} style={styles.fill} importantForAccessibility={covered ? "no-hide-descendants" : "auto"} accessibilityElementsHidden={covered}>{children}</View>
       {!covered ? null : (
         <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { backgroundColor: color.bg }]}>
-          {view === "pending" ? null : <UnlockScreen key={view} view={view} username={status?.username} onDone={() => void refresh()} onRetry={() => void refresh()} />}
+          {/* The screens come from the component library, whose own theme provider the routes mount (app/onboard.tsx); the cover sits above every route, so it mounts one itself. */}
+          {view === "pending" ? null : <UiThemeProvider><UnlockScreen key={view} view={view} username={status?.username} onDone={() => void refresh()} onRetry={() => void refresh()} /></UiThemeProvider>}
         </View>
       )}
     </View>
