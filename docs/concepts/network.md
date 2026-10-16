@@ -26,11 +26,13 @@ A paired server or device joins the home's own network at its control address wi
 
 ## Pairing a device
 
-Every way into a space is a Wink: a code or a scan on one device, a card on the other, and then exactly one grant. There is no hidden way in.
+Every way into a space ends in exactly one grant. There is no hidden way in.
 
-- **A phone.** Your server or a computer you are signed in on shows a QR code and a long code. The phone scans or pastes it, both screens show the same three words, and you say yes on the computer. No yes pairs nothing.
-- **A Mac.** The server shows its pairing code and the Mac runs `vyre link pair <code>`. The person at the server picks the three words: the server shows a decoy set too, and a wrong pick pairs nothing. `vyre up` pairs nothing and asks nothing; it only says how.
-- **A person.** An invite is a Wink ticket with the offer sealed into it. The invited person's redemption becomes a membership in your space, and a sensitive role waits for an admin's approval.
+- **A server.** In the app, **Create a space** shows one install command with a single-use pair code built in. The code is made from your identity and is good for 30 minutes. The server uses it to adopt you when it comes online. If another server answers that line first, nothing is paired and the app says so.
+- **A phone.** From a computer you are signed in on, **Add a device** makes a link the phone opens. Or the phone signs in with the space address, your username and your master password, or with GitHub and then your master password.
+- **A computer.** **Add this computer** takes the space address, your username and your master password, or GitHub and then the master password. The master password unlocks your vault.
+- **A Mac, from the terminal.** `vyre link pair <address>` asks the server and shows a code. Approve it in the Vyre app with your passkey, or run `vyre link approve <code>` on the server.
+- **A person.** An invite is a link, `https://vyre.run/i/<token>`, with the role and the days it lasts picked when you make it. Whoever opens it joins. For an admin or owner role, the invited person reads you four words from their card and you type them in before they are in.
 - **A computer you lend.** You lend one of your computers to a space with limits, and one removal undoes all of it.
 
 You can see every grant as a card with its last use, and one removal does all of it.

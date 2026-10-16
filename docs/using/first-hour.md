@@ -38,20 +38,19 @@ sign-in**).
 
 ## 3. Open Vyre on your phone (4 minutes)
 
-1. Open the Vyre app on the phone and scan the code your server or a computer you are signed in
-   on shows, or paste its long code. Both screens show the same three words; say yes only if
-   they match. There is nothing to install or sign in to first.
-2. Or open your address with `/now` at the end, for example `https://alex.vyre.run/now`, in Safari
-   (iPhone) or Chrome (Android).
-3. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the
+1. Open the Vyre app on the phone and choose **Sign in**. Type your space address (for example
+   `alex.vyre.run`), your username and your master password. Or press **Sign in with GitHub** and
+   then type the master password to unlock your vault.
+2. Or add it from a computer you are already signed in on: **Devices**, **Add a device**,
+   **A phone**, **Make the link**, and open that link on the phone. If you were invited to someone
+   else's space, open the invite link instead; it looks like `https://vyre.run/i/...`.
+3. No app yet? Open your address with `/now` at the end, for example `https://alex.vyre.run/now`,
+   in Safari (iPhone) or Chrome (Android).
+4. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the
    browser menu, then **Install app**.
-4. Open it from the icon and turn on notifications when Now offers them.
+5. Open it from the icon and turn on notifications when Now offers them.
 
-Step 4 pairs your Mac with the server. The phone's Now then shows "A Mac wants to pair". Press
-**Approve** only if it is your Mac, and confirm with Face ID. A Mac can't
-approve itself, which is why the phone comes first ([known gaps](../known-gaps.md)).
-
-**Check:** on the Mac, once step 4 is done, `vyre link` says "linked to" and names your server.
+**Check:** the phone shows your space and your name. **Settings**, **Devices** lists the phone.
 
 ## 4. Put Lumen on your Mac and ask it (5 minutes)
 
@@ -62,12 +61,16 @@ npm install -g https://vyre.run/box/vyre.tgz
 vyre up --connect https://alex.vyre.run
 ```
 
-Approve the pairing on your phone, as step 3 says. `vyre up` then builds Lumen on your Mac and
-opens it. To build it yourself, or if it did not open:
+`vyre up` asks your server to pair this Mac and shows a code. Approve it in the Vyre app and
+confirm with your passkey, or run `vyre link approve <code>` on the server. A Mac cannot approve
+itself. `vyre up` then builds Lumen on your Mac and opens it. To build it yourself, or if it did
+not open:
 
 ```sh
 vyre capsule
 ```
+
+**Check:** `vyre link` says "linked to" and names your server.
 
 Allow Input Monitoring when macOS asks
 ([Allow double-Control](capsule.md#allow-double-control)), then press Control twice anywhere.
@@ -106,7 +109,7 @@ screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes sti
 
 ## 7. Open Settings (1 minute)
 
-Open the Vyre app (your box's address, or the phone icon) and go to **Settings**. Look at
+Open the Vyre app (your space's address, or the phone icon) and go to **Settings**. Look at
 **Devices**, **Notifications** (quiet hours) and **Account and recovery** (how you sign in).
 
 ## 8. Change a colour (2 minutes)
