@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(identity): a recovery key, a master wrap, a space-vault value and a GitHub link token are tagged on the shared secret list, and the kernel strips them from any result an agent, model or MCP caller would see. identity.create, identity.migrate, identity.unlock, identity.status, identity.card and identity.github.link return none of them to a non-person. A record read does the same for a sealed field. The person still sees a recovery key once.
 - test(identity): one identity can be owner of one space and admin of another, on two servers. The identity and personal vault stay with the person. Each server holds that space's membership and space vault. Signing in and unlocking work on either server. Transfer and rotation stay on the space they name. See ADR 0054.
 - feat(app): screens to create, unlock and migrate an identity. They call identity.create, identity.unlock and identity.migrate, the same tools the first-run flow uses. A recovery key asks for a confirmation on the device and does not open the vault.
 - fix(identity): a recovery key unlocks the identity only after a confirmation on the device. It does not unwrap the personal vault. The master password does. See ADR 0054.

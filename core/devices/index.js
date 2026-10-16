@@ -1,7 +1,9 @@
 // @ts-check
 // devices: sign a computer in on any of the person's space servers, with the username and the master password (ADR 0054). Each space has its own server. GitHub resolves the username and still asks for the password.
 
+import { isPerson } from "../../lib/caller.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
+import { redactSecrets, secretSchema } from "../../lib/secret-schema.js";
 import * as M from "../../kernel/identity/master.js";
 
 const MIGRATIONS = [
@@ -27,9 +29,18 @@ export default {
       input: obj({
         server: str,
         username: str,
-        password: str,
+        password: secretSchema("master-record"),
         github: { type: "object", properties: { login: str, subject: str } },
       }, ["server", "password"]),
+      output: obj({
+        ok: { type: "boolean" }, username: str, id: str, server: str, unlocked: { type: "boolean" },
+        carry: obj({
+          passwordWrap: secretSchema("master-record"),
+          identityWrap: secretSchema("master-record"),
+          vaultWrap: secretSchema("master-record"),
+          boxPub: str,
+        }),
+      }),
       run: async (input, meta) => {
         if (modelSuppliedSecret(meta && meta.caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
@@ -47,7 +58,8 @@ export default {
         if (username !== opened.username) throw refuse("That username does not match this device.", "bad_input");
         const id = `dev_${Date.now().toString(36)}`;
         ctx.store.db.prepare("INSERT INTO devices_signin (id, server, username, at) VALUES (?, ?, ?, ?)").run(id, server, opened.username, Date.now());
-        return { ok: true, username: opened.username, id: opened.id, server, unlocked: true, carry: M.signinCarry(root) };
+        const shown = { ok: true, username: opened.username, id: opened.id, server, unlocked: true, carry: M.signinCarry(root) };
+        return isPerson(meta && meta.caller) ? shown : redactSecrets(shown).value;
       },
     });
     return { async stop() {} };

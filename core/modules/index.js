@@ -37,11 +37,11 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
+import { scrubVaultResult, armSecrets, disarmSecrets } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
 
-/** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 // wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
@@ -1403,7 +1403,7 @@ export class Registry {
         const effect = effectOf(name, declaredEffect, reach);
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
+        this.tools.set(name, { name, module: m.name, description: def.description || "", input: def.input || { type: "object" }, output: def.output || null, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
           internal: Boolean(def.internal) || reach === "modules",
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
@@ -1895,15 +1895,15 @@ export class Registry {
 
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
-    // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await runInTurn(meta, () => def.run(input, meta), Boolean(def.crossSpace)) }; }
-    catch (e) {
-      // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
-      // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".
-      const err = /** @type {any} */ (e);
-      const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
-      return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
-    }
+    const armed = armSecrets(meta && meta.caller, input, def, meta);
+    try {
+      try { return scrubVaultResult(meta && meta.caller, def && def.name, { data: await runInTurn(meta, () => def.run(input, meta), Boolean(def.crossSpace)) }, input, def); }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
+        return scrubVaultResult(meta && meta.caller, def && def.name, { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } }, input, def);
+      }
+    } finally { disarmSecrets(armed); }
   }
 
   /**

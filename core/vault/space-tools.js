@@ -5,6 +5,7 @@ import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { userHostFetch } from "../../lib/http.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
+import { secretSchema } from "../../lib/secret-schema.js";
 import * as SV from "../../kernel/identity/space-vault.js";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -44,7 +45,8 @@ export function registerSpaceTools(ctx) {
   });
   ctx.tool("vault.space.put", {
     description: "Store a space vault item for the hosts it may be sent to. The value is sealed and never returned.",
-    input: obj({ space: str, id: str, name: str, value: str, hosts: { type: "array", items: str } }, ["space", "id", "name", "value", "hosts"]),
+    input: obj({ space: str, id: str, name: str, value: secretSchema("vault-value"), hosts: { type: "array", items: str } }, ["space", "id", "name", "value", "hosts"]),
+    output: obj({ id: str, name: str, hosts: { type: "array", items: str }, generation: { type: "integer" }, value: secretSchema("vault-value") }),
     presence: { summary: (/** @type {any} */ i) => `Store "${i && i.name}" in the space vault of ${i && i.space}` },
     run: async (input, meta) => {
       spaceOk(input);

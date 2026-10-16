@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
+import { redactSecrets, secretSchema } from "../../lib/secret-schema.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import * as M from "../../kernel/identity/master.js";
 import { checkUsername, publicCard } from "../../kernel/identity/username.js";
@@ -33,12 +34,12 @@ function refuseModel(meta, input) {
   if (modelSuppliedSecret(meta && meta.caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
 }
 
-/** @param {any} meta @param {any} body */
+/** A person sees the recovery key once. Any other caller loses every secret-tagged field. @param {any} meta @param {any} body */
 function forCaller(meta, body) {
   if (isPerson(meta && meta.caller)) return body;
-  const rest = { ...body };
-  delete rest.recoveryKey;
-  return { ...rest, note: "The recovery key is shown on your device." };
+  const hadRecovery = body && typeof body === "object" && (body.recoveryKey != null || body.recoveryCode != null || body.recovery != null);
+  const cleaned = redactSecrets(body).value;
+  return hadRecovery && cleaned && typeof cleaned === "object" ? { ...cleaned, note: "The recovery key is shown on your device." } : cleaned;
 }
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -54,10 +55,11 @@ export default {
       }
     } catch { /* no identity file yet */ }
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    const tool = (name, description, input, run, output) => ctx.tool(name, { description, input, run, ...(output ? { output } : {}) });
+    const recoveryOut = obj({ username: str, id: str, url: str, recoveryKey: secretSchema("recovery-key"), note: str });
 
     tool("identity.create", "Make your username. You enter the master password on your device. The recovery key is shown once there.",
-      obj({ username: str, code: str, password: str, deviceLabel: str }, ["username", "password"]),
+      obj({ username: str, code: str, password: secretSchema("master-record"), deviceLabel: str }, ["username", "password"]),
       async (input, meta) => {
         refuseModel(meta, input);
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
@@ -77,25 +79,25 @@ export default {
         });
         ctx.store.db.prepare("INSERT INTO identity_master (id, state, username, at) VALUES (1, 'wrapped', ?, ?) ON CONFLICT(id) DO UPDATE SET state = 'wrapped', username = excluded.username, at = excluded.at").run(name, Date.now());
         return forCaller(meta, { username: name, id: legacy.id, url: `https://vyre.run/u/${name}`, recoveryKey });
-      });
+      }, recoveryOut);
 
     tool("identity.unlock", "Unlock this device with your master password. A recovery key unlocks the identity only after you confirm it here.",
-      obj({ password: str, recovery: str, confirm: { type: "boolean" } }),
+      obj({ password: secretSchema("master-record"), recovery: secretSchema("recovery-key"), confirm: { type: "boolean" } }),
       async (input, meta) => {
         refuseModel(meta, input);
         if ((input.password == null || input.password === "") && (input.recovery == null || input.recovery === "")) throw refuse("Enter your master password on this device.", "person_enters");
         if (input.recovery && input.confirm === true && !isPerson(meta && meta.caller)) throw refuse("Confirm the recovery key on this device.", "needs_presence");
-        return M.unlockMaster({ root, password: input.password, recoveryCode: input.recovery, confirm: input.confirm === true, identityFile: idFile });
+        return forCaller(meta, M.unlockMaster({ root, password: input.password, recoveryCode: input.recovery, confirm: input.confirm === true, identityFile: idFile }));
       });
 
     tool("identity.lock", "Lock this device and forget the unlocked keys in memory.",
-      obj({}), async () => { M.lockMaster(idFile); return { locked: true }; });
+      obj({}), async (_input, meta) => { M.lockMaster(idFile); return forCaller(meta, { locked: true }); });
 
     tool("identity.status", "Whether a username exists, whether it is unlocked, and whether the directory may show it.",
-      obj({}), async () => M.masterStatus(root, idFile));
+      obj({}), async (_input, meta) => forCaller(meta, M.masterStatus(root, idFile)));
 
     tool("identity.migrate", "Wrap this device's existing keys under a new master password. The recovery key is shown once.",
-      obj({ password: str }, ["password"]),
+      obj({ password: secretSchema("master-record") }, ["password"]),
       async (input, meta) => {
         refuseModel(meta, input);
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
@@ -104,21 +106,22 @@ export default {
         const made = M.migrateLegacy({ root, identityFile: idFile, password: input.password, recoveryCode: recoveryKey, vaultKey, kdf: kdf() });
         ctx.store.db.prepare("INSERT INTO identity_master (id, state, username, at) VALUES (1, 'wrapped', ?, ?) ON CONFLICT(id) DO UPDATE SET state = 'wrapped', username = excluded.username, at = excluded.at").run(made.username, Date.now());
         return forCaller(meta, { username: made.username, id: made.id, url: made.url, recoveryKey });
-      });
+      }, recoveryOut);
 
     tool("identity.github.link", "Link a GitHub login to your username. The vault still needs your master password.",
       obj({ login: str, subject: str }, ["login", "subject"]),
-      async (input) => M.linkGithub(root, { login: input.login, subject: input.subject }, idFile));
+      async (input, meta) => forCaller(meta, M.linkGithub(root, { login: input.login, subject: input.subject }, idFile)),
+      obj({ login: str, linked: { type: "boolean" }, githubToken: secretSchema("token"), githubAccessToken: secretSchema("token") }));
 
     tool("identity.discover", "Choose whether the public directory shows your username.",
       obj({ on: { type: "boolean" } }, ["on"]),
-      async (input) => M.setDiscoverable(root, input.on === true, idFile));
+      async (input, meta) => forCaller(meta, M.setDiscoverable(root, input.on === true, idFile)));
 
     tool("identity.card", "The public card for your username. Private unless you opted in.",
-      obj({}), async () => {
+      obj({}), async (_input, meta) => {
         const rec = M.readMaster(root);
-        if (!rec) return { private: true, name: null };
-        return publicCard({ name: rec.username, id: rec.id, discoverable: rec.discoverable === true, github: rec.github });
+        if (!rec) return forCaller(meta, { private: true, name: null });
+        return forCaller(meta, publicCard({ name: rec.username, id: rec.id, discoverable: rec.discoverable === true, github: rec.github }));
       });
 
     return { async stop() { M.lockMaster(idFile); } };
