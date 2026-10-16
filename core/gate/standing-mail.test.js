@@ -98,15 +98,15 @@ test("a payment is held over its limit for one payment, over its day, and in ano
   const server = http.createServer((req, res) => { let b = ""; req.on("data", c => (b += c)); req.on("end", () => { paid.push(b); res.writeHead(200, { "content-type": "application/json" }); res.end("{}"); }); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => new Promise(r => server.close(() => r(undefined))));
-  const host = `127.0.0.1:${/** @type {any} */ (server.address()).port}`;
-  const w = await world(t, { senders: { pay: { type: "http", vault: "pay-token", hosts: [host] } } });
+  const origin = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
+  const w = await world(t, { senders: { pay: { type: "http", vault: "pay-token", hosts: [origin] } } });
   const { OWNER, ok, agentCall } = w;
   await ok("vault.put", { name: "pay-token", kind: "api-key", fields: { value: `fixture-token-${crypto.randomBytes(6).toString("hex")}` } });
   await ok("vault.grant", { name: "pay-token", module: "gate" });
   await ok("agents.create", { name: "juno", kind: "agent" });
   await ok("gate.standing.add", { agent: "juno", kind: "spend", via: "pay", to: { patterns: ["billing@vendor.example"] }, max_amount: 50, daily_amount: 100, currency: "usd" });
   const pay = async (/** @type {number} */ amount, /** @type {string} */ currency = "USD", /** @type {string} */ payee = "billing@vendor.example") => {
-    const r = await agentCall("juno", OWNER, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `http://${host}/pay`, body: "x", payee, amount, currency } });
+    const r = await agentCall("juno", OWNER, "gate.request", { kind: "spend", via: "pay", to: payee, content: { method: "POST", url: `${origin}/pay`, body: "x", payee, amount, currency } });
     assert.ok(!r.error, JSON.stringify(r.error));
     return r.data.state;
   };

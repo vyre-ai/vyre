@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { asOwner, tempHome, present, kernelCaller, startDaemonBounded } from "../../test/helpers.js";
+import { asOwner, tempHome, present, kernelCaller, startDaemonBounded, stopDaemonsBounded } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 import { createRing, addHolders } from "../../lib/chat-keys.js";
@@ -501,13 +501,16 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
 });
 
 test("a chat's history leaves one device and comes back on another: its logged frames, its runs (stopped) and their events; a chat that already has its frames there is left as it is", { timeout: 150_000 }, async t => {
+  const daemons = [];
+  stopDaemonsBounded(t, () => daemons);
   async function boot() {
     const root = tempHome(t);
     const transcripts = path.join(root, "transcripts");
     Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
     fs.mkdirSync(transcripts);
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-    const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+    const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+    daemons.push(d);
     asOwner(d, root);
     return { d, root };
   }

@@ -126,7 +126,10 @@ export default {
     const standingCover = async (input, meta, agentName) => {
       try {
         if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
-        const to = gate.recipients(input);
+        let to = gate.recipients(input);
+        if ((!to || !to.length) && String(input.kind) === "send") {
+          try { to = gate.prepare(input).dest; } catch { to = null; }
+        }
         if (!to || !to.length) return null;
         const amount = input.kind === "spend" && input.content && typeof input.content === "object" ? Number(input.content.amount) : undefined;
         const currency = input.kind === "spend" && input.content && typeof input.content === "object" && typeof input.content.currency === "string" ? input.content.currency : undefined;
@@ -160,7 +163,7 @@ export default {
         const { caller, thread, agent, firstParty } = meta0;
         const covered = meta0[COVERED];
         const filing = await filed(input, caller, thread);
-        const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
+        const by = { agent: (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) || agent || agentOf(caller) };
         // Asking is approving (P17): what the person's own words covered goes out now, with no
         // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
         // A person's own confirmation of exactly this send (Lumen or a Capsule form): from their surface, fresh, and the hash of what they saw.

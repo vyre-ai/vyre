@@ -25,6 +25,14 @@ const UNPROVEN_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent
 const SESSION_ORIGIN = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:)/;
 const isRelay = (caller, m) => caller === "module:vyred" && typeof m.origin === "string" && SESSION_ORIGIN.test(m.origin) && Boolean(m.in_space_chain && Array.isArray(m.in_space_chain.hops));
 
+/** A proven named agent on the person's session (not the default assistant or a model slot): standing and outward tools judge reach at the Gate; the member door must not refuse before that. */
+const provenNamedAgent = (caller, meta) => {
+  if (!(typeof meta?.thread === "string" && meta.thread.length > 0 && SESSION_ORIGIN.test(String(caller)))) return false;
+  const m = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller ?? ""));
+  const name = (typeof meta.agent === "string" && meta.agent) || (m ? m[1] : "");
+  return Boolean(name) && name !== "assistant" && !String(name).startsWith("model:");
+};
+
 /** A plain noun for what a refused tool is about, by its module; a tool in a module not named here is "That". */
 const NOUN = Object.freeze({
   mail: "mail", google: "Google account", github: "GitHub account", connectors: "connected services", publish: "publishing", documents: "document signing", mcp: "connected tools",
@@ -105,6 +113,8 @@ export function createDoorGate(k) {
     if (j.v === "pass") return null;
     const r = await roleFor(j.actor);
     if (roleMay(tool, r)) return null;
+    const scoped = k.scopedGroups || SCOPED_GROUPS;
+    if (provenNamedAgent(caller, meta) && group && !scoped.includes(group)) return null;
     return { error: { code: "denied", message: group ? refusal(tool) : guestRefusal() } };
   };
   /** The test a tool list is cut by for this caller: null when the caller is not a member (the whole list), else whether a tool shows. @param {string} caller @param {any} meta */

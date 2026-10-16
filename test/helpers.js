@@ -167,6 +167,32 @@ export async function startDaemonBounded(t, opts, o = {}) {
   return d;
 }
 
+/**
+ * One teardown for several daemons started in the same test (each with its own home). Several
+ * `startDaemonBounded` hooks in one test blame later daemons' children on an earlier stop; this
+ * stops every daemon in reverse start order and checks children once against the snapshot taken here.
+ * @param {any} t @param {() => Array<{ stop: () => Promise<any> }>} daemons
+ */
+export function stopDaemonsBounded(t, daemons) {
+  const beforeAll = new Set(childrenNow());
+  t.after(async () => {
+    /** @type {any} */ let failure = null;
+    for (const d of [...daemons()].reverse()) {
+      /** @type {any} */ let timer;
+      try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
+      catch (e) { failure = e; }
+      finally { clearTimeout(timer); }
+      if (failure) break;
+    }
+    /** @type {number[]} */ let left = [];
+    const pids = childrenNow().filter(pid => !beforeAll.has(pid));
+    for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    left = pids;
+    if (failure) throw failure;
+    if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
+  });
+}
+
 /** Write a module folder under root with the given manifest and entry source. */
 export function writeModule(root, name, manifest, source) {
   const dir = path.join(root, name);
