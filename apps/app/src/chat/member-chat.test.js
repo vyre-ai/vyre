@@ -64,5 +64,6 @@ test("the chat stream's own-home paths are untouched: the team branch comes firs
   assert.match(src, /peerDuplex\(session, from(, [^)]*)?\)/);
   assert.match(src, /await tool\("work\.chat\.get", \{ chat: session \}\)/, "a chat is the team's only when the team's door knows it");
   assert.match(src, /if \(!\(await teamSpace\(\)\)\) return write\(name, input\);/, "not a team chat: the outbox as before");
+  assert.equal(src.includes("teamP"), false, "team membership is re-checked every write, not cached once");
   assert.equal((src.match(/await write\(/g) || []).length, 0, "no write goes around writeVia");
 });

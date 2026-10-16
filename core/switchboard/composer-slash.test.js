@@ -13,6 +13,7 @@ test("threads.slash routing agrees with routeComposerLine for remember and model
 test("threads.slash routing for planner, recall, roll and session slashes", () => {
   assert.equal(routeComposerLine("/later at 5pm x").tool, "planner.add");
   assert.equal(routeComposerLine("/find lease").tool, "recall.search");
+  assert.equal(routeComposerLine("/search lease").tool, "recall.search");
   assert.equal(routeComposerLine("/roll").tool, "threads.roll");
   assert.equal(routeComposerLine("/effort low").tool, "threads.effort");
   assert.equal(routeComposerLine("/rewind").tool, "threads.rewind");

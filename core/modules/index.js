@@ -109,7 +109,9 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
-  term: (/** @type {string} */ as) => isPerson(as) };
+  term: (/** @type {string} */ as) => isPerson(as),
+  // threads replays the asking person to planner, recall and mentions on a composer's / line and on ingress tags, never the module's own chain.
+  threads: (/** @type {string} */ as) => isPerson(as) || /^link:[^\s:]+$/.test(String(as)) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called

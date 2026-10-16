@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
 import { listen, tool } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, leaseLine, lentMacOffline, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, leaseLine, lentMacOffline, LENT_OFFLINE_TICKS, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
@@ -18,10 +18,13 @@ export function usePlacement(thread: string, real: boolean) {
   useEffect(() => {
     if (!real) return;
     let live = true;
+    let offlineTicks = 0;
     const autoServer = async () => {
       const pl = await runner.placement(thread).catch(() => null);
       const places = await tool("runner.places", {}).catch(() => null);
-      if (!lentMacOffline(pl, places, thread)) return;
+      if (!lentMacOffline(pl, places, thread)) { offlineTicks = 0; return; }
+      offlineTicks += 1;
+      if (offlineTicks < LENT_OFFLINE_TICKS) return;
       const x = await runner.move(thread, "server").catch(() => null);
       if (x && live) setP(x);
     };

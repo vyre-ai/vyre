@@ -1,7 +1,8 @@
 // @ts-check
 // Durable transcript cache per chat: frames are written as they are folded so "offline" always has something to show.
 
-const KEY = (/** @type {string} */ session) => `vyre.chat.cache.${session}`;
+const PREFIX = "vyre.chat.cache.";
+const KEY = (/** @type {string} */ session) => `${PREFIX}${session}`;
 const MAX = 400;
 
 /** @param {string} session */
@@ -29,4 +30,17 @@ export function saveSessionCache(session, snap) {
 export function hasSessionCache(session) {
   const c = loadSessionCache(session);
   return Boolean(c && c.frames.length);
+}
+
+/** Drop every cached chat transcript (sign-out: nothing readable stays in the browser store). */
+export function clearAllSessionCaches() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const drop = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PREFIX)) drop.push(k);
+    }
+    for (const k of drop) localStorage.removeItem(k);
+  } catch { /* blocked storage */ }
 }

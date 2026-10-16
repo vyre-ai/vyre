@@ -68,15 +68,14 @@ export function boxStream(session: string): BoxStream {
   let head = 0;
   // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read live over the member door (`chat.open`, src/chat/member-live.js) and written through the door's
   // calls, never through her own home. Anything else, her own home's chats and the owner's, takes the paths below exactly as before.
-  let teamP: Promise<string | null> | null = null;
-  const teamSpace = (): Promise<string | null> => (teamP ??= (async () => {
+  const teamSpace = async (): Promise<string | null> => {
     try {
       if (!(await showingJoined())) return null;
       const sp = useSpaces.getState().space;
       await tool("work.chat.get", { chat: session });
       return sp;
     } catch { return null; }
-  })());
+  };
   const seen = () => (Platform.OS === "web" ? typeof document === "undefined" || document.visibilityState !== "hidden" : AppState.currentState === "active");
   const writeVia = async (name: string, input: Record<string, unknown>) => {
     if (!(await teamSpace())) return write(name, input);

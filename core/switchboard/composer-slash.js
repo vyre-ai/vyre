@@ -61,8 +61,10 @@ export function registerComposerSlashTools(tool, o) {
         const g = await ctx.call("threads.get", { thread, limit: 50 });
         return g && g.data ? { thread, model: g.data.thread && g.data.thread.model } : { thread, model: null };
       }
-      if (route.tool === "planner.add") return ctx.call("planner.add", route.input);
-      if (route.tool === "recall.search") return ctx.call("recall.search", route.input);
+      if (route.tool === "planner.add" || route.tool === "recall.search") {
+        if (!personTurn(caller)) throw Object.assign(new Error("only a person's surface runs this command"), { code: "denied" });
+        return ctx.call(route.tool, route.input, { as: caller });
+      }
       if (route.tool === "threads.commands") return ctx.call("threads.commands", { thread });
       return ctx.call(route.tool, { ...extra, ...route.input });
     });
