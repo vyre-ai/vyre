@@ -343,17 +343,14 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
-  # The new first run, end to end on real machines (first-run-e2e.yml): identity, a space, the one install command run by the real installer on a Linux server and, with the Mac app installed from this
-  # run's dmg, on a Mac server; the server pairs to the creator and the app says Ready. A release is not published unless this passes. It takes the Mac app the `mac` job above built.
+  # The new first run, end to end on real machines with no vyred on the client (first-run-e2e.yml): identity, a space, the one install command run by the real installer on a Linux server (headless browser) and
+  # on a Mac server (the Mac app built here and installed from a dmg); the server pairs to the creator and the app says Ready. A release is not published unless this passes.
   first-run:
-    needs: [prepare, mac]
-    if: ${{ always() && needs.prepare.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') }}
+    needs: [prepare]
+    if: ${{ always() && needs.prepare.result == 'success' }}
     uses: ./.github/workflows/first-run-e2e.yml
     permissions:
       contents: read
-    with:
-      # No Mac app from this run (a channel that skips the Mac job): the proof builds its own.
-      build_mac: ${{ needs.mac.result != 'success' }}
 
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.

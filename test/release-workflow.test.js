@@ -81,16 +81,16 @@ test("release.yml: the Windows installer is built in this run, required by the r
 });
 
 test("release.yml: the new first run is proved end to end in this run, and a release is not published unless that job succeeded", () => {
-  assert.match(yml, /\n  first-run:\n    needs: \[prepare, mac\]\n[^\n]*\n    uses: \.\/\.github\/workflows\/first-run-e2e\.yml/);
+  assert.match(yml, /\n  first-run:\n    needs: \[prepare\]\n[^\n]*\n    uses: \.\/\.github\/workflows\/first-run-e2e\.yml/);
   const release = yml.slice(yml.indexOf("\n  release:\n"), yml.indexOf("\n    runs-on:", yml.indexOf("\n  release:\n")));
   assert.match(release, /needs\.first-run\.result == 'success'/, "a skipped or failed first run blocks the release (no 'skipped' escape)");
   assert.ok(!/first-run\.result == 'skipped'/.test(release));
   const e2e = fs.readFileSync(path.join(REPO, ".github/workflows/first-run-e2e.yml"), "utf8");
-  for (const must of ["scripts/proof-first-run.mjs --server installer", "scripts/proof-first-run.mjs --server mac --mac-app /Applications/Vyre.app", "hdiutil attach", "install-box.sh"]) {
+  for (const must of ["scripts/proof-first-run.mjs --client browser --server installer", "scripts/proof-first-run.mjs --client mac-app --server mac --app /Applications/Vyre.app", "hdiutil attach", "install-box.sh"]) {
     assert.ok(e2e.includes(must), `the e2e runs: ${must}`);
   }
   const script = fs.readFileSync(path.join(REPO, "scripts/proof-first-run.mjs"), "utf8");
-  for (const must of ["Create your identity", "Save your recovery key", "Show the command", "spaces.owner.status", "Welcome back", "startInstallerServer", "startMacServer"]) assert.ok(script.includes(must), `the proof walks: ${must}`);
+  for (const must of ["Get started", "Create your identity", "Save your recovery key", "Show the command", "spaces.owner.status", "Welcome back", "startInstallerServer", "startMacServer", "Not your server?"]) assert.ok(script.includes(must), `the proof walks: ${must}`);
 });
 
 test("release.yml: the Vyre Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {

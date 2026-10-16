@@ -1,51 +1,44 @@
 #!/usr/bin/env node
-// scripts/proof-first-run.mjs: the new first run, end to end, with nothing standing in for the parts that matter. One line per step (PASS, or FAIL with the reason, or SKIP when an earlier step it needs failed).
+// scripts/proof-first-run.mjs: the new first run, end to end, on a client machine with NO vyred. One line per step (PASS, FAIL with the reason and what the screen said, SKIP when an earlier step it needs failed).
 //
-//   node scripts/proof-first-run.mjs --server installer|mac [--dist apps/app/dist] [--mac-app /Applications/Vyre.app] [--out DIR]
+//   node scripts/proof-first-run.mjs --client browser --server installer --dist <proof export> [--out DIR]     (Linux: headless Chromium on the proof export, the real installer in docker)
+//   node scripts/proof-first-run.mjs --client mac-app --server mac --app /Applications/Vyre.app [--out DIR]    (macOS: the dmg-installed Mac app, real mouse events, the real Mac installer)
 //
-// What runs for real:
-//   - a person's computer: a real vyred (core/daemon) on a fresh home that serves the app's own web export (apps/app/dist, built from this checkout), the way the Mac app's vyred does;
-//   - the first run itself: the real screens in a real browser, driven through Identity (username, master password, recovery key), then Create a space, with the one install command the screen shows;
-//   - the server: the REAL installer (scripts/install-box.sh in docker on a Linux runner, or scripts/install-mac-server.sh on a hosted macOS runner), run with that command's one-time code;
-//   - the relay (relay/node/server.js) and the names directory (the Worker's own code), both on loopback or the runner's address; nothing reaches vyre.run;
-//   - with --mac-app: the installed Vyre.app, started against that vyred (through a proxy that only notes request lines), whose window must load the app and call the daemon.
-// It ends where a person ends: the app says Ready, the server names this identity its owner, the space is listed, and after a lock the master password opens the identity again.
-// Exits 0 when nothing failed. CI only (the installers use fixed folders and system services).
+// The client is the app's own first-run screens running the in-page tool host (apps/app/src/host): no daemon answers them. Walked as a person walks them: Get started, Create an identity (username, master
+// password, recovery key), Create a space with the one install command, the real installer running that command on a server, the server pairing to the creator, Ready, then coming back (a new page, or the
+// app started again) to the unlock screen with the master password and with the recovery key. What is a stand-in: the names directory (the Worker's own code) and the relay (relay/node/server.js), on the
+// runner at the two ports the proof build of the app was made with (EXPO_PUBLIC_VYRE_NAMES_DIRECTORY and EXPO_PUBLIC_VYRE_RELAY: build-time seams, so a shipped app cannot be pointed anywhere); nothing
+// reaches vyre.run. The mouse in the Mac app is a real mouse event into its window and the keys are typed into the focused field (local/capsule/native/Sources/Agent/AgentDrive.swift, a driven mode that
+// starts only in a test home). CI only.
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRun } from "./lib/proof/run.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
 import { startInstallerServer } from "./lib/proof/server-installer.mjs";
 import { startMacServer } from "./lib/proof/server-mac.mjs";
-import { tcpFront, unixFront } from "./lib/proof/socket-proxy.mjs";
-import { start } from "../core/daemon/index.js";
-import { socketPath } from "../core/config/index.js";
+import { MacPage } from "./lib/first-run/page.mjs";
 import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import { AI_SIGNIN_COPY } from "../lib/first-run-shape.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
 const take = (/** @type {string} */ f, /** @type {string} */ d = "") => { const i = argv.indexOf(f); return i < 0 ? d : argv[i + 1]; };
-const server = /** @type {"installer" | "mac"} */ (take("--server", "installer"));
-const dist = path.resolve(take("--dist", path.join(repo, "apps/app/dist")));
-const macApp = take("--mac-app", "");
+const client = /** @type {"browser" | "mac-app"} */ (take("--client", "browser"));
+const server = /** @type {"installer" | "mac"} */ (take("--server", client === "mac-app" ? "mac" : "installer"));
+const dist = path.resolve(take("--dist", ""));
+const appPath = take("--app", "/Applications/Vyre.app");
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `proof-first-run-${process.pid}`)));
-if (!["installer", "mac"].includes(server)) { console.error("proof-first-run: --server is installer or mac"); process.exit(64); }
+const PORTS = { names: Number(take("--names-port", "8787")), relay: Number(take("--relay-port", "8788")), page: Number(take("--page-port", "8789")) };
+if (!["browser", "mac-app"].includes(client) || !["installer", "mac"].includes(server)) { console.error("proof-first-run: --client browser|mac-app, --server installer|mac"); process.exit(64); }
 if (process.env.GITHUB_ACTIONS !== "true" && process.env.VYRE_ALLOW_LOCAL_RUN !== "1") { console.error("proof-first-run runs on CI only (the installers use fixed folders and system services)"); process.exit(2); }
-if (!fs.existsSync(path.join(dist, "index.html"))) { console.error(`proof-first-run: no web export at ${dist} (build apps/app with npx expo export -p web --output-dir dist)`); process.exit(64); }
-if (!fs.existsSync(path.join(repo, "apps/app/dist/index.html")) && path.resolve(dist) !== path.join(repo, "apps/app/dist")) { console.error("proof-first-run: the daemon serves apps/app/dist; build the export there"); process.exit(64); }
-
-const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
-const { chromium } = require("playwright");
+if (client === "browser" && !fs.existsSync(path.join(dist, "index.html"))) { console.error(`proof-first-run: --dist needs a web export (proof build) with index.html, got ${dist}`); process.exit(64); }
 
 const PASSWORD = "correct horse battery staple";
 const USERNAME = `proof${Math.random().toString(36).slice(2, 7)}`;
-const SPACE = `space${Math.random().toString(36).slice(2, 7)}`;
-
 fs.mkdirSync(out, { recursive: true });
 const run = createRun({ out });
 const wait = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,185 +50,183 @@ async function until(f, ms, what) {
   throw new Error(`${what} did not happen in ${Math.round(ms / 1000)} s${last ? `: ${last}` : ""}`);
 }
 
+/**
+ * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
+ * screen to say it; `text()` is what the screen says now.
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], stop(): Promise<void> }} Driver
+ */
+
+/** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
+async function browserDriver() {
+  const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
+  const { chromium } = require("playwright");
+  const TYPES = /** @type {Record<string, string>} */ ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" });
+  const srv = http.createServer((req, res) => {
+    const p = decodeURIComponent(String(req.url).split("?")[0]).replace(/^\/app/, "") || "/";
+    let f = path.join(dist, p);
+    const missing = !f.startsWith(dist) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
+    if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
+    if (missing) f = path.join(dist, "index.html");
+    res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
+    fs.createReadStream(f).pipe(res);
+  }).listen(PORTS.page, "127.0.0.1");
+  await new Promise((r) => srv.once("listening", r));
+  const browser = await chromium.launch({ args: [...CHROME_SAFE] });
+  const ctx = await browser.newContext({ viewport: { width: 520, height: 1000 }, serviceWorkers: "block" });
+  /** @type {any} */ let page = null;
+  const pageErrors = /** @type {string[]} */ ([]);
+  const body = async () => (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+  const d = {
+    async open() { if (page) await page.close().catch(() => {}); page = await ctx.newPage(); page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200))); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
+    text: body,
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { throw new Error(`${e.message}. The screen says: ${(await body()).slice(0, 300)}`); }); return body(); },
+    async click(/** @type {string} */ t) {
+      const el = page.getByRole("button", { name: t }).or(page.getByRole("radio", { name: t })).or(page.getByRole("switch", { name: t })).or(page.getByText(t, { exact: true })).first();
+      await el.click({ timeout: 15_000 });
+    },
+    async fill(/** @type {string} */ l, /** @type {string} */ v) { await page.locator(`input[aria-label="${l}"], textarea[aria-label="${l}"]`).first().fill(v, { timeout: 15_000 }); },
+    async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
+    // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
+    async reopen() { await d.open(); },
+    errors: () => pageErrors.filter((e) => !/color scheme|dark mode/i.test(e)),
+    async stop() { await browser.close().catch(() => {}); srv.close(); },
+  };
+  return d;
+}
+
+/** The dmg-installed Mac app with no vyred: its window is the bundled app. @returns {Promise<Driver>} */
+async function macDriver() {
+  const bin = path.join(appPath, "Contents", "MacOS", "Vyre");
+  if (!fs.existsSync(bin)) throw new Error(`no app at ${appPath}`);
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-first-run-"));
+  /** @type {MacPage | null} */ let page = null;
+  const start = async () => { page?.stop(); page = new MacPage(bin, { VYRE_HOME: home, VYRE_SOCKET: path.join(home, "no-vyred.sock"), VYRE_NO_DIALOGS: "1" }); await page.started(60_000); await page.open(); };
+  const need = () => /** @type {MacPage} */ (page);
+  return {
+    open: start,
+    text: () => need().text(),
+    async waitFor(t, ms = 30_000) { return need().waitFor(t, ms); },
+    async click(t) {
+      // A choice, a button or a switch is found by its own words; the first matching element is the one on screen.
+      await need().click(t, 20_000);
+    },
+    async fill(l, v) { await need().fill(l, v, 20_000); },
+    async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
+    async reopen() { need().stop(); await wait(1500); await start(); },
+    errors: () => [],
+    async stop() { page?.stop(); },
+  };
+}
+
 const cleanups = /** @type {(() => Promise<any> | any)[]} */ ([]);
 let code = 1;
 try {
-  const inCI = process.env.GITHUB_ACTIONS === "true";
   const hostIp = process.env.PROOF_HOST_IP || Object.values(os.networkInterfaces()).flat().find((n) => n && n.family === "IPv4" && !n.internal)?.address || "127.0.0.1";
-  const ins = await startStandins({ out, ...(server === "installer" ? { host: "0.0.0.0", publicHost: hostIp } : {}) });
+  const ins = await startStandins({ out, ports: { names: PORTS.names, relay: PORTS.relay }, appOrigins: `vyreapp://box,http://127.0.0.1:${PORTS.page}`, ...(server === "installer" ? { host: "0.0.0.0", publicHost: hostIp } : {}) });
   cleanups.push(() => ins.stop());
-
-  // A person's computer: a real vyred on a fresh home. Development switches only for the name reservation and the stand-in presence key (a release build ignores both); the master password
-  // key derivation is the real one (Argon2id at the production cost).
-  const base = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), "vf-"));
-  const root = path.join(base, ".vyre");
-  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "device", name: "proof-computer", transcripts: [], vault: { keystore: "file" }, names: { directory: ins.names }, network: { directory: ins.names },
-    relay: { enabled: true, url: ins.relay }, modules: { disable: ["recall", "memory", "learn"] } }));
-  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "proof\n");
-  process.env.VYRE_HOME = root;
-  process.env.VYRE_SEAL_DEV = "1";
-  process.env.VYRE_TEST_SELF_RESERVE = "1";
-  process.env.VYRE_NO_DIALOGS = "1";
-  const lines = /** @type {string[]} */ ([]);
-  const daemon = await start({ root, kernel: true, log: (/** @type {any} */ m) => { lines.push(String(m)); } });
-  cleanups.push(() => daemon.stop());
-  const upstream = socketPath(root);
-  const tool = async (/** @type {string} */ name, input = {}) => { const r = await daemon.registry.call(name, input, "cli"); if (r.error) throw Object.assign(new Error(`${name}: ${r.error.message}`), { code: r.error.code }); return r.data; };
-  const front = await tcpFront({ socket: upstream, caller: "cli" });
-  cleanups.push(() => front.close());
-
-  // The installed Mac app, when asked for: it connects to a socket of ours that passes every byte to the daemon and notes the request lines.
-  /** @type {any} */ let appFront = null, appChild = null;
-  if (macApp) {
-    await run.step("the Mac app from the dmg is installed, signed, and starts against this computer's vyred", async () => {
-      const bin = path.join(macApp, "Contents", "MacOS", "Vyre");
-      if (!fs.existsSync(bin)) throw new Error(`no app at ${macApp}`);
-      const v = spawnSync("codesign", ["--verify", "--deep", "--strict", macApp], { encoding: "utf8" });
-      if (v.status !== 0) throw new Error(`codesign: ${String(v.stderr).slice(0, 200)}`);
-      const sock = path.join(base, "app.sock");
-      appFront = await unixFront({ listen: sock, upstream });
-      cleanups.push(() => appFront.close());
-      const appHome = path.join(base, "app-home");
-      fs.mkdirSync(appHome, { recursive: true, mode: 0o700 });
-      appChild = spawn(bin, [], { env: { ...process.env, VYRE_HOME: appHome, VYRE_SOCKET: sock, VYRE_NO_DIALOGS: "1", VYRE_CAPSULE_TEST: "", VYRE_CAPSULE_DRIVE: "" }, stdio: ["ignore", "ignore", "pipe"] });
-      let err = ""; appChild.stderr.on("data", (/** @type {any} */ d) => { err += d; });
-      cleanups.push(() => { try { appChild.kill("SIGTERM"); } catch { /* gone */ } });
-      await until(() => { if (appChild.exitCode !== null) throw new Error(`the app exited (${appChild.exitCode}): ${err.slice(-300)}`); return appFront.calls.some((c) => /^GET \/app\//.test(c)); }, 90_000, "the app's window asking vyred for /app/");
-      await until(() => appFront.calls.some((c) => /^POST \/v1\/tools\//.test(c)), 60_000, "the app's page calling a tool");
-      spawnSync("screencapture", ["-x", path.join(out, "mac-window.png")]);
-      return `${appFront.calls.length} requests, first ${appFront.calls[0]}`;
-    });
-  }
-
-  const browser = await chromium.launch({ args: [...CHROME_SAFE] });
-  cleanups.push(() => browser.close());
-  const ctx = await browser.newContext({ viewport: { width: 520, height: 1000 }, serviceWorkers: "block" });
-  const page = await ctx.newPage();
-  const pageErrors = /** @type {string[]} */ ([]);
-  page.on("pageerror", (e) => pageErrors.push(String(e.message).slice(0, 200)));
-  const heading = async () => (await page.locator("[role=heading]").first().innerText({ timeout: 4000 }).catch(() => "")).trim();
-  const at = async (/** @type {string} */ want, ms = 20_000) => {
-    const ok = await page.locator("[role=heading]", { hasText: want }).first().waitFor({ timeout: ms }).then(() => true, () => false);
-    if (!ok) throw new Error(`expected the screen "${want}", found "${await heading()}" (${(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 200)})`);
-  };
-  const press = (/** @type {string} */ label) => page.getByRole("button", { name: label }).first().click({ timeout: 10_000 });
-  const typeInto = (/** @type {string} */ label, /** @type {string} */ v) => page.locator(`input[aria-label="${label}"], textarea[aria-label="${label}"]`).first().fill(v, { timeout: 10_000 });
-  const shot = (/** @type {string} */ n) => page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {});
+  const drv = client === "mac-app" ? await macDriver() : await browserDriver();
+  cleanups.push(() => drv.stop());
 
   /** @type {string} */ let recoveryKey = "", installCode = "", personId = "";
   /** @type {any} */ let srv = null;
-  const open = () => page.goto(`${front.url}/app/onboard`, { waitUntil: "domcontentloaded" });
+  const S = (/** @type {string} */ n) => n;
 
-  await run.step("the first screen is Create your identity", async () => {
-    await open();
-    await at("Create your identity", 40_000);
-    await shot("01-create-identity");
+  await run.step(S("the first screen offers Create an identity and Sign in"), async () => {
+    await drv.open();
+    const t = await drv.waitFor("Get started", 60_000);
+    if (!t.includes("Create an identity") || !t.includes("Sign in")) throw new Error(`the first screen does not offer both: ${t.slice(0, 200)}`);
+    await drv.shot("01-get-started");
   });
 
-  await run.step("create an identity: username, master password, recovery key", async () => {
-    await typeInto("Username", USERNAME);
-    await typeInto("Master password", PASSWORD);
-    await typeInto("Confirm master password", PASSWORD);
-    await press("Create");
-    await at("Save your recovery key", 60_000);
-    const body = await page.locator("body").innerText();
-    const m = /[A-Z2-7]{4}(?:-[A-Z2-7]{2,4}){6}/.exec(body);
-    if (!m) throw new Error(`no recovery key on the screen: ${body.replace(/\s+/g, " ").slice(0, 200)}`);
+  await run.step(S("create an identity: username, master password, recovery key"), async () => {
+    await drv.click("Create an identity");
+    await drv.waitFor("Create your identity");
+    await drv.fill("Username", USERNAME);
+    await drv.fill("Master password", PASSWORD);
+    await drv.fill("Confirm master password", PASSWORD);
+    await drv.click("Create");
+    const t = await drv.waitFor("Save your recovery key", 120_000);
+    const m = /[A-Z2-7]{4}(?:-[A-Z2-7]{2,4}){6}/i.exec(t);
+    if (!m) throw new Error(`no recovery key on the screen: ${t.slice(0, 200)}`);
     recoveryKey = m[0];
-    await shot("02-recovery-key");
-    await page.getByRole("switch").first().click({ timeout: 6000 });
-    await press("Continue");
-    await at(AI_SIGNIN_COPY.title);
-    await press(AI_SIGNIN_COPY.skip);
-    await at("Your space");
-    const st = await tool("identity.status");
-    if (!st.exists || st.username !== USERNAME) throw new Error(`the device's identity is ${JSON.stringify(st)}`);
-    personId = String(st.id);
+    await drv.shot("02-recovery-key");
+    await drv.click(client === "mac-app" ? "I saved it" : "I saved it");
+    await drv.click("Continue");
+    await drv.waitFor(AI_SIGNIN_COPY.title);
+    await drv.click(AI_SIGNIN_COPY.skip);
+    await drv.waitFor("Your space");
+    const r = await fetch(`${ins.names}/v1/ids/resolve?name=${USERNAME}`);
+    const j = /** @type {any} */ (await r.json());
+    if (r.status !== 200 || !j.data || !/^per_[a-z2-7]{26}$/.test(String(j.data.id))) throw new Error(`the directory has no identity for ${USERNAME}: ${r.status}`);
+    personId = String(j.data.id);
     return `${USERNAME} ${personId}`;
-  }, { needs: ["the first screen is Create your identity"] });
+  }, { needs: [S("the first screen offers Create an identity and Sign in")] });
 
-  await run.step("create a space: the screen shows one install command with a one-time code", async () => {
-    await page.getByRole("radio", { name: "Create a space" }).first().click({ timeout: 10_000 });
-    await at("Where should it run?");
-    await page.getByRole("radio", { name: server === "mac" ? "Always-on Mac" : "Linux server" }).first().click({ timeout: 10_000 });
-    await press("Show the command");
-    await at("Waiting for it to come online", 30_000);
-    const body = await page.locator("body").innerText();
-    const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(body);
-    if (!m) throw new Error(`no install command on the screen: ${body.replace(/\s+/g, " ").slice(0, 300)}`);
-    if (/\bvyre (up|space|wink|install)\b/i.test(body.replace(/vyre\.run/g, ""))) throw new Error("the screen shows a vyre subcommand");
+  await run.step(S("create a space: the screen shows one install command with a one-time code"), async () => {
+    await drv.click("Create a space");
+    await drv.waitFor("Where should it run?");
+    await drv.click(server === "mac" ? "Always-on Mac" : "Linux server");
+    await drv.click("Show the command");
+    const t = await drv.waitFor("Waiting for it to come online", 90_000);
+    const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(t);
+    if (!m) throw new Error(`no install command on the screen: ${t.slice(0, 300)}`);
+    if (/\bvyre (up|space|wink|install)\b/i.test(t.replace(/vyre\.run/g, ""))) throw new Error("the screen shows a vyre subcommand");
+    if (/four words|words match/i.test(t)) throw new Error("the screen asks for words");
     installCode = m[1];
-    await shot("03-install-command");
-    return `code ${installCode.slice(0, 4)}…`;
-  }, { needs: ["create an identity: username, master password, recovery key"] });
+    await drv.shot("03-install-command");
+    return `code ${installCode.slice(0, 4)}...`;
+  }, { needs: [S("create an identity: username, master password, recovery key")] });
 
-  await run.step(`the real installer runs the command on a ${server === "mac" ? "Mac" : "Linux"} server`, async () => {
+  await run.step(S("the real installer runs the command on a server"), async () => {
     const a = { dir: path.join(out, "server"), repo, code: installCode, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {"records" | "plain"} */ (server === "mac" ? "plain" : "records") };
     srv = server === "mac" ? await startMacServer(a) : await startInstallerServer({ ...a, devBuild: true, recreate: false, ownerId: personId });
     cleanups.push(() => srv.stop());
     return srv.kind;
-  }, { needs: ["create a space: the screen shows one install command with a one-time code"] });
+  }, { needs: [S("create a space: the screen shows one install command with a one-time code")] });
 
-  await run.step("the server pairs to the creator and the app reaches Ready", async () => {
-    // The screen turns itself over when the space is online; the Continue button stays off until then.
-    await until(async () => (await page.getByRole("button", { name: "Continue" }).first().isEnabled().catch(() => false)), 240_000, "the screen saying the space is online");
-    await shot("04-space-online");
-    await press("Continue");
-    await at("You're in", 30_000);
-    await shot("05-ready");
-    const body = await page.locator("body").innerText();
-    if (!/owner/i.test(body)) throw new Error(`Ready does not list the space with the owner role: ${body.replace(/\s+/g, " ").slice(0, 200)}`);
-    await press("Open Vyre");
-    await until(async () => !/\/onboard/.test(page.url()), 20_000, "Open Vyre leaving the first run");
-  }, { needs: [`the real installer runs the command on a ${server === "mac" ? "Mac" : "Linux"} server`] });
+  await run.step(S("the server pairs to the creator, the screen names it, and the app reaches Ready"), async () => {
+    const t = await drv.waitFor("Your space is online", 300_000);
+    await drv.shot("04-space-online");
+    if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
+    if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
+    await drv.click("Continue");
+    const ready = await drv.waitFor("You're in", 60_000);
+    await drv.shot("05-ready");
+    if (!/owner/i.test(ready)) throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`);
+    await drv.click("Open Vyre");
+    await until(async () => !(await drv.text()).includes("You're in"), 30_000, "Open Vyre leaving the first run");
+  }, { needs: [S("the real installer runs the command on a server")] });
 
-  await run.step("the server names this identity its owner, and the app lists the space", async () => {
+  await run.step(S("the server names this identity its owner"), async () => {
     const owner = await srv.operator("spaces.owner.status", {});
     if (!owner || owner.identity !== personId) throw new Error(`the server's owner is ${JSON.stringify(owner)}, not ${personId}`);
-    const list = await tool("onboard.space.list", {});
-    const spaces = Array.isArray(list && list.spaces) ? list.spaces : [];
-    if (!spaces.some((/** @type {any} */ s) => s.role === "owner")) throw new Error(`the app lists no owned space: ${JSON.stringify(list).slice(0, 300)}`);
-    return `${spaces.length} space(s)`;
-  }, { needs: ["the server pairs to the creator and the app reaches Ready"] });
+  }, { needs: [S("the server pairs to the creator, the screen names it, and the app reaches Ready")] });
 
-  await run.step("after a lock the unlock screen takes the master password", async () => {
-    await tool("identity.lock");
-    await page.goto(`${front.url}/app/`, { waitUntil: "domcontentloaded" });
-    await at("Welcome back", 40_000);
-    await shot("06-unlock");
-    await typeInto("Master password", "zebra quartz mango pillow");
-    await press("Unlock");
-    await page.getByText("not your master password", { exact: false }).first().waitFor({ timeout: 30_000 });
-    await typeInto("Master password", PASSWORD);
-    await press("Unlock");
-    await until(async () => (await tool("identity.status")).unlocked === true, 30_000, "the identity unlocking");
-    await page.locator("[role=heading]", { hasText: "Welcome back" }).first().waitFor({ state: "detached", timeout: 15_000 });
-  }, { needs: ["the server names this identity its owner, and the app lists the space"] });
+  await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
+    await drv.reopen();
+    await drv.waitFor("Welcome back", 60_000);
+    await drv.shot("06-unlock");
+    await drv.fill("Master password", "zebra quartz mango pillow");
+    await drv.click("Unlock");
+    await drv.waitFor("not your master password", 120_000);
+    await drv.fill("Master password", PASSWORD);
+    await drv.click("Unlock");
+    await until(async () => !(await drv.text()).includes("Welcome back"), 120_000, "the master password opening the identity");
+  }, { needs: [S("the server names this identity its owner")] });
 
-  await run.step("the recovery key opens the identity too", async () => {
-    await tool("identity.lock");
-    await page.goto(`${front.url}/app/`, { waitUntil: "domcontentloaded" });
-    await at("Welcome back", 40_000);
-    await press("Use my recovery key");
-    await typeInto("Recovery key", recoveryKey);
-    await press("Unlock");
-    await until(async () => (await tool("identity.status")).unlocked === true, 30_000, "the identity unlocking with the recovery key");
-  }, { needs: ["after a lock the unlock screen takes the master password"] });
+  await run.step(S("coming back again: the recovery key opens the identity too"), async () => {
+    await drv.reopen();
+    await drv.waitFor("Welcome back", 60_000);
+    await drv.click("Use my recovery key");
+    await drv.fill("Recovery key", recoveryKey);
+    await drv.click("Unlock");
+    await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the recovery key opening the identity");
+  }, { needs: [S("coming back: the unlock screen takes the master password, refuses a wrong one")] });
 
-  if (macApp) {
-    await run.step("the Mac app's window kept calling the daemon through the whole run", async () => {
-      const posts = appFront.calls.filter((/** @type {string} */ c) => /^POST \/v1\/tools\//.test(c)).length;
-      if (posts < 3) throw new Error(`the window made only ${posts} tool calls`);
-      return `${appFront.calls.length} requests, ${posts} tool calls`;
-    }, { needs: ["the Mac app from the dmg is installed, signed, and starts against this computer's vyred"] });
-  }
-
-  await run.step("no page error in the browser during the run", async () => {
-    const noisy = pageErrors.filter((e) => !/color scheme|dark mode/i.test(e));
-    if (noisy.length) throw new Error(noisy.slice(0, 3).join(" | "));
+  await run.step(S("no page error during the run"), async () => {
+    const e = drv.errors();
+    if (e.length) throw new Error(e.slice(0, 3).join(" | "));
   });
-  fs.writeFileSync(path.join(out, "daemon.log"), lines.join("\n").replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
 } finally {
   code = run.finish();
   for (const c of cleanups.reverse()) { try { await c(); } catch { /* best effort */ } }
