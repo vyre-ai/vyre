@@ -10496,20 +10496,19 @@ Save a chat's finished turns on this server now. Internal: the daemon, before it
 
 ### `runner.settings`
 
-This computer's limits for running a space's sessions: enabled, mode (always or ask), pluggedInOnly, cpuPercent, memoryMb.
+This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.
 
 - Input: none
 - Callers: any caller
 
 ### `runner.settings.set`
 
-Change this computer's limits for running sessions: any of enabled, mode (always or ask), pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.
+Change this computer's limits for running sessions: any of enabled, pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.
 
 - Input:
   - `cpuPercent` integer
   - `enabled` boolean
   - `memoryMb` integer
-  - `mode` "always" or "ask"
   - `pluggedInOnly` boolean
 - Callers: any caller
 
