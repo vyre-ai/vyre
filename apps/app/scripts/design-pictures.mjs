@@ -24,7 +24,8 @@ if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [-
 fs.mkdirSync(out, { recursive: true });
 
 const fixturesFile = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../ui/blocks/fixtures.generated.json");
-const ids = Object.keys(JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures).filter((id) => !only.length || only.includes(id));
+const FIX = JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures;
+const ids = Object.keys(FIX).filter((id) => !only.length || only.includes(id));
 const SURFACES = [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }].filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
 const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
 
@@ -91,9 +92,13 @@ const shoot = async (cur, s, t, id) => {
   for (let attempt = 0; ; attempt++) {
     try {
       const { page } = cur;
-      await page.goto(`http://127.0.0.1:${port}/app/gallery?f=${id}&form=${s.form}`, { waitUntil: "load", timeout: 30000 });
+      const themeQ = id === "skills-real" ? `&theme=${t.name === "paper" ? "paper" : "dark"}` : "";
+      await page.goto(`http://127.0.0.1:${port}/app/gallery?f=${id}&form=${s.form}${themeQ}`, { waitUntil: "load", timeout: 30000 });
       await page.waitForSelector("#fixture", { timeout: 20000 }).catch(() => {});
-      await page.waitForTimeout(400);
+      if (id === "skills-real") {
+        await page.waitForFunction(() => document.getElementById("fixture")?.innerText?.includes("house-style"), { timeout: 15000 }).catch(() => {});
+      }
+      await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
       const el = page.locator("#fixture");
       if (!(await el.count())) return { missing: true };
       return { after: await el.screenshot(), rules: await rules(page, s.name !== "app") };
@@ -108,6 +113,7 @@ try {
   for (const s of SURFACES) for (const t of THEMES) {
     const cur = await open(s, t);
     for (const id of ids) {
+      if (!FIX[id]?.screens?.[s.form]) continue;
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);

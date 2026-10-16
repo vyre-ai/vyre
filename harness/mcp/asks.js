@@ -39,6 +39,8 @@ export const ASKS = {
   docs_read: { asks: ["open a docs page"], example: { page: "using/box-care.md" } },
   skills_find: { asks: ["which skill fits this job"], example: { query: "keep a password out of a file" } },
   skills_list: { asks: ["what skills exist"] },
+  skills_browse: { asks: ["open the skills library for this level"], example: { level: "space" } },
+  skills_versions: { asks: ["show versions of a skill"], example: { name: "house-style", level: "space" } },
   vyre_core: { asks: ["what modules does Vyre have", "what is installed and running", "map of the system"] },
   agents_list: { asks: ["which agents are there", "who is working right now"] },
   agents_usage: { asks: ["what the agents cost", "tokens and time each agent used"] },
