@@ -29,6 +29,7 @@ function Computer({ name }: { name: string }) {
   const target = `computer:${name}`;
   const g = useGlass(name, target);
   const { color } = useUiTheme();
+  const showFilesTab = false;
   const [tab, setTab] = useState<"screen" | "files">("screen");
   const [priv, setPriv] = useState(false);
   const [note, setNote] = useState("");
@@ -68,7 +69,7 @@ function Computer({ name }: { name: string }) {
   const rows = g.holder ? holdingRows(name, g.holder.private) : [];
   return (
     <Frame title={`${name}'s computer`} sub={sub}>
-      {g.hasScreen ? <Segmented label="Glass" value={tab} onChange={setTab} options={[["screen", "Screen"], ["files", "Files"]]} /> : null}
+      {g.hasScreen && showFilesTab ? <Segmented label="Glass" value={tab} onChange={setTab} options={[["screen", "Screen"], ["files", "Files"]]} /> : null}
       {/* The screen stays mounted under the Files tab so the stream is not dropped when the person looks at files. */}
       <View style={{ display: tab === "screen" ? "flex" : "none" }} className="gap-s3 pt-s2">
         {g.notice ? (
@@ -146,7 +147,7 @@ function Computer({ name }: { name: string }) {
           </View>
         </View>
       </View>
-      {tab === "files" || !g.hasScreen ? <FilesTab target={target} name={name} /> : null}
+      {showFilesTab && (tab === "files" || !g.hasScreen) ? <FilesTab target={target} name={name} /> : null}
     </Frame>
   );
 }

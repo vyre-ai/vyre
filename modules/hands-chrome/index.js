@@ -25,10 +25,18 @@ import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
 import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
+import { requireGrant } from "../../lib/hands-chrome/guards.js";
+import { createOversight } from "../../lib/hands-chrome/oversight.js";
+import { captureNetwork } from "./cdp-capture.js";
+import { createBoxApi } from "./box-api.js";
+import * as redact from "../../lib/siteops/redact.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
+const int = { type: "integer" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
+const NET_OPS = { start: "start", list: "list", get: "get" };
+const API_OPS = { learn: "learn", catalog: "catalog", route: "route", call: "call" };
 
 const SELECTOR = obj({
   role: str, identifier: str, name: str, container: str,
@@ -115,6 +123,8 @@ export default {
     // is scrubbed first: a URL keeps its origin and path, never its query or fragment, where
     // sign-in links and tokens live. The thread and the tool call it came from (vyred's meta)
     // let a view tie the step to the chat row that asked for it.
+    const oversight = createOversight({ emit: (type, payload) => ctx.events.emit(type, payload), clean: scrub });
+
     const act_ = (meta, agent, action, ok, why, extra = {}) => {
       const where = {
         ...(meta && meta.thread ? { thread: String(meta.thread) } : {}),
@@ -284,6 +294,101 @@ export default {
         act_(meta, agent, "type", true, undefined, { summary: ctl.name || ctl.role });
         return { ok: true, control: ctl };
       });
+
+    /** @type {Map<string, ReturnType<typeof captureNetwork>>} */
+    const nets = new Map();
+    /** @type {Map<string, Map<string, any[]>>} */
+    const catalogs = new Map();
+    /** @type {Map<string, Map<string, number>>} */
+    const deadRoutes = new Map();
+
+    const apiCtx = agent => {
+      if (!catalogs.has(agent)) catalogs.set(agent, new Map());
+      if (!deadRoutes.has(agent)) deadRoutes.set(agent, new Map());
+      return { catalogs: catalogs.get(agent), dead: deadRoutes.get(agent) };
+    };
+
+    const guardChrome = async (agent, meta, tool) => {
+      await requireGrant(agent, ctx.call);
+      oversight.guard(agent, meta.caller || `mcp:agent:${agent}`);
+      await mayAct(agent, tool);
+    };
+
+    tool("chrome.net", "The agent page's network traffic on the box (CDP). start: capture; list and get: what was captured (credentials masked).",
+      obj({ agent: str, action: { type: "string", enum: Object.keys(NET_OPS) }, id: str, limit: int }, ["action"]),
+      async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        if (action === "start") {
+          await guardChrome(agent, meta, "chrome.net");
+          const { cdp, sessionId } = await session(agent);
+          const prev = nets.get(agent);
+          if (prev) prev.stop();
+          const w = captureNetwork(cdp, sessionId, { full: true });
+          await w.start();
+          nets.set(agent, w);
+          act_(meta, agent, "net", true, undefined, { summary: "capturing network" });
+          return { capturing: true };
+        }
+        if (action === "list") {
+          await guardChrome(agent, meta, "chrome.net");
+          const w = nets.get(agent);
+          if (!w) throw new Error("call chrome.net with action start before list");
+          const lim = Number.isFinite(i.limit) ? Math.max(1, Math.min(200, i.limit)) : 50;
+          const requests = w.recent().slice(0, lim).map(r => redact.request({ method: r.method, url: r.url, type: r.type, status: r.status }));
+          return { requests };
+        }
+        if (action === "get") {
+          await guardChrome(agent, meta, "chrome.net");
+          const w = nets.get(agent);
+          if (!w || !i.id) throw new Error("call chrome.net with action start before get, and name id");
+          const rec = await w.get(String(i.id));
+          if (!rec) throw Object.assign(new Error("no such request"), { code: "not_found" });
+          return { request: redact.request(rec) };
+        }
+        throw new Error(`chrome.net does not know action "${action}"`);
+      });
+
+    tool("chrome.api", "An app's own API, learned from page traffic on the box. learn: build a catalog; catalog: read it; route: try a learned GET from a hint; call: invoke one entry from inside the page.",
+      obj({ agent: str, action: { type: "string", enum: Object.keys(API_OPS) }, entry: str, hint: str, params: { type: "object" }, args: { type: "object" }, host: str, approved: { type: "boolean" } }, ["action"]),
+      async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        await guardChrome(agent, meta, "chrome.api");
+        const { cdp, sessionId } = await session(agent);
+        const api = createBoxApi({ cdp, sessionId, ...apiCtx(agent) });
+        if (action === "learn") {
+          const r = await api.learn();
+          act_(meta, agent, "api", true, undefined, { summary: `learned ${r.learned} entries` });
+          return r;
+        }
+        if (action === "catalog") return api.catalog({ origin: i.host });
+        if (action === "route") return api.route({ hint: i.hint, params: i.params, host: i.host });
+        if (action === "call") {
+          const r = await api.call({ entry: i.entry, args: i.args, approved: i.approved === true });
+          act_(meta, agent, "api", !(r.held), r.held ? "held for approval" : undefined, { summary: i.entry ? String(i.entry).slice(0, 40) : "api call" });
+          return r;
+        }
+        throw new Error(`chrome.api does not know action "${action}"`);
+      });
+
+    tool("chrome.plan", "Post what you are about to do in the agent's browser, as steps ({id, text}), before the first chrome action; report step and status, or finish when done.",
+      obj({ agent: str, title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: { type: "boolean" }, ok: { type: "boolean" } }),
+      async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        await requireGrant(agent, ctx.call);
+        if (Array.isArray(i.steps)) return oversight.plan(agent, i.steps, { thread: meta.thread, title: i.title });
+        if (i.finish) return oversight.finish(agent, { ok: i.ok !== false });
+        if (i.step) return i.status === "done" ? oversight.stepDone(i.step) : i.status === "failed" ? oversight.stepFailed(i.step, i.why) : oversight.stepStarted(i.step);
+        throw Object.assign(new Error("give steps to post a plan, or step and status to report one"), { code: "bad_input" });
+      });
+
+    ctx.tool("chrome.plan.check", {
+      internal: true, callers: ["module"],
+      description: "Whether an agent has posted a plan and the person has not stopped. Internal: other modules ask before showing an agent the screen.",
+      input: obj({ agent: str }, ["agent"]),
+      run: async i => ({ planned: oversight.planned(String(i.agent || "")) }),
+    });
 
     tool("chrome.screenshot", "A PNG of the agent's current page, base64-encoded.", obj({ agent: str }),
       async (i, meta) => {

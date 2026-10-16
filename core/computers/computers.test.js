@@ -33,7 +33,7 @@ async function boot(t, o = {}) {
   if (!o.root) {
     t.after(() => FakeDriver.forget(root));
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box",
-      computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100 } : o.computers,
+      computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100, browse: "desktop" } : o.computers,
       ...(o.glass ? { glass: o.glass } : {}),
       modules: { disable: o.agents === false ? ["agents"] : [] } }));
   }

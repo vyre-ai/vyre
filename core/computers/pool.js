@@ -75,6 +75,8 @@ export const LIMITS = Object.freeze({ cpus: { min: 1, max: 16 }, memoryGb: { min
 /** How long a Glass ticket lives: long enough to open a WebSocket, too short to be worth stealing. */
 export const TICKET_MS = 30_000;
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+/** Member agent_id on a shared computer: agents.uid (agt_<uuid>), never a display name. */
+const MEMBER_AGENT_ID = /^[a-z][a-z0-9._-]{1,80}$/;
 
 export const NO_DRIVER = "no computer driver is configured on this machine: set computers.docker in config.json to the restricted Docker proxy";
 
@@ -118,6 +120,7 @@ export class Pool {
    *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
    *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
    *   memberTokenKey?: () => Promise<string>,
+   *   profileStore?: { keyFor: (agentId: string, kind?: string) => Promise<Buffer|null> },
    *   wait?: (ms: number) => Promise<void>, probe?: ((host: string, port: number) => Promise<boolean>) | null }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
@@ -138,6 +141,7 @@ export class Pool {
     this.egress = deps.egress || (() => undefined);
     this.tailnet = deps.tailnet || null;
     this.memberTokenKey = deps.memberTokenKey || null;
+    this.profileStore = deps.profileStore || null;
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
@@ -808,6 +812,19 @@ export class Pool {
     return { helper: { url: `http://${h.host}:${h.ports.helper}`, token: String(r.helper_token) } };
   }
 
+  /**
+   * A shared computer member's derived CDP token (never stored). Used by hands-chrome and Glass
+   * screencast against the member's browser context.
+   * @param {string} computerId @param {string} agentId
+   */
+  async memberCdpToken(computerId, agentId) {
+    if (!this.memberTokenKey) throw new Error("no member-token key configured (computers.memberTokenKey)");
+    const m = /** @type {any} */ (this.db.prepare("SELECT generation FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId));
+    if (!m) throw new Error(`${agentId} is not on ${computerId}`);
+    const key = await this.memberTokenKey();
+    return memberToken(key, computerId, agentId, m.generation);
+  }
+
   size(_agent) { return { ...this.opts.size }; }
 
   // ---- shared (browser-kind) computers, agent-browsers.md level 2 ------------------------
@@ -830,7 +847,7 @@ export class Pool {
    */
   async addAgent(computerId, agentId, agentName) {
     if (!AGENT.test(String(computerId || ""))) throw new Error(`"${computerId}" is not a computer id`);
-    if (!AGENT.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
+    if (!MEMBER_AGENT_ID.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
     return this.serial(computerId, async () => {
       // LOW 2 (reviewer, 28 Sep): an agent belongs to at most one shared computer at a time.
       // computers_members_agent_id's own unique index enforces this at the storage layer, but the
@@ -868,6 +885,10 @@ export class Pool {
       try {
         await this.ensure(computerId);
         await this.reseedMembers(computerId);
+        if (this.profileStore) {
+          const key = await this.profileStore.keyFor(agentId, "agent");
+          if (!key) this.log(`shared browser: add ${agentName} without ${"vyre-browser-agent-profile-key"} in the vault; profile encryption is off until the item exists`);
+        }
       } catch (e) {
         if (before) {
           this.db.prepare("UPDATE computers_members SET agent_name = ?, generation = ? WHERE computer_id = ? AND agent_id = ?")
