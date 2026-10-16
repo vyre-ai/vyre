@@ -1,6 +1,6 @@
 ---
 title: Files
-summary: The Space's Drive with versions, links you share, and folders linked live from Google Drive or Dropbox, plus the box and computer folders an agent may search.
+summary: The Space's Drive with versions, links you share, folders linked live from Google Drive or Dropbox, and the box's offered folders, plus the folders an agent may search.
 audience: builders, agents
 owner: docs
 status: stable
@@ -9,14 +9,15 @@ status: stable
 # Files
 
 ## What it is
-Files is the Space's Drive plus two other ways to reach files: shared links to one version of a file, and folders linked live from another service. Mounted files, a folder of the box shown on a computer, are coming later.
+Files is the Space's Drive plus three other ways to reach files: shared links to one version of a file, folders linked live from another service, and the folders the box offers. Mounted files, a folder of the box shown on a computer, are coming later.
 Every file has a fixed place under the files root, named by ids that never change (lib/files/layout.js).
 
 ## What a person sees
-The Files screen has three tabs (apps/app/screens/drive/tabs.js): **Space**, **Shared** and **Linked**.
+The Files screen has four tabs (apps/app/screens/drive/tabs.js): **Space**, **Shared**, **Linked** and **On your server**.
 - **Space**: the Drive, a file's versions with **Put back** (restore as a new version), and **Share a link**.
 - **Shared**: links the person made, each with **Copy** and **Stop**. The empty state reads "No shared links. Open a file and choose Share a link. You say yes before anything is made."
 - **Linked**: **Link a folder**, a picker that walks the source one level at a time, a **Name in Files** field ("It appears at Linked/<name>"), then **Sync**, **Sync now**, **Edit** for text files and **Unlink**. "You see inside it only what your own account allows."
+- **On your server**: the box's offered folders, browsed a page at a time, with the `#` picker in chat that points at a file.
 - A phone and a computer can send each other a file, and the receiver gets it when it next connects.
 
 ## How it works
