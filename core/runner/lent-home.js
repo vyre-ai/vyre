@@ -59,6 +59,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number, steadyMs?: number, returnCooldownMs?: number,
+ *   groupChat?: (chat: string) => boolean,
  *   canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null,
  *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any },
  *   compute?: { status(person: string): Promise<{ active?: boolean, terms?: { maxSessions?: number } }> } }} o
@@ -170,6 +171,8 @@ export function createLentHome(o) {
     return w;
   };
   // The server takes a session: the book moves it (the lender is fenced from this moment), the lender's table entry and credential binding go, and the resume is owed until it answers.
+  /** A chat with more than one person (the home's own kernel says who is in it). Unknown reads as one person only where the home was given no way to ask. @param {any} chat */
+  const isGroup = (chat) => { if (typeof o.groupChat !== "function" || typeof chat !== "string" || !chat) return false; try { return o.groupChat(chat) === true; } catch { return false; } };
   const canResume = () => (typeof o.canResume === "function" ? o.canResume() === true : true);
   const takeOver = async (session, reason, opt = {}) => {
     if (!canResume()) return { changed: false, why: "unavailable" };
@@ -247,6 +250,8 @@ export function createLentHome(o) {
     book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
     /** May the person's standing choice put this session back on its computer now? (see mayReturn) @param {string} session @param {string} person */
     mayReturn(session, person) { return mayReturn(book.get(String(session)), person); },
+    /** Does this chat have more than one person? Such a chat never runs on a computer. @param {string} chat */
+    isGroup(chat) { return isGroup(chat); },
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The folders the person's computers that beat lately offer to chats: [{ device, id, label }] (ids and labels only; the paths stay on the computers). @param {string} person */
@@ -410,7 +415,7 @@ export function createLentHome(o) {
       const session = String(i && i.session), person = String(i && i.person);
       if (i && i.thread) threads.set(session, String(i.thread));
       const folder = i && typeof i.folder === "string" ? i.folder : null;
-      const device = pickLender(person, session, folder);
+      const device = isGroup(i && i.chat) ? null : pickLender(person, session, folder);
       // a chat given a folder runs only on the computer that has it: with that computer away it does not start on the server instead
       if (folder && !device) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer");
       const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: typeof i.command === "string" && i.command ? i.command : "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
@@ -427,6 +432,8 @@ export function createLentHome(o) {
      */
     placeNew(i) {
       const session = String(i && i.session), person = String(i && i.person);
+      // a chat with more than one person always runs on the space's server: only a one-person chat is ever placed on a computer
+      if (isGroup(i && i.chat)) return { where: "box" };
       const had = SESSION.test(session) ? book.get(session) : null;
       if (had) return had.where === "mac" && had.person === person ? { where: "mac", device: had.device, epoch: had.epoch } : { where: "box" };
       const folder = i && typeof i.folder === "string" ? i.folder : null;
@@ -447,6 +454,7 @@ export function createLentHome(o) {
     async adopt(i) {
       const session = String(i && i.session), person = String(i && i.person);
       if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
+      if (isGroup(i.chat)) throw err("conflict", "a chat with more than one person always runs on the server");
       // A chat that came back from a computer (its row says server, and the server has carried it on) may go out again: it is adopted afresh, from the server's whole turns, as the person's own ask to run there.
       const had = book.get(session);
       if (had && had.person !== person) throw err("not_found", "not found");   // a chat that is another person's is not there for this one
