@@ -614,7 +614,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     try { await syncList(m.grp, t.token); b.h = await port.open({ grp: m.grp, token: t.token, message }); }
     catch (err) {
       refuse();
-      log(`${m.who} in ${m.grp}: the kernel refused the reply (${/** @type {any} */ (err).code || "error"}); nothing was shown`);
+      const code = /** @type {any} */ (err).code;
+      log(`${m.who} in ${m.grp}: the kernel refused the reply (${code || "error"}); nothing was shown`);
+      if (code === "denied" || code === "forbidden" || code === "not_found") {
+        if (m.running || m.inTurn) { m.running = false; m.inTurn = false; idle(m); }
+      } else projectionStuck(m);
       return false;
     }
     b.token = t.token; b.lastSync = now();
