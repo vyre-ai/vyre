@@ -173,7 +173,7 @@ export function isDevice(machine) { return machine === "device" || machine === "
 
 /** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string },
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string, clientId?: string, clientSecret?: string, redirect?: string },
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
