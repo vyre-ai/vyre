@@ -102,12 +102,48 @@ test("a username is locked out after five misses, an address after twenty tries,
   assert.equal((await signIn(r, "alex", PASSWORD, "198.51.100.98")).error.code, "rate_limited", "even the right password waits");
   r.clock.t += 20_000;
   assert.equal((await signIn(r, "alex", PASSWORD, "198.51.100.97")).ok, true, "after the wait the right password works");
-  // one address hammering many names
+  // begin has only a high burst and never counts toward an address's failures, so nobody can lock others out with no password
   const r2 = await rig();
   let limited = 0;
-  for (let i = 0; i < 40; i += 1) if (r2.svc.begin({ username: `user${i}x` }, "192.0.2.1").error) limited += 1;
-  assert.ok(limited > 0, "an address is slowed down");
+  for (let i = 0; i < 130; i += 1) if (r2.svc.begin({ username: `user${i}x` }, "192.0.2.1").error) limited += 1;
+  assert.ok(limited > 0, "a flood of begins is slowed");
   assert.equal(r2.svc.begin({ username: "alex" }, "192.0.2.77").error, undefined, "another address is not");
+  const r3 = await rig();
+  for (let i = 0; i < 100; i += 1) r3.svc.begin({ username: "alex" }, "192.0.2.9");
+  assert.equal((await signIn(r3, "alex", PASSWORD, "192.0.2.10")).ok, true, "begins from one address never keep a member out");
+  // twenty failed finishes from one address lock that address, whatever names it tries
+  const r4 = await rig();
+  for (let i = 0; i < 20; i += 1) await signIn(r4, `guess${i}xx`, "whatever whatever", "192.0.2.50");
+  assert.equal(r4.svc.begin({ username: "alex" }, "192.0.2.50").error.code, "rate_limited");
+  assert.equal(r4.svc.begin({ username: "alex" }, "192.0.2.51").error, undefined);
+  // strikes fall back after a clean day
+  const r5 = await rig();
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.60");
+  const first = r5.svc.begin({ username: "alex" }, "192.0.2.61").error.retry;
+  r5.clock.t += 20_000;
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.62");
+  const second = r5.svc.begin({ username: "alex" }, "192.0.2.63").error.retry;
+  assert.ok(second > first, "the second lock is longer");
+  r5.clock.t += 25 * 3_600_000;
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.64");
+  assert.ok(r5.svc.begin({ username: "alex" }, "192.0.2.65").error.retry <= first, "after a clean day it starts over");
+});
+
+test("a known device does not ring the other devices again, and a new device id does", async () => {
+  const r = await rig();
+  const go = async (/** @type {any} */ device, address) => {
+    const b = r.svc.begin({ username: "alex" }, address);
+    const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
+    return r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)), device }, address);
+  };
+  assert.equal((await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.70")).ok, true);
+  assert.equal((await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.71")).ok, true);
+  assert.equal(r.events.length, 1, "the same browser again rings nobody");
+  assert.equal(r.events[0].device, "browser-aaaaaaaa");
+  await go({ id: "browser-bbbbbbbb", label: "A phone" }, "203.0.113.72");
+  assert.equal(r.events.length, 2);
+  await go({ label: "No id" }, "203.0.113.73");
+  assert.equal(r.events.length, 3, "a sign-in that sends no device id is always new");
 });
 
 test("registering needs the identity's signature, a published key, a member and the same person", async () => {

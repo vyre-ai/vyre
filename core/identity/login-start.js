@@ -2,13 +2,13 @@
 // identity/login-start: turns the sign-in service (kernel/identity/space-login.js) on for a server. It listens on loopback and tells the public gate its port (lib/login-door.js).
 // A computer that is not a server has no space address to sign in to, so nothing listens there. Records live in identity/logins.json, 0600.
 
-import crypto from "node:crypto";
 import { hostedOrigins, isServer } from "../config/index.js";
 import { createLoginStore } from "./login-store.js";
 import { createLoginService } from "../../kernel/identity/space-login.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { assertPublishedKey } from "../../lib/identity/published-key.js";
 import { setLoginPort } from "../../lib/login-door.js";
+import { RELAY_ASSERT_KEY } from "../../lib/relay-keys.js";
 import { listen } from "./login-listener.js";
 
 /** One tool-free HTTP door: begin, finish, register. @param {{ op?: string } & Record<string, any>} q @param {ReturnType<typeof createLoginService>} svc @param {string} source */
@@ -43,7 +43,7 @@ export async function startLogin(ctx, seam = {}) {
   };
   const svc = createLoginService({
     describe: async (_username, rec) => { const role = await roleOf(String(rec.person)); return { role, spaces: [{ id: String((ctx.kernel && ctx.kernel.space) || ""), name: String(cfg.name), role, server: `https://${cfg.name}.vyre.run` }] }; },
-    space: String(cfg.name), store, relayPub: cfg.github && typeof cfg.github.assertKey === "string" ? cfg.github.assertKey : "",
+    space: String(cfg.name), store, relayPub: cfg.github && typeof cfg.github.assertKey === "string" && cfg.github.assertKey ? cfg.github.assertKey : RELAY_ASSERT_KEY,
     verifyIdentity: async (person, pub) => { try { await assertPublishedKey(dir, person, pub, { fullDevice: true }); return true; } catch { return false; } },
     isMember: async (_username, person) => {
       const k = ctx.kernel;
@@ -51,7 +51,7 @@ export async function startLogin(ctx, seam = {}) {
       if (typeof k.owner === "string" && k.owner === person) return true;
       try { const m = await k.membership(person, k.space); return Boolean(m && m.member === true); } catch { return false; }
     },
-    onNewDevice: e => { try { ctx.events.emit("signin.new-device", { device: crypto.createHash("sha256").update(`${e.username}\n${e.address}\n${e.at}`).digest("base64url").slice(0, 16), at: e.at }); } catch { /* the notice is best effort; the sign-in is not blocked */ } },
+    onNewDevice: e => { try { ctx.events.emit("signin.new-device", { device: e.device, at: e.at }); } catch { /* the notice is best effort; the sign-in is not blocked */ } },
   });
   const l = await (seam.listen || listen)({ origins: () => hostedOrigins(cfg.network), handle: (q, source) => loginHandle(q, svc, source) });
   setLoginPort(l.port);

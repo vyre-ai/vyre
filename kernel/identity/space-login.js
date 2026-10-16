@@ -76,7 +76,7 @@ export const bundleHash = bundle => crypto.createHash("sha256").update(JSON.stri
 
 /** A fixed-window counter per key with a doubling lockout after repeated misses. @param {() => number} now */
 function limiter(now) {
-  /** @type {Map<string, { n: number, at: number, until: number, strikes: number }>} */ const m = new Map();
+  /** @type {Map<string, { n: number, at: number, until: number, strikes: number, locked: number }>} */ const m = new Map();
   return {
     /** Seconds to wait, or 0 when allowed. @param {string} key @param {number} max @param {number} windowMs */
     wait(key, max, windowMs) {
@@ -90,11 +90,11 @@ function limiter(now) {
     hit(key, max, windowMs) {
       const t = now();
       let e = m.get(key);
-      if (!e) { e = { n: 0, at: t, until: 0, strikes: 0 }; m.set(key, e); }
+      if (!e) { e = { n: 0, at: t, until: 0, strikes: 0, locked: 0 }; m.set(key, e); }
       if (t - e.at > windowMs) { e.n = 0; e.at = t; }
       e.n += 1;
-      if (e.n >= max) { e.strikes += 1; e.until = t + Math.min(15 * 60_000, 15_000 * 2 ** (e.strikes - 1)); e.n = 0; e.at = t; }
-      if (m.size > 20_000) for (const [k, v] of m) if (v.until < t && t - v.at > windowMs) m.delete(k);
+      if (e.n >= max) { if (e.locked && t - e.locked > 24 * 3_600_000) e.strikes = 0; e.locked = t; e.strikes += 1; e.until = t + Math.min(15 * 60_000, 15_000 * 2 ** (e.strikes - 1)); e.n = 0; e.at = t; }
+      if (m.size > 20_000) for (const [k, v] of m) if (v.until < t && t - v.at > Math.max(windowMs, 24 * 3_600_000)) m.delete(k);
     },
     clear(/** @type {string} */ key) { m.delete(key); },
   };
@@ -139,7 +139,7 @@ export async function buildRegistration(o) {
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
  * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
- *   relayPub?: string, describe?: (username: string, rec: any) => Promise<Record<string, any>> | Record<string, any>, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
+ *   relayPub?: string, describe?: (username: string, rec: any) => Promise<Record<string, any>> | Record<string, any>, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, device: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
   const now = o.now || Date.now;
@@ -149,21 +149,32 @@ export function createLoginService(o) {
   /** @type {Map<string, { username: string, address: string, exp: number }>} */ const challenges = new Map();
   /** @type {Map<string, { username: string, exp: number }>} */ const sessions = new Map();
   const lim = limiter(now);
-  const PER_ADDR = 20, PER_NAME = 5, WINDOW = 60_000, NAME_WINDOW = 15 * 60_000;
+  const PER_ADDR = 20, PER_NAME = 5, BURST = 120, WINDOW = 60_000, NAME_WINDOW = 15 * 60_000;
+  const burst = (/** @type {string} */ address) => lim.wait(`b:${address}`, BURST, WINDOW);
   const sweep = () => { const t = now(); for (const [k, c] of challenges) if (c.exp <= t) challenges.delete(k); for (const [k, s] of sessions) if (s.exp <= t) sessions.delete(k); };
   const limited = (/** @type {string} */ username, /** @type {string} */ address) => Math.max(lim.wait(`a:${address}`, PER_ADDR, WINDOW), lim.wait(`n:${username}`, PER_NAME, NAME_WINDOW));
   const tooMany = (/** @type {number} */ s) => ({ error: { code: "rate_limited", message: `Too many tries. Wait ${s} seconds and try again.`, retry: s } });
   const fakeSalt = (/** @type {string} */ username) => b64(crypto.createHmac("sha256", secret).update(`salt\n${username}`).digest().subarray(0, 16));
   const record = (/** @type {string} */ username) => { const r = o.store.get(`login:${username}`); return r && typeof r === "object" ? r : null; };
 
+  /** The new-device notice, once per device id. A device sends a stable id (`device.id`); one we have seen before rings nobody. No id means each sign-in is a new device. */
+  function seen(/** @type {any} */ rec, /** @type {string} */ username, /** @type {any} */ input, /** @type {string} */ label, /** @type {string} */ address) {
+    const raw = input && input.device && typeof input.device.id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(input.device.id) ? input.device.id : "";
+    const id = raw || b64(crypto.createHash("sha256").update(`${username}\n${address}\n${now()}`).digest()).slice(0, 16);
+    const known = Array.isArray(rec.devices) ? rec.devices : [];
+    if (raw && known.includes(raw)) return;
+    if (raw) { try { o.store.set(`login:${username}`, { ...rec, devices: [...known, raw].slice(-50) }); } catch { /* the notice still goes */ } }
+    try { o.onNewDevice && o.onNewDevice({ username, device: id, label, address, at: now() }); } catch { /* the notice failing never blocks the person */ }
+  }
+
   return {
     /** Step 1. Always the same shape, whether or not the name exists. */
     begin(/** @type {{ username?: string }} */ input, /** @type {string} */ address) {
       const username = String(input && input.username || "").trim().toLowerCase();
       if (!NAME.test(username)) return { error: { code: "bad_input", message: "Type your username." } };
-      const wait = limited(username, address);
+      const wait = Math.max(limited(username, address), burst(address));
       if (wait) return tooMany(wait);
-      lim.hit(`a:${address}`, PER_ADDR, WINDOW);
+      lim.hit(`b:${address}`, BURST, WINDOW);
       sweep();
       const rec = record(username);
       const challenge = b64(rnd(32));
@@ -193,7 +204,7 @@ export function createLoginService(o) {
       const session = b64(rnd(32));
       sessions.set(session, { username, exp: now() + SESSION_TTL_MS });
       const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
-      try { o.onNewDevice && o.onNewDevice({ username, label, address, at: now() }); } catch { /* the notice failing never blocks the person */ }
+      seen(rec, username, input, label, address);
       const more = o.describe ? await Promise.resolve(o.describe(username, rec)).catch(() => ({})) : {};
       return { ok: true, session, expires: now() + SESSION_TTL_MS, bundle: rec.bundle, ...more };
     },
@@ -224,15 +235,14 @@ export function createLoginService(o) {
       const wait = Math.max(lim.wait(`a:${address}`, PER_ADDR, WINDOW), 0);
       if (wait) return tooMany(wait);
       sweep();
-      lim.hit(`a:${address}`, PER_ADDR, WINDOW);
       const who = verifyGithubAssertion(String(input && input.assertion || ""), String(o.relayPub || ""), o.space, now);
       const username = who ? o.store.get(`gh:${who.id}`) : null;
       const rec = typeof username === "string" ? record(username) : null;
-      if (!who || !rec) return { error: { code: "bad_login", message: BAD_LOGIN } };
+      if (!who || !rec) { lim.hit(`a:${address}`, PER_ADDR, WINDOW); return { error: { code: "bad_login", message: BAD_LOGIN } }; }
       const session = b64(rnd(32));
       sessions.set(session, { username: String(username), exp: now() + SESSION_TTL_MS });
       const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
-      try { o.onNewDevice && o.onNewDevice({ username: String(username), label, address, at: now() }); } catch { /* best effort */ }
+      seen(rec, String(username), input, label, address);
       const more = o.describe ? await Promise.resolve(o.describe(String(username), rec)).catch(() => ({})) : {};
       return { ok: true, session, expires: now() + SESSION_TTL_MS, salt: rec.salt, kdf: { ...LOGIN_KDF }, bundle: rec.bundle, ...more };
     },
