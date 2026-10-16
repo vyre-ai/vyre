@@ -85,7 +85,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 25 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 42 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -907,7 +907,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`, `box`
 - Requires: none
-- Tools: [24](tools.md#runner), 3 of them only for other modules
+- Tools: [25](tools.md#runner), 4 of them only for other modules
 - Emits: [10 events](events.md#runner)
 - Shows on: capsule, cli, deck
 

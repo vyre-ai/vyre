@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(runner): a chat with more than one person always runs on the space's server. The lent home never places such a chat on a computer (new chat, move out, offer back). Adding someone to a chat that runs on a computer says one line in the chat ("This chat moves to the server so <name> can join."), has the computer hand it over, and only then adds the person (`runner.group-move`, called by `work.chat.change`); nothing is added if the chat cannot move, and a chat working in a folder of the computer stays there and takes no one.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.

@@ -10374,6 +10374,16 @@ Take a folder of this computer away from chats. Nothing in it is touched; a chat
   - `id` string, required
 - Callers: any caller
 
+### `runner.group-move`
+
+Move a chat to the server before people are added to it. Internal: the work module, just before work.chat.change adds someone. Input: chat, person (the one adding), names (who is joining). Answers { moved }.
+
+- Input:
+  - `chat` string, required
+  - `person` string, required
+  - `names` list of string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `runner.here`
 
 The sessions running on this computer now, each with its chat, title, state and what it uses: rows of { thread, title, computer, state, cpuPercent, memoryMb, line, cpu }.

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":353,"tool":1844,"event":546,"config":308,"env":308,"screen":0,"concept":39},
+  "counts": {"command":353,"tool":1845,"event":546,"config":308,"env":308,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1631,6 +1631,7 @@
     {"kind":"tool","name":"runner.folders.allow","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerfoldersallow","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.folders.available","definedIn":"core/runner/place-tools.js","page":"reference/tools.md#runnerfoldersavailable","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.folders.remove","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerfoldersremove","module":"runner","mentions":[]},
+    {"kind":"tool","name":"runner.group-move","definedIn":"core/runner/place-tools.js","page":"reference/tools.md#runnergroup-move","module":"runner","mentions":[]},
     {"kind":"tool","name":"runner.here","definedIn":"core/runner/place-tools.js","page":"reference/tools.md#runnerhere","module":"runner","mentions":[{"page":"architecture/features/sessions-and-models.md","line":40,"anchor":"how-it-works"}]},
     {"kind":"tool","name":"runner.lock","definedIn":"core/runner/index.js","page":"reference/tools.md#runnerlock","module":"runner","mentions":[]},
     {"kind":"event","name":"runner.locked","definedIn":"core/runner/module.json","page":"reference/events.md#runner","module":"runner","mentions":[]},
