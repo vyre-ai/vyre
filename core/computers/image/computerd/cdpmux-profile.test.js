@@ -28,3 +28,18 @@ test("cdpmux: exportAgentContext and importAgentContext round-trip cookies", asy
   const again = await mux.exportAgentContext("agt-2");
   assert.equal(again.cookies[0].name, "sid");
 });
+
+test("cdpmux soak: repeated export/import across contexts stays consistent", async () => {
+  const { mux, fake } = world();
+  for (let n = 0; n < 8; n++) {
+    const id = `agt-${n}`;
+    mux.contextStore.set(id, `ctx-${n}`);
+    fake.cookies.set(`ctx-${n}`, [{ name: `c${n}`, value: String(n), domain: "soak.test", path: "/" }]);
+    const exported = await mux.exportAgentContext(id);
+    assert.equal(exported.cookies[0].value, String(n));
+    const target = `agt-${(n + 1) % 8}`;
+    await mux.importAgentContext(target, exported);
+    const round = await mux.exportAgentContext(target);
+    assert.equal(round.cookies[0].name, `c${n}`);
+  }
+});

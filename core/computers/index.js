@@ -27,6 +27,8 @@ import { SharedBrowser } from "./shared-browser.js";
 import { AgentBrowser } from "./agent-browser.js";
 import { BrowserGlass } from "./browser-glass.js";
 import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY, MEMBER_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
+import { personIdOf } from "./person-id.js";
+import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member-browser-handback.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
@@ -88,7 +90,13 @@ export default {
       dataRoot,
       agentKey: () => ctx.vault.fetch(AGENT_BROWSER_PROFILE_KEY),
       memberKey: async personId => {
-        const r = await ctx.call("vault.me.get", { name: MEMBER_BROWSER_PROFILE_KEY, person: personId });
+        const owner = ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : null;
+        if (owner && personId === owner) {
+          const v = await ctx.vault.fetch(MEMBER_BROWSER_PROFILE_KEY);
+          if (!v) throw new Error(`no ${MEMBER_BROWSER_PROFILE_KEY} in the space vault`);
+          return String(v);
+        }
+        const r = await ctx.call("vault.me.get", { name: MEMBER_BROWSER_PROFILE_KEY });
         if (r.error) throw new Error(r.error.message);
         const v = r.data && r.data.fields && r.data.fields.key;
         if (!v) throw new Error(`no ${MEMBER_BROWSER_PROFILE_KEY} in the member vault`);
@@ -100,7 +108,11 @@ export default {
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
     const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });
     const agentBrowser = new AgentBrowser({ pool, shared, cfg: () => (ctx.config && ctx.config.computers) || {} });
-    const keyboard = new Keyboard({ pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
+    const handbackDeps = { agentBrowser, shared, browserProfiles: pool.browserProfiles, log: ctx.log };
+    const keyboard = new Keyboard({
+      pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()),
+      onHandback: (agent, t) => sealMemberBrowserOnHandback(handbackDeps, agent, { personId: String(t.personId), browserSnap: t.browserSnap }),
+    });
     const helperFor = agent => agentBrowser.helper(agent);
     const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
       { ...o, computerRow: agentBrowser.computerRow(agent) }, a => helperFor(a)) });
@@ -296,15 +308,29 @@ export default {
     tool("computers.resume", "Let a paused agent's hands act again.", obj({ agent: str }),
       async (i, { caller }) => pool.pause(await resolve(i, caller), false));
 
-    tool("computers.takeover", "Take the keyboard of an agent's computer for a person's screen. The agent's hands stop, and the thread's lease moves to that screen. Call again to renew; it lapses after 90 s unrenewed.",
-      obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
+    tool("computers.takeover", "Take the keyboard of an agent's computer for a person's screen. The agent's hands stop, and the thread's lease moves to that screen. Call again to renew; it lapses after 90 s unrenewed. private: on the shared browser, restore the member's sealed profile and seal it again on handback.",
+      obj({ agent: str, surface: str, private: { type: "boolean" } }, ["surface"]), async (i, meta) => {
+        const { caller } = meta;
         ownOnly(caller);
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         const surface = await ownSurface(i, caller);
         // Nobody types into a computer the Vault is signing in on; the fill ends in seconds.
         if (fills.has(agent)) throw Object.assign(new Error(`${agent}'s computer is busy: a sign-in is being filled; try again in a few seconds`), { code: "busy" });
-        return keyboard.takeover(agent, surface, caller);
+        const priv = i.private === true;
+        let browserSnap = null;
+        let personId = null;
+        if (priv) {
+          const existing = keyboard.takeovers.get(agent);
+          if (existing && existing.private && existing.personId && existing.browserSnap) {
+            personId = existing.personId;
+            browserSnap = existing.browserSnap;
+          } else {
+            personId = await personIdOf(ctx, meta);
+            if (personId) browserSnap = await beginPrivateMemberBrowser(handbackDeps, agent, personId);
+          }
+        }
+        return keyboard.takeover(agent, surface, caller, { private: priv, personId, browserSnap });
       }, { callers: OWN });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),

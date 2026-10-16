@@ -3,6 +3,7 @@
 
 import { buildCall } from "../../lib/siteops/apilearn.js";
 import * as redact from "../../lib/siteops/redact.js";
+import { classifySend, held, writeGate } from "../../lib/siteops/outbound.js";
 
 const STOP = new Set(["the", "and", "for", "with", "from", "all", "get", "list", "show", "read", "fetch", "find", "give", "that", "this", "get"]);
 /** @param {string} s @returns {string[]} */
@@ -129,17 +130,16 @@ export async function routeApi(catalog, hint, params, traffic, callEntry) {
  * @param {string} sessionId
  */
 export async function callApi(entry, params, traffic, trust, cdp, sessionId) {
-  const acting = !/^(GET|HEAD)$/.test(entry.method);
-  if (acting && trust.approved !== true) {
-    return {
-      held: true,
-      write: true,
-      method: entry.method,
-      why: "a write waits for the person's approval; pass approved: true after they said yes",
-      pathTemplate: entry.pathTemplate,
-    };
-  }
   const built = buildCall(entry, params);
+  const bodyStr = typeof built.body === "string" ? built.body : "";
+  const ob = classifySend(built.method, built.url, bodyStr);
+  if (ob.send && trust.asked !== true && trust.approved !== true) {
+    return { held: true, send: true, ...held(built.method, built.url, ob.why, `${built.method} ${built.url} ${bodyStr}`) };
+  }
+  const gate = writeGate(built.method, built.url, bodyStr, trust);
+  if (gate.held) {
+    return { held: true, write: true, method: entry.method, pathTemplate: entry.pathTemplate, ...gate.held };
+  }
   /** @type {Record<string, string>} */
   const headers = { accept: "application/json", ...(built.headers || {}) };
   let authNote;

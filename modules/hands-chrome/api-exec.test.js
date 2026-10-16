@@ -28,6 +28,14 @@ test("callApi: holds writes without approved", async () => {
   const post = { ...entry, id: "e_post", method: "POST", pathTemplate: "/api/orders" };
   const held = await callApi(post, { body: { x: 1 } }, [], {}, { send: async () => ({}) }, "s");
   assert.equal(held.held, true);
+  assert.equal(held.write, true);
+});
+
+test("callApi: holds outbound sends without approval", async () => {
+  const post = { ...entry, id: "e_send", method: "POST", pathTemplate: "/api/messages/send" };
+  const held = await callApi(post, {}, [], {}, { send: async () => ({}) }, "s");
+  assert.equal(held.held, true);
+  assert.equal(held.send, true);
 });
 
 test("buildCall + callApi read path", async () => {
