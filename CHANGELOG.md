@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - feat(app): first run is three phases. Create an identity (username, master password, one recovery key, optional GitHub), then join a space from an invite link or create one, then Ready. Join never mentions a server. Create shows one install command and waits until the computer is online. Invites carry a link, a role and an expiry. Add a computer with the space address and the master password, or GitHub plus that password. Add a phone with a link. The same registry tools serve the app and the MCP server. An agent call that changes people, devices or vault access is held as a Needs-you card until the person approves. Pending: workstream A's username create (no reservation code) and workstream B's pairing command that keeps the single-use code out of argv, env and stdin.
+- test: those seven writes are listed as held, the class for a card the person approves, so a plain session's filled call is not also run as a body refusal.
 
 ## 0.5.2
 
