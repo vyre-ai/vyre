@@ -646,6 +646,8 @@ const VIEW_FOR = Symbol("vyre.view_for");
 const VIEW_ASK = Symbol("vyre.view_ask");
 /** Set only by Registry.callFlow, after the Flows host has spent the task approval a person gave for exactly this act: the call then counts as the person's own yes, as a redeemed card does. A symbol key cannot come over the wire. */
 const FLOW_ACT = Symbol("vyre.flow_act");
+/** Set only by Registry.callFlow, on every step it runs: the call is the Flow's person acting through the Flows host, so it hops to that person like a relayed call. A symbol key cannot come over the wire. */
+const FLOW_RUN = Symbol("vyre.flow_run");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
 const RELAY = Symbol("vyre.relay");
 /**
@@ -1449,7 +1451,7 @@ export class Registry {
     if (!def || !def.flowStep) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
     if (def.flowStep.risk === "outward" && !def.outward && !def.flowStep.forced) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
     if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
-    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token, ...(typeof o.task === "string" && def.outward === true ? { [FLOW_ACT]: { task: o.task } } : {}) });
+    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token, [FLOW_RUN]: true, ...(typeof o.task === "string" && def.outward === true ? { [FLOW_ACT]: { task: o.task } } : {}) });
   }
 
   /**
@@ -1546,6 +1548,7 @@ export class Registry {
     // A hosted key (the public /mcp door) never uses the tools hostedKeyMay names: code on the box, credentials and connections, devices, people and roles, keys. Refused here, before anything else, for the key alone.
     if (meta.viaMcp && meta.viaMcpHosted === true && !hostedKeyMay(tool)) return { error: { code: "denied", message: `${tool} is not available to a hosted key: keys cannot install apps, add accounts or touch the vault` } };
     delete meta.relayedBy; delete meta.relayedByFirstParty; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
+    const flowRun = meta[FLOW_RUN] === true && String(caller) === "module:flows"; delete meta[FLOW_RUN];
     const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
@@ -1576,7 +1579,7 @@ export class Registry {
     const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
     delete meta[VIEW_FOR];
     const spaceHop = Boolean(meta.in_space_chain);
-    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
+    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop || flowRun) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
