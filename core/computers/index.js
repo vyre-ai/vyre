@@ -26,7 +26,8 @@ import { tellComputerd } from "./helper.js";
 import { SharedBrowser } from "./shared-browser.js";
 import { AgentBrowser } from "./agent-browser.js";
 import { BrowserGlass } from "./browser-glass.js";
-import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY, MEMBER_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
+import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
+import { resolveMemberBrowserProfileKey } from "../../lib/member-browser-profile-key.js";
 import { personIdOf } from "./person-id.js";
 import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member-browser-handback.js";
 import * as egress from "./egress.js";
@@ -89,19 +90,7 @@ export default {
       pool,
       dataRoot,
       agentKey: () => ctx.vault.fetch(AGENT_BROWSER_PROFILE_KEY),
-      memberKey: async personId => {
-        const owner = ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : null;
-        if (owner && personId === owner) {
-          const v = await ctx.vault.fetch(MEMBER_BROWSER_PROFILE_KEY);
-          if (!v) throw new Error(`no ${MEMBER_BROWSER_PROFILE_KEY} in the space vault`);
-          return String(v);
-        }
-        const r = await ctx.call("vault.me.get", { name: MEMBER_BROWSER_PROFILE_KEY });
-        if (r.error) throw new Error(r.error.message);
-        const v = r.data && r.data.fields && r.data.fields.key;
-        if (!v) throw new Error(`no ${MEMBER_BROWSER_PROFILE_KEY} in the member vault`);
-        return String(v);
-      },
+      memberKey: personId => resolveMemberBrowserProfileKey(ctx.call, personId),
       log: ctx.log,
     });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
