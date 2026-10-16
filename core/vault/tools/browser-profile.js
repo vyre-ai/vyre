@@ -3,7 +3,7 @@
 
 import { PeopleVaults } from "../people.js";
 import { MEMBER_BROWSER_PROFILE_KEY } from "../../../lib/browser-profile.js";
-import { ensureAgentBrowserProfileKey, ensureMemberBrowserProfileKey } from "../../../lib/browser-profile-key-ensure.js";
+import { ensureAgentBrowserProfileKey, ensureMemberBrowserProfileKey } from "../browser-profile-key-ensure.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });

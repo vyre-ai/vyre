@@ -1,14 +1,14 @@
 // @ts-check
 // browser-profile-key-ensure: create wrap keys inside the right vault on first need (never exposed to agents).
 
-import { AGENT_BROWSER_PROFILE_KEY, MEMBER_BROWSER_PROFILE_KEY } from "./browser-profile.js";
-import { generateProfileKeyMaterial } from "./browser-profile-key-material.js";
-import { vaultLockedError } from "./vault-unlock-error.js";
+import { AGENT_BROWSER_PROFILE_KEY, MEMBER_BROWSER_PROFILE_KEY } from "../../lib/browser-profile.js";
+import { generateProfileKeyMaterial } from "../../lib/browser-profile-key-material.js";
+import { vaultLockedError } from "../../lib/vault-unlock-error.js";
 
 const ITEM_DESC = "Wraps browser profile data on the shared browser (created automatically).";
 
 /**
- * @param {import("../core/vault/people.js").PeopleVaults} people
+ * @param {import("./people.js").PeopleVaults} people
  * @param {string} personId
  * @returns {Promise<string>} key material (hex), for module-internal use only
  */
@@ -42,7 +42,7 @@ export async function ensureMemberBrowserProfileKey(people, personId) {
 }
 
 /**
- * @param {import("../core/vault/vault.js").Vault} vault
+ * @param {import("./vault.js").Vault} vault
  * @returns {Promise<string>} key material (hex), for module-internal use only
  */
 export async function ensureAgentBrowserProfileKey(vault) {

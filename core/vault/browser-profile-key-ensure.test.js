@@ -1,16 +1,16 @@
 // @ts-check
-import "../scripts/mac-test-guard.mjs";
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { SCRATCH } from "../test/scratch.mjs";
-import { TEST_KDF } from "../core/vault/testing.js";
-import { PeopleVaults } from "../core/vault/people.js";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { TEST_KDF } from "./testing.js";
+import { PeopleVaults } from "./people.js";
 import { ensureMemberBrowserProfileKey, ensureAgentBrowserProfileKey } from "./browser-profile-key-ensure.js";
-import { MEMBER_BROWSER_PROFILE_KEY, AGENT_BROWSER_PROFILE_KEY } from "./browser-profile.js";
-import { open, migrate } from "../core/store/index.js";
-import { Vault, MIGRATIONS } from "../core/vault/vault.js";
+import { MEMBER_BROWSER_PROFILE_KEY, AGENT_BROWSER_PROFILE_KEY } from "../../lib/browser-profile.js";
+import { open, migrate } from "../store/index.js";
+import { Vault, MIGRATIONS } from "./vault.js";
 
 const PW = "long-enough-master-password";
 const BOB = "per_" + "b".repeat(26);

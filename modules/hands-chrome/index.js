@@ -289,7 +289,7 @@ export default {
       return w ? w.all() : [];
     };
 
-    tool("chrome.api", "An app's own API on the box, learned from page traffic. learn: capture XHR/fetch and reduce to a catalog (shapes only, no secrets). catalog: read the catalog for a host. route: try the best matching GET for a hint. call: invoke one catalog entry from inside the page (writes need approved: true).",
+    tool("chrome.api", "Learn, catalog, route, and call a site's in-page API from traffic on the agent's browser (writes need approved: true).",
       obj({ agent: str, action: str, host: str, hint: str, entryId: str, entry: str, params: { type: "object" }, approved: { type: "boolean" } }, ["action"]), async (i, meta) => {
         const agent = await resolveAgent(i, meta.caller, ctx.call);
         const action = String(i.action || "");
