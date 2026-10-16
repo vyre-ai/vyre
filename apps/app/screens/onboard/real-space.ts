@@ -27,7 +27,7 @@ function store<T>(initial: T) {
   };
 }
 
-// ---- the server: the add-a-server run (install line, the four words, the pairing) ----
+// ---- the server: the add-a-server run (one install line, then the pairing) ----
 
 const runState = store<AddServerState | null>(null);
 let run: Awaited<ReturnType<typeof startAddServer>> | null = null;

@@ -628,6 +628,9 @@ export const OPEN = new Set([
   "wink.code.status",
   "wink.offers",
   "wink.pair.status",
+  "wink.install.status", // whether an install line is outstanding and whether this server is owned: a read
+  "wink.install.issue", // a proven assistant may ask; the outward flag holds the call at the Gate, and the signing key stays on this device
+  "wink.install.complete", // a proven assistant may ask; the outward flag holds the call at the Gate, and the signing key stays on this device
   "wink.storage.card",
   "wink.storage.discover",
   "wink.storage.offers",

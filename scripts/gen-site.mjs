@@ -352,7 +352,7 @@ ${agentBand()}
     <div class="feat-copy rv">
       <span class="num">Get started</span>
       <h2 id="in-h" class="h2">One line on your server, <b>then pair it from the app.</b></h2>
-      <p class="lead">Reserve your name, install the app, and add a server: the app gives you one line to paste on it and checks four words with you.</p>
+      <p class="lead">Reserve your name, install the app, and add a server: the app gives you one line to paste on it, and the server pairs itself.</p>
       <div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a></div>
     </div>
     <div class="rv">
@@ -360,7 +360,7 @@ ${agentBand()}
         <li><b>Open the Vyre app.</b> Choose your name and create a space.</li>
         <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
           ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}</li>
-        <li><b>Check four words in the app.</b> The server prints four words and the app shows four; you confirm they match.</li>
+        <li><b>The server pairs itself.</b> Run the line once. The app moves on when the server is yours.</li>
         <li><b>Add your computers.</b> The Vyre app for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
       </ol>
     </div>
@@ -591,7 +591,7 @@ devicePage({
   lead: 'Install Vyre on a Linux machine you control. Your agents run there and keep working when your laptop is closed. Your Mac, your PC and your phone are the ways in.',
   ogSub: 'One line from the Vyre app. Signed images and updates. Your agents keep working when your laptop is closed.',
   what: { h: 'A home for your agents, <b>that you own.</b>', items: [
-    ['One line, then the app', 'The Vyre app gives you a line to paste on your server. The server prints four words, the app shows four, and you confirm they match.'],
+    ['One line, then the app', 'The Vyre app gives you a line to paste on your server. The server installs Vyre and pairs itself.'],
     ['Checked before it runs', 'The installer asks before installing anything, checks what it downloads against a published signature, and pulls images by digest after their signatures are checked.'],
     ['Updates that cannot go backwards', 'A box refuses an unsigned, wrongly signed, tampered or older release, and keeps running as it was. Stable never takes a test version.'],
     ['Your name, your domain', 'Reach it at you.vyre.run, or serve it under your own domain.'],
@@ -600,7 +600,7 @@ devicePage({
   steps: { h: 'Open the app, <b>paste one line.</b>', items: [
     `<b>Open the Vyre app.</b> Choose your name, create a space and choose a server. The app shows one line to run.`,
     `<b>Paste it on your server</b>, as yourself, not as root.${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}`,
-    `<b>Check the words.</b> The server prints four words. The app finds it and shows four; confirm they match.`,
+    `<b>The server pairs itself.</b> Run the line. The app moves on when the server is yours.`,
     `<b>Finish in the app.</b> Give the space a look, connect your AI account and your tools, and pick a Kit or start empty.`,
   ] },
   needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Size', 'One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
@@ -935,8 +935,8 @@ ${part('04', 'choose', 'Choose how you will use Vyre', `<ul>
 <li><strong>Use My Home</strong> (Mac only). Vyre runs on this Mac while it is awake. Add a server later and everything moves across.</li></ul>`)}
 ${part('05', 'server', 'Add a server', `<p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
 ${term('curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh', 'curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh')}
-<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line is good for one hour and works once.</p>
-<p>The installer checks the release’s signature, sets Vyre up, and prints four words. The app finds your server by itself and shows four words too. If they match, choose <strong>They match</strong>. Nothing is connected until you do.</p>`)}
+<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line works once and expires in 30 minutes.</p>
+<p>The installer checks the release’s signature and sets Vyre up. The server pairs itself. The app finds your server and finishes pairing. You can also open the server's setup page and paste the code the app shows. The page locks after pairing.</p>`)}
 ${part('06', 'phone', 'Add your phone', `<p>From the app, choose <strong>Add your phone</strong>. On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Scan the code from your computer and check that both screens show the same words. More on the <a href="/phone/">phone page</a>.</p>`)}
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
@@ -954,7 +954,7 @@ ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <p>What comes next, by version: <a href="https://vyre.run/docs/roadmap/README">the roadmap</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
 ${part('?', 'trouble', 'If something goes wrong', `<ul>
 <li>The app says the reservation code is not valid: it lasts 24 hours and works once. Reserve the name again on vyre.run/setup.</li>\n<li>The app says the line expired, or two servers used it: press <em>Start again</em> for a new line.</li>
-<li>The words do not match: press <em>They don’t match</em>, then start again. It means the line was not run on your server.</li>
+<li>The setup page will not take a code: the server is already paired, or that code was used. In the app, start again for a new line.</li>
 <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
 <li>Start over on a Linux server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then set up again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li></ul>`)}
 </div></section>
@@ -962,7 +962,7 @@ ${part('?', 'trouble', 'If something goes wrong', `<ul>
 page({
   slug: 'start', path: '/start/',
   title: 'Get started with Vyre: reserve your name, install the app, add a server',
-  desc: 'The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, check four words, add your phone.',
+  desc: 'The steps in order: reserve your name, install the Mac or Windows app, paste the code, join a team or add a server, and add your phone.',
   ogTitle: 'Start with your name.', ogSub: 'Reserve your name, install the app, join a team or add a server, then add your phone.',
   body: START, ld: [crumbs([['Vyre', `${SITE}/`], ['Get started', `${SITE}/start/`]])],
 });
@@ -1147,7 +1147,7 @@ ${llmsDocs(SITE)}
 2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
-5. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. Confirm the four words in the app.
+5. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. The server installs Vyre and pairs itself.
 6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
 
 ## What it costs
@@ -1213,7 +1213,7 @@ const AGENT_JSON = {
   version: VERSION,
   license: 'Apache-2.0',
   docs: { agenthome: `${SITE}/agenthome.md`, llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
-  install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and four words. An agent runs the install line only if the user hands it that one line, for a server the agent created for them.' },
+  install: { url: `${SITE}/start/`, note: 'The Vyre app shows one install line. An agent can issue that line over MCP. The call waits at the Gate for one tap, and the signing key stays on the device. An agent runs the line only for a server the agent created, and only when the user hands over that one line.' },
   entry_point: { url: `${SITE}/agenthome.md`, html: `${SITE}/agenthome/`, note: 'Start here: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up today.' },
   platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (the Vyre app)', 'Windows (the Vyre app)', 'iOS and Android (the app, sideloaded)'] },
 };

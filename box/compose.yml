@@ -5,8 +5,8 @@
 # Upgrade:  docker compose pull && docker compose up -d
 #
 # vyred reaches other devices over Wink, a Vyre-owned userspace network core it runs itself (the pinned binaries ship in the image, see
-# box/Dockerfile): no sidecar container, no TUN device, no extra capability. The only way in from the host is the onboarding page, which
-# Docker binds on the host's loopback.
+# box/Dockerfile): no sidecar container, no TUN device, no extra capability. The setup page is published on host port 80, which Docker
+# forwards to 8080, where vyred listens. The public gate is the TLS door for a server that has a name.
 #
 # Room for more, as extra compose files rather than edits here, listed in COMPOSE_FILE in
 # /srv/vyre/.env (COMPOSE_PROJECT_NAME=vyre there keeps one project). Other services join the
@@ -24,6 +24,7 @@ services:
     # in vyre.env AND wink.publicPort in the config, together; the node program's own UDP is outbound-initiated and needs no published port.
     ports:
       - "${VYRE_PUBLIC_GATE_PORT:-7443}:${VYRE_PUBLIC_GATE_PORT:-7443}"
+      - "${VYRE_SETUP_HTTP_PORT:-80}:8080"
     networks:
       vyre:
         aliases:
@@ -52,6 +53,7 @@ services:
     environment:
       - VYRE_HOME=/home/vyre/.vyre
       - VYRE_SUPERVISOR=docker
+      - VYRE_SETUP_PORT=8080
       # The kernel's sealing process (kernel/seal) runs the server profile on a box: vyred is uid 1000, outside the agents' range
       # (2000 to 2063), and its sealing folder is 0700 under that uid, so no agent session can read it.
       - VYRE_SEAL_PROFILE=server

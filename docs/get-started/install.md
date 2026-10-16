@@ -86,13 +86,12 @@ On Windows the app offers **Join a team** and **Add a server**. A home on Window
      Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
      Touch ID key approves new devices.
 
-   The line is good for one hour and works once. It carries a one-time code made by the app, so nobody at the server has to
-   answer a question.
-4. The installer checks the release's signature before it installs anything, and prints four words when it is up. The
-   app finds the server by itself and shows four words too. If they are the same, choose **Same**. If they are not, choose
-   **Not the same** and nothing is connected. If the words scrolled away or did not show on the server, run `vyre words` there
-   (on a Mac server, `~/.vyre-server/bin/vyre words`) to see them again.
-5. The app connects, and your Cloud is ready. Choose what to move across from Personal if you have anything there.
+   The line works once and expires in 30 minutes. It carries a one-time code made by the app. The server installs Vyre and
+   adopts the person who approved the line.
+4. The installer checks the release's signature before it installs anything. The app finds the server and finishes pairing.
+   You can also open the server's setup page (`http://<the-server>/setup`) and paste the code the app shows. The page locks
+   after pairing.
+5. Your Cloud is ready. Choose what to move across from Personal if you have anything there.
 
 
 ## 6. Add your phone
@@ -149,10 +148,10 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 > <https://vyre.run/setup> and paste the new code.
 
 > [!SNAG] The app never finds the server
-> The line is good for one hour. In the app choose **Start again**, then run the new line. Check that the server can reach the internet.
+> The line expires in 30 minutes. In the app choose **Start again**, then run the new line. Check that the server can reach the internet.
 > If the installer says `Vyre is already running`, run `vyre uninstall --keep-data` on the server first, then paste the new line. Your data stays.
 
-> [!SNAG] The four words do not match
-> Choose **Not the same**. Nothing is connected. Run a fresh line from the app, and make sure you are looking at the server you just ran it on.
+> [!SNAG] The setup page will not take the code
+> The server is already paired, or that code was used. In the app choose **Start again** for a new line, and run that line on this server.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).
