@@ -61,6 +61,7 @@ import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 import * as autobackup from "./autobackup.js";
+import { registerSpaceTools } from "./space-tools.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -92,7 +93,11 @@ export default {
     // The vault is the owner's: every tool it registers is refused for a call made for any other person (core/vault/member-gate.js).
     const ctx = gateTools(ctx0);
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
-    if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+    if (coreHolder.link && typeof coreHolder.link.call === "function") {
+      const fwd = await startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+      registerSpaceTools(ctx);
+      return fwd;
+    }
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
@@ -576,6 +581,8 @@ export default {
         // ask, so config is the person's standing answer (ADR 0028).
         breach: { enabled: opts.breach === "ask", fetch: httpFetch },
         connections: conns.connections });
+
+    registerSpaceTools(ctx);
 
     return {
       ssh: cli.ssh,

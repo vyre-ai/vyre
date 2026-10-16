@@ -40,6 +40,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
+| [`devices`](#devices) | `core/devices` | `box`, `local` | 1 | 0 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
@@ -54,6 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
+| [`identity`](#identity) | `core/identity` | `box`, `local` | 8 | 0 | cli |
 | [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
@@ -92,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 15 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 118 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 119 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
@@ -106,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 181 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 188 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -385,6 +387,17 @@ The design language's keeper: the block catalogue and a screen checker for anyon
 - Emits: [3 events](events.md#design)
 - Shows on: cli
 
+## devices
+
+Sign a computer in with the space server, the username and the master password.
+
+- Folder: `core/devices`, version 0.5.3
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#devices)
+- Emits: no events
+- Shows on: cli
+
 ## docs
 
 The docs, found and read from inside Vyre: docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section of it, within a token budget. People get the human docs. A session or an agent also gets the agent docs, which are never offered to a person.
@@ -545,6 +558,18 @@ Inbound webhooks from the public internet: one route at a time, each checked by 
 - Shows on: capsule, cli, deck
 - Needs vault: `per-route`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## identity
+
+The username, the master password and the recovery key.
+
+- Folder: `core/identity`, version 0.5.3
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#identity)
+- Emits: no events
+- Shows on: cli
+- Needs tools: `spaces.identity.create`
 
 ## import
 
@@ -991,7 +1016,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [118](tools.md#spaces), 34 of them only for other modules
+- Tools: [119](tools.md#spaces), 34 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
@@ -1150,7 +1175,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [181](tools.md#vault), 24 of them only for other modules
+- Tools: [188](tools.md#vault), 24 of them only for other modules
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`

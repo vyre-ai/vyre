@@ -27,6 +27,10 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
   "update.whats-new": "reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words",
+  "identity.status": "reads whether a username exists and whether the directory may show it; no key and no password",
+  "identity.card": "reads the public card for the username; private unless the person opted in, and no key",
+  "vault.space.status": "reads whether a space vault exists and its generation; no key and no item value",
+  "vault.space.list": "lists space vault item names only; values stay sealed",
   "update.whats-new-seen": "marks the release notes of the running version as seen by this person; the only thing written is that mark",
   "flows.settle": "answers a run that needs attention (retry, skip, stop, or move a stage gate on early) under the person's own chain; a stage gate moves only for its owner or an admin, with a reason on the ledger, and a value for a skipped step stays the person's",
   "flows.advance": "moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger",
@@ -368,6 +372,7 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
+  "vault.space.use": "0.5.3@15 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */

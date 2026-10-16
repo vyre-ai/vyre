@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { HOSTED_ALLOW, HOSTED_NEVER, hostedKeyMay } from "../core/modules/agent-reach.js";
+import { HOSTED_ALLOW, HOSTED_NEVER, HOSTED_GATE, hostedKeyMay } from "../core/modules/agent-reach.js";
 import { tempHome } from "./helpers.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
@@ -27,10 +27,13 @@ test("hosted door: the allowed set equals the reviewed allowlist exactly, and a 
   for (const [n, why] of Object.entries(file)) assert.ok(typeof why === "string" && why.length > 20, `${n} says why a hosted key may use it`);
   const all = [...d.registry.tools.keys()].sort();
   const allowed = all.filter(hostedKeyMay);
-  assert.deepEqual(allowed, [...reviewed.allow].sort(), "the hosted set is exactly the reviewed allowlist (core/modules/hosted-allow.json)");
+  const gate = [...HOSTED_GATE].filter(n => all.includes(n));
+  assert.deepEqual(allowed, [...new Set([...reviewed.allow, ...gate])].sort(), "the hosted set is the reviewed allowlist plus the exact Gate proposals");
   assert.deepEqual([...HOSTED_ALLOW].filter(n => !all.includes(n)), [], "no allowlisted name is stale");
-  assert.deepEqual(allowed.filter(n => RISKY.test(n)), [], "nothing that runs code, drives a screen, installs, or touches credentials or devices is allowed");
-  for (const list of Object.values(HOSTED_NEVER)) for (const p of list) assert.ok(!allowed.some(n => n.startsWith(p)), `the second wall holds: ${p}`);
+  assert.deepEqual([...HOSTED_GATE].filter(n => !all.includes(n)), [], "no Gate name is stale");
+  assert.deepEqual(allowed.filter(n => RISKY.test(n) && !HOSTED_GATE.has(n)), [], "nothing that runs code, drives a screen, installs, or touches credentials or devices is allowed outside the Gate list");
+  for (const n of HOSTED_GATE) assert.equal(d.registry.tools.get(n).outward, true, `${n} is held: its manifest marks it outward`);
+  for (const list of Object.values(HOSTED_NEVER)) for (const p of list) assert.ok(!allowed.some(n => n.startsWith(p) && !HOSTED_GATE.has(n)), `the second wall holds: ${p}`);
   const unclassified = all.filter(n => FAMILIES.test(n) && !reviewed.allow.includes(n) && !reviewed.refused.includes(n));
   assert.deepEqual(unclassified, [], "a tool in a work family is neither allowed nor reviewed-refused: classify it in core/modules/hosted-allow.json or test/hosted-refused.json");
   assert.deepEqual(reviewed.refused.filter((/** @type {string} */ n) => !all.includes(n)), [], "no refused name is stale");
