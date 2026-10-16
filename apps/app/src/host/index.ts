@@ -19,7 +19,8 @@ export function hostWanted(): boolean {
 }
 
 function directory(): string {
-  const set = typeof process !== "undefined" ? process.env.EXPO_PUBLIC_VYRE_NAMES : "";
+  // Build-time seams, read as process.env.NAME exactly (Expo inlines only that): a proof build points the page at stand-in directories; a release build sets neither. No runtime setting can do this.
+  const set = typeof process !== "undefined" ? process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || process.env.EXPO_PUBLIC_VYRE_NAMES : "";
   return set || "https://names.vyre.run";
 }
 
