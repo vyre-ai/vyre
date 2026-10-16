@@ -53,7 +53,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -89,6 +89,8 @@ async function browserDriver() {
     // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
     async reopen() { await d.open(); },
     errors: () => pageErrors.filter((e) => !/color scheme|dark mode/i.test(e)),
+    // A browser on a static file server has no daemon of any kind: nothing answers /v1 here.
+    async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
     async stop() { await browser.close().catch(() => {}); srv.close(); },
   };
   return d;
@@ -114,6 +116,14 @@ async function macDriver() {
     async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
     async reopen() { need().stop(); await wait(1500); await start(); },
     errors: () => [],
+    // The app is pointed at a socket that does not exist and its own home holds none: no vyred is running for this app, so its window is the bundled app and the first run is the in-page host's. (The server the
+    // Mac installer makes runs a vyred of its own under launchd; that is the other machine's, in its own home.)
+    async noVyred() {
+      for (const f of [path.join(home, "no-vyred.sock"), path.join(home, "vyred.sock"), path.join(home, "vyred.pid")]) if (fs.existsSync(f)) throw new Error(`the client has ${path.basename(f)}`);
+      const t = await need().text();
+      if (/Can't reach your vault/.test(t)) throw new Error("the lock covered the app: the window had neither a daemon nor the in-page host");
+      return "no vyred socket or pid in the app's home, and the window shows its first run";
+    },
     async stop() { page?.stop(); },
   };
 }
@@ -137,6 +147,8 @@ try {
     if (!t.includes("Create an identity") || !t.includes("Sign in")) throw new Error(`the first screen does not offer both: ${t.slice(0, 200)}`);
     await drv.shot("01-get-started");
   });
+
+  await run.step(S("the client machine runs no vyred: the first run is the app's in-page host"), async () => drv.noVyred(), { needs: [S("the first screen offers Create an identity and Sign in")] });
 
   await run.step(S("create an identity: username, master password, recovery key"), async () => {
     await drv.click("Create an identity");
