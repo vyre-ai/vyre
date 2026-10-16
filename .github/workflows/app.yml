@@ -24,7 +24,7 @@ permissions:
   contents: read
 concurrency:
   group: app-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') }}
 env:
   VYRE_NO_DIALOGS: "1"
   EXPO_NO_TELEMETRY: "1"
@@ -63,7 +63,7 @@ jobs:
   test:
     needs: detect
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     defaults:
       run:
@@ -85,7 +85,7 @@ jobs:
   web:
     needs: detect
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     defaults:
       run:
@@ -149,7 +149,7 @@ jobs:
   perf:
     needs: [detect, web]
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -206,7 +206,7 @@ jobs:
   android:
     needs: detect
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     permissions:
       contents: write  # the release on main

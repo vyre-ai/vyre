@@ -20,7 +20,7 @@ export async function createDirectoryServer(o = {}) {
   const origin = o.publicOrigin || `http://${host}:${o.port ?? 0}`;
   const rt = createRuntime({
     worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
-    env: { APP_ORIGINS: o.appOrigins || "https://app.vyre.run", CLAIMS_PER_IP_PER_DAY: o.claimsPerIp || "5", CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch,
+    env: { APP_ORIGINS: o.appOrigins || "https://web.vyre.run,https://app.vyre.run", CLAIMS_PER_IP_PER_DAY: o.claimsPerIp || "5", CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch,
       ZONE: o.zone || "vyre.local", ORIGIN: origin, RESOLVE_TXT: async () => [], ...(o.relaySecret ? { RELAY_SECRET: o.relaySecret } : {}), ...(o.tunnelIpv4 ? { TUNNEL_IPV4: o.tunnelIpv4 } : {}), ...(o.adminSecret ? { ADMIN_SECRET: o.adminSecret } : {}) },
   });
   if (o.stateFile) {

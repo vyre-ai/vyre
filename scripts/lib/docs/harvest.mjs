@@ -21,6 +21,9 @@ import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+// The pages are the same on every machine: a module that registers different tools on a Mac (wink, link) is read as it starts on Linux, the platform the committed pages and the CI harvest use.
+Object.defineProperty(process, "platform", { value: "linux" });
+
 const [repo, outFile] = process.argv.slice(2);
 if (!repo || !outFile) { console.error("usage: harvest.mjs <repo> <out.json>"); process.exit(2); }
 if (!process.env.VYRE_HOME || !process.env.VYRE_HOME.startsWith(String(process.env.HOME))) {

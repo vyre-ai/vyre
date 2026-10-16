@@ -166,7 +166,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
-| `VYRE_SETUP_HTTP` | `1`: vyred serves the setup page, where the person pastes the install code. Inside Docker the page is served without this. | `core/wink/install-pair.js` |
+| `VYRE_SETUP_HTTP` | `1`, or inside Docker: vyred may serve the setup page. It opens only after the install line's own pairing at boot failed, takes only the code that carries the install line's setup code, and stops listening once the server is paired. | `core/wink/install-pair.js` |
 | `VYRE_SETUP_PORT` | The port the setup page listens on. Default 8080. | `core/wink/install-pair.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
@@ -219,7 +219,6 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
-| `VYRE_INSTALL_FROM_LINE` | Not described yet. | `core/wink/install-pair.js` |
 | `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |

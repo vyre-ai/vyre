@@ -30,7 +30,7 @@ throwaway vyred. Nothing here touches the live Vyre on that server.
 
 - `proxy-up.mjs` runs `core/dockerproxy` on a free high port, on loopback, pinned to the proof's
   own network, image and label prefix.
-- `proof.mjs` starts vyred in its own process over a temp home (config: box role, no Tailscale,
+- `proof.mjs` starts vyred in its own process over a temp home (config: box role, no other VPN,
   computers driver docker pointing at that proxy, image `csproof-computer:test`, network
   `csproof-net`, 2 cpus, 2 GB). vyred serves on its unix socket, so the only TCP port is the
   proxy's. `setPeerHosting(true)` is the same seam core's in-process tests use: it lets this

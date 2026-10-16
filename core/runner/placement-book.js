@@ -19,6 +19,8 @@ export const HEARTBEAT_MS = 5_000;
 export const LAPSE_MS = 20_000;
 /** After an automatic move (a condition, not the person) the same session is not moved automatically again for this long: one move per state change. */
 export const COOLDOWN_MS = 120_000;
+/** A computer must have been well, beat after beat with no gap, this long before a session is put back on it by the person's standing choice (Always allow). A computer that comes and goes never gets there. */
+export const STEADY_MS = 60_000;
 /** A computer that was asked to hand a session over and has not within this long is overruled: the server takes it. */
 export const ASK_MS = 60_000;
 

@@ -60,7 +60,9 @@ async function browser(t, scanned) {
   return (await side.ready).reply;
 }
 
-test("relay cli verbs: status, on, devices, trust, rename, pin, unpin, remove, off", async t => {
+// A Mac holds no unprotected relay key (core/relay macCoreRefusal), so the whole pairing walk below runs where a box runs: Linux. The Mac's own answer is the test after it.
+const ON_MAC = process.platform === "darwin";
+test("relay cli verbs: status, on, devices, trust, rename, pin, unpin, remove, off", { skip: ON_MAC ? "a Mac refuses relay pairing by design: the next test holds that" : false }, async t => {
   const { root, url, d } = await world(t);
 
   const s0 = await run(root, ["relay", "status", "--json"]);
@@ -188,4 +190,9 @@ test("relay cli verbs: pair is gone: it refuses with words and names Devices, Ad
   assert.match(f[0].view.next, /Devices, Add a device/);
   const s = JSON.parse((await run(root, ["relay", "status", "--view"])).stdout.split("\n")[0]);
   assert.deepEqual([s.view.kind, s.view.title, s.data.enabled], ["card", "Relay", true]);
+});
+
+test("relay cli verbs: a Mac says plainly it cannot make a pairing address yet", { skip: ON_MAC ? false : "only a Mac gives this refusal" }, async t => {
+  const { d } = await world(t);
+  await assert.rejects(() => offerUrl(d), /not available on a Mac yet/);
 });
