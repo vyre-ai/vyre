@@ -16,7 +16,7 @@
 // Glass's action log has something to show. No event, tool result or log line ever carries the
 // CDP endpoint's helper token or a page's full text: `summary` is a short, human sentence.
 
-import { agentClaim } from "../../core/modules/index.js";
+import { AGENT_NAME_RE, resolveComputerAgent } from "../../lib/computer-agent.js";
 import { isPerson } from "../../lib/caller.js";
 import { requirePublicUrl } from "./nav.js";
 import { cdpUrlOf } from "../../lib/browser-access.js";
@@ -29,7 +29,7 @@ import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.
 import { watchNetwork } from "./net-tool.js";
 import { hostOf, mergeApiCatalog, watchApiTraffic } from "./api-tool.js";
 
-const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+const AGENT = AGENT_NAME_RE;
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -40,31 +40,14 @@ const SELECTOR = obj({
 /** The person's own surfaces and modules, plus an agent's own hands (a model session): each tool below resolves which computer it means and refuses a model that names none of its own. */
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
 
-/**
- * Which agent's computer a call means, the same rule as core/computers/index.js. `agentClaim`
- * finds the agent behind any transport shape ("mcp:agent:kit", "harness:agent:kit", "cli:agent:kit"),
- * so none of them reads as unnamed and may name another agent's browser (group D audit, HD-5).
- * A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no
- * computer of its own, so it may not name one either.
- */
+/** @param {import("../../lib/computer-agent.js").resolveComputerAgent} _r */
 async function resolveAgent(input, caller, call) {
-  const self = agentClaim(String(caller || ""));
-  let agent;
-  if (self) {
-    if (!input.agent || input.agent === self) agent = self;
-    else {
-      const r = await call("agents.list", {});
-      const a = !r.error && (r.data || []).find(x => x && x.name === self);
-      if (a && a.kind === "assistant") agent = input.agent;
-      else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
-    }
-  } else {
-    if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
-    if (!input.agent) throw new Error("say which agent's computer: agent is required");
-    agent = input.agent;
-  }
-  if (!AGENT.test(String(agent))) throw new Error(`"${agent}" is not an agent name`);
-  return String(agent);
+  const kindOf = async name => {
+    const r = await call("agents.list", {});
+    const a = !r.error && (r.data || []).find(x => x && x.name === name);
+    return a ? String(a.kind) : null;
+  };
+  return resolveComputerAgent(input, caller, kindOf);
 }
 
 /** @type {{ start(ctx: any): Promise<any> }} */

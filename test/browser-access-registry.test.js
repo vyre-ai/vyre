@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** @type {Record<string, RegExp>} */
 const GATE_MARKERS = {
-  cdpViaEndpoint: /computers\.endpoint|agent-browser|AgentBrowser|browser-access/,
+  cdpViaEndpoint: /computers\.endpoint|agent-browser|AgentBrowser|browser-access|computer-agent|resolveComputerAgent/,
   cdpViaFill: /agent-fill|computers\.fill/,
   navigateEgress: /guardAgentNavigate|requirePublicUrl|browser-access/,
   glassStream: /browser-glass|\/v1\/streams\/computers\/glass|glassStreamPath|LiveScreen|computers\.watch|glass\.open/,

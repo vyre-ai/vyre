@@ -31,10 +31,11 @@ import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
+import { AGENT_NAME_RE, modelSessionMustClaimAgent, resolveComputerAgent } from "../../lib/computer-agent.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
-const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+const AGENT = AGENT_NAME_RE;
 /** The person's own surfaces; a module hop is checked against the original caller by the registry. */
 const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
 /** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
@@ -157,26 +158,8 @@ export default {
      * same self-or-assistant rule as an agent's own MCP hands (hands-desktop's resolveAgent had
      * the same narrower gap, e2e review 2026-09-28).
      */
-    const resolve = async (input, caller) => {
-      const self = agentClaim(caller);
-      let agent;
-      if (self) {
-        if (!input.agent || input.agent === self) agent = self;
-        else if ((await kindOf(self)) === "assistant") agent = input.agent;
-        else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
-      } else {
-        if (!input.agent) throw new Error("say which agent's computer: agent is required");
-        agent = input.agent;
-      }
-      if (!AGENT.test(String(agent))) throw new Error(`"${agent}" is not an agent name`);
-      return String(agent);
-    };
-
-    /** A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no computer of its own, so it may not name one: the person's surfaces and modules say which agent they mean. */
-    const ownOnly = caller => {
-      const c = String(caller || "");
-      if (!agentClaim(c) && /^(mcp|harness)\b/.test(c)) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
-    };
+    const resolve = (input, caller) => resolveComputerAgent(input, caller, kindOf);
+    const ownOnly = modelSessionMustClaimAgent;
 
     const surfaceOf = input => {
       if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
