@@ -2009,7 +2009,7 @@ export default {
       const s = await gate(row.id, undefined, meta);
       const gone = await personRef(i.person);
       const r = out(await (await members(row.id, meta)).removeMember({ actor: s.id, person: gone }));
-      clearLends(row.id, { person: gone }); await import("../../kernel/identity/space-vault.js").then(m => m.rotateIfPresent(path.join(ctx.paths.root, "identity", "space-vaults", row.id), gone)).catch(() => {}); // LD-1: consent goes; the space vault key rotates
+      clearLends(row.id, { person: gone }); await import("../../kernel/identity/space-vault.js").then(m => m.rotateOnRemove(path.join(ctx.paths.root, "identity", "space-vaults", row.id), gone)); // LD-1: consent goes; a failed rotation retries and flags Needs you
       await syncOwners(row, undefined, meta);
       return r;
     });

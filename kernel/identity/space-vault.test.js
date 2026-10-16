@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { x25519Pair } from "./wrap.js";
-import { create, grant, put, list, rotate, resume, use, externalMcp, openAsMember, status } from "./space-vault.js";
+import { create, grant, put, list, rotate, resume, use, externalMcp, openAsMember, status, rotateOnRemove, pumpRetries, needsYou, cancelRetries, attention } from "./space-vault.js";
 
 const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), "vyre-sv-"));
 const SECRET = "vyre-space-secret-9f3a7c";
@@ -65,4 +65,34 @@ test("an external MCP agent uses a space vault credential and never receives the
   assert.equal(JSON.stringify(echoed).includes(SECRET), false);
   assert.equal(echoed.body.echoed, "[redacted]");
   assert.equal(echoed.ok, true);
+});
+
+test("a failed rotation on member removal queues a retry and flags Needs you", () => {
+  const root = scratch();
+  const dir = path.join(root, "spc_test_juniper");
+  const bob = x25519Pair();
+  create(dir);
+  grant(dir, "per_bbbbbbbbbbbbbbbbbbbbbbbbbb", bob.pub);
+  put(dir, { id: "stripe", name: "Stripe", value: SECRET });
+  const wraps = fs.readFileSync(path.join(dir, "gen", "1", "wraps.json"));
+  fs.writeFileSync(path.join(dir, "gen", "1", "wraps.json"), "{}\n");
+  const failed = rotateOnRemove(dir, "per_bbbbbbbbbbbbbbbbbbbbbbbbbb");
+  assert.equal(failed.needsYou, true);
+  assert.equal(failed.queued, true);
+  const title = String(needsYou(dir)?.title);
+  assert.match(title, /did not rotate/);
+  assert.equal(status(dir).needsYou?.title, title);
+  assert.equal(attention(root).items[0].title, title);
+  assert.equal(JSON.stringify(attention(root)).includes(SECRET), false);
+  assert.equal(pumpRetries(root).waiting, 1, "still broken, still flagged");
+  fs.writeFileSync(path.join(dir, "gen", "1", "wraps.json"), wraps);
+  const done = pumpRetries(root);
+  assert.equal(done.waiting, 0);
+  assert.equal(needsYou(dir), null);
+  assert.equal(status(dir).generation, 2);
+  assert.equal(status(dir).needsYou, undefined);
+  assert.throws(() => openAsMember(dir, "per_bbbbbbbbbbbbbbbbbbbbbbbbbb", bob.priv, "stripe"), (e) => /** @type {any} */ (e).code === "not_found");
+  assert.deepEqual(list(dir).items, [{ id: "stripe", name: "Stripe" }]);
+  assert.equal(attention(root).items.length, 0);
+  cancelRetries();
 });

@@ -84,9 +84,11 @@ export function create(dir) {
 /** @param {string} dir */
 export function status(dir) {
   const generation = generationOf(dir);
-  if (!generation) return { exists: false, generation: 0, members: [] };
+  const pending = needsYou(dir);
+  const flag = pending ? { needsYou: pending } : {};
+  if (!generation) return { exists: false, generation: 0, members: [], ...flag };
   const g = loadGen(dir, generation);
-  return { exists: true, generation, members: Object.keys(g.wraps.members || {}) };
+  return { exists: true, generation, members: Object.keys(g.wraps.members || {}), ...flag };
 }
 
 /**
@@ -185,6 +187,97 @@ export function rotate(dir, opts = {}) {
 export function rotateIfPresent(dir, personId) {
   if (!generationOf(dir)) return { rotated: false };
   return { rotated: true, ...rotate(dir, { remove: [String(personId || "")] }) };
+}
+
+const NEEDS_TITLE = "A space vault key did not rotate when a member left. Vyre will try again.";
+const needsPath = (/** @type {string} */ dir) => path.join(dir, "needs-you.json");
+/** @type {Map<string, NodeJS.Timeout>} */
+const retryTimers = new Map();
+
+/** @param {string} dir */
+export function needsYou(dir) {
+  const row = readJson(needsPath(dir));
+  if (!row || typeof row.title !== "string" || !row.title) return null;
+  return { title: row.title, person: String(row.person || ""), at: Number(row.at) || 0 };
+}
+
+/** @param {string} dir @param {string} personId @param {string} message */
+function flagNeeds(dir, personId, message) {
+  writePrivate(needsPath(dir), JSON.stringify({
+    v: 1, person: String(personId || ""), at: Date.now(), title: NEEDS_TITLE, error: String(message || "").slice(0, 200),
+  }) + "\n");
+}
+
+/** @param {string} dir */
+function clearNeeds(dir) {
+  const t = retryTimers.get(dir);
+  if (t) clearTimeout(t);
+  retryTimers.delete(dir);
+  rmQuiet(needsPath(dir));
+}
+
+/** @param {string} dir @param {string} personId */
+function scheduleRetry(dir, personId) {
+  if (retryTimers.has(dir)) return;
+  const given = Number(process.env.VYRE_SPACE_VAULT_RETRY_MS);
+  const ms = Number.isFinite(given) && given >= 0 ? given : 30_000;
+  const t = setTimeout(() => {
+    retryTimers.delete(dir);
+    try { rotateOnRemove(dir, personId); } catch { /* the flag stays until a later retry */ }
+  }, ms);
+  if (typeof t.unref === "function") t.unref();
+  retryTimers.set(dir, t);
+}
+
+/** Stop queued retries. Tests call this so a timer cannot write after the home is gone. */
+export function cancelRetries() {
+  for (const t of retryTimers.values()) clearTimeout(t);
+  retryTimers.clear();
+}
+
+/**
+ * Rotate when a member leaves. A failure is queued and flagged for Needs you. This never throws: removal still finishes.
+ * @param {string} dir @param {string} personId
+ */
+export function rotateOnRemove(dir, personId) {
+  try {
+    resume(dir);
+    const r = rotateIfPresent(dir, personId);
+    clearNeeds(dir);
+    return { ...r, needsYou: false };
+  } catch (e) {
+    flagNeeds(dir, personId, /** @type {any} */ (e).message);
+    scheduleRetry(dir, personId);
+    return { rotated: false, needsYou: true, queued: true, title: NEEDS_TITLE };
+  }
+}
+
+/** Retry every flagged space vault under a root. @param {string} root */
+export function pumpRetries(root) {
+  if (!root || !fs.existsSync(root)) return { retried: 0, waiting: 0 };
+  let retried = 0, waiting = 0;
+  for (const name of fs.readdirSync(root)) {
+    const dir = path.join(root, name);
+    if (!needsYou(dir)) continue;
+    const person = needsYou(dir);
+    retried++;
+    const r = rotateOnRemove(dir, person ? person.person : "");
+    if (r.needsYou) waiting++;
+  }
+  return { retried, waiting };
+}
+
+/** Rows for the Needs you list. Titles only. @param {string} root */
+export function attention(root) {
+  if (!root || !fs.existsSync(root)) return { items: [] };
+  /** @type {{ space: string, title: string, person: string, at: number }[]} */
+  const items = [];
+  for (const name of fs.readdirSync(root)) {
+    const row = needsYou(path.join(root, name));
+    if (!row) continue;
+    items.push({ space: name, title: row.title, person: row.person, at: row.at });
+  }
+  return { items };
 }
 
 /** Finish a rotation that crashed, or discard a copy that never committed. @param {string} dir */

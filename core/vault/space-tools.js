@@ -27,6 +27,13 @@ export function registerSpaceTools(ctx) {
     input: obj({ space: str }, ["space"]),
     run: async (input) => { spaceOk(input); return SV.status(dirOf(input)); },
   });
+  ctx.tool("vault.space.attention", {
+    description: "Space vault rotations that failed when a member left, and that Vyre will retry. Titles only, no key.",
+    input: obj({}),
+    effect: "read",
+    callers: ["local", "deck", "capsule", "module"],
+    run: async () => SV.attention(path.join(ctx.paths.root, "identity", "space-vaults")),
+  });
   ctx.tool("vault.space.grant", {
     description: "Wrap the space vault key to a member so their access carries to the space.",
     input: obj({ space: str, person: str, pub: str }, ["space", "person", "pub"]),

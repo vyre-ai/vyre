@@ -62,6 +62,7 @@ import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 import * as autobackup from "./autobackup.js";
 import { registerSpaceTools } from "./space-tools.js";
+import { pumpRetries } from "../../kernel/identity/space-vault.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -113,6 +114,8 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    try { pumpRetries(path.join(ctx.paths.root, "identity", "space-vaults")); }
+    catch (e) { ctx.log(`vault: a space vault rotation is still waiting to retry: ${/** @type {Error} */ (e).message}`); }
     // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
     // The older credential scopes become grants once (agents start after the vault: until they answer it is tried again at the first model call).
     if (vault.access) vault.access.convertScopes(true).catch(e => ctx.log(`vault: credential scopes were not converted yet: ${/** @type {Error} */ (e).message}`));

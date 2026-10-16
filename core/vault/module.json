@@ -191,6 +191,7 @@
       { "name": "vault.provider.status", "effect": "read", "reach": "person" },
       { "name": "vault.space.create", "effect": "write", "reach": "person", "outward": true },
       { "name": "vault.space.status", "effect": "read", "reach": "person" },
+      { "name": "vault.space.attention", "effect": "read", "reach": "anyone" },
       { "name": "vault.space.grant", "effect": "write", "reach": "person", "outward": true },
       { "name": "vault.space.put", "effect": "write", "reach": "person", "outward": true },
       { "name": "vault.space.list", "effect": "read", "reach": "person" },
