@@ -3,6 +3,7 @@
 // projection of this and nothing more. This file says what a stored Flow is, checks its shape, and makes its canonical form
 // and hash (the hash is what an approval binds to: two texts that store identically are one approval, 9.2).
 
+import { credentialIn } from "../../lib/credential-shapes.js";
 import crypto from "node:crypto";
 import { parse, ExprError } from "./expr.js";
 import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
@@ -225,6 +226,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("path", v => typeof v === "string" && /^\/[^\s?#]*$/.test(v) && !v.split("/").includes(".."), "the path starts with / and is written out (the query goes in `query`)");
         if (s.query !== undefined) { if (!isObj(s.query)) out.push({ path: `${p}.query`, message: "the query is an object of names and values" }); else checkValue(s.query, `${p}.query`, out); }
         value("headers"); value("body");
+        // A key typed into a request is stored in the Flow, copied with it and read by models: the credential belongs to the Connection in the Vault, which adds it when the call is made.
+        for (const part of ["headers", "query"]) if (isObj(s[part])) for (const [k, v] of Object.entries(s[part])) if (typeof v === "string" && credentialIn(v, "ingest")) out.push({ path: `${p}.${part}.${k}`, message: "Keep keys in the Vault: use a connection for this step instead of typing the key here." });
         if (s.headers !== undefined && isObj(s.headers)) for (const h of Object.keys(s.headers)) if (/^(authorization|proxy-authorization|cookie|x-api-key|host)$/i.test(h)) out.push({ path: `${p}.headers.${h}`, message: `${h} is the vault's: a Flow never sets it` });
         if (s.drive !== undefined) {
           if (!isObj(s.drive)) out.push({ path: `${p}.drive`, message: "drive is { upload?, saveTo? }" });

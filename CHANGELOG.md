@@ -17,6 +17,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(flows): a text, email, web call, document, project, connection or action step has "Always ask a person before this goes out" (the step's approve), and a web call can send a file from Drive or save its answer to Drive.
 - feat(flows): an If step can join several checks with and or or ("Add another check"); a condition that mixes both stays a formula.
 - feat(flows): "Use a connection's operation", a step that names a connection in the Vault and one of its operations with its inputs, stored as the same service step the engine runs.
+- fix(flows): a key typed into a web call's header or query value is refused when the Flow is checked ("Keep keys in the Vault: use a connection for this step instead of typing the key here."), so a key is not stored in a Flow that is copied, shared and read by models.
 - feat(flows): a web call step has a query and headers (never the key: that stays in the Vault) and a HEAD check; a call that moves a file through Drive stays an advanced step.
 - feat(flows): a Repeat step takes any list written as a formula, not only the records a Find step returned.
 - feat(flows): an If step can compare with contains and with yes or no (true or false is a real value, not text); a condition that compared with quoted text that looks like a number now stays the formula it is instead of turning into a number.
