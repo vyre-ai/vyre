@@ -7,7 +7,7 @@
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2063,
   "core/daemon/index.js": 2009,
-  "core/vault/vault.js": 2121,
+  "core/vault/vault.js": 2112,
   "kernel/flows/runner.js": 2083
  }
 }

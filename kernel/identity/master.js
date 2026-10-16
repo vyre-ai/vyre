@@ -250,3 +250,20 @@ export function readVaultKeyFile(hexFile) {
   if (!/^[0-9a-fA-F]{64}$/.test(text)) return null;
   return Buffer.from(text, "hex");
 }
+
+/**
+ * The device key the master record wraps. An existing vault/key is that key.
+ * A home with no key file and no agent vault yet receives one here, so the master password is the root and the file is its server copy.
+ * A home that already has an agent vault and has lost the key file returns null: a new random key would not open it.
+ * @param {string} root
+ * @returns {Buffer|null}
+ */
+export function serverVaultKey(root) {
+  const file = path.join(root, "vault", "key");
+  const existing = readVaultKeyFile(file);
+  if (existing) return existing;
+  if (fs.existsSync(path.join(root, "vault", "vaults", "agents.json"))) return null;
+  const mk = crypto.randomBytes(32);
+  writePrivate(file, mk.toString("hex") + "\n");
+  return mk;
+}
