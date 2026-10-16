@@ -87,7 +87,7 @@ function harness(opt = {}) {
     throw Object.assign(new Error(`missing ${name}`), { code: "no_such_tool" });
   };
   registerFirstRun(ctx, { call, tryCall: async () => ({ __error: "missing" }), save: (p) => saved.push(p) });
-  return { tools, saved, calls };
+  return { tools, saved, calls, ctx };
 }
 
 test("the first-run tools are the ones the app calls, and an access change is marked outward", () => {
@@ -112,6 +112,21 @@ test("the first-run tools are the ones the app calls, and an access change is ma
   assert.equal(rows.get("onboard.first.done").effect, "write");
   assert.equal(rows.get("onboard.first.done").reach, "person");
   assert.equal(rows.get("onboard.first.done").outward, undefined);
+});
+
+test("github start returns the address from the kernel config and nothing else", async () => {
+  const quiet = harness();
+  const none = await quiet.tools.get("onboard.github.start").run({}, {});
+  assert.equal(none.url, null);
+  assert.deepEqual(none.pending, ["github.start"]);
+  const { tools, ctx } = harness();
+  ctx.config = { github: { start: "https://github.com/login/device" } };
+  const started = await tools.get("onboard.github.start").run({}, {});
+  assert.equal(started.url, "https://github.com/login/device");
+  assert.equal(started.pending, undefined);
+  ctx.config = { github: { start: "http://github.com/login/device" } };
+  const refused = await tools.get("onboard.github.start").run({}, {});
+  assert.equal(refused.url, null);
 });
 
 test("creating a person calls identity.create and never puts the password in the card line", async () => {

@@ -136,7 +136,8 @@ export function registerFirstRun(ctx, io) {
     input: obj({}),
     callers: [...OPEN],
     run: async () => {
-      // No kernel tool returns a GitHub address yet. Linking still goes through identity.github.link once the subject is known.
+      const url = githubStart(ctx.config);
+      if (url) return { url };
       return { url: null, pending: ["github.start"] };
     },
   });
@@ -415,6 +416,16 @@ async function invite(call, space, role, ttlDays) {
   const parsed = parseInvite(link);
   if (!parsed) throw bad("The invite link did not come back.");
   return { link: parsed.link, role: picked, ttlDays: days, space: spaceName };
+}
+
+/** The GitHub address from kernel config (`github.start`). https only, no userinfo. Empty when it is unset or not an address. @param {any} config */
+function githubStart(config) {
+  const raw = config && config.github && typeof config.github.start === "string" ? config.github.start.trim() : "";
+  if (!raw || raw.length > 300) return "";
+  let url;
+  try { url = new URL(raw); } catch { return ""; }
+  if (url.protocol !== "https:" || url.username || url.password) return "";
+  return url.toString();
 }
 
 /** A space address the person typed. https only, no userinfo. @param {unknown} raw */

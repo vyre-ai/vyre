@@ -18,6 +18,10 @@ import { createSetupKey, setupFingerprint } from "../relay/client/setup.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NOW = () => 1_700_000_000_000;
 const PERSON = `per_${"a".repeat(26)}`;
+/** @param {string[]} pubs */
+const chain = (pubs) => ({ resolveById: async () => ({ entries: pubs.map((pub) => ({ kind: "device", pub })) }) });
+/** @param {string} code */
+const closed = (code) => ({ resolveById: async () => { throw Object.assign(new Error(code), { code }); } });
 
 function identity() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
@@ -73,32 +77,32 @@ test("redeem writes the owner, then adopts that person, and a second use is lock
   const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret, fingerprint: fp, now: NOW, sign: (m) => me.sign(m) });
   const meta = metaOf();
   const ctx = ctxOf(meta);
-  const publishedKeys = async () => [me.pub];
-  const first = await redeemInstallCode({ ctx, meta, now: NOW, publishedKeys }, made.code);
+  const directory = chain([me.pub]);
+  const first = await redeemInstallCode({ ctx, meta, now: NOW, directory }, made.code);
   assert.equal(first.person, made.person);
   const adopt = ctx.calls.find((/** @type {any} */ c) => c.tool === "spaces.owner.adopt");
   assert.ok(adopt);
   assert.equal(adopt.owner.identity, made.person);
   assert.equal(meta.get("owner").identity, made.person);
-  await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, publishedKeys }, made.code), (/** @type {any} */ e) => e.code === "locked" && /Make a new install line/.test(e.message));
+  await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, directory }, made.code), (/** @type {any} */ e) => e.code === "locked" && /Make a new install line/.test(e.message));
 });
 
 test("an expired code and a bad signature are refused, and a failed adopt rolls the owner back", async () => {
   const me = identity();
   const secret = crypto.randomBytes(16);
   const fp = crypto.randomBytes(16);
-  const publishedKeys = async () => [me.pub];
+  const directory = chain([me.pub]);
   const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret, fingerprint: fp, now: NOW, sign: (m) => me.sign(m), ttlMs: -200_000 });
   const meta = metaOf();
-  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(meta), meta, now: NOW, publishedKeys }, made.code), (/** @type {any} */ e) => e.code === "expired");
+  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(meta), meta, now: NOW, directory }, made.code), (/** @type {any} */ e) => e.code === "expired");
   const fresh = await mintPairCode({ person: PERSON, publicKey: me.pub, secret, fingerprint: fp, now: NOW, sign: (m) => me.sign(m) });
   const raw = Buffer.from(fresh.code, "base64url");
   raw[120] ^= 0xff;
   const bad = raw.toString("base64url");
-  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(metaOf()), meta: metaOf(), now: NOW, publishedKeys }, bad), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(metaOf()), meta: metaOf(), now: NOW, directory }, bad), (/** @type {any} */ e) => e.code === "denied");
   const meta2 = metaOf();
   const ctx2 = ctxOf(meta2, { adopt: () => ({ error: { code: "unavailable", message: "no" } }) });
-  await assert.rejects(() => redeemInstallCode({ ctx: ctx2, meta: meta2, now: NOW, publishedKeys }, fresh.code), (/** @type {any} */ e) => e.code === "unavailable");
+  await assert.rejects(() => redeemInstallCode({ ctx: ctx2, meta: meta2, now: NOW, directory }, fresh.code), (/** @type {any} */ e) => e.code === "unavailable");
   assert.equal(meta2.get("owner"), null);
 });
 
@@ -107,13 +111,13 @@ test("redeem adopts only when the published key for that person id matches, and 
   const other = identity();
   const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
   const mismatch = metaOf();
-  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(mismatch), meta: mismatch, now: NOW, publishedKeys: async () => [other.pub] }, made.code), (/** @type {any} */ e) => e.code === "denied" && /published/.test(e.message));
+  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(mismatch), meta: mismatch, now: NOW, directory: chain([other.pub]) }, made.code), (/** @type {any} */ e) => e.code === "denied" && /published/.test(e.message));
   assert.equal(mismatch.get("owner"), null);
   const down = metaOf();
-  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(down), meta: down, now: NOW, publishedKeys: async () => { throw Object.assign(new Error("down"), { code: "unreachable" }); } }, made.code), (/** @type {any} */ e) => e.code === "unavailable" && /directory/.test(e.message));
+  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(down), meta: down, now: NOW, directory: closed("unreachable") }, made.code), (/** @type {any} */ e) => e.code === "unavailable" && /directory/.test(e.message));
   assert.equal(down.get("owner"), null);
   const missing = metaOf();
-  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(missing), meta: missing, now: NOW, publishedKeys: async () => { throw Object.assign(new Error("no"), { code: "not_found" }); } }, made.code), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(missing), meta: missing, now: NOW, directory: closed("not_found") }, made.code), (/** @type {any} */ e) => e.code === "denied");
   assert.equal(missing.get("owner"), null);
   assert.deepEqual(publishedDeviceKeys({ entries: [{ kind: "device", pub: me.pub }, { kind: "device", pub: other.pub, held: "web" }, { kind: "code", pub: other.pub }] }), [me.pub]);
 });
@@ -123,8 +127,8 @@ test("the setup page takes the code in the body, locks, and refuses a code in th
   const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
   const meta = metaOf();
   const ctx = ctxOf(meta);
-  const publishedKeys = async () => [me.pub];
-  const page = createSetupPage({ redeem: (code) => redeemInstallCode({ ctx, meta, now: NOW, publishedKeys }, code), locked: () => Boolean(meta.get("install_setup_locked") || meta.get("owner")) });
+  const directory = chain([me.pub]);
+  const page = createSetupPage({ redeem: (code) => redeemInstallCode({ ctx, meta, now: NOW, directory }, code), locked: () => Boolean(meta.get("install_setup_locked") || meta.get("owner")) });
   const server = page.start({ port: 0, host: "127.0.0.1" });
   await new Promise((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
   const addr = server.address();
@@ -196,13 +200,13 @@ test("issue returns the line and never the signing key, and complete pairs from 
 
 test("status returns the space id once the server adopts the creator", async () => {
   const me = identity();
-  const made = await mintPairCode({ publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
+  const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
   const meta = metaOf();
   const ctx = ctxOf(meta);
   ctx.kernel = { space: "spc_aaaaaaaaaa" };
   /** @type {Map<string, any>} */ const tools = new Map();
   ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def);
-  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW }, made.code);
+  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW, directory: chain([me.pub]) }, made.code);
   assert.equal(redeemed.space, "spc_aaaaaaaaaa");
   registerInstallPair({ ctx, meta, now: NOW });
   const status = await tools.get("wink.install.status").run();
@@ -212,7 +216,8 @@ test("status returns the space id once the server adopts the creator", async () 
 
 test("redeem does not adopt a second id when this device already owns the server", async () => {
   const me = identity();
-  const made = await mintPairCode({ publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
+  const devicePerson = personIdOfKey(Buffer.from(me.pub, "base64url"));
+  const made = await mintPairCode({ person: devicePerson, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
   const genesis = "per_" + "c".repeat(26);
   const meta = metaOf();
   const ctx = ctxOf(meta);
@@ -224,11 +229,46 @@ test("redeem does not adopt a second id when this device already owns the server
     if (tool === "spaces.owner.adopt") return { error: { code: "owned_by_other", message: "no" } };
     return { data: {} };
   };
-  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW }, made.code);
+  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW, directory: chain([me.pub]) }, made.code);
   assert.equal(redeemed.person, genesis);
   assert.equal(redeemed.space, "spc_aaaaaaaaaa");
   assert.equal(ctx.calls.some((/** @type {any} */ c) => c.tool === "spaces.owner.adopt"), false);
   assert.equal(meta.get("owner").identity, genesis);
+});
+
+test("status on another computer asks the adopting server for the space id", async () => {
+  const meta = metaOf();
+  meta.set("install_client", { person: PERSON, exp: Math.floor(NOW() / 1000) + 1800, os: "linux", at: NOW() });
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const ctx = { tool: (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def), call: async () => ({ data: {} }), events: { emit() {} } };
+  let asked = 0;
+  registerInstallPair({
+    ctx, meta, now: NOW,
+    askServer: async () => { asked += 1; return { owned: true, locked: true, person: PERSON, space: "spc_aaaaaaaaaa" }; },
+  });
+  const status = await tools.get("wink.install.status").run();
+  assert.equal(asked, 1);
+  assert.equal(status.space, "spc_aaaaaaaaaa");
+  assert.equal(status.owned, true);
+  const again = await tools.get("wink.install.status").run();
+  assert.equal(again.space, "spc_aaaaaaaaaa");
+  assert.equal(asked, 1);
+});
+
+test("the setup page hides the paste box when the install line started this server", async () => {
+  const page = createSetupPage({ redeem: async () => ({ ok: true }), locked: () => false, hidePaste: () => true });
+  const server = page.start({ port: 0, host: "127.0.0.1" });
+  await new Promise((resolve, reject) => { server.once("listening", resolve); server.once("error", reject); });
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/setup`);
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(html, /Nothing to paste/);
+    assert.equal(html.includes("<textarea"), false);
+    assert.equal(html.includes("Paste the code"), false);
+  } finally { await page.stop(); }
 });
 
 test("the tools are declared once, outward for the owner-changing ones, and open to a proven assistant", () => {

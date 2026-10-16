@@ -40,6 +40,8 @@ test("hosted door: the allowed set equals the reviewed allowlist exactly, and a 
   assert.equal(hostedKeyMay("spaces.identity.create"), false);
   for (const n of HOSTED_GATE) assert.equal(d.registry.tools.get(n).outward, true, `${n} is held: its manifest marks it outward`);
   for (const list of Object.values(HOSTED_NEVER)) for (const p of list) assert.ok(!allowed.some(n => n.startsWith(p) && !HOSTED_GATE.has(n)), `the second wall holds: ${p}`);
+  for (const n of ["onboard.person.create", "onboard.space.open", "onboard.computer.add", "wink.install.issue", "wink.install.status", "wink.install.complete"]) assert.equal(hostedKeyMay(n), false, `${n} stays refused for a hosted key`);
+  for (const n of all) if (n.startsWith("onboard.") || n.startsWith("wink.install.")) assert.equal(hostedKeyMay(n), false, `${n} stays refused for a hosted key`);
   const unclassified = all.filter(n => FAMILIES.test(n) && !reviewed.allow.includes(n) && !reviewed.refused.includes(n));
   assert.deepEqual(unclassified, [], "a tool in a work family is neither allowed nor reviewed-refused: classify it in core/modules/hosted-allow.json or test/hosted-refused.json");
   assert.deepEqual(reviewed.refused.filter((/** @type {string} */ n) => !all.includes(n)), [], "no refused name is stale");

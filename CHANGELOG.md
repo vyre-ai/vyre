@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
+- fix(install): the server setup page does not ask for a pasted code when the install line started that server.
+- feat(app): Continue with GitHub opens the address in the kernel config (`github.start`). A hosted key cannot call onboard or wink.install tools.
 - fix(vault): the master password is the root of the personal vault. When it is unlocked, that key is the device key the vault adopts, and `vault/key` is rewritten from it so the two cannot diverge. With nobody unlocked, that server copy still opens the agent vault, so lending does not wait. A master record with no held key and no server copy does not invent a second key. A held key that does not open the agent vault fails closed. See ADR 0054.
 - fix(approvals): a password, passphrase, secret or recovery key is stripped before an approval card is built, stored or hashed, including when the field is nested. The card is built from a copy, so the call that runs still has its fields.
 - fix(spaces): a limited device cannot transfer ownership of a space.

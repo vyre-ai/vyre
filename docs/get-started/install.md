@@ -53,7 +53,7 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 ## 3. Create your identity
 
 Open the app. It asks for a username and a master password. The username is your page at `vyre.run/u/your-name`.
-The same password unlocks your vault. You can also choose **Continue with GitHub**. GitHub signs you in. The master password is still required.
+The same password unlocks your vault. You can also choose **Continue with GitHub**. The address it opens is the one set for this computer. GitHub signs you in. The master password is still required.
 
 The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
@@ -84,7 +84,7 @@ A Mac, a Windows PC and the web app offer the same two choices. Vyre does not ru
    You do not compare words and you do not type a code.
 4. The installer checks the release's signature before it installs anything. The server installs Vyre and adopts the person
    who approved the line. The app waits on this screen until the server is online. You can also open the server's setup page
-   (`http://<the-server>/setup`) and paste the code the app shows. The page locks after pairing.
+   (`http://<the-server>/setup`). When the install line started the server, that page does not ask you to paste a code. The page locks after pairing.
 5. The app connects, and your space is ready.
 
 You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address. When the server adopts you, the app makes that space's vault. Adding a computer reaches each space's own server, and the computer is then live in each space. The web app, the Mac app, the Windows app and the phone use these same steps.

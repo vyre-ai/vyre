@@ -5,8 +5,11 @@
 
 import { mintPairCode, verifyPairCode, installCommand } from "../../lib/pair-code.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
+import { assertPublishedKey, publishedDeviceKeys } from "../../lib/identity/published-key.js";
 import { createSetupKey, setupFingerprint } from "../../relay/client/setup.js";
 import { createSetupPage } from "./setup-http.js";
+
+export { publishedDeviceKeys };
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const SPACE_ID = /^spc_[a-z2-7]{8,}$/;
@@ -19,36 +22,22 @@ function kernelSpace(ctx) {
 const str = { type: "string" };
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 
-/** Current full device keys on a verified person chain: the published Ed25519 keys, not a passkey and not a key the web or the relay holds. @param {{ entries?: { kind?: string, held?: string, alg?: string, pub?: string }[] }} state */
-export function publishedDeviceKeys(state) {
-  return (state && state.entries || []).filter(e => e && e.kind === "device" && !e.held && !e.alg && typeof e.pub === "string").map(e => e.pub);
-}
-
-/** The directory's published device keys for a person id. Unreachable stays unreachable. A missing id is not_found. @param {string} personId */
-export async function directoryPublishedKeys(personId) {
-  const state = await idDirectory({ seen: memorySeen() }).resolveById(personId);
-  return publishedDeviceKeys(state);
-}
-
 /**
- * Redeem one install code on this server. The published key is checked before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
- * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function }, meta: { get: Function, set: Function, del: Function }, now?: () => number, publishedKeys?: (personId: string) => Promise<string[]> }} o
+ * Redeem one install code on this server. The one published-key check runs before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
+ * `directory` is the test seam. Production asks the identity directory through assertPublishedKey.
+ * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function, kernel?: { space?: string, owner?: string } }, meta: { get: Function, set: Function, del: Function }, now?: () => number, directory?: { resolveById: (id: string) => Promise<any> } }} o
  * @param {string} code
  */
 export async function redeemInstallCode(o, code) {
   const now = o.now || Date.now;
   const v = verifyPairCode(String(code || ""), now);
   if (!v.ok) throw fail(v.code, v.message);
-  const keysOf = o.publishedKeys || directoryPublishedKeys;
-  /** @type {string[]} */
-  let pubs;
-  try { pubs = await keysOf(v.person); }
+  const pub = Buffer.from(v.pub).toString("base64url");
+  try { await assertPublishedKey(o.directory || idDirectory({ seen: memorySeen() }), v.person, pub, { fullDevice: true }); }
   catch (e) {
     const c = /** @type {any} */ (e).code;
-    if (c === "not_found" || c === "denied") throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
-    throw fail("unavailable", "The directory could not confirm this key. Wait a minute and run the install line again.");
+    throw fail(c === "unavailable" ? "unavailable" : "denied", c === "unavailable" ? "The directory could not confirm this key. Wait a minute and run the install line again." : "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
   }
-  if (!Array.isArray(pubs) || !pubs.includes(Buffer.from(v.pub).toString("base64url"))) throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
   const meta = o.meta;
   const spent = `install-nonce:${v.nonceHash}`;
   if (meta.get("install_setup_locked") || meta.get(spent)) throw fail("locked", "This code was already used. Make a new install line in the Vyre app and run it again.");
@@ -105,7 +94,7 @@ function finishInstall(o, meta, person, now) {
  * The install tools (one definition each: MCP, HTTP and CLI) and the setup page.
  * Issue and complete are outward, so an agent is held at the Gate. The person's own call runs now. Status is a read.
  * `wink.install.issue` is the mint. The Create step's name, `spaces.pair.install`, lives on the spaces module and calls this mint.
- * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, ticket?: (session: any) => Promise<string>, publishedKeys?: (personId: string) => Promise<string[]> }} o
+ * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, ticket?: (session: any) => Promise<string>, directory?: { resolveById: (id: string) => Promise<any> }, askServer?: () => Promise<{ space?: string, owned?: boolean, locked?: boolean, person?: string } | null> }} o
  */
 export function registerInstallPair(o) {
   const now = o.now || Date.now;
@@ -113,7 +102,8 @@ export function registerInstallPair(o) {
   /** @type {{ person: string, exp: number, os: string, secret: Uint8Array, key: any } | null} */
   let session = null;
   const locked = () => Boolean(o.meta.get("install_setup_locked") || o.meta.get("owner"));
-  const page = createSetupPage({ redeem: (code) => redeemInstallCode(o, code), locked });
+  const fromLine = () => process.env.VYRE_INSTALL_FROM_LINE === "1";
+  const page = createSetupPage({ redeem: (code) => redeemInstallCode(o, code), locked, hidePaste: fromLine });
 
   ctx.tool("wink.server.install-redeem", {
     internal: true,
@@ -173,8 +163,19 @@ export function registerInstallPair(o) {
       const owner = o.meta.get("owner");
       const person = owner && owner.identity ? String(owner.identity) : (row && row.person) || null;
       const stored = o.meta.get("install_space");
-      const space = (typeof stored === "string" && SPACE_ID.test(stored) ? stored : "") || (owner ? kernelSpace(ctx) : "");
-      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned: Boolean(owner), person, locked: Boolean(o.meta.get("install_setup_locked")), space: space || null };
+      let space = (typeof stored === "string" && SPACE_ID.test(stored) ? stored : "") || (owner ? kernelSpace(ctx) : "");
+      let owned = Boolean(owner);
+      let lockedNow = Boolean(o.meta.get("install_setup_locked"));
+      // The computer that issued the line does not hold the space. Once it is paired, it asks the adopting server.
+      if (!space && row && !owner && typeof o.askServer === "function") {
+        try {
+          const remote = await o.askServer();
+          const remoteSpace = remote && typeof remote.space === "string" && SPACE_ID.test(remote.space) ? remote.space : "";
+          if (remoteSpace) { space = remoteSpace; o.meta.set("install_space", remoteSpace); }
+          if (remote && (remote.owned || remote.locked || remoteSpace)) { owned = owned || Boolean(remote.owned || remoteSpace); lockedNow = lockedNow || Boolean(remote.locked); }
+        } catch { /* the server is not paired yet; the next read asks again */ }
+      }
+      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null };
     },
   });
 
