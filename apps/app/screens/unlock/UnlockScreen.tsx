@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Field, FlowStep, PasswordField, RecoveryKeySheet, Text, passwordStrength } from "@vyre/ui";
 import { passwordOk } from "../../../../lib/first-run-shape.js";
-import { unlockInput } from "../../src/shell/lock-gate.js";
+import { UNREACHABLE, unlockInput } from "../../src/shell/lock-gate.js";
 import { migrateIdentity, unlockIdentity } from "./real.js";
 
 /**
  * Coming back to the app: the master password unlocks this identity on this device, or the recovery key does. A legacy identity with no master password asks for a new one and shows its
  * recovery key once. Every control is a registry tool through ./real.js; `onDone` runs when the device is unlocked.
  */
-export function UnlockScreen({ view, username, onDone }: { view: "unlock" | "migrate"; username?: string | null; onDone: () => void }) {
+export function UnlockScreen({ view, username, onDone, onRetry }: { view: "unlock" | "migrate" | "unreachable"; username?: string | null; onDone: () => void; onRetry?: () => void }) {
   const [mode, setMode] = useState<"password" | "recovery">("password");
   const [text, setText] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -22,6 +22,10 @@ export function UnlockScreen({ view, username, onDone }: { view: "unlock" | "mig
     setFailure("");
     try { await fn(); } finally { setBusy(false); }
   };
+
+  if (view === "unreachable") {
+    return <FlowStep title={UNREACHABLE.title} lead={UNREACHABLE.lead} primary={{ label: "Try again", onPress: () => onRetry?.() }} />;
+  }
 
   if (view === "migrate" && recovery) {
     return (

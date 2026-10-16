@@ -4,7 +4,7 @@ import { MOCK } from "../real/box";
 import { useTheme } from "../theme/theme";
 import { UnlockScreen } from "../../screens/unlock/UnlockScreen";
 import { identityState, lockIdentity } from "../../screens/unlock/real.js";
-import { createIdleLock, lockView, lockWanted } from "./lock-gate.js";
+import { applyCover, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
 import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
 
 /**
@@ -14,11 +14,13 @@ import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
  */
 export function UnlockGate({ children }: { children: ReactNode }) {
   const { color } = useTheme();
-  const [status, setStatus] = useState<{ exists?: boolean; unlocked?: boolean; needsMigration?: boolean; username?: string | null } | null>(null);
+  const [status, setStatus] = useState<{ exists?: boolean; unlocked?: boolean; needsMigration?: boolean; unreachable?: boolean; username?: string | null } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const under = useRef<View | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
   const lock = useRef<ReturnType<typeof createIdleLock> | null>(null);
 
-  const refresh = useCallback(async () => { if (!MOCK) setStatus(await identityState()); }, []);
+  const refresh = useCallback(async () => { if (MOCK) return; setStatus(await identityState()); setLoaded(true); }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     void readLockMinutes().then(setMinutes);
@@ -46,13 +48,18 @@ export function UnlockGate({ children }: { children: ReactNode }) {
     return () => { l.stop(); lock.current = null; if (doc) events.forEach((e) => doc.removeEventListener(e, touch, { capture: true })); };
   }, [wanted, minutes, refresh]);
 
-  const view = MOCK ? "none" : lockView(status);
+  // Fail closed: until the first read answers, and whenever a read fails, the app stays covered. Under the cover the app is inert on the web (no keyboard, no screen reader) and hidden on a phone.
+  const view = MOCK ? "none" : lockView(status, loaded);
+  const covered = view !== "none";
+  useEffect(() => {
+    if (Platform.OS === "web") applyCover(under.current as unknown as Parameters<typeof applyCover>[0], covered);
+  }, [covered]);
   return (
     <View style={styles.fill} onTouchStart={() => lock.current?.touch()}>
-      {children}
-      {view === "none" ? null : (
+      <View ref={under} style={styles.fill} importantForAccessibility={covered ? "no-hide-descendants" : "auto"} accessibilityElementsHidden={covered}>{children}</View>
+      {!covered ? null : (
         <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { backgroundColor: color.bg }]}>
-          <UnlockScreen key={view} view={view} username={status?.username} onDone={() => void refresh()} />
+          {view === "pending" ? null : <UnlockScreen key={view} view={view} username={status?.username} onDone={() => void refresh()} onRetry={() => void refresh()} />}
         </View>
       )}
     </View>

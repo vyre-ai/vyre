@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LOCK_MINUTES, LOCK_CHOICES, createIdleLock, lockMinutes, lockView, lockWanted, unlockInput, unlockRefusal } from "./lock-gate.js";
+import { DEFAULT_LOCK_MINUTES, LOCK_CHOICES, UNREACHABLE, applyCover, createIdleLock, lockMinutes, lockView, lockWanted, statusFailure, unlockInput, unlockRefusal } from "./lock-gate.js";
 
 /** A clock and a timer a test moves by hand. */
 function clock() {
@@ -119,4 +119,31 @@ test("a shorter setting takes effect on a running lock, counted from the last to
   assert.equal(locked, 0);
   c.advance(30_000);
   assert.equal(locked, 1);
+});
+
+test("a lock fails closed: not read yet is covered, a failed read is covered and says so, and only a build with no identity tool is uncovered", () => {
+  assert.equal(lockView(undefined, false), "pending", "before the first read the app is covered, blank");
+  assert.equal(lockView({ exists: true, unlocked: true }, false), "pending");
+  assert.equal(lockView({ unreachable: true }), "unreachable");
+  assert.equal(lockView({ unreachable: true, exists: true, unlocked: true }), "unreachable", "an unreachable read wins over anything else it carries");
+  assert.equal(lockView(null), "none", "a build with no identity tool has nothing to lock");
+  assert.equal(UNREACHABLE.title, "Can't reach your vault");
+  assert.equal(UNREACHABLE.lead, "Try again.");
+});
+
+test("a failed status read is unreachable unless the build has no identity tool at all", () => {
+  for (const code of ["offline", "error", "denied", "relay_removed", "timeout", undefined]) assert.deepEqual(statusFailure({ code }), { unreachable: true }, String(code));
+  assert.deepEqual(statusFailure(null), { unreachable: true });
+  for (const code of ["no_such_tool", "not_found", "undeclared"]) assert.equal(statusFailure({ code }), null, code);
+});
+
+test("covering the app makes everything under it inert and hidden, and uncovering restores it", () => {
+  const attrs = new Map();
+  const el = { setAttribute: (n, v) => attrs.set(n, v), removeAttribute: (n) => attrs.delete(n) };
+  applyCover(el, true);
+  assert.equal(attrs.has("inert"), true, "inert takes the subtree out of the keyboard's reach");
+  assert.equal(attrs.get("aria-hidden"), "true");
+  applyCover(el, false);
+  assert.equal(attrs.size, 0);
+  applyCover(null, true);
 });
