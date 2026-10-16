@@ -584,3 +584,39 @@ test("reserve: the app that is pasted a code asks which name it is for (reserved
   w.clock.t += 24 * HOUR + 1000;
   assert.equal(code(await ask(c2)), "bad_code", "expired");
 });
+
+test("ids: a person's space list is written by the identity and read only with the relay's GitHub assertion for that person", async t => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const relayPub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-32)).toString("base64url");
+  const w = world(t, { RELAY_ASSERT_KEY: relayPub });
+  const alex = await person(w), bob = await person(w);
+  data(await alex.claim("alex"));
+  data(await bob.claim("bobby"));
+  const assertion = (/** @type {any} */ o = {}) => {
+    const payload = Buffer.from(JSON.stringify({ v: 1, id: "4242", login: "alex-gh", name: "alex", space: "names", iat: w.clock.t, exp: w.clock.t + 120_000, ...o })).toString("base64url");
+    return `${payload}.${crypto.sign(null, Buffer.from(`vyre-gh-assert-v1\n${payload}`), o.key || privateKey).toString("base64url")}`;
+  };
+  // only the identity writes: a signature over the wrong action, another person's entry, or a bad address does nothing
+  assert.equal(code(await alex.post("/v1/ids/spaces/add", { name: "alex", address: "juniper.vyre.run", act: await act(w, alex, "alias", "alex", "juniper.vyre.run") })), "bad_signature", "an act for another action");
+  assert.equal(code(await bob.post("/v1/ids/spaces/add", { name: "alex", address: "juniper.vyre.run", act: await act(w, bob, "space-add", "alex", "juniper.vyre.run") })), "not_yours");
+  assert.equal(code(await alex.post("/v1/ids/spaces/add", { name: "alex", address: "evil.example.com", act: await act(w, alex, "space-add", "alex", "evil.example.com") })), "bad_address");
+  assert.deepEqual(data(await alex.post("/v1/ids/spaces/add", { name: "alex", address: "juniper.vyre.run", act: await act(w, alex, "space-add", "alex", "juniper.vyre.run") })).spaces, ["juniper.vyre.run"]);
+  data(await alex.post("/v1/ids/spaces/add", { name: "alex", address: "harlow.vyre.run", act: await act(w, alex, "space-add", "alex", "harlow.vyre.run") }));
+  // the list is not in the public record
+  assert.equal(JSON.stringify(data(await alex.get("/v1/ids/resolve?name=alex"))).includes("juniper"), false);
+  // the right assertion gets the list
+  const ok = data(await alex.post("/v1/ids/spaces", { assertion: assertion() }));
+  assert.equal(ok.username, "alex");
+  assert.deepEqual(ok.spaces.map((/** @type {any} */ s) => s.address).sort(), ["harlow.vyre.run", "juniper.vyre.run"]);
+  assert.deepEqual(ok.spaces.find((/** @type {any} */ s) => s.address === "juniper.vyre.run"), { name: "juniper", address: "juniper.vyre.run" });
+  // anything else is the same 404
+  const other = crypto.generateKeyPairSync("ed25519");
+  for (const bad of [assertion({ key: other.privateKey }), assertion({ space: "juniper" }), assertion({ exp: w.clock.t - 1 }), assertion({ name: "nobody-here" }), "typed-login", ""]) {
+    const r = await alex.post("/v1/ids/spaces", { assertion: bad });
+    assert.equal(code(r), "not_found", String(bad).slice(0, 20));
+  }
+  // an assertion for bobby lists bobby's spaces, which is none: never alex's
+  assert.deepEqual(data(await alex.post("/v1/ids/spaces", { assertion: assertion({ name: "bobby" }) })).spaces, []);
+  // remove
+  assert.deepEqual(data(await alex.post("/v1/ids/spaces/remove", { name: "alex", address: "harlow.vyre.run", act: await act(w, alex, "space-remove", "alex", "harlow.vyre.run") })).spaces, ["juniper.vyre.run"]);
+});
