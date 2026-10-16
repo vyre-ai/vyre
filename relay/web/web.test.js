@@ -67,6 +67,19 @@ test("the policy: scripts only from the app and the page's own inline hashes, st
   assert.match(csp, /frame-ancestors 'none'/);
 });
 
+test("the policy never widens beyond the app, the relay, the names directory and a space's own address: images, fonts, connections, frames, forms, base", () => {
+  const csp = cspFor({ scriptHashes: [], styleHashes: [] });
+  const dir = (n) => (csp.split("; ").find(d => d.startsWith(n + " ")) || "").split(" ").slice(1).sort();
+  assert.deepEqual(dir("default-src"), ["'none'"]);
+  assert.deepEqual(dir("img-src"), ["'self'", "blob:", "data:"].sort());
+  assert.deepEqual(dir("font-src"), ["'self'"]);
+  assert.deepEqual(dir("connect-src"), ["'self'", "https://relay.vyre.run", "wss://relay.vyre.run", "https://names.vyre.run", "https://*.vyre.run"].sort());
+  assert.deepEqual(dir("frame-ancestors"), ["'none'"]);
+  assert.deepEqual(dir("base-uri"), ["'none'"]);
+  assert.deepEqual(dir("form-action"), ["'none'"]);
+  assert.doesNotMatch(csp, /\bhttp:|\bws:|\*[^.]|ts\.net| \* /, "no plain http or ws, no bare wildcard, no tailnet");
+});
+
 test("inline hashes cover inline scripts and styles only", () => {
   const h = inlineHashes('<style>a{}</style><script>1</script><script src="/x.js"></script><script src="/y.js"> </script>');
   assert.deepEqual(h, { scriptHashes: [cspHash("1")], styleHashes: [cspHash("a{}")] });

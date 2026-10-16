@@ -60,6 +60,16 @@ jobs:
             printf %s "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "$TAG is not a stable tag; nothing to deploy"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
             pre=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft -q '"\(.isPrerelease) \(.isDraft)"' 2>/dev/null || echo missing)
             [ "$pre" = "false false" ] || { echo "$TAG is not a published stable release ($pre); nothing to deploy"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+          else
+            # A by-hand run is held to the same rule as a release run: the commit must be exactly the commit of a published, non-draft, non-prerelease vX.Y.Z release.
+            found=""
+            for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease,isDraft -q '.[] | select(.isPrerelease == false and .isDraft == false) | .tagName'); do
+              printf %s "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || continue
+              at=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" -q .sha 2>/dev/null || true)
+              if [ "$at" = "$SHA" ]; then found="$tag"; break; fi
+            done
+            [ -n "$found" ] || { echo "no published stable release is at $SHA; nothing to deploy"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+            echo "deploying the release $found"
           fi
           echo "go=yes" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
