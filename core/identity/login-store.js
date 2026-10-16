@@ -9,6 +9,7 @@ export function createLoginStore(root) {
   const file = path.join(root, "identity", "logins.json");
   return {
     get: (/** @type {string} */ k) => { const all = readJson(file); return all ? all[k] : undefined; },
+    keys: () => Object.keys(readJson(file) || {}),
     set: (/** @type {string} */ k, /** @type {any} */ v) => { const all = readJson(file) || {}; all[k] = v; writePrivate(file, JSON.stringify(all) + "\n"); },
   };
 }
