@@ -394,7 +394,7 @@ export function createLentHome(o) {
       const device = pickLender(person, session, folder);
       // a chat given a folder runs only on the computer that has it: with that computer away it does not start on the server instead
       if (folder && !device) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer");
-      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
+      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: typeof i.command === "string" && i.command ? i.command : "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
       // a spawn that never started leaves no row saying the chat is on a computer it never reached
       proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && reserved.delete(session) && !lent.has(session)) book.forget(session); });
       proc.on("close", () => previews.close(session));   // the program ended: its previews close with it

@@ -28,7 +28,7 @@ import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { openVyreDoor } from "./vyre-door.js";
-import { createSessionSync, restore, ROOTS } from "./sync.js";
+import { createSessionSync, restore, ROOTS, syncRootsFor } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
@@ -237,7 +237,8 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), ...(s.folder ? { roots: ROOTS.filter(r => r.dir !== "files") } : {}), log: m => emit({ type: "sync", session: s.session, m }) });
+    const agentRoots = syncRootsFor(s.provider);
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), roots: [{ dir: "files", remote: "files" }, ...(s.folder ? [] : agentRoots)], log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
