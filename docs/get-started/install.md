@@ -76,15 +76,15 @@ A Mac, a Windows PC and the web app offer the same two choices. Vyre does not ru
 2. Choose **With Records** (recommended) or **Without Records** (a small server). Records is where your contacts, projects and
    tasks live, so pick it unless the server is small.
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
-   - On Linux it looks like `curl -fsSL vyre.run/i | sh`.
-   - On a Mac it looks like `curl -fsSL vyre.run/box/install-mac-server.sh | sh`. It asks for the
-     Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
-     Touch ID key approves new devices.
+   Linux and a Mac that stays on use the same shape: `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
+   On a Mac it asks for the Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
+   Touch ID key approves new devices.
 
    The line works once and expires in 30 minutes. It carries a one-time code the app made. Nothing else is typed in the terminal.
    You do not compare words and you do not type a code.
 4. The installer checks the release's signature before it installs anything. The server installs Vyre and adopts the person
-   who approved the line. The app waits on this screen until the server is online.
+   who approved the line. The app waits on this screen until the server is online. You can also open the server's setup page
+   (`http://<the-server>/setup`) and paste the code the app shows. The page locks after pairing.
 5. The app connects, and your space is ready.
 
 You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address.
@@ -145,5 +145,8 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 
 > [!SNAG] The app stays on Waiting
 > The line expires in 30 minutes and works once. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
+
+> [!SNAG] The setup page will not take the code
+> The server is already paired, or that code was used. In the app go back for a new line, and run that line on this server.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).

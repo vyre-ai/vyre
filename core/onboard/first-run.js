@@ -19,7 +19,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
 
-/** @type {Map<string, { command: string, expiresAt: string, kind: string, name: string, online: boolean }>} */
+/** @type {Map<string, { command: string, expiresAt: string, kind: string, name: string }>} */
 const waits = new Map();
 /** @type {Map<string, { role: string, ttlDays: number, space: string, link: string }>} */
 const links = new Map();
@@ -159,7 +159,7 @@ export function registerFirstRun(ctx, io) {
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
       const id = `fr_${randomBytes(8).toString("hex")}`;
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      waits.set(id, { command, expiresAt, kind: place, name: label, online: false });
+      waits.set(id, { command, expiresAt, kind: place, name: label });
       return { id, command, expiresAt, kind: place, name: label, ...(pending.length ? { pending } : {}) };
     },
   });
@@ -173,14 +173,19 @@ export function registerFirstRun(ctx, io) {
       const row = waits.get(String(id || ""));
       if (!row) throw bad("That install is not one this device started.");
       if (Date.parse(row.expiresAt) < Date.now()) return { id, online: false, expired: true };
+      let online = false;
       const st = await tryCall("wink.install.status", {});
-      if (st && !st.__error && (st.owned || st.locked)) row.online = true;
+      if (st && !st.__error && (st.owned || st.locked)) online = true;
       // The person's own screen may finish pairing. An agent calls wink.install.complete, which is held for a tap.
-      if (!row.online && isPerson(meta && meta.caller)) {
+      if (!online && isPerson(meta && meta.caller)) {
         const done = await tryCall("wink.install.complete", {});
-        if (done && !done.__error && done.ok) row.online = true;
+        if (done && !done.__error && done.ok) online = true;
+        if (!online) {
+          const again = await tryCall("wink.install.status", {});
+          if (again && !again.__error && (again.owned || again.locked)) online = true;
+        }
       }
-      return { id, online: row.online, expired: false, kind: row.kind };
+      return { id, online, expired: false, kind: row.kind };
     },
   });
 

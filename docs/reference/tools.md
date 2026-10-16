@@ -3272,17 +3272,15 @@ List folders inside a folder (default: every root), or with q, folders under it 
   - `q` string: folder name to match; walks below path, bounded
   - `source` "mac" or "box"
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.access`
 
-Make one of the box's shares read-only (ro) or read-write (rw) for this Mac. Remount it after a change.
+Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.
 
 - Input:
   - `mode` "ro" or "rw", required
   - `name` string, required
-- Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
+- Callers: any caller
 
 ### `files.drive.address`
 
@@ -3295,19 +3293,17 @@ Where one of this box's VyreDrive shares is reached on the tailnet, for a device
 
 ### `files.drive.audit`
 
-Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besides this Mac.
+Check the tailnet policy from the box: any online node besides a paired Mac that can reach the VyreDrive shares is a finding. Owner only.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
-- Registered only on the Mac (local).
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `files.drive.candidates`
 
-The box's folders you could share over VyreDrive, projects first (asked over the link).
+Folders this box could share over VyreDrive, projects first, then folders in its file roots, each marked with its share. Feed one to files.drive.measure.
 
 - Input: none
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.link.create`
 
@@ -3320,7 +3316,6 @@ Share one version of a file in the Space's Drive with a link that reads it until
   - `version` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.drive.link.list`
 
@@ -3328,7 +3323,6 @@ The shared links made on this box, newest first, with when each expires, how oft
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.link.revoke`
 
@@ -3337,14 +3331,18 @@ Stop a shared link now and delete the copy it served: { code }. Taking access aw
 - Input:
   - `code` string, required
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.list`
 
 List a folder inside one of the box's VyreDrive shares: name, kind, size and date per entry, folders first, a page at a time.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `share` string, required: share name, from files.drive.status
+  - `limit` integer: entries per page
+  - `offset` integer: entries to skip
+  - `path` string: folder inside the share; default its top
 - Callers: any caller
+- Registered only on the box.
 
 ### `files.drive.local`
 
@@ -3357,12 +3355,11 @@ Where a box file is on this Mac through a mounted VyreDrive share, or null when 
 
 ### `files.drive.measure`
 
-How big one of the box's folders is and whether it may be shared (asked over the link).
+How big a folder is (files, folders, bytes) and whether VyreDrive may share it; a folder with a .env or key is not shareable.
 
 - Input:
   - `path` string, required
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.mount`
 
@@ -3375,14 +3372,13 @@ Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and Lumen
 
 ### `files.drive.offer`
 
-Share one of the box's folders you picked over VyreDrive, by path, in one step. Owner only.
+Share a folder you picked over VyreDrive in one step: checks it like files.drive.measure, adds it to the box's shares under a name (a project's own name by default) and shares it. Read-only unless access is rw. Owner only. Nothing is added if the folder is refused.
 
 - Input:
   - `path` string, required
   - `access` "ro" or "rw"
   - `name` string
-- Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
+- Callers: any caller
 
 ### `files.drive.open`
 
@@ -3398,8 +3394,13 @@ Open a mounted box share, or a file or folder in it, in Finder.
 
 Read one chunk (up to 1 MiB) of a file in a box VyreDrive share, as base64, with its size and an end flag.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `path` string, required
+  - `share` string, required
+  - `length` integer: chunk size in bytes, up to 1 MiB
+  - `offset` integer: start byte; use the next offset for a bigger file
 - Callers: any caller
+- Registered only on the box.
 
 ### `files.drive.restore`
 
@@ -3410,19 +3411,17 @@ Restore an old version of a file in the Space's Drive as a NEW version (nothing 
   - `version` integer, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.search`
 
-Find files by name or content across the box's offered VyreDrive shares, asked from this Mac (the search behind Lumen's find-a-file and the Windows panel). An agent's identity does not survive the hop to the box (see files.search's own note on this), so this is the owner's own surfaces only for now; an agent searches this Mac's own files.search instead.
+Find files by name or content across the box's offered VyreDrive shares. A named agent searches only shares inside its granted projects.
 
 - Input:
   - `q` string, required
-  - `kinds` list of string
+  - `kinds` list of one of "folder", "text", "code", "image", "pdf", "doc", "audio", "video", "archive", "other"
   - `limit` integer
-  - `share` string
+  - `share` string: search only this share
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.share`
 
@@ -3442,7 +3441,6 @@ The files in the Space's Drive under a folder, under the caller's own grants: { 
   - `prefix` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.space.read`
 
@@ -3453,7 +3451,6 @@ Download one file from the Space's Drive, head or a named version, under the cal
   - `space` string
   - `version` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.status`
 
@@ -3473,12 +3470,11 @@ Unmount one of the box's shared folders from this Mac.
 
 ### `files.drive.unshare`
 
-Stop sharing one of the box's folders.
+Stop sharing one of the box's folders over VyreDrive. Owner only.
 
 - Input:
   - `name` string, required
-- Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
+- Callers: any caller
 
 ### `files.drive.upload`
 
@@ -3490,7 +3486,6 @@ Put a file in the Space's Drive as a new version, under the caller's own grants:
   - `base` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.url`
 
@@ -3511,7 +3506,6 @@ The versions of one file in the Space's Drive, newest last, under the caller's o
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drop.ack`
 
@@ -3645,7 +3639,6 @@ One Dropbox file call (list_folder, get_metadata, download, upload, move_v2, cre
   - `bodyB64` string
   - `raw` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
-- Registered only on the Mac (local).
 
 ### `files.fetch`
 
@@ -3667,7 +3660,6 @@ Delete a file in a linked folder, at the source (the source decides whether it c
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.link`
 
@@ -3680,7 +3672,6 @@ Link a folder from a source (Google Drive first) so it appears live at Linked/<n
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.linked.list`
 
@@ -3689,7 +3680,6 @@ The folders linked in this Space: { space? } -> { links }.
 - Input:
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.ls`
 
@@ -3700,7 +3690,6 @@ List a folder in a linked folder, from your own index: { space?, id, path? }.
   - `path` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.mentions.resolve`
 
@@ -3711,7 +3700,6 @@ Make a tagged linked file known to the chat it was tagged in: its text as contex
   - `thread` string, required
   - `said` string
 - Callers: `module`
-- Registered only on the Mac (local).
 
 ### `files.linked.mentions.search`
 
@@ -3721,7 +3709,6 @@ Files in the linked folders whose name or text matches what you typed after #, a
   - `limit` integer
   - `q` string
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.linked.pick`
 
@@ -3731,7 +3718,6 @@ Choose a folder to link, one level at a time, as you (what your account may see)
   - `provider` string, required
   - `parent` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.providers`
 
@@ -3739,7 +3725,6 @@ The sources a folder can be linked from: { } -> { providers: [{ id, label, pick 
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.read`
 
@@ -3750,7 +3735,6 @@ Open a file in a linked folder: { id, path }. Fetched from the source as you, at
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.rename`
 
@@ -3762,7 +3746,6 @@ Rename or move a file inside a linked folder, at the source: { space?, id, path,
   - `to` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.search`
 
@@ -3774,7 +3757,6 @@ Search the linked folders by name, path and text, among what your account sees: 
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.status`
 
@@ -3784,7 +3766,6 @@ A linked folder and how your index of it stands: { space?, id }.
   - `id` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.sync`
 
@@ -3795,7 +3776,6 @@ Bring your own index of a linked folder up to date, as you (what your account se
   - `full` boolean
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.tree`
 
@@ -3805,7 +3785,6 @@ Every file in your own index of each linked folder, for the # picker. An unsynce
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.unlink`
 
@@ -3816,7 +3795,6 @@ Stop showing a linked folder: { space?, id }. Only who linked it or the Space ow
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.linked.versions`
 
@@ -3827,7 +3805,6 @@ A file's history at the source: { space?, id, path } -> { versions: [{ rev, modi
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.write`
 
@@ -3840,18 +3817,16 @@ Save a file into a linked folder, at the source: { space?, id, path, base64, bas
   - `base_rev` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.mentions.resolve`
 
-Make a tagged file readable in the chat it was tagged in. The box does this; a Mac has no chats of its own.
+Make a tagged file readable in the chat it was tagged in: records that thread and that one file, and tells the model how to read it. Only the sessions module or the assistant call it.
 
 - Input:
   - `id` string, required
   - `thread` string, required
   - `said` string
 - Callers: `module`
-- Registered only on the Mac (local).
 
 ### `files.mentions.search`
 
@@ -3861,7 +3836,6 @@ Files on the box's VyreDrive shares whose name matches what you typed after #, f
   - `limit` integer
   - `q` string
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.preview`
 
@@ -3890,7 +3864,6 @@ The folders sessions worked in lately, newest first, with how many sessions ran 
   - `limit` integer
   - `source` "mac" or "box"
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.search`
 
@@ -9338,129 +9311,195 @@ Forget a device: by its id, or by the subscription's endpoint.
 
 ### `recall.eval`
 
-No description.
+Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `queries` list of object, required
+    - `answers` list, required
+    - `q` string, required
+  - `k` integer
+  - `nonsense` list of string
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.forget`
 
-No description.
+Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `sessions` list of string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `recall.index`
 
-No description.
+Index new and changed transcripts now. Returns what the pass did.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.links`
 
-No description.
+The turns that touched a file, commit or url, newest first. Each is a pointer (session:seq) for recall.turn, with a snippet.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `ref` string, required: A file path or just its name, a short or full commit hash, or a url.
+  - `agent` string
+  - `kind` one of "file", "read", "commit", "url": file for changes, read for reads (both by default), commit or url.
+  - `limit` integer
+  - `session` string
+  - `since` integer: ms since epoch
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `recall.marks`
 
-No description.
+For a rollover's reference sheet (Vyre's own): where in a thread's windows each moment falls. Give the windows (session ids) and times in ms; get, for each time, the pointer (session:seq) of the latest turn at or before it, or null. No model.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `at` list of number, required
+  - `sessions` list of string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.pointers`
 
-No description.
+For a rollover (Vyre's own, when a session's window fills): the windows of one thread (session ids, oldest first) indexed now, then the one split Vyre's seed makes of them: the last turns, newest window first, whose text adds up to tail_chars, word for word (a long turn cut, with the pointer that reads it whole), and, for every turn before them, an index of pointers: the person's own requests as lines (session:turn, who, when, the start of what was said), the files touched and the commits made. Pointers read back with recall.turn. A person's surface or a module asks, for the sessions of a thread it runs; never an agent.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `sessions` list of string, required
+  - `lines` integer
+  - `tail_chars` integer
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.related`
 
-No description.
+1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's "From your past sessions" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project_cwds` list of string, required
+  - `text` string, required
+  - `limit` integer
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.sealscan`
 
 One look at what Recall's index already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, and how many search vectors were made from them, never a value. It changes nothing. New turns are scrubbed on the way in.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `recall.sealscrub`
 
 Rewrite what Recall's index already holds that has the shape of a sealed value: each matched span becomes a placeholder, nothing else in a turn, title or name changes, and the search vectors made from a changed turn are dropped and made again. Only the person, with presence. One log row (counts and classes) is kept.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `recall.search`
 
-No description.
+Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `q` string, required
+  - `agent` string
+  - `hybrid` boolean
+  - `limit` integer
+  - `links` list of object: keep only turns that touched these (a file path or name, a commit hash, a url), or sit next to one that did
+    - `ref` string, required
+    - `kind` one of "file", "read", "commit", "url"
+  - `machines` "all" or "local"
+  - `per_session` integer
+  - `prefix` boolean: each word as a prefix, all of them, keyword only: for completion while typing
+  - `project_cwds` list of string
+  - `role` "user" or "assistant"
+  - `sessions` list of string: also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `recall.sessions`
 
-No description.
+Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string
+  - `cwd` string
+  - `human` boolean
+  - `ids` list of string
+  - `limit` integer
+  - `machines` "all" or "local"
+  - `since` number
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `recall.setup`
 
-No description.
+Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `recall.status`
 
-No description.
+How much is indexed, when the last pass ran, and whether search can rank by meaning.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `recall.thread`
 
-No description.
+One session and its turns, in order. Takes a session id or an unambiguous prefix of one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required
+  - `agent` string
+  - `from` integer
+  - `limit` integer
+  - `machines` "all" or "local"
+  - `source` "box" or "mac"
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `recall.transcript`
 
-No description.
+A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required
+  - `before` integer
+  - `from` integer
+  - `limit` integer
+  - `machines` "all" or "local"
+  - `source` "box" or "mac"
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.turn`
 
-No description.
+A span of one past session, word for word: the turns themselves, no summary, each with its pointer (session:seq), its time, and what it touched (files, commits, urls). Name the turn with seq, and before and after for the turns around it, or give from with to or span. A turn the search index had to cut is read whole from the transcript. Redacted like everything Recall holds.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required: a session id, or an unambiguous prefix of one
+  - `after` integer
+  - `agent` string
+  - `before` integer
+  - `from` integer
+  - `full` boolean: false: give a long turn as the index holds it (cut) instead of reading the transcript
+  - `seq` integer
+  - `span` integer
+  - `to` integer
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `recall.unwatch`
 
-No description.
+Stop following a session (a watch id from recall.watch).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `watch` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `recall.watch`
 
-No description.
+Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required
+  - `from` string
+  - `watch` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ## records
 
