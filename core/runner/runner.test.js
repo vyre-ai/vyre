@@ -12,7 +12,7 @@ import { place, hereBlock, deviceState } from "./placement.js";
 import { createLease } from "./lease.js";
 import { createEgress } from "./egress.js";
 import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
-import { workspaceUnavailable, driverFor } from "./workspace.js";
+import { workspaceUnavailable, driverFor, fscryptSupported } from "./workspace.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
 import { HARNESS_MARK } from "./pipe-home.js";
@@ -270,9 +270,13 @@ function* diskFiles(root) {
   for (const e of fs.readdirSync(root, { withFileTypes: true })) {
     const f = path.join(root, e.name);
     if (e.name === "mnt") continue;
-    if (e.isDirectory()) yield* diskFiles(f); else if (e.isFile()) yield [f, fs.readFileSync(f)];
+    if (e.isDirectory()) yield* diskFiles(f);
+    else if (e.isFile()) {
+      try { yield [f, fs.readFileSync(f)]; } catch { /* locked fscrypt ciphertext is not readable as a file */ }
+    }
   }
 }
+const diskPlaintextSearch = base => !(process.platform === "linux" && fscryptSupported(base));
 const findOnDisk = (root, needles) => { const hits = []; for (const [f, b] of diskFiles(root)) for (const n of needles) if (b.includes(Buffer.from(n))) hits.push([f, n]); return hits; };
 
 async function rig(t, over = {}) {
@@ -305,7 +309,7 @@ test("runner: a session runs on this computer, sees only its workspace, reaches 
   h.send("probe");
   const probe = await waitFor(() => events.find(e => e.type === "probe"));
   assert.ok(["EPERM", "ENOENT", "EACCES"].includes(probe.outside), "cannot read a file outside the workspace: " + probe.outside);
-  assert.ok(["EPERM", "ENOENT", "EACCES"].includes(probe.homeList), "cannot list the home folder: " + probe.homeList);
+  assert.ok(typeof probe.homeList === "string" && ["EPERM", "ENOENT", "EACCES"].includes(probe.homeList), "cannot list the home folder: " + probe.homeList);
   assert.equal(probe.envHasSecret, false, "no real credential in the session's environment");
   assert.equal(probe.envToken, true);
   assert.notEqual(probe.net, "CONNECTED", "no direct network: " + probe.net);
@@ -334,6 +338,7 @@ test("runner: both grants are required to start", { skip: SKIP || false }, async
 
 test("runner: a disk search finds no credential and no plaintext transcript, running or locked", { skip: SKIP || false, timeout: 90_000 }, async t => {
   const r = await rig(t);
+  if (!diskPlaintextSearch(r.base)) { t.skip("fscrypt decrypts through the filesystem while the key is loaded; FS-2 covers at-rest secrecy"); return; }
   const h = await r.launch(r.runner, "s1");
   const key = r.sp.state.key;
   h.send("turn CANARY-TRANSCRIPT-7741");
@@ -442,7 +447,7 @@ test("runner: move to server takes a stop here and asks the server to resume", {
 
 test("workspace: a wrong key never opens it and a drive image holds no plaintext", { skip: SKIP || false, timeout: 60_000 }, async t => {
   const d = tmp(); t.after(() => rm(d));
-  const drv = driverFor(process.platform, { sizeGb: 1 });
+  const drv = driverFor(process.platform, { sizeGb: 1, base: d, prefer: process.platform === "linux" && fscryptSupported(d) ? "fscrypt" : undefined });
   const key = crypto.randomBytes(32), wrong = crypto.randomBytes(32);
   const dir = path.join(d, "w");
   await drv.create(dir, key);

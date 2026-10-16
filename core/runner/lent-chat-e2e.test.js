@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runnerScratch } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
