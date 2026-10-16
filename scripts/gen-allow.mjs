@@ -27,6 +27,10 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
   "update.whats-new": "reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words",
+  "identity.status": "reads whether a username exists and whether the directory may show it; no key and no password",
+  "identity.card": "reads the public card for the username; private unless the person opted in, and no key",
+  "vault.space.status": "reads whether a space vault exists and its generation; no key and no item value",
+  "vault.space.list": "lists space vault item names only; values stay sealed",
   "update.whats-new-seen": "marks the release notes of the running version as seen by this person; the only thing written is that mark",
   "flows.settle": "answers a run that needs attention (retry, skip, stop, or move a stage gate on early) under the person's own chain; a stage gate moves only for its owner or an admin, with a reason on the ledger, and a value for a skipped step stays the person's",
   "flows.advance": "moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger",
@@ -170,6 +174,10 @@ export const OPEN_NOTES = Object.freeze({
   "wink.code.status": "reads the code that is showing now, if any",
   "wink.offers": "reads what is waiting on a person right now, with no secret",
   "wink.pair.status": "reads where a pairing is: waiting, confirm, done, failed or expired",
+  "wink.install.status": "reads whether an install line is outstanding and whether this server is owned",
+  "wink.install.issue": "issues the one install line; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "wink.install.complete": "finishes pairing after the server adopted the person; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "spaces.pair.install": "issues the one install line for creating a space; the outward flag holds the call at the Gate, and the signing key stays on this device",
   "wink.storage.card": "builds the words a person reads before adding storage, no secret",
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
@@ -368,6 +376,12 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
+  "vault.space.use": "0.5.3@15 Oct 2026",
+  "releases.info": "510141976@15 Oct 2026",
+  "onboard.person.lookup": "d14c56ec8@16 Oct 2026",
+  "onboard.github.start": "d14c56ec8@16 Oct 2026",
+  "onboard.join.read": "d14c56ec8@16 Oct 2026",
+  "onboard.space.poll": "d14c56ec8@16 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -445,6 +459,11 @@ export const DECLARED_NOTES = Object.freeze({
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+  "releases.info": "reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value",
+  "onboard.person.lookup": "checks that a username has a valid form and returns the public page address, and reads nothing secret",
+  "onboard.github.start": "returns the address for Continue with GitHub, or says that step is not on this server, and reads nothing secret",
+  "onboard.join.read": "reads an invite link and says which space and role it opens, and names no secret",
+  "onboard.space.poll": "says whether the new space's computer is online yet, and reads nothing secret",
 });
 
 const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;

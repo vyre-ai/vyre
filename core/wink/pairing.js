@@ -675,13 +675,13 @@ export function createPairing(o) {
   function tools() {
     const { owner } = o;
     ctx.tool("wink.pair.targets", {
-      description: "The \"Pair to:\" choices for a server or storage device: you, and each space you administer. Answers { targets: [{ kind: identity | space, id, label, role? }] }. A phone and a computer pair to you only.",
+      description: "Where a server or storage device can pair: you, and each space you administer. A phone pairs to you only.",
       input: obj(),
       run: async (_, meta = {}) => { owner(meta, "the pair targets"); return { targets: await targets(await o.identity()) }; },
     });
     ctx.tool("wink.pair.server", {
-      description: "Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. The short typed code works too (`code`: type the one the server shows, then the server asks for the code this app shows); it is refused only when the kill switch is set on this computer (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
-      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["target"]),
+      description: "Pair a new server from this app with the QR or code it shows, and choose where it goes. The person at the server confirms.",
+      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str, type: str, fingerprint: str }, ["target"]),
       presence: { summary: async () => "Add a server to Vyre" },
       run: async (input, meta = {}) => {
         owner(meta, "pairing a server");
@@ -700,7 +700,7 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.pair.status", {
-      description: "Where a pairing is: { state: waiting | confirm | done | failed | expired, device?, reason?, words? }. `confirm` means the person at the server is being asked: show `words` (the same three words the server shows) and say to answer yes there only if they match. A failed pairing says why in plain words (for example that the server already belongs to someone and must be removed first).",
+      description: "Where a pairing is: waiting, confirm, done, failed or expired. On confirm, show the words and say yes only if they match.",
       input: obj({ pairing: str }, ["pairing"]),
       run: async (input, meta = {}) => {
         owner(meta, "pairing");
@@ -814,6 +814,14 @@ export function createPairing(o) {
       },
     });
     const meta0Set = (/** @type {string} */ to) => { meta.set("pair_to", to); };
+    // Every pairing path confirms the published chain through spaces.identity.confirm-key before it writes an owner or enrols a device.
+    const confirmPublished = async (/** @type {string} */ id, /** @type {string | undefined} */ key) => {
+      if (typeof ctx.call !== "function") throw fail("unavailable", "The directory could not confirm this key. Wait a minute and try again.");
+      /** @type {any} */ let r;
+      try { r = await ctx.call("spaces.identity.confirm-key", { id, ...(key ? { key } : {}) }); }
+      catch (/** @type {any} */ e) { throw fail(e && e.code === "unavailable" ? "unavailable" : "denied", (e && e.message) || "The directory could not confirm this key. Wait a minute and try again."); }
+      if (r && r.error) throw fail(r.error.code === "unavailable" ? "unavailable" : "denied", String(r.error.message || "That person has no published key. Open the Vyre app and finish starting, then pair again."));
+    };
     // An app-led install (spec 0.3.0 part 10): the server was installed with a setup code its owner's app made. The app, once the words match, opens the setup channel (it alone holds the code's key) and asks
     // here for the pairing ticket, for ITS identity only: the same single-use ticket and the same identity proof as an install with --pair-to, so nobody is asked a yes at a terminal.
     ctx.tool("wink.server.setup-offer", {
@@ -821,9 +829,12 @@ export function createPairing(o) {
       input: obj({ identity: str }, ["identity"]),
       run: async (input, meta1 = {}) => {
         if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
-        if (hasOwner()) throw fail("owned", "This server already belongs to someone.");
         const to = String((input && input.identity) || "").trim();
         if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
+        if (!/^per_[a-z2-7]{26}$/.test(to)) throw fail("denied", "That is not a person id. Pair again from the Vyre app.");
+        await confirmPublished(to);
+        const cur = meta.get("owner");
+        if (cur && String(cur.identity || cur.id) !== to) throw fail("owned", "This server already belongs to someone.");
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr({});
@@ -1443,8 +1454,8 @@ export function createPairing(o) {
     /** The avatar's 8 bytes for a typed code (the camera reader's picture of the same code), base64url. @param {string} code */
     const avatarOf = code => { const b = codeToAvatarBytes(code); return b ? b64url(b) : null; };
     ctx.tool("wink.phone.open", {
-      description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. The short typed code works too (`typed: true` asks for it) unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
-      input: obj({ space: str, typed: { type: "boolean" } }),
+      description: "Add a phone from a signed-in computer: a QR and a code, good for one phone and five minutes. A phone pairs to you only.",
+      input: obj({ space: str, typed: { type: "boolean" }, name: str, type: str, fingerprint: str }),
       presence: { summary: async () => "Show a code to add a phone" },
       run: async (input, meta = {}) => {
         owner(meta, "adding a phone");
@@ -1514,7 +1525,7 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pairing", {
-      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line } (no `words`: the person types the three the phone shows), or { asking: false, enrol: { device, name, entry, until } } when a phone was added and this server cannot sign its key onto the name's list (the owner's app does, then calls wink.phone.enrolled): `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).",
+      description: "Is a phone asking to be added right now? Answers whether it is asking, and the choices to show the person.",
       input: obj(),
       run: async (_, meta = {}) => {
         owner(meta, "the phone question");
@@ -1529,6 +1540,12 @@ export function createPairing(o) {
     /** The yes, done: the phone is a device of this identity now (the relay makes it, the identity list takes its key, a paired session opens). Used by the person's answer and by a typed code's own ack. @param {any} a @param {any} presence */
     const acceptPhone = async (a, presence) => {
       const identity = await o.identity();
+      const id = String(identity || "");
+      // Confirm only when this device holds that identity, because that is when the list change is signed here. A server that holds no identity records the phone and the owner's app signs it.
+      if (/^per_[a-z2-7]{26}$/.test(id) && typeof ctx.call === "function") {
+        const self = await ctx.call("spaces.identity.id", {}).catch(() => null);
+        if (self && self.data && self.data.id === id) await confirmPublished(id);
+      }
       const dev = devices.add({ id: a.device, identity, kind: "phone", name: a.name, fingerprint: a.fingerprint, target: { kind: "identity", id: identity } });
       // the relay makes the device only now (X-1); if it will not, nothing stays here either
       /** @type {any} */ let confirmed = null;
@@ -1552,7 +1569,7 @@ export function createPairing(o) {
       return dev;
     };
     ctx.tool("wink.phone.pair.answer", {
-      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      description: "Answer the phone question. No adds nothing. Yes needs the words the phone shows. A bare yes is refused.",
       input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       presence: { summary: async () => "Add a phone to you" },
       run: async (input, meta = {}) => {
@@ -1582,6 +1599,10 @@ export function createPairing(o) {
         owner(meta, "the phone's enrolment");
         const a = phoneLive();
         if (!a || a.state !== "enrolling" || a.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be added to the name's list");
+        if (input.ok === true) {
+          const id = input.identity && typeof input.identity.id === "string" ? String(input.identity.id) : String(await o.identity());
+          await confirmPublished(id);
+        }
         a.enrolled = input.ok === true;
         if (!a.enrolled) a.enrolReason = cleanName(input.reason, 200) || "The app that holds your name could not add this device.";
         if (input.identity && typeof input.identity.id === "string") a.joinedIdentity = { id: String(input.identity.id).slice(0, 64), ...(typeof input.identity.vyre === "string" ? { vyre: input.identity.vyre.slice(0, 253) } : {}) };

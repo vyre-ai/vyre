@@ -124,6 +124,13 @@ export type { ProviderState } from "./components/ProviderRow";
 export { ChoiceList } from "./components/ChoiceList";
 export type { Choice } from "./components/ChoiceList";
 export { passwordStrength } from "./lib/strength.js";
+export { ChoiceHero } from "./components/ChoiceHero";
+export { RecoveryKeySheet } from "./components/RecoveryKeySheet";
+export { InviteShare } from "./components/InviteShare";
+export { ServerUrlField } from "./components/ServerUrlField";
+export { PasswordStrength } from "./components/PasswordStrength";
+export { ProviderSignInButton } from "./components/ProviderSignInButton";
+export { NeedsYouCard, publicFacts } from "./components/NeedsYouCard";
 export { formatCode, codeComplete } from "./lib/code.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
@@ -180,3 +187,8 @@ export type { DocOverlayProps } from "./files/DocOverlay";
 export type { AssistProps } from "./files/MarkdownDoc";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
+export {
+  SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
+  FEATURED_SLASHES, NATIVE_SLASHES,
+} from "./chat";
+export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps } from "./chat";

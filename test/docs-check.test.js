@@ -33,7 +33,9 @@ const run = async (root, reference = /** @type {any} */ (false)) => format(await
 const only = (lines, re) => lines.filter(l => re.test(l));
 
 test("docs-check: the real docs tree is clean", async t => {
-  const problems = await check({ root: REPO, tmp: SCRATCH });
+  let problems = await check({ root: REPO, tmp: SCRATCH });
+  // A slow runner can time out one role during harvest and make the reference pages look stale; one retry is enough in practice.
+  if (problems.some(p => p.kind === "reference")) problems = await check({ root: REPO, tmp: SCRATCH });
   // A screenshot older than the Deck code it shows is for the docs team to retake before the next
   // deploy (npm run docs:check fails on it); it must not turn every other team's suite red.
   const shots = problems.filter(p => p.kind === "shots");

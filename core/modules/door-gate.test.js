@@ -258,6 +258,7 @@ test("the tools that still show other people's matter are refused to a member, i
   }
   // her own to-dos, reminders and notes are scoped by the planner already and stay on her list
   for (const tool of ["planner.add", "planner.list", "planner.upcoming", "planner.bin", "planner.ringing", "planner.parse"]) assert.ok(MEMBER_MAY.has(tool), `${tool} stays on a member's list`);
+  assert.ok(MEMBER_MAY.has("recall.search") && !OWNER_ONLY.has("recall.search"), "recall.search is person-scoped for members (/find relay)");
 });
 
 test("every label the daemon builds for a remote caller is a member's until proof is shown: device, web, setup, space, invitee, tailnet and tailnet-guest", { timeout: 200_000 }, async t => {

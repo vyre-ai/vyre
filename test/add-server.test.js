@@ -6,6 +6,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import net from "node:net";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { tempHome } from "./helpers.js";
@@ -30,6 +33,8 @@ const lenient = {
   enroll(/** @type {any} */ k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
 };
 const until = async (/** @type {() => any} */ fn, ms = 20_000) => { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await new Promise(r => setTimeout(r, 30)); } throw new Error("timed out"); };
+const STANDIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "standin-directory.mjs");
+const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => res(p)); }); });
 
 test("add-a-server end to end against a real server and relay: the offer is found, the words match, and the channel hands the app a ticket for its own identity only", { timeout: 90_000 }, async t => {
   const real = Object.getOwnPropertyDescriptor(process, "platform");
@@ -38,14 +43,21 @@ test("add-a-server end to end against a real server and relay: the offer is foun
   const relay = createRelay();
   const base = await relay.listen();
   t.after(() => relay.close());
+  const namesPort = await freePort();
+  const standin = spawn(process.execPath, [STANDIN, "--port", String(namesPort)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => standin.kill("SIGTERM"));
+  await new Promise((res, rej) => { standin.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); standin.on("exit", c => rej(new Error(`stand-in exited (${c})`))); });
+
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "harlow", transcripts: [], vault: { keystore: "file" },
-    network: { name: "harlow" }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
+    network: { name: "harlow" }, names: { directory: `http://127.0.0.1:${namesPort}` }, relay: { enabled: false, url: base }, modules: { disable: ["onboard"] } }));
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "add-server\n");
 
   // What the app does first: make the code, show the line. The server's installer would put the code in its environment.
   let codeSeen = "";
+  /** @type {string} */ let personId = "";
   const app = createAddServer({
-    client, relay: base, identity: async () => ({ id: "per_" + "a".repeat(26) }),
+    client, relay: base, identity: async () => ({ id: personId }),
     connect: async ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret }),
     pair: async qr => { paired.push(qr); }, pollMs: 50,
   });
@@ -59,6 +71,9 @@ test("add-a-server end to end against a real server and relay: the offer is foun
   t.after(() => { for (const [k, v] of [["VYRE_SETUP_CODE", saved.code], ["VYRE_SETUP_CODE_AT", saved.at]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const d = await start({ presence: lenient, root, log: () => {} });
   t.after(() => d.stop());
+  const made = await d.registry.call("spaces.identity.create", { name: "addserver" }, "deck");
+  assert.ok(!made.error, JSON.stringify(made.error));
+  personId = made.data.id;
 
   await until(() => app.state.stage === "found");
   const held = (await d.registry.call("relay.setup.status", {}, "cli")).data;
@@ -70,5 +85,5 @@ test("add-a-server end to end against a real server and relay: the offer is foun
   assert.ok(app.state.memoryMb && app.state.memoryMb > 0, "the server said how much memory it has");
   // the ticket was made for this identity alone: the server remembers who may complete the pairing
   const asking = (await d.registry.call("wink.server.pairing", {}, "cli")).data;
-  assert.equal(asking.pairTo, "per_" + "a".repeat(26));
+  assert.equal(asking.pairTo, personId);
 });

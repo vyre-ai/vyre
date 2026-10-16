@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -44,6 +44,7 @@ import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
+import { LaterPlannerBar, useChatCapabilityChrome, useLaterPlanner } from "./ChatCapabilityChrome";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
 import { MovedLines, PlacementChip, usePlacement } from "./placement";
@@ -126,7 +127,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
-  const placed = usePlacement(p.sessionId, !allowsMock());
+  const placed = usePlacement(here.thread ?? p.sessionId, !allowsMock());
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
@@ -135,6 +136,14 @@ export function ChatScreen(p: ChatScreenProps) {
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
+  const realComposerOn = !allowsMock();
+  const caps = useChatCapabilityChrome({
+    chat: p.sessionId,
+    store,
+    faces: store.group.participants().map((f) => ({ id: f.id, name: f.name, family: f.family })),
+    real: realComposerOn,
+    onOpenPanel: (page) => setPanel(page),
+  });
   const [note, setNote] = useState<string | null>(null);
   // A key in the message is on its way into the Vault: the label of the one being secured now.
   const [securing, setSecuring] = useState<string | null>(null);
@@ -150,6 +159,20 @@ export function ChatScreen(p: ChatScreenProps) {
   const [draftN, setDraftN] = useState(0);
   // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
   const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
+  const [threadState, setThreadState] = useState<{ mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null } | undefined>();
+  useEffect(() => {
+    const thread = here.thread ?? p.sessionId;
+    if (!toolsOpen || allowsMock() || !thread) return;
+    let live = true;
+    tool<{ thread?: { mode?: string; effort?: string; thinking?: boolean; modes?: string[] } }>("threads.get", { thread, limit: 1 })
+      .then((d) => {
+        if (!live || !d?.thread) return;
+        const t = d.thread;
+        setThreadState({ mode: t.mode ?? null, effort: t.effort ?? null, thinking: typeof t.thinking === "boolean" ? t.thinking : null, modes: Array.isArray(t.modes) ? t.modes : null });
+      })
+      .catch(() => { if (live) setThreadState(undefined); });
+    return () => { live = false; };
+  }, [toolsOpen, here.thread, p.sessionId]);
   useEffect(() => {
     if (!toolsOpen || allowsMock()) return;
     let live = true;
@@ -162,7 +185,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
   const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
-  const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
+  const runsOn = placed.placement?.where === "mac" ? "mac" : placed.placement?.where === "server" ? "server" : (p.about?.runsOn ?? "server");
   const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
   // Tapping a quote goes to the original and lights it up for a moment.
   const [jump, setJump] = useState<{ key: string; n: number } | null>(null);
@@ -197,6 +220,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const { onBranched } = p;
   const needs = useNeeds();
   const chatId = here.thread ?? p.sessionId;
+  const later = useLaterPlanner();
+  const [modelNudge, setModelNudge] = useState<"model" | null>(null);
   // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
   // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.
   const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null });
@@ -228,6 +253,7 @@ export function ChatScreen(p: ChatScreenProps) {
     () => ({
       wide: !phone,
       diffSplit: !phone && threadW >= 560,
+      hideVaultNames: Math.max(store.group.participants().filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1,
       ...(actions
         ? {
             onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
@@ -238,8 +264,10 @@ export function ChatScreen(p: ChatScreenProps) {
               if (!r.ok) setNote(r.reason);
               else if (r.thread) onBranched?.(r.thread);
             },
+            onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
+            onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid),
           }
-        : {}),
+        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid) }),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
@@ -262,7 +290,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -288,9 +316,13 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
-      if (why) setNote(why); else att.clear();
+      if (why) setNote(why);
+      else {
+        att.clear();
+        if (/^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
+      }
     },
-    [store, editing, actions, replyTo, highlights, att],
+    [store, editing, actions, replyTo, highlights, att, later],
   );
   sendRef.current = (text: string) => onSend(text);
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
@@ -331,14 +363,18 @@ export function ChatScreen(p: ChatScreenProps) {
     <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
-        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
+        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={sharedChat} replyMode={store.group.replyMode()}
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} noFork={noFork} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
+        away={here.away} state={threadState} projectSlug={chatProject.current?.slug ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
+        onMemory={() => { setPanel(null); router.push("/u/memory" as never); }}
+        onExport={() => { void onSend("/export"); showToast("Export started in the chat."); }}
+        onRoll={() => { void onSend("/roll"); }}
       />
   );
   const body = (
@@ -421,7 +457,7 @@ export function ChatScreen(p: ChatScreenProps) {
         busy={meta.busy}
         canStop={meta.canStop}
         stopping={meta.stopping}
-        offline={meta.connection === "offline"}
+        offline={meta.connection === "offline" && meta.saved}
         phone={phone}
         onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
       />
@@ -450,6 +486,8 @@ export function ChatScreen(p: ChatScreenProps) {
       {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
       <MovedLines lines={placed.lines} />
       <FlowDraftNote s={flowDraft.s} onClear={flowDraft.clear} />
+      <LaterPlannerBar s={later.s} onClear={later.clear} />
+      {caps.ui}
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
@@ -470,9 +508,26 @@ export function ChatScreen(p: ChatScreenProps) {
           onModel={realComposer?.onModel}
           slots={answerSlots}
           peopleOnly={peopleChat}
-          onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } if (name === "skills") { router.push("/u/skills"); return true; } return false; }}
-          runsOn={runsOn}
-          onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
+          onLocalCommand={(name) => {
+            if (name === "move") { setPanel("project"); return true; }
+            if (name === "rewind") { caps.api.openRewind(); return true; }
+            if (name === "find") { setFindOpen(true); return true; }
+            if (name === "model") { setModelNudge("model"); setTimeout(() => setModelNudge(null), 0); return true; }
+            if (name === "undo") { if (chatProject.current?.slug) setPanel("back"); return !!chatProject.current?.slug; }
+            if (name === "goal") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? `${d} /goal ` : "/goal "); setDraftN((n) => n + 1); return true; }
+            if (name === "memory") { router.push("/u/memory" as never); return true; }
+            return false;
+          }}
+          onMenuCapability={(id) => {
+            if (id === "export") void onSend("/export");
+            else if (id === "memory") router.push("/u/memory" as never);
+            else if (id === "roll") void onSend("/roll");
+            else if (id === "later") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? `${d} /later ` : "/later "); setDraftN((n) => n + 1); }
+            else if (id === "find") setFindOpen(true);
+          }}
+          localNudge={modelNudge}
+          runsOn={placed.placement ? runsOn : undefined}
+          onRunsOn={placed.placement ? () => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); } : undefined}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}

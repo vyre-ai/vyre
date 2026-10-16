@@ -23,7 +23,7 @@ export const DEVICE_ADMIN = Object.freeze(new Set([
   // presence keys of other devices, and the codes that make them
   "presence.enroll", "presence.remove", "presence.keys", "presence.code", "presence.person.renew-allow", "presence.person.revoke", "presence.person.locked",
   // ownership, the identity's own list, a device's place in the Spaces
-  "spaces.owner.adopt", "spaces.identity.enrol", "spaces.identity.recover.approve", "spaces.identity.recover.begin", "spaces.identity.recover.code", "spaces.identity.recover.finish",
+  "spaces.owner.adopt", "spaces.owner.transfer", "spaces.identity.enrol", "spaces.identity.recover.approve", "spaces.identity.recover.begin", "spaces.identity.recover.code", "spaces.identity.recover.finish",
   "spaces.devices.enrol", "spaces.devices.remove", "spaces.devices.restore", "spaces.devices.set", "spaces.devices.lend",
 ]));
 

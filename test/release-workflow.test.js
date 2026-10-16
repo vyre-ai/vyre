@@ -59,6 +59,18 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
+test("windows authenticode: a signed installer is verified, and a missing secret still skips", () => {
+  const ps1 = fs.readFileSync(path.join(REPO, "scripts/windows-authenticode.ps1"), "utf8");
+  const signAt = ps1.indexOf("sign /fd SHA256");
+  const verifyAt = ps1.indexOf("Get-AuthenticodeSignature");
+  assert.ok(signAt > 0 && verifyAt > signAt, "verify runs after sign");
+  assert.match(ps1, /Status -ne "Valid"/);
+  assert.match(ps1, /the signature does not verify/);
+  assert.match(ps1, /Write-Status "unsigned"/);
+  const skip = ps1.indexOf("Write-Status \"unsigned\"");
+  assert.ok(skip > 0 && skip < signAt, "a missing secret leaves the installer unsigned and does not verify");
+});
+
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/lumen-win\.yml/);
   assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android\]/);

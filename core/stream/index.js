@@ -180,46 +180,47 @@ export default {
 
     // The same stream over the Wink peer wire (a paired phone or browser has no WebSocket to its server): the session's frames, drawn for THIS viewer exactly as the socket would draw them, go to the
     // door's stream as messages tagged with the stream's id. Authorised by the person in the call's own chain (prepare), the door ends it when the device's paired session ends, and `from` resumes.
+    const openPeerRun = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!meta || !meta.peerStream || typeof meta.peerStream.open !== "function") throw Object.assign(new Error("this stream opens only over a paired device's peer wire"), { code: "bad_input" });
+      const { chat, session, who, from } = await prepare(i, meta);
+      const log = logs.get(session);
+      const id = newPrefixedId("st");
+      // PS-A: the viewer and chain were decided at open, but access can end while the stream runs (a grant revoked, the person out of the chat, the role changed). So no frame leaves until
+      // access has been asked again, AFTER the frame was appended: frames wait in a queue, one re-check serves every frame queued while it ran (so a burst costs one ask, never one each),
+      // a refusal ends the stream with `access_ended` and sends nothing more, and the roles the viewer is drawn with are the ones the re-check just read.
+      const recheck = async () => {
+        const r = await access.read(chat, meta, i);
+        if (r.viewer.id !== who.id) throw new Error("the viewer changed");
+        who.roles.splice(0, who.roles.length, ...r.viewer.roles);
+      };
+      meta.peerStream.open(id, ({ emit, end }) => {
+        /** @type {(() => void)[]} */ const closers = [];
+        /** @type {any[]} */ let queue = [];
+        let pumping = false, gone = false, closing = false;
+        const pump = async () => {
+          if (pumping) return;
+          pumping = true;
+          try {
+            while (queue.length && !gone) {
+              const batch = queue; queue = [];
+              try { await recheck(); } catch { gone = true; queue = []; end("access_ended"); return; }
+              for (const f of batch) { if (gone) return; if (!emit(f)) { gone = true; queue = []; return; } }
+            }
+            // the serve asked to close (a reset frame is its last word): the frames queued before it go out first
+            if (closing && !gone) end("done");
+          } finally { pumping = false; if (queue.length && !gone) void pump(); }
+        };
+        const conn = { send: (/** @type {any} */ f) => { if (gone) throw new Error("the stream is closed"); queue.push(f); void pump(); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => { closing = true; if (!pumping && !queue.length) end("done"); }, buffered: () => 0 };
+        const h = serve(log, conn, { viewer: who, ...(from === null ? {} : { from }), ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
+        return () => { gone = true; queue = []; try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
+      });
+      return { stream: id, chat, session, viewer: who.id, head: log.head, floor: log.floor };
+    };
     ctx.tool("stream.open-peer", {
       description: "Open the session's stream over the Wink peer wire (for a paired device): answers { stream, session, viewer, head, floor }; the frames then arrive as peer stream messages for `stream`, resuming after cursor from. Only over the peer wire.",
       input: obj({ chat: str, from: int, as: str }, ["chat"]),
       callers: PEOPLE,
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (!meta || !meta.peerStream || typeof meta.peerStream.open !== "function") throw Object.assign(new Error("this stream opens only over a paired device's peer wire"), { code: "bad_input" });
-        const { chat, session, who, from } = await prepare(i, meta);
-        const log = logs.get(session);
-        const id = newPrefixedId("st");
-        // PS-A: the viewer and chain were decided at open, but access can end while the stream runs (a grant revoked, the person out of the chat, the role changed). So no frame leaves until
-        // access has been asked again, AFTER the frame was appended: frames wait in a queue, one re-check serves every frame queued while it ran (so a burst costs one ask, never one each),
-        // a refusal ends the stream with `access_ended` and sends nothing more, and the roles the viewer is drawn with are the ones the re-check just read.
-        const recheck = async () => {
-          const r = await access.read(chat, meta, i);
-          if (r.viewer.id !== who.id) throw new Error("the viewer changed");
-          who.roles.splice(0, who.roles.length, ...r.viewer.roles);
-        };
-        meta.peerStream.open(id, ({ emit, end }) => {
-          /** @type {(() => void)[]} */ const closers = [];
-          /** @type {any[]} */ let queue = [];
-          let pumping = false, gone = false, closing = false;
-          const pump = async () => {
-            if (pumping) return;
-            pumping = true;
-            try {
-              while (queue.length && !gone) {
-                const batch = queue; queue = [];
-                try { await recheck(); } catch { gone = true; queue = []; end("access_ended"); return; }
-                for (const f of batch) { if (gone) return; if (!emit(f)) { gone = true; queue = []; return; } }
-              }
-              // the serve asked to close (a reset frame is its last word): the frames queued before it go out first
-              if (closing && !gone) end("done");
-            } finally { pumping = false; if (queue.length && !gone) void pump(); }
-          };
-          const conn = { send: (/** @type {any} */ f) => { if (gone) throw new Error("the stream is closed"); queue.push(f); void pump(); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => { closing = true; if (!pumping && !queue.length) end("done"); }, buffered: () => 0 };
-          const h = serve(log, conn, { viewer: who, ...(from === null ? {} : { from }), ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
-          return () => { gone = true; queue = []; try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
-        });
-        return { stream: id, chat, session, viewer: who.id, head: log.head, floor: log.floor };
-      },
+      run: openPeerRun,
     });
 
     ctx.upgrade("session", (/** @type {any} */ req, /** @type {import("node:net").Socket} */ socket, /** @type {Buffer} */ head, /** @type {any} */ info) => {
@@ -260,7 +261,7 @@ export default {
 
     /** The tools a team member reaches through the Space's remote server (core/work/chat-service.js), by short name: the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
     const memberRuns = new Map();
-    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read"];
+    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read", "open"];
     // The Space's owner is in their own team's chats too, and has no member door to them (it is the home): a call that names the team's `space` runs as `stream.serve` in that Space under the chain the caller holds THERE
     // (kernel.chainIn), the same entry a member's call takes, so the Space's own authorize decides.
     const ownerRoute = async (/** @type {string} */ name, /** @type {any} */ i, /** @type {any} */ meta) => {
@@ -288,7 +289,7 @@ export default {
     };
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
-      obj({ chat: str, text: str, account: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, mode: { type: "string", enum: ["steer", "queue"] }, reply_to: str, tz: str, as: str, name: str, pasted: { type: "array", maxItems: 20, items: str }, attachments: { type: "array", maxItems: 5, items: { type: "object", required: ["id", "name", "mime", "bytes"], properties: { id: str, name: str, mime: str, bytes: { type: "integer" } } } } }, ["chat"]), "send");
+      obj({ chat: str, text: str, account: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, chips: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } } }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, mode: { type: "string", enum: ["steer", "queue"] }, reply_to: str, tz: str, as: str, name: str, pasted: { type: "array", maxItems: 20, items: str }, attachments: { type: "array", maxItems: 5, items: { type: "object", required: ["id", "name", "mime", "bytes"], properties: { id: str, name: str, mime: str, bytes: { type: "integer" } } } } }, ["chat"]), "send");
     tool("stream.second-opinion", "Ask another assistant or model of this chat for its own answer to the same question, on an answer you are reading: { chat, message, to }. The chat shows one short line from you; the other assistant is also given the question, the answer and the last turns from the chat itself. A model the chat does not have yet (codex, grok, provider/model) joins in the same step.", obj({ chat: str, message: str, to: str, surface: str, as: str }, ["chat", "message", "to"]), "secondOpinion");
     tool("stream.catchup", "What happened in a chat since you last read it: the last messages (who said what), the steps taken, questions still open, who joined or left. Plain facts from the chat's own log; nothing is summarised by a model.", obj({ chat: str, as: str }, ["chat"]), "catchup");
     tool("stream.typing", "Tell the chat you are typing (on: false: you stopped). Others see \"typing\" for a few seconds; nothing is kept.", obj({ chat: str, on: bool, as: str }, ["chat"]), "typing");
@@ -332,6 +333,7 @@ export default {
       return { ...base, frames, next: raw.length ? raw[raw.length - 1].cur : from };
     };
     memberRuns.set("read", readRun);
+    memberRuns.set("open", openPeerRun);
     ctx.tool("stream.read", {
       description: "A chat's frames after cursor from (0 for everything the log holds), drawn for the person asking: their join floor, the kernel's say on each frame, their own authority on cited fields. At most 200 a call; next is the cursor to ask from; reset says the log no longer holds that cursor.",
       input: obj({ chat: str, from: int, limit: int, as: str }, ["chat"]), callers: PEOPLE, run: readRun,

@@ -223,6 +223,26 @@ test("a request a model filed says who asked, in words, and that it was not the 
   assert.equal(card.detail, "asked by the agent kit, not by you");
 });
 
+test("a failed space-vault rotation is a Needs you card with the title a person reads", async () => {
+  const { fromSpaceVault, createItems, OWNERS } = await import("./items.js");
+  const title = "A space vault key did not rotate when a member left. Vyre will try again.";
+  const [row] = fromSpaceVault({ items: [{ space: "spc_test_juniper", title, at: 5, person: "per_bbbbbbbbbbbbbbbbbbbbbbbbbb" }] });
+  assert.equal(row.kind, "task");
+  assert.equal(row.title, title);
+  assert.equal(row.source, "space-vault");
+  assert.equal(JSON.stringify(row).includes("per_bbbbbbbbbbbbbbbbbbbbbbbbbb"), false);
+  assert.ok(OWNERS.some(o => o.tool === "vault.space.attention" && o.map === fromSpaceVault));
+  const items = createItems({
+    now: () => 5,
+    call: async (tool) => tool === "vault.space.attention" ? { data: { items: [{ space: "spc_test_juniper", title, at: 5 }] } } : { data: [] },
+    on: () => () => {},
+  });
+  const list = await items.list();
+  const card = list.items.find((/** @type {any} */ i) => i.source === "space-vault");
+  assert.equal(card.title, title);
+  assert.equal(JSON.stringify(card).includes("password"), false);
+});
+
 test("fromJobs: a live job whose last run failed is one card that names it and runs it again", async () => {
   const { fromJobs, OWNERS } = await import("./items.js");
   const rows = fromJobs([{ deployment: "dep_0123456789abcdef", name: "nightly-report", at: 5, message: "the job ended with exit 3 in 4 seconds" }, { deployment: "../x", name: "bad" }]);

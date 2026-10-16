@@ -19,6 +19,7 @@ import path from "node:path";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { PKG_ROOT } from "../../kernel/devbuild.js";
 import { isPerson, agentName } from "../../lib/caller.js";
+import { chainPerson } from "../../lib/member-scope.js";
 import { frontMatter } from "../../lib/docs-corpus.js";
 import { buildIndex, search } from "../../lib/docs-rank.js";
 import { tokens } from "../../lib/tokens.js";
@@ -166,9 +167,10 @@ export default {
     const scopeOf = async (meta, wantProject) => {
       const person = isPerson(meta);
       const agent = agentName(meta);
+      const person_id = await chainPerson(ctx.kernel, meta);
       /** @type {any} */ let reach = null;
       try {
-        const r = await ctx.call("projects.reach", { caller: String((meta && meta.caller) || ""), ...(agent ? { agent } : {}), ...(meta && meta.thread ? { thread: meta.thread } : {}), kind: "content", person });
+        const r = await ctx.call("projects.reach", { caller: String((meta && meta.caller) || ""), ...(agent ? { agent } : {}), ...(meta && meta.thread ? { thread: meta.thread } : {}), kind: "content", ...(person_id ? { person_id } : {}) });
         reach = r && !r.error ? r.data : null;
       } catch { reach = null; }   // refused (a guest, an unnamed session) or unavailable: no private level
       const mine = reach && reach.all === true ? await allProjects() : reach && Array.isArray(reach.projects) ? reach.projects.map((/** @type {any} */ p) => ({ slug: String(p.slug), folders: Array.isArray(p.folders) ? p.folders.map(String) : [] })) : [];

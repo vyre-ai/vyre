@@ -152,13 +152,15 @@ test("the switchboard says thread.placing while a chat's process starts on the c
   assert.deepEqual(said.at(-1).payload, { thread: "thr_1", state: "fallback", computer: "Office Mac", reason: "unavailable" });
 });
 
-test("the switchboard asks for a lent spawn for a claude session only, and a failing lookup is the box's", async () => {
+test("the switchboard asks for a lent spawn for each process agent (Claude, Codex, Grok), and a failing lookup is the box's", async () => {
   const fn = () => ({});
   const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native", turnAsker: new Map() });
   const ask = (/** @type {any} */ self, /** @type {any} */ rec) => lentOf(self, "thr_1", rec);
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "claude" })), "function");
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, {})), "function", "claude is the default");
-  assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
+  assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "codex" })), "function");
+  assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "grok" })), "function");
+  assert.equal(await ask(sb(async () => fn), { provider: "openrouter" }), undefined, "in-process providers are not lent");
   assert.equal(await ask(sb(async () => null), { provider: "claude" }), undefined);
   assert.equal(await ask(sb(async () => { throw new Error("no host"); }), { provider: "claude" }), undefined);
   assert.equal(await ask({ deps: {}, chatOf: () => null, nativeOf: () => "x", turnAsker: new Map() }, {}), undefined);
@@ -369,9 +371,10 @@ test("the last door and every writer: nothing reaches a process on a computer un
   const t3 = { ...base(), db: { prepare: (/** @type {string} */ sql) => ({ all: () => [{ uuid: "u", text: "t", images: null, at: 1 }], run: () => { ran3.push(sql); return { changes: 1 }; } }) }, write: Switchboard.prototype.write, emit() {} };
   assert.equal(Switchboard.prototype.restoreSteers.call(t3, SESSION), false);
   assert.ok(!ran3.some(q => /DELETE FROM threads_steers/.test(q)), "the saved words were kept");
-  // a Codex or Grok thread of the same chat is the server's: the owner's Claude row does not block it
-  const codex = { ...base(), record: () => ({ provider: "codex", project: null, status: "idle" }) };
-  assert.equal(lentBlocks(codex, SESSION, codex.live.get(SESSION), CAROL), false, "not a Claude thread: never on a computer");
+  const codexBox = { ...base(), record: () => ({ provider: "codex", project: null, status: "idle" }), live: new Map([[SESSION, { turn: null, proc: { where: "box" } }]]) };
+  assert.equal(lentBlocks(codexBox, SESSION, codexBox.live.get(SESSION), CAROL), false, "Codex on the server is not blocked by a Mac row");
+  const codexMac = { ...base(), record: () => ({ provider: "codex", project: null, status: "idle" }), deps: { lentRow: () => row }, live: new Map([[SESSION, { turn: null, proc: { where: "lent" } }]]) };
+  assert.equal(lentBlocks(codexMac, SESSION, codexMac.live.get(SESSION), CAROL), true, "Codex on a member's computer blocks another person's turn");
 });
 
 

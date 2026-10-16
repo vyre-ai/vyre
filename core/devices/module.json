@@ -1,0 +1,16 @@
+{
+  "name": "devices",
+  "version": "0.5.3",
+  "description": "Sign a computer in with the space server, the username and the master password.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "devices.signin", "effect": "write", "reach": "person", "outward": true }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

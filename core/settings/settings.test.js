@@ -368,7 +368,7 @@ test("a secret setting's values reach only the person: agents and a device witho
     assert.equal(r.error, undefined, `${caller}: ${JSON.stringify(r)}`);
     assert.deepEqual(r.data.value, { NORTHWIND_TOKEN: "•••• set", LOG_LEVEL: "•••• set" }, caller);
     assert.ok(!JSON.stringify(r).includes("nw-secret-123"), `${caller} saw the value`);
-    assert.equal(r.data.secret, true);
+    assert.equal(r.data.secretSetting, true);
   }
   // A whole group read masks it too.
   const all = await d.registry.call("settings.get", {}, "mcp:agent:kit");

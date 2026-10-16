@@ -324,7 +324,7 @@ function trustedLeader(p) {
  */
 const AGENT_HOSTS = /^(claude|codex|gemini|grok|opencode|cursor-agent|aider|goose)$/;
 /** @param {string} args */
-function agentHost(args) {
+export function agentHost(args) {
   const [a0 = "", a1 = ""] = String(args).trim().split(/\s+/);
   return [a0, a1].some(a => a && AGENT_HOSTS.test(path.basename(a)));
 }

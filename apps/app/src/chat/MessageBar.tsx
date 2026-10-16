@@ -25,6 +25,8 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   const edit = mine && uuid && ctx.onEditMessage ? () => ctx.onEditMessage?.(uuid, text) : undefined;
   const retry = mine && uuid && ctx.onRetryMessage ? () => ctx.onRetryMessage?.(uuid) : undefined;
   const branch = uuid && ctx.onBranchFrom ? () => ctx.onBranchFrom?.(uuid) : undefined;
+  const rewind = uuid && ctx.onRewindTo ? () => ctx.onRewindTo?.(uuid) : undefined;
+  const second = uuid && ctx.onSecondOpinion && !mine ? () => ctx.onSecondOpinion?.(uuid) : undefined;
   const actions: Record<string, (() => void) | undefined> = {
     reply: group?.onReply, copy: done ? () => doCopy(false) : undefined, "copy-md": done ? () => doCopy(true) : undefined, ask: ctx.onHighlight ? ask : undefined, edit, branch,
     pin: group?.onPin ? () => group.onPin?.(!group.pinned) : undefined,
@@ -56,6 +58,8 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
     ...(edit ? [{ label: "Edit", onPress: edit }] : []),
     ...(retry ? [{ label: "Retry", onPress: retry }] : []),
     ...(branch ? [{ label: "Branch from here", onPress: branch }] : []),
+    ...(rewind ? [{ label: "Rewind to here", onPress: rewind }] : []),
+    ...(second ? [{ label: "Second opinion", onPress: second }] : []),
     ...(group?.onReact ? QUICK.map((e) => ({ label: `React ${e}`, onPress: () => group.onReact?.(e) })) : []),
     ...(group?.onPin ? [{ label: group.pinned ? "Unpin" : "Pin", onPress: () => group.onPin?.(!group.pinned) }] : []),
   ];
@@ -64,6 +68,8 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
       {icon(said ? "check" : "copy", said ? "Copied" : "Copy", "C. Shift for Markdown", actions.copy, actions["copy-md"])}
       {icon("back", "Reply", "R", actions.reply)}
       {icon("spark", "Ask about this", "A", actions.ask)}
+      {icon("agents", "Second opinion", undefined, second)}
+      {icon("undo", "Rewind to here", undefined, rewind)}
       {items.length ? (
         <Menu items={items} trigger={
           <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>

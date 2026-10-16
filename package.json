@@ -1,6 +1,6 @@
 {
   "name": "vyre",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "description": "Your team and your AI agents, working together on a server you own. Open source, self-hosted, any model.",
   "type": "module",
   "bin": {
@@ -115,6 +115,9 @@
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**",
+    "!harness/member-relay-harness.js",
+    "apps/app/src/chat/core/commands.js",
+    "apps/app/src/chat/core/match.js",
     "packages/module-sdk/testing.js"
   ],
   "homepage": "https://vyre.run",
@@ -129,5 +132,8 @@
     "self-hosted",
     "vault",
     "memory"
-  ]
+  ],
+  "optionalDependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
 }

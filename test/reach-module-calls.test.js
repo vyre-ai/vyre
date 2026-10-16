@@ -13,7 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SKIP = new Set(["node_modules", ".git", "testing"]);
+const SKIP = new Set(["node_modules", ".git", "testing", ".build"]);
+const skipPath = (/** @type {string} */ p) => {
+  const rel = path.relative(root, p).split(path.sep).join("/");
+  if (rel.includes("/.build/") || rel.startsWith("local/capsule/native-win/")) return true;
+  return false;
+};
 /** "module:tool" pairs that pass a person's own caller or a said row on purpose. */
 const PERSON_PROXY = new Set([
   // import.sessions.run files the chosen sessions in their projects as the person who chose them (ctx.call relay: true, core/modules RELAY_ALLOWED.import) and takes the picks back as that person if the upload cannot start; its consent to the box's sync is the person's too (sync.consent is a person surface, never a module's).
@@ -30,6 +35,8 @@ const PERSON_PROXY = new Set([
   // core/appmods relays the person who installs or removes an app to that app's own Connection (ctx.call as: meta.caller; the registry limits it to connectors.connection.create and .delete, checkRelayTool): the person calling, not a module.
   "appmods:connectors.connection.create",
   "appmods:connectors.connection.delete",
+  // core/daemon/index.js wires the lent home's compute hook: module:vyred reads a member's spaces.compute.status (the tool allows vyred for { person } ≠ self; see onlyModules in spaces.compute.status).
+  "daemon:spaces.compute.status",
 ]);
 
 /** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */
@@ -41,13 +48,14 @@ function relayAllowed() {
   for (const m of block[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1]);
   return out;
 }
-const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ call) =>
-  /,\s*\{\s*relay:\s*true\s*\}\s*\)/.test(call) && (allow[mod] || []).some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)));
+const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ src, /** @type {number} */ at) =>
+  /,\s*\{\s*relay:\s*true\s*\}\s*\)/.test(src.slice(at, at + 480)) && (allow[mod] || []).some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)));
 
 function* files(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue;
     const p = path.join(dir, e.name);
+    if (skipPath(p)) continue;
     if (e.isDirectory()) yield* files(p);
     else yield p;
   }
@@ -88,7 +96,7 @@ test("no first-party module calls, as a module, a tool whose reach refuses modul
         if (!r || !["asked", "person", "hook"].includes(r)) continue;
         if (tool.split(".")[0] === mod && !/ctx\.call/.test(m[0])) continue; // a module's own internal helper named call()
         if (PERSON_PROXY.has(`${mod}:${tool}`)) continue;
-        if (relayedOk(allow, mod, tool, src.slice(m.index, m.index + 160))) continue;   // a relayed call runs as the person (the registry refuses it unless core/modules RELAY_ALLOWED lists it and a person is on the call)
+        if (relayedOk(allow, mod, tool, src, m.index)) continue;   // a relayed call runs as the person (the registry refuses it unless core/modules RELAY_ALLOWED lists it and a person is on the call)
         bad.push(`${path.relative(root, f)}: ${tool} (reach ${r})`);
       }
     }

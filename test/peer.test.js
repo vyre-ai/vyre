@@ -260,14 +260,14 @@ test("peer: a person-only call from under a claude is refused silently; the same
   const inside = await client(dir, socket, "agents.create", { name: "kit" }, { underClaude: true });
   assert.equal(inside.status, 403, JSON.stringify(inside));
   assert.equal(inside.body.error.code, "denied", "refused, never asked for a proof");
-  assert.match(inside.body.error.message, /inside a Claude session/);
+  assert.match(inside.body.error.message, /inside a coding-agent session/);
   const answer = await client(dir, socket, "threads.answer", { ask: "0123456789abcdef01", decision: "allow" }, { underClaude: true });
   assert.equal(answer.body.error.code, "denied");
   // Every setting is the person's own too: a model's Bash never changes one, confirm or not.
   for (const [tool, input] of [["settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true }], ["settings.reset", { key: "sessions.mode" }]]) {
     const r = await client(dir, socket, tool, input, { underClaude: true });
     assert.equal(r.status, 403, `${tool}: ${JSON.stringify(r)}`);
-    assert.match(r.body.error.message, /inside a Claude session/);
+    assert.match(r.body.error.message, /inside a coding-agent session/);
   }
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "nothing was made");
 
@@ -279,11 +279,11 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // link.call is traced by what it carries: a person's tool inside it is refused as that tool is.
   const carried = await client(dir, socket, "link.call", { tool: "threads.answer", input: {} }, { underClaude: true });
   assert.equal(carried.status, 403, JSON.stringify(carried));
-  assert.match(carried.body.error.message, /inside a Claude session/);
+  assert.match(carried.body.error.message, /inside a coding-agent session/);
   // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
   const held = await client(dir, socket, "presence.code", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
   assert.equal(held.status, 403, JSON.stringify(held));
-  assert.match(held.body.error.message, /inside a Claude session/);
+  assert.match(held.body.error.message, /inside a coding-agent session/);
 });
 
 test("peer: a tool with person-only callers is refused under a claude by name alone, even off PERSON_ONLY's own hand-kept list (e2e review, 28 Sep)", async t => {
@@ -301,7 +301,7 @@ test("peer: a tool with person-only callers is refused under a claude by name al
   const inside = await client(dir, socket, "link.pair", {}, { underClaude: true });
   assert.equal(inside.status, 403, JSON.stringify(inside));
   assert.equal(inside.body.error.code, "denied");
-  assert.match(inside.body.error.message, /inside a Claude session/);
+  assert.match(inside.body.error.message, /inside a coding-agent session/);
   const outside = await client(dir, socket, "link.pair", { box: "https://127.0.0.1:1" });
   assert.notEqual(outside.status, 403, JSON.stringify(outside));
 
@@ -338,7 +338,7 @@ test("peer: a person's label from under a claude is the session's own, for every
     const mine = await client(dir, socket, "probe.mine", {}, { underClaude: true, headers });
     assert.equal(mine.status, 403, `${label}: ${JSON.stringify(mine)}`);
     // Refused to the model's label by the callers gate, or by the floor when the tool is person-only: either way a model's shell does not reach a tool made for the person's surfaces.
-    assert.match(mine.body.error.message, /inside a Claude session|is not available to mcp callers/);
+    assert.match(mine.body.error.message, /inside a coding-agent session|is not available to mcp callers/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
     assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
@@ -358,7 +358,7 @@ test("peer: a person's label from under a claude is the session's own, for every
   assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers: { "x-vyre-caller": "mcp" } })).body.data.caller, "mcp");
   const made = await client(dir, socket, "agents.create", { name: "juno" }, { underClaude: true });
   assert.equal(made.status, 403);
-  assert.match(made.body.error.message, /inside a Claude session/);
+  assert.match(made.body.error.message, /inside a coding-agent session/);
 });
 
 test("peer: an agent is named only as mcp:agent or harness:agent; a surface's label naming one is refused before any key is checked", async t => {

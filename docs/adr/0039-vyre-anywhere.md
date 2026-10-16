@@ -8,6 +8,8 @@ status: draft
 
 # ADR 0039: Vyre anywhere
 
+Superseded in part by [ADR 0054](0054-a-server-or-a-device.md): a Vyre install is a server or a device. The Solo shape below is no longer a way to run Vyre. The rest of this record stands as written.
+
 Status: proposed, 28 Sep 2026. Supersedes the "server means a Linux box" assumption in SPEC and
 in `core/config`'s `defaults()`, which picked `role` from `process.platform` alone.
 

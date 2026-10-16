@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, Markdown, MatchWords, PasswordField, ProviderRow, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, MatchWords, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -228,6 +228,22 @@ function Sample({ name }: { name: string }) {
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }
+  if (name === "chat-capabilities") {
+    return (
+      <View style={{ gap: 16, maxWidth: 620 }}>
+        <SlashChips title="Slash commands (threads.slash on the kernel)" />
+        <ChatForkPanel><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></ChatForkPanel>
+        <Text strong>Chat panel: context roll, tasks, transcript</Text>
+        <PanelSample phone={false} page="context" />
+        <Text strong>Follow-up (/later → planner)</Text>
+        <LaterPlannerNote s={{ kind: "scheduled", title: "Check the filing status", when: "at 5pm" }} onClear={() => {}} />
+        <Text strong>Background task card</Text>
+        <BackgroundTasksCard tasks={[{ id: "a", title: "npm run e2e", status: "started", live: true }]} />
+        <Text strong>Design library: panel rows</Text>
+        <Card flush><PanelCapabilityRows first onMemory={() => {}} onExport={() => {}} onRoll={() => {}} onContext={() => {}} onTasks={() => {}} onTranscript={() => {}} runningCount={1} /></Card>
+      </View>
+    );
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
@@ -247,18 +263,24 @@ function StartingSample() {
   return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
-/** The guided-flow kit (FlowStep, Stack, CodeField, CodeDisplay, MatchWords, PasswordField, ChoiceList, ProviderRow) in one page: /gallery?f=flow-kit. */
+/** The guided-flow kit in one page: /gallery?f=flow-kit. Phases, not a step count. */
 function FlowKit() {
   const [code, setCode] = useState("WINK-7QMK");
   const [pw, setPw] = useState("river amber");
   const [pick, setPick] = useState<"a" | "b">("a");
+  const [saved, setSaved] = useState(false);
   return (
-    <FlowStep steps={{ labels: ["Identity", "Master password", "Inference", "Space", "Ready"], current: 1 }} onBack={() => {}} title="Flow step" lead="Back, the step strip, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
+    <FlowStep steps={{ labels: ["Identity", "Space", "Ready"], current: 1, kind: "phase" }} onBack={() => {}} title="Flow step" lead="Back, the phase, a title and one line, the body, a failure, one primary." failure="What went wrong, in words, and what to do next." primary={{ label: "Primary action", onPress: () => {} }} secondary={{ label: "Quiet alternative", onPress: () => {} }}>
       <CodeField label="Code field" prefix="WINK" value={code} onChangeText={setCode} />
       <CodeDisplay label="Code display" code="WINK-7QMK-4P2X" note="Good for 10 min." />
-      <MatchWords label="Match words" words={["river", "amber", "stone", "quiet"]} note="Check them against your server." />
+      <RecoveryKeySheet secret="R1-SAMPLE-KEY-SHOWN-ONCE" saved={saved} onSaved={setSaved} />
       <PasswordField label="Password field" meter value={pw} onChangeText={setPw} />
+      <ChoiceHero title="Your space" lead="Join one you were invited to, or create one." value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "A Linux server or an always-on Mac.", icon: "server" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "link" }]} />
       <ChoiceList label="Choice list" value={pick} onChange={setPick} options={[{ value: "a", title: "Create a space", sub: "You need a server.", icon: "space" }, { value: "b", title: "Join a space", sub: "Someone invited you.", icon: "users" }]} />
+      <InviteShare link="https://vyre.run/i/sampletoken" />
+      <ServerUrlField value="https://juniper.vyre.run" onChangeText={() => {}} />
+      <ProviderSignInButton onPress={() => {}} />
+      <NeedsYouCard title="An assistant wants to add your phone" why="Approving adds the phone. Nothing changes until you do." facts={["space: juniper"]} onApprove={() => {}} onDeny={() => {}} />
       <Card flush>
         <ProviderRow provider="claude" title="Claude" sub="Sign in with your Claude subscription." state="idle" onConnect={() => {}} />
         <ProviderRow provider="codex" title="Codex" sub="Sign in with your ChatGPT account." state="connected" onConnect={() => {}} onTest={() => {}} />
@@ -315,6 +337,7 @@ export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string; door?: string; tab?: string; grant?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "chat-capabilities") return <ThemeProvider><Page><View nativeID="fixture"><Sample name="chat-capabilities" /></View></Page></ThemeProvider>;
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
   if (q.f === "sites-real" || q.f === "sites-real-site") {
     // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.

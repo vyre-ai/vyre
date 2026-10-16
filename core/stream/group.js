@@ -60,9 +60,16 @@ const MIGRATIONS = [`
 `ALTER TABLE stream_groups_outbox ADD COLUMN images TEXT;`,
 // The AI account the sender chose for this one message ("provider" or "provider:account"): it runs on THEIR account, not the thread's (0.3.3 G04).
 `ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`,
+`ALTER TABLE stream_groups_outbox ADD COLUMN chips TEXT;`,
 // The Space a chat belongs to when it is a TEAM Space's (0.3.3 J9): the chat's record and people are that Space's kernel's, so every kernel question about it (who is in it, may this viewer receive a reply, which
 // session answers) is asked there. A chat of the home's own Space has no row.
-`CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
+`CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`,
+// Cross-person queued turns (Switchboard queued_id) survive a restart until the turn starts.
+`CREATE TABLE stream_groups_queued (
+  grp TEXT NOT NULL, who TEXT NOT NULL, queued_id INTEGER NOT NULL,
+  asker TEXT NOT NULL, answer TEXT NOT NULL, message TEXT NOT NULL, text TEXT NOT NULL,
+  PRIMARY KEY (grp, who, queued_id)
+);`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -146,15 +153,26 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
       ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
-    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz, images, account) VALUES (?,?,?,?,?,?,?,?,?,?,?)"),
+    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz, images, account, chips) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
     outOpen: db.prepare("SELECT * FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid"),
     mark: db.prepare("INSERT INTO stream_groups_marks (person, session, upto) VALUES (?,?,?) ON CONFLICT(person, session) DO UPDATE SET upto = excluded.upto"),
+    queuedAdd: db.prepare("INSERT OR REPLACE INTO stream_groups_queued (grp, who, queued_id, asker, answer, message, text) VALUES (?,?,?,?,?,?,?)"),
+    queuedDel: db.prepare("DELETE FROM stream_groups_queued WHERE grp = ? AND who = ? AND queued_id = ?"),
+    queuedAll: db.prepare("SELECT queued_id, asker, answer, message, text FROM stream_groups_queued WHERE grp = ? AND who = ?"),
   };
 
   /** @param {any} r @returns {Member} */
-  const memberOf = r => ({ grp: String(r.grp), who: String(r.who), name: String(r.name || shortOf(String(r.who))), thread: r.thread ? String(r.thread) : null, cwd: r.cwd ? String(r.cwd) : null,
-    asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, kind: r.kind ? String(r.kind) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
+  const memberOf = r => {
+    const grp = String(r.grp), who = String(r.who);
+    /** @type {Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>} */ const queuedTurns = new Map();
+    for (const row of q.queuedAll.all(grp, who)) {
+      queuedTurns.set(Number(row.queued_id), { asker: String(row.asker), answer: String(row.answer), grp, message: String(row.message), text: String(row.text) });
+    }
+    return { grp, who, name: String(r.name || shortOf(who)), thread: r.thread ? String(r.thread) : null, cwd: r.cwd ? String(r.cwd) : null,
+      asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, kind: r.kind ? String(r.kind) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(),
+      ...(queuedTurns.size ? { queuedTurns } : {}) };
+  };
   const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last, m.kind || null);
 
   // ---- the kernel's chat (ctx.kernel on): tokens with the chat in them, and chats.append ------------------
@@ -400,6 +418,15 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /** The member is not doing anything now: the line clears at once. @param {Member} m */
   function idle(m) { if (!m.doing) return; m.doing = false; try { presenceOf(m.grp).clear(m.who); logs.get(m.grp).emit("presence", { who: m.who, state: "idle" }, { author: m.who }); } catch { /* a notice, never a stop */ } }
 
+  /** A projection error or a reply that cannot open: stop looking busy and tell the room. @param {Member} m */
+  function projectionStuck(m) {
+    if (!m.running && !m.inTurn) return;
+    m.running = false;
+    m.inTurn = false;
+    idle(m);
+    try { logs.get(m.grp).append("status", { state: "waiting" }, { author: m.who }); } catch (err) { log(`status after projection failure in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
+  }
+
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
   /**
@@ -494,7 +521,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if ((s.kind === "text-delta" || s.kind === "text-done") && s.data && s.data.notice === true && (!m.running || !m.inTurn)) { noticeToRoom(m, s); continue; }   // Vyre's own line with no person's turn in flight (a process starting for none, the line after a hop back) belongs to the room, never to a reply under the previous asker
         if (s.kind === "text-delta" || s.kind === "text-done") await reply(m, s); else await activity(m, s);
       }
-    }).catch(err => { log(`projecting ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); });
+    }).catch(err => { log(`projecting ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); projectionStuck(m); });
   }
 
   /**
@@ -504,6 +531,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   function startQueued(m, queued) {
     const w = m.queuedTurns && m.queuedTurns.get(queued); if (!w) return;
     m.queuedTurns.delete(queued);
+    try { q.queuedDel.run(m.grp, m.who, queued); } catch { /* already gone */ }
     m.asker = w.asker; m.answer = w.answer; m.msgs = new Map(); m.dead = false; m.running = true; m.inTurn = true; save(m);
     shown(w.grp, w.message, "picked-up", w.text, w.asker, queued);
   }
@@ -662,7 +690,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         return;
       }
       closeStep(m);
-      if (!b.h && !(await begin(m, b, message))) return;
+      if (!b.h && !(await begin(m, b, message))) { if (!m.dead) projectionStuck(m); return; }
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
       if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat: a person in the chat adds it again (work.chat.change)"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
       const text = String(s.data.text);
@@ -673,7 +701,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
     if (!b.h && !b.reply && blocks.length === 0) { b.items.push({ ...s, data: { ...s.data, message } }); return; } // reasoning so far: held until the turn ends
     // The reply is opened first: opening it reads the kernel's list for this room (begin), so the decision below is made on the room as it is now, not on a mirror that may be stale.
-    if (!b.h && !(await begin(m, b, message))) return;
+    if (!b.h && !(await begin(m, b, message))) { if (!m.dead && !refused.has(message)) projectionStuck(m); return; }
     // A room of more than one person (the kernel's own list, mirrored here), or one this group cannot count: the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
     if (inRoom(m.grp) && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
       log(`text-done for ${m.who} in ${m.grp}: a field value was dropped (cite it as a field-ref)`);
@@ -805,7 +833,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...(row.images ? { images: JSON.parse(String(row.images)) } : {}), ...(row.account ? { mentions: [{ kind: "account", id: String(row.account) }] } : {}), ...turn }));
+      const chipList = (() => { try { const raw = row.chips ? JSON.parse(String(row.chips)) : []; return Array.isArray(raw) ? raw.filter((/** @type {any} */ c) => c && c.kind && c.id) : []; } catch { return []; } })();
+      const mentions = [...chipList, ...(row.account ? [{ kind: "account", id: String(row.account) }] : [])];
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...(row.images ? { images: JSON.parse(String(row.images)) } : {}), ...(mentions.length ? { mentions } : {}), ...turn }));
       let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
@@ -841,7 +871,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (r && r.queued_id != null && (r.queued === true || typeof r.queued === "number")) {
       // Waiting for the current reply: the queued message is shown so, by the id the Switchboard gave, and its turn starts under its own asker.
       if (!mayQueue) { Object.assign(m, prev); save(m); }
-      (m.queuedTurns ||= new Map()).set(Number(r.queued_id), { asker, answer: String(row.answer), grp: String(row.grp), message: messageOf(row), text: String(row.text) });
+      const qid = Number(r.queued_id);
+      const w = { asker, answer: String(row.answer), grp: String(row.grp), message: messageOf(row), text: String(row.text) };
+      (m.queuedTurns ||= new Map()).set(qid, w);
+      try { q.queuedAdd.run(m.grp, m.who, qid, w.asker, w.answer, w.message, w.text); } catch { /* a notice, never a stop */ }
       shown(String(row.grp), messageOf(row), "queued", String(row.text), asker, Number(r.queued_id));
     } else if (mayQueue) take();
     q.outDone.run(row.uuid);
@@ -1014,9 +1047,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       // The sender's own choice of AI for this message (the composer's account chip): provider or provider:account.
       const account = typeof i.account === "string" && /^[a-z][a-z0-9-]{0,30}(:[A-Za-z0-9._-]{1,64})?$/.test(i.account) ? i.account : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : "") + (carried.noteOf(a.who) ? `\n\n${carried.noteOf(a.who)}` : ""), asker: author, answer: a.message, surface, mode, tz, account, images: carried.imagesOf(a.who).length ? JSON.stringify(carried.imagesOf(a.who)) : null };
+        const chipsJson = Array.isArray(i.chips) && i.chips.length ? JSON.stringify(i.chips.filter((/** @type {any} */ c) => c && c.kind && c.id).slice(0, 8)) : null;
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : "") + (carried.noteOf(a.who) ? `\n\n${carried.noteOf(a.who)}` : ""), asker: author, answer: a.message, surface, mode, tz, account, images: carried.imagesOf(a.who).length ? JSON.stringify(carried.imagesOf(a.who)) : null, chips: chipsJson };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
-        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz, row.images, row.account);
+        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz, row.images, row.account, row.chips);
         return row;
       });
       for (const r of rows) void schedule(r);
