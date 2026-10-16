@@ -17,7 +17,8 @@ function boxFor(ctx: UiCtx, kind: string, size: string, phone: boolean) {
   const c = ctx.color;
   const fill = kind === "primary" ? c.primary : kind === "danger" || kind === "hold" ? c["err-wash"] : kind === "secondary" && phone ? c["surface-3"] : "transparent";
   const edge = kind === "secondary" && !phone ? c["edge-strong"] : "transparent";
-  const height = size === "lg" ? px(ctx, "--s-12") : size === "md" ? px(ctx, "--control") : px(ctx, "--control-sm");
+  const height = size === "lg" ? px(ctx, "--s-12") : px(ctx, "--control");
+  if (size === "sm" && !phone) height = px(ctx, "--control-sm");
   const pad = size === "lg" ? px(ctx, "--s-5") : size === "md" ? px(ctx, "--s-4") : px(ctx, "--s-3");
   return { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: px(ctx, "--s-2"), borderRadius: px(ctx, "--r-button"), borderWidth: 1, borderColor: edge, backgroundColor: fill, height, paddingHorizontal: pad, overflow: "hidden" } as const;
 }
