@@ -661,7 +661,7 @@ const RELAY_ALLOWED = Object.freeze({
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
-  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"], identity: ["spaces.identity.create"], // identity.create claims the name as the person who asked
 });
 
 export class Registry {

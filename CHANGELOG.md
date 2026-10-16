@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(identity): creating a username claims the name as the person who asked, so the person-only name claim runs for them.
 - fix(vault): the master password is the root of the personal vault. When it is unlocked, that key is the device key the vault adopts, and `vault/key` is rewritten from it so the two cannot diverge. With nobody unlocked, that server copy still opens the agent vault, so lending does not wait. A master record with no held key and no server copy does not invent a second key. A held key that does not open the agent vault fails closed. See ADR 0054.
 - fix(approvals): a password, passphrase, secret or recovery key is stripped before an approval card is built, stored or hashed, including when the field is nested. The card is built from a copy, so the call that runs still has its fields.
 - fix(spaces): a limited device cannot transfer ownership of a space.

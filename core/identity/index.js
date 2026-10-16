@@ -63,7 +63,8 @@ export default {
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
         const name = checkUsername(input.username);
         const password = M.checkPassword(input.password);
-        const r = await ctx.call("spaces.identity.create", { name, password: "", ...(input.code ? { code: input.code } : {}), ...(input.deviceLabel ? { deviceLabel: input.deviceLabel } : {}) });
+        const claim = { name, password: "", ...(input.code ? { code: input.code } : {}), ...(input.deviceLabel ? { deviceLabel: input.deviceLabel } : {}) };
+        const r = await ctx.call("spaces.identity.create", claim, { relay: true });
         if (!r || r.error) throw refuse((r && r.error && r.error.message) || "The name could not be claimed. Try again.", (r && r.error && r.error.code) || "failed");
         const recoveryKey = r.data && r.data.recoveryCode;
         if (!recoveryKey) throw refuse("The identity did not return a recovery key. Try again.", "failed");
