@@ -9,6 +9,13 @@ import { createSetupKey, setupFingerprint } from "../../relay/client/setup.js";
 import { createSetupPage } from "./setup-http.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+const SPACE_ID = /^spc_[a-z2-7]{8,}$/;
+
+/** The home space id, once this server has a kernel. Empty until then. @param {any} ctx */
+function kernelSpace(ctx) {
+  const id = ctx && ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
+  return SPACE_ID.test(id) ? id : "";
+}
 const str = { type: "string" };
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 
@@ -62,8 +69,10 @@ export async function redeemInstallCode(o, code) {
     throw fail(err.code === "no_such_tool" ? "unavailable" : (err.code || "unavailable"), "This server could not be made yours. Make a new install line in the Vyre app and run it again.");
   }
   meta.set("install_setup_locked", { at: now(), person: v.person });
+  const space = kernelSpace(o.ctx);
+  if (space) meta.set("install_space", space);
   try { o.ctx.events && o.ctx.events.emit("wink.server-adopted", { owner: { kind: "identity", id: v.person } }); } catch { /* the owner record stands either way */ }
-  return { ok: true, person: v.person };
+  return { ok: true, person: v.person, ...(space ? { space } : {}) };
 }
 
 /**
@@ -137,7 +146,9 @@ export function registerInstallPair(o) {
       const row = o.meta.get("install_client");
       const owner = o.meta.get("owner");
       const person = owner && owner.identity ? String(owner.identity) : (row && row.person) || null;
-      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned: Boolean(owner), person, locked: Boolean(o.meta.get("install_setup_locked")) };
+      const stored = o.meta.get("install_space");
+      const space = (typeof stored === "string" && SPACE_ID.test(stored) ? stored : "") || (owner ? kernelSpace(ctx) : "");
+      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned: Boolean(owner), person, locked: Boolean(o.meta.get("install_setup_locked")), space: space || null };
     },
   });
 

@@ -182,6 +182,7 @@ test("issue returns the line and never the signing key, and complete pairs from 
   const status = await tools.get("wink.install.status").run();
   assert.equal(status.issued, true);
   assert.equal(status.owned, false);
+  assert.equal(status.space, null);
   const done = await tools.get("wink.install.complete").run();
   assert.equal(done.pairing, "pr_test");
   assert.equal(saw.qr, "vyre://wink/2?t=abc");
@@ -190,6 +191,22 @@ test("issue returns the line and never the signing key, and complete pairs from 
   meta.set("owner", { kind: "identity", id: issued.person, identity: issued.person });
   const owned = await tools.get("wink.install.complete").run();
   assert.equal(owned.owned, true);
+});
+
+test("status returns the space id once the server adopts the creator", async () => {
+  const me = identity();
+  const made = await mintPairCode({ publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
+  const meta = metaOf();
+  const ctx = ctxOf(meta);
+  ctx.kernel = { space: "spc_aaaaaaaaaa" };
+  /** @type {Map<string, any>} */ const tools = new Map();
+  ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def);
+  const redeemed = await redeemInstallCode({ ctx, meta, now: NOW }, made.code);
+  assert.equal(redeemed.space, "spc_aaaaaaaaaa");
+  registerInstallPair({ ctx, meta, now: NOW });
+  const status = await tools.get("wink.install.status").run();
+  assert.equal(status.owned, true);
+  assert.equal(status.space, "spc_aaaaaaaaaa");
 });
 
 test("the tools are declared once, outward for the owner-changing ones, and open to a proven assistant", () => {
