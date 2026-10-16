@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - feat(windows): the Windows shell summarises a yes-moment proof the way the Mac shell does (canonical payload hash, then "Approve:" and the card's fields), and it tries Windows Hello, then the TPM, then the software key store. A Hello prompt per signature is still not proven on hardware, so the key stays held and the shell asks in its own window before the key signs.
+- fix(onboard): the Needs-you line for creating an identity names the username and does not show the master password.
 - feat(onboard): first run is Identity, a space, then Ready, on the web, the Mac app and the Windows app. Solo is not a mode. A stored machine of solo loads as a device, with no notice and no move. `onboard.machine` does not accept solo. The screens call `onboard.*`, which call `identity.create`, `identity.unlock`, `devices.signin` and `wink.install.*` when that server has them.
 - feat(mcp): `onboard.machine`, `onboard.windows`, `releases.info` and the first-run tools are kernel tools an MCP caller can drive. Only an assistant's change to people, devices or vault access waits for one Needs-you tap. A person in their own app does not wait. An assistant never receives a vault value. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.
 - ci(windows): lumen-win typechecks the Tauri app and the ncrypt path on windows-latest. The check does not need a TPM or the web bundle.
