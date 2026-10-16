@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mintPairCode, verifyPairCode, installCommand, PAIR_CODE_LEN, personIdOfKey } from "../lib/pair-code.js";
+import { PROVEN_NAMED_AGENT_CALLERS } from "../lib/proven-agent-callers.js";
 import { mintPairCode as mintInApp } from "../relay/client/pair-install.js";
 import { redeemInstallCode, registerInstallPair, publishedDeviceKeys } from "../core/wink/install-pair.js";
 import { registerPairInstall } from "../core/spaces/pair-install.js";
@@ -242,6 +243,19 @@ test("the person's own issue runs, and an agent's issue and complete wait at the
   assert.notEqual(person.error && person.error.code, "held_for_approval");
   assert.ok(!(person.error && /Nothing ran/.test(person.error.message || "")));
   if (!person.error) assert.match(person.data.command, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
+  await t.test("each proven agent label is held for install issue (same Gate for every provider)", async (st) => {
+    const root2 = tempHome(st);
+    fs.writeFileSync(path.join(root2, "config.json"), JSON.stringify({ name: "test-box-2", role: "box", modules: { disable: ["agents", "computers"] } }));
+    const d2 = await start({ root: root2, presence: present, log: () => {}, kernel: true });
+    asOwner(d2, root2);
+    st.after(() => d2.stop());
+    const call2 = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => d2.registry.call(tool, input, caller, meta);
+    for (const caller of PROVEN_NAMED_AGENT_CALLERS) {
+      const held = await call2("wink.install.issue", { kind: "mac" }, caller, { thread: "thr_install" });
+      assert.equal(held.error && held.error.code, "held_for_approval", caller);
+      assert.match(held.error.message, /Nothing ran/);
+    }
+  });
   for (const tool of ["spaces.pair.install", "wink.install.issue", "wink.install.complete"]) {
     const held = await call(tool, tool.endsWith("complete") ? {} : { kind: "mac" }, "mcp:agent:kit", { thread: "thr_install" });
     assert.equal(held.error && held.error.code, "held_for_approval", tool);

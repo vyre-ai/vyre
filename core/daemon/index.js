@@ -1051,7 +1051,7 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
 async function fromClaude(socket, registry, caller) {
   const who = await above(socket, registry, caller);
   if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
-  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
+  if (who.inside) return "this comes from inside a coding-agent session (Claude, Codex, Grok or another), which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
 }
 
@@ -1589,7 +1589,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
       const who = await above(req.socket, registry, caller);
       if (who.nopid) return send(res, 403, { error: { code: "denied", message: "vyred cannot tell which process is calling, so this is refused" } });
-      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence" } });
+      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a coding-agent session (Claude, Codex, Grok or another), which acts as an agent: only the person answers, approves and proves presence" } });
       if (who.unknown) {
         if (!(who.server && await serverTrusted(who.server, req.headers["x-vyre-presence"], caller, registry))) {
           // The full path, pid and start time, never a basename: a model can name its own process

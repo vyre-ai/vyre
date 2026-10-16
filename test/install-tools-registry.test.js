@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OPEN } from "../core/modules/agent-reach.js";
+import { PROVEN_NAMED_AGENT_CALLERS } from "../lib/proven-agent-callers.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,4 +45,9 @@ test("spaces.pair.install covers the mint and onboard polls through wink.install
   assert.match(src, /wink\.install\.status/);
   assert.match(src, /resolveInstallOnline/);
   assert.doesNotMatch(src, /row\.online\s*=/);
+});
+
+test("proven named agent callers are listed for cross-provider Gate tests", () => {
+  assert.ok(PROVEN_NAMED_AGENT_CALLERS.includes("mcp:agent:kit"));
+  assert.ok(PROVEN_NAMED_AGENT_CALLERS.some((c) => c.includes("codex") || c.includes("grok")));
 });
