@@ -166,8 +166,8 @@ $app = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
 if (-not (Test-Path $app)) { throw "The installer finished but $app is not there." }
 Register-VyreAutostart -ExePath $app
 
-# The setup code is not handed to the app yet: how the app claims with it is launch's contract,
-# still open. Until then the app starts at its own first-run screen, and $code stays in memory only.
+# Pairing is wink.server.adopt. That confirms the published key through spaces.identity.confirm-key, the same check as the install line, the setup page, a Mac server and a phone.
+# VYRE_CODE is the same environment variable the Linux and Mac line use. This process keeps it, and the app inherits it. It is never written to a file and never passed as an argument.
 Start-Process -FilePath $app
 
 Write-Host ""

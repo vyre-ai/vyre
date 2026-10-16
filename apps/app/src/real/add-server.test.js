@@ -154,7 +154,7 @@ test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Record
   const a = make(f);
   await a.begin("records", "mac");
   assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "auto", os: "mac" }));
-  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/box\/install-mac-server\.sh \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
+  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
   a.stop();
 });
 
