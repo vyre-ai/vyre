@@ -87,8 +87,6 @@ export const ALLOW = {
     why: "the path gate every file path passes through" },
   "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
     why: "vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2); permanent by design, lead's OK pending" },
-  "core/vault -> core/link": { files: ["core/link/transport.js"], next: "lib",
-    why: "vault relay between the Mac and the box" },
   "local/capsule -> core/cli": { files: ["core/cli/commands/capsule-native.js"], next: "lib",
     why: "where the native Capsule app is built, shared with vyre capsule" },
   "local/hands-mac -> local/screen-mac": { files: ["local/screen-mac/floor.js"], next: "lib",
