@@ -29,7 +29,7 @@ export function identityPorts(o) {
       // The same published-key check as install redeem and owner adopt. Passkeys and enclave keys count (full is left unset).
       /** @type {any} */ let confirmed;
       try { confirmed = await o.call("spaces.identity.confirm-key", { id: identity, key: e.pub }); }
-      catch { throw Object.assign(new Error("the directory could not be reached"), { code: "unreachable" }); }
+      catch { throw Object.assign(new Error("The directory could not be reached; wait a minute and try again."), { code: "unreachable" }); }
       if (!confirmed || confirmed.error) {
         const c = confirmed && confirmed.error && confirmed.error.code;
         const m = String((confirmed && confirmed.error && confirmed.error.message) || "the published key was refused");

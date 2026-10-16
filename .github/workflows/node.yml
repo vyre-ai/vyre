@@ -17,6 +17,23 @@ concurrency:
   # The integration tip (work/lead-*) never cancels: a run finishes and the newest tip waits behind it, so a full result always arrives.
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2' }}
 jobs:
+  # docs-check harvests every module in a child process; on shard 2 it used to run beside person-only-guard and the rest of the shard under full parallelism, and a slow harvest made the committed reference pages look stale. This job runs it alone; the sharded test job omits the file (VYRE_TEST_OMIT).
+  docs:
+    strategy:
+      matrix:
+        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --test --test-concurrency=1 test/docs-check.test.js
   test:
     strategy:
       fail-fast: false
@@ -63,6 +80,7 @@ jobs:
       - run: npm test
         env:
           VYRE_TEST_SHARD: ${{ matrix.shard }}/5
+          VYRE_TEST_OMIT: test/docs-check.test.js
           VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && '2' || '' }}
           VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
       - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 24 }}

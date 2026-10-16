@@ -8,6 +8,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import {
   applyFakeSessionProvider,
   ensureFakeSessionProvider,
+  ensureMemberLoginAccounts,
   FAKE_SESSION_PROVIDERS,
   threadStartProviderFields,
 } from "../sessions/testing/fake-agent-harness.js";
@@ -79,6 +80,7 @@ export function scratchWork(t, prefix = "vyre-relay-") {
 export async function groupChat(d, K, OWNER, work, provider = "claude") {
   const { ownerChain, carolMeta, bobMeta } = await twoMembers(d, K, OWNER);
   await ensureFakeSessionProvider(d, provider);
+  await ensureMemberLoginAccounts(d, [["Carol", carolMeta], ["Bob", bobMeta]], provider);
   const thO = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", ...threadStartProviderFields(provider) }, "cli");
   if (thO.error) throw new Error(JSON.stringify(thO.error));
   const chat = (await d.registry.call("threads.get", { thread: thO.data.id, limit: 1 }, "cli")).data.thread.chat;

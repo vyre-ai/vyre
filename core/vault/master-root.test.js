@@ -75,7 +75,7 @@ test("a master key that does not open the agent vault fails closed and leaves th
 
 test("installHeldKey puts the held key into a vault that is not open yet and drops plaintext", async (t) => {
   const { root, vault } = home(t);
-  const made = serverVaultKey(root);
+  const made = crypto.randomBytes(32);
   assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
   master(root, Buffer.from(made));
   assert.equal(vault.vk, null);
