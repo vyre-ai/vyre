@@ -15,7 +15,7 @@ import { peerDuplex, peerWanted } from "../real/peer";
 import { showingJoined, teamCall, teamSession } from "../real/team-join";
 import { tool } from "../real/box";
 import { useSpaces } from "../../screens/shell/state";
-import { pollDuplex } from "./member-poll.js";
+import { liveDuplex } from "./member-live.js";
 import { AppState, Platform } from "react-native";
 import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
@@ -66,7 +66,7 @@ async function write(tool: string, input: Record<string, unknown>) {
 export function boxStream(session: string): BoxStream {
   let viewer: string | undefined;
   let head = 0;
-  // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read over the member door (chat.read, polled, src/chat/member-poll.js) and written through the door's
+  // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read live over the member door (`chat.open`, src/chat/member-live.js) and written through the door's
   // calls, never through her own home. Anything else, her own home's chats and the owner's, takes the paths below exactly as before.
   let teamP: Promise<string | null> | null = null;
   const teamSpace = (): Promise<string | null> => (teamP ??= (async () => {
@@ -90,7 +90,7 @@ export function boxStream(session: string): BoxStream {
       if (team) {
         const sess = await teamSession(team);
         try {
-          const d = await pollDuplex({ call: (n, a) => sess.call(n, a), chat: session, from, visible: seen, onEnd: () => sess.close() });
+          const d = await liveDuplex({ openChat: (chat, from, h) => sess.openChat(chat, from, h), chat: session, from, onEnd: () => sess.close() });
           if (typeof d.info.head === "number") head = d.info.head;
           if (d.info.viewer) viewer = d.info.viewer;
           return d;

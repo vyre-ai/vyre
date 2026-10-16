@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { connect } from "../../../../core/stream/client.js";
 import { frame } from "../../../../core/stream/protocol.js";
-import { pollDuplex } from "./member-poll.js";
+import { liveDuplex } from "./member-live.js";
 
 /** A member's team chat through the REAL resumable client and the poller: another person's message, then the AI's answer in two text pieces. */
 const log = (/** @type {string} */ session) => [
@@ -24,7 +24,29 @@ test("a member's team chat screen gets another person's message and the AI's ans
   };
   const seen = /** @type {any[]} */ ([]);
   const states = /** @type {string[]} */ ([]);
-  const h = connect({ from: 0, open: () => pollDuplex({ call, chat: "chat_1", from: 0, sleep: () => new Promise((r) => setTimeout(r, 5)) }), onFrame: (f) => seen.push(f), onState: (s) => states.push(s) });
+  const h = connect({
+    from: 0,
+    open: () => liveDuplex({
+      chat: "chat_1",
+      from: 0,
+      openChat: async (_c, _f, h) => {
+        const run = async () => {
+          for (let i = 0; i < 20; i++) {
+            try {
+              const r = await call("chat.read", [{ chat: "chat_1", from: 0, limit: 200 }]);
+              for (const fr of r.frames || []) h.onframe(fr, fr.cur || 0);
+              if (!r.frames?.length) break;
+            } catch { break; }
+            await new Promise((r) => setTimeout(r, 5));
+          }
+        };
+        void run();
+        return { result: { stream: "st_mock", head: 0, floor: 0 }, close: () => h.onend && h.onend("done") };
+      },
+    }),
+    onFrame: (f) => seen.push(f),
+    onState: (s) => states.push(s),
+  });
   for (let i = 0; i < 30 && seen.length < 3; i++) await new Promise((r) => setTimeout(r, 10));
   h.close();
   assert.deepEqual(seen.map((f) => [f.cur, f.type, f.author]), [[1, "chat.user-message", "person:per_ana"], [2, "chat.text-delta", "assistant:assistant"], [3, "chat.text-delta", "assistant:assistant"]]);
