@@ -8,6 +8,8 @@ import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
 import fx from "../screens/vault/real-box.fixture.json";
+import skillsFx from "../screens/skills/real-box.fixture.json";
+import { RealSkills } from "../screens/skills/RealSkills";
 import { setBoxOverride } from "../src/real/box";
 import { RealSite, RealSites } from "../screens/sites/RealSites";
 import RealVault from "../screens/vault/RealVault";
@@ -90,6 +92,11 @@ function Sample({ name }: { name: string }) {
     (window as unknown as { __vyreShell?: unknown }).__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} };
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
+  }
+  if (name.startsWith("skills-real")) {
+    const answers = skillsFx as Record<string, { data?: unknown; error?: { code: string; message: string } }>;
+    setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
+    return <RealSkills />;
   }
   if (name === "documents-bar") {
     // The Documents tools answered from recorded shapes, so the bar is drawn with no box behind it.

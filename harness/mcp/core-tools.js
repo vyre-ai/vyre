@@ -23,7 +23,7 @@ export const CORE = [
   "files_search", "files_preview",
   "team_ask", "agents_ask", "gate_request",
   "docs_find", "docs_read",
-  "skills_find", "skills_list",
+  "skills_find", "skills_list", "skills_browse", "skills_decline", "skills_versions",
   "vyre_core",
 ];
 

@@ -35,7 +35,7 @@ export const CALLS = Object.freeze({
   // A member's own AI sign-in on the team's server (0.3.3 G03; core/sessions/accounts-service.js): a login of theirs, run as its own user, serving only their turns. A key needs a Vault of their own (0.3.4).
   accounts: ["list", "signin", "remove", "default"],
   // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
-  skills: ["list", "get", "draft", "approve", "versions"],
+  skills: ["browse", "list", "get", "draft", "approve", "decline", "rollback", "versions"],
   flows: ["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "test-save", "test-remove", "test-list", "test-run", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"],
   // A member starts her own projects on the team's server (0.3.3; core/work/member-projects.js): the installed templates, a blank project, a project from a template.
   work: ["templates", "project-create", "start-project"],

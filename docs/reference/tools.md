@@ -11008,6 +11008,18 @@ Say yes to a draft: it becomes the version in use at its level and the one befor
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
+### `skills.browse`
+
+Skills and plugins in the library for the Skills screen: list what you may use at each level, drafts you proposed, and version history for one skill.
+
+- Input:
+  - `level` one of "space", "personal", "agent", "project"
+  - `limit` integer
+  - `name` string
+  - `scope` string
+  - `state` one of "draft", "approved", "retired"
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
+
 ### `skills.change.apply`
 
 Approve the draft on its owner's yes. For the proposals path.
@@ -11039,6 +11051,17 @@ The title a stored skill change really has, or null. For the proposals path.
   - `hash` string, required
   - `id` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
+### `skills.decline`
+
+Turn down a draft waiting for a yes: the proposer or the level's owner retires it.
+
+- Input:
+  - `level` one of "space", "personal", "agent", "project", required
+  - `name` string, required
+  - `version` integer, required
+  - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `skills.draft`
 
@@ -11130,19 +11153,19 @@ Go back to an earlier version of a skill: it is written again as a new approved 
 
 ### `skills.serve`
 
-A team member's own skills on the team's server: list, get or versions, as that member, in that Space. Only the daemon's member door runs it.
+A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.
 
 - Input:
-  - `call` one of "list", "get", "versions", required
+  - `call` one of "browse", "list", "get", "versions", required
   - `input` object
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `skills.serve-write`
 
-A team member's own skills on the team's server: draft or approve, as that member, in that Space. Only the daemon's member door runs it.
+A team member's own skills on the team's server: draft, approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.
 
 - Input:
-  - `call` "draft" or "approve", required
+  - `call` one of "draft", "approve", "decline", "rollback", required
   - `input` object
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
