@@ -122,12 +122,15 @@ test("app helper: app-up shares the up lane's rate limit with Twenty's up, and a
   const r = await ready(t);
   // every app-up is refused at once (the vyre image is not the recorded one) so the eight land inside one minute; the count is taken before the work, as for Twenty's up
   r.flag("ctr-image", "sha256:" + "c".repeat(64));
+  fs.rmSync(path.join(r.priv, "rate-up"), { force: true });
+  const runHelper = () => r.run(["space-helper-run"], { VYRE_SPACES_UP_PER_MIN: "6" });
   let states = [], stop = "";
-  for (let attempt = 0; attempt < 2 && !states.includes("busy"); attempt++) {   // a minute boundary inside the run resets the window: look again once
+  for (let attempt = 0; attempt < 2 && states.filter(x => x === "busy").length < 2; attempt++) {   // a minute boundary inside the run resets the window: look again once
+    fs.rmSync(path.join(r.priv, "rate-up"), { force: true });
     const ids = [];
     for (let i = 0; i < 8; i++) ids.push(r.ask("app-up documents\n"));
     const s = r.ask("app-stop documents\n");
-    const h = /** @type {any} */ (await r.run(["space-helper-run"]));
+    const h = /** @type {any} */ (await runHelper());
     assert.equal(h.code, 0, h.out);
     states = ids.map(i => r.status(i).state);
     stop = r.status(s).state;
