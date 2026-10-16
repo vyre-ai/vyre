@@ -9,6 +9,7 @@ import path from "node:path";
 import { writeTranscripts } from "../../test/fixtures/corpus.js";
 import { composerPersonRelayTargets, listAllPersonRelayEntryPoints, listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 import { CAROL, BOB, relayDaemon, twoMembers, groupChat, scratchWork, tokenMeta, FAKE_SESSION_PROVIDERS } from "./member-relay-harness.js";
+import { threadStartProviderFields } from "../sessions/testing/fake-agent-harness.js";
 import { indexCorpusTranscripts } from "../sessions/testing/recall-live.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -111,17 +112,34 @@ for (const provider of FAKE_SESSION_PROVIDERS) {
     const work = scratchWork(t, `vyre-find-${provider}-`);
     const { carolMeta, bobMeta, chat, ownerChain } = await groupChat(d, K, OWNER, work, provider);
 
+    const tagC = `carol-find-${provider}-${Date.now()}`;
+    const tagB = `bob-find-${provider}-${Date.now()}`;
+    const thC = await d.registry.call("threads.start", { cwd: work, prompt: tagC, surface: "cli", ...threadStartProviderFields(provider) }, "cli", carolMeta);
+    const thB = await d.registry.call("threads.start", { cwd: work, prompt: tagB, surface: "cli", ...threadStartProviderFields(provider) }, "cli", bobMeta);
+    assert.ok(thC.data?.id && thB.data?.id, JSON.stringify({ thC: thC.error, thB: thB.error }));
+    await indexCorpusTranscripts(d);
+
     const slashEps = listPersonRelayEntryPoints(d.registry).filter((e) => e.tool === "threads.slash");
     for (const ep of slashEps) {
-      const rC = await slashOnChat(d, chat, "/find intake form", carolMeta);
-      const rB = await slashOnChat(d, chat, "/find intake form", bobMeta);
+      const rC = await slashOnChat(d, chat, `/find ${tagC}`, carolMeta);
+      const rB = await slashOnChat(d, chat, `/find ${tagB}`, bobMeta);
       assert.ok(!rC.error, `${ep.id} carol find: ${JSON.stringify(rC.error)}`);
       assert.ok(!rB.error, `${ep.id} bob find: ${JSON.stringify(rB.error)}`);
+      const hitsC = Array.isArray(rC.data) ? rC.data : [];
+      const hitsB = Array.isArray(rB.data) ? rB.data : [];
+      assert.ok(hitsC.some((h) => String(h.snippet || h.text || "").includes(tagC)), `${ep.id} carol must find her own session`);
+      assert.ok(hitsB.some((h) => String(h.snippet || h.text || "").includes(tagB)), `${ep.id} bob must find his own session`);
+      assert.ok(!hitsC.some((h) => String(h.snippet || h.text || "").includes(tagB)), `${ep.id} carol must not see bob's recall`);
+      assert.ok(!hitsB.some((h) => String(h.snippet || h.text || "").includes(tagC)), `${ep.id} bob must not see carol's recall`);
     }
 
+    const ownerCorpus = await d.registry.call("recall.search", { q: "intake form", limit: 3 }, "cli", await tokenMeta(K, ownerChain));
+    assert.ok((ownerCorpus.data || []).length > 0, "owner still searches the indexed corpus");
     const directC = await d.registry.call("recall.search", { q: "intake form", limit: 3 }, "cli", carolMeta);
     const directB = await d.registry.call("recall.search", { q: "intake form", limit: 3 }, "cli", bobMeta);
     assert.ok(!directC.error && !directB.error, JSON.stringify({ directC: directC.error, directB: directB.error }));
+    assert.equal((directC.data || []).length, 0, "members must not search the owner's indexed corpus");
+    assert.equal((directB.data || []).length, 0);
 
     const ownerMeta = await tokenMeta(K, ownerChain);
     const secret = `vault-find-leak-${Date.now()}`;

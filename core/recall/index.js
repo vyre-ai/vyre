@@ -240,6 +240,30 @@ export default {
      * (module boundary) - this is memory's teach.js `within`, restated. */
     const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
+    const canonPerson = (/** @type {string} */ id) => (ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson(id) : id);
+    /** A member's kernel session (not the home owner): only sessions the Switchboard attributes to her. */
+    const memberReach = async (meta = {}) => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return null;
+      const c = await ctx.kernel.chain(meta).catch(() => null);
+      const hops = c && Array.isArray(c.hops) ? c.hops : [];
+      const people = hops.filter((/** @type {any} */ h) => h.actor && h.actor.kind === "person");
+      if (!people.length) return null;
+      if (people.length > 1) throw denied("recall is for one person at a time");
+      const person = String(people[0].actor.id);
+      if (canonPerson(person) === canonPerson(String(ctx.kernel.owner))) return null;
+      const r = await ctx.call("threads.recall-sessions", { person });
+      const sessions = r && r.data && Array.isArray(r.data.sessions) ? r.data.sessions.map(String) : [];
+      return { all: false, agent: null, folders: [], member: person, sessions, empty: !sessions.length };
+    };
+    /** Hits a member may see: her own sessions and subagent windows filed under them. */
+    const memberHits = (/** @type {string[]} */ allowed, hits) => {
+      const set = new Set(allowed);
+      return hits.filter(h => {
+        if (set.has(h.session)) return true;
+        const row = /** @type {any} */ (db.prepare("SELECT parent FROM recall_sessions WHERE id = ?").get(h.session));
+        return row && row.parent && set.has(String(row.parent));
+      });
+    };
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
     const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
     /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
@@ -303,6 +327,8 @@ export default {
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
+        const member = await memberReach(meta);
+        if (member) return member;
         if (owner(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
         // An unnamed model session (`mcp`, `mcp:thread:<id>`: every model's shell) is never the person (MS-1, KW-1): it reads its OWN thread's project and nothing else, held to that project's
         // folders like a named agent with one project. A bare `mcp` with no thread of its own has no project, so no folders, so no read.
@@ -348,6 +374,15 @@ export default {
       const r = await reach(q.agent, caller, meta);
       delete q.agent;
       if (r.all) return r;
+      if (r.member) {
+        if (r.empty) return r;
+        const requested = (q.sessions || []).map(String);
+        if (requested.length) {
+          const outside = requested.filter(id => !r.sessions.includes(id));
+          if (outside.length) throw denied("that session is not yours to search");
+        } else q.sessions = r.sessions;
+        return r;
+      }
       const requested = (q.project_cwds || []).map(String);
       if (requested.length) {
         const outside = requested.filter(c => !inFolders(c, r.folders));
@@ -380,9 +415,14 @@ export default {
         // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
         // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
         const scopeR = await scopeQuery(q, caller, meta);
+        if (scopeR.member && scopeR.empty) return [];
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
-        const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
+        const scoped = hits => {
+          if (scopeR.all) return hits;
+          if (scopeR.member) return memberHits(scopeR.sessions, hits);
+          return hits.filter(h => inFolders(h.cwd, scopeR.folders));
+        };
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -619,7 +659,15 @@ export default {
         if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
-        const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
+        const scoped = rows => {
+          if (r.all) return rows;
+          if (r.member) {
+            const set = new Set(r.sessions);
+            return rows.filter(row => set.has(row.id) || (row.parent && set.has(String(row.parent))));
+          }
+          return rows.filter(row => inFolders(row.cwd, r.folders));
+        };
+        if (r.member && r.empty) return [];
         if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
