@@ -5,7 +5,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - fix(vault): the master password is the root of the personal vault. When it is unlocked, that key is the device key the vault adopts, and `vault/key` is rewritten from it so the two cannot diverge. With nobody unlocked, that server copy still opens the agent vault, so lending does not wait. A master record with no held key and no server copy does not invent a second key. A held key that does not open the agent vault fails closed. See ADR 0054.
-- fix(approvals): a password, passphrase, secret or recovery key is stripped before an approval card is built, stored or hashed, including when the field is nested.
+- fix(approvals): a password, passphrase, secret or recovery key is stripped before an approval card is built, stored or hashed, including when the field is nested. The card is built from a copy, so the call that runs still has its fields.
+- fix(spaces): a limited device cannot transfer ownership of a space.
+- fix(sessions): the identity tools are named in the agent brief, with the other person tools.
+- fix(vault): creating, granting, storing and rotating a space vault asks for the person's presence. A read does not. Using an item stays open, so lending does not wait.
+- fix(devices): a sign-in that names a GitHub account which is not linked says to link it with identity.github.link.
+- docs: the architecture map names the identity and devices modules, and the agent tool list counts them.
+- fix(vault): using a space vault item leaves through the shared HTTP client, for an address the call names.
+- fix(vault): the person named on a space vault grant or rotation is the member the act is about. The caller's own chain is what authorizes it.
+- fix(vault): a plain model session may use a space vault item. The server wrap opens it, and the response redacts the value.
 - fix(vault): if the space vault key fails to rotate when a member leaves, Vyre queues an automatic retry and shows the row in Needs you. Removal still finishes.
 - fix(mcp): the hosted gate is the `gate` list in `core/modules/hosted-allow.json` and nothing else. `identity.unlock` and `vault.space.use` stay off it.
 - feat(identity): one username at https://vyre.run/u/<name> (private by default; <name>.vyre.run redirects, infrastructure hosts excluded), one master password (Argon2id) that unlocks the identity and the personal vault, and a one-screen recovery key. Login with GitHub links the username and still asks for the master password. Another computer signs in with the space server, the username and the master password, or with GitHub and the master password. A space vault key is wrapped to each member and to the server, so agents and Flows use items while nobody is online, and the key rotates when a member leaves. Ownership transfer is the existing kernel grant, under spaces.owner.transfer, and is audited. An agent proposes people, devices, ownership and vault access through MCP; the person's one tap applies it. The agent never receives a vault value, the master password or the recovery key. See ADR 0054.

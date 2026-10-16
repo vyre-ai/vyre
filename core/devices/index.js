@@ -38,7 +38,7 @@ export default {
         let username = input.username ? String(input.username).trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
         if (input.github && input.github.subject) {
           const link = M.githubOf(root);
-          if (!link || link.subject !== String(input.github.subject)) throw refuse("That GitHub account is not linked to a username on this device.", "not_found");
+          if (!link || link.subject !== String(input.github.subject)) throw refuse("That GitHub account is not linked to a username on this device. Link it with identity.github.link, then try again.", "not_found");
           const rec = M.readMaster(root);
           username = rec ? rec.username : "";
         }
