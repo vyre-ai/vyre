@@ -89,6 +89,7 @@ export const TOOLS_WITH_SPACE = [
  "network.wink.leave",
  "onboard.member.link",
  "onboard.phone.add",
+ "onboard.space.current",
  "publish.approve",
  "publish.create",
  "publish.decide",

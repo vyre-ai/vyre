@@ -3,7 +3,7 @@ title: "Onboarding: one first-run flow"
 summary: Identity, an optional AI sign-in, a space, then Ready. One implementation in the app and the same registry tools everywhere else.
 audience: builders
 owner: launch
-status: active
+status: stable
 ---
 
 # Onboarding: one first-run flow

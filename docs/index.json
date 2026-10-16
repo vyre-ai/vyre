@@ -3123,7 +3123,7 @@
     {"kind":"env","name":"VYRE_TEST_DIALOGS","definedIn":"core/config/dialogs.js","page":"reference/config.md#for-tests-and-development","mentions":[{"page":"contributing/testing.md","line":97,"anchor":"dialogs"}]},
     {"kind":"env","name":"VYRE_TEST_FILE_LIMIT_MS","definedIn":"scripts/team/preflight.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_TEST_HOST","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
-    {"kind":"env","name":"VYRE_TEST_HOSTED","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
+    {"kind":"env","name":"VYRE_TEST_HOSTED","definedIn":"core/config/index.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_MASTER_KDF","definedIn":"core/identity/index.js","page":"reference/config.md#for-tests-and-development","mentions":[]},
     {"kind":"env","name":"VYRE_TEST_OMIT","definedIn":"scripts/test-counts.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_TEST_PAIR_NO_PROOF","definedIn":"core/wink/pairing.js","page":"reference/config.md#for-tests-and-development","mentions":[]},

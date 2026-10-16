@@ -216,6 +216,21 @@
    "owner": "watch-restart",
    "note": "reviewed (9 Oct, connect-anything): a view runs the tool its declaration names, as the asking person for a first-party module or as module:<name> for an added one; Registry.capsuleMayCall refuses any tool the module did not declare in that view (or list in needs.tools)"
   },
+  "lib/person-relay.js": {
+   "count": 1,
+   "owner": "sessions",
+   "note": "reviewed (0.5.3): ingressProviderCall names only mentions.search, mentions.resolve and vault.mention.resolve literals; depsCall(tool, …) is the shared ingress wrapper"
+  },
+  "core/switchboard/composer-slash.js": {
+   "count": 1,
+   "owner": "sessions",
+   "note": "reviewed (0.5.3): route.tool from routeComposerLine; only person-scoped slash targets"
+  },
+  "core/vault/space-tools.js": {
+   "count": 1,
+   "owner": "vault",
+   "note": "reviewed (0.5.3): computed tool name from the space-tools table only"
+  },
   "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",
