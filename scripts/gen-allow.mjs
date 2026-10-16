@@ -177,6 +177,7 @@ export const OPEN_NOTES = Object.freeze({
   "wink.install.status": "reads whether an install line is outstanding and whether this server is owned",
   "wink.install.issue": "issues the one install line; the outward flag holds the call at the Gate, and the signing key stays on this device",
   "wink.install.complete": "finishes pairing after the server adopted the person; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "spaces.pair.install": "issues the one install line for creating a space; the outward flag holds the call at the Gate, and the signing key stays on this device",
   "wink.storage.card": "builds the words a person reads before adding storage, no secret",
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",

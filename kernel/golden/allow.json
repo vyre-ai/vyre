@@ -1488,6 +1488,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (hands a space to another member; held for the person's one tap and audited by the kernel)"
  },
  {
+  "tool": "spaces.pair.install",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): issues the one install line for creating a space; the outward flag holds the call at the Gate, and the signing key stays on this device"
+ },
+ {
   "tool": "spaces.records.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether each Space's records are ready and, while they start, how far the first start is in words"
  },
