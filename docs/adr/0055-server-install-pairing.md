@@ -40,7 +40,7 @@ Issue and complete are person-reach and `outward: true`, and they are open to a 
 
 Ask-first is the wrong class here: that path returns a stub and never opens a Gate card, so the agent could not finish. The pair presence moment is not set on these tools, so the presence floor does not take the call before the Gate does.
 
-**Phone pairing is its own path.** Adding a phone still uses that path's own code. This decision is the server install.
+**Phone pairing keeps its own words.** Adding a phone still asks the person to match the words. The published-key check is the same one every other path uses: `spaces.identity.confirm-key`, which calls `assertPublishedKey`. The install line, the setup page, the app, MCP (`spaces.pair.install` and `wink.install.issue`), a phone, a Mac server and Windows (`wink.server.adopt`) all go through that check. The Windows installer clears `VYRE_CODE` before it starts the app. That app is a device, and its pair is `wink.server.adopt`. `spaces.owner.adopt` calls it again after the pairing record matches, and before the kernel changes owner.
 
 ## Consequences
 

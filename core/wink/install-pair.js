@@ -4,27 +4,19 @@
 // Redeem reads the published chain for that person id (the directory's ii/ index, the same chain identity.create stores) and adopts only when the key in the code is a current device key. A miss, or a directory that cannot be reached, leaves the server unowned.
 
 import { mintPairCode, verifyPairCode, installCommand } from "../../lib/pair-code.js";
-import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
+import { publishedDeviceKeys } from "../../lib/identity/published-key.js";
 import { createSetupKey, setupFingerprint } from "../../relay/client/setup.js";
 import { createSetupPage } from "./setup-http.js";
+
+export { publishedDeviceKeys };
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const str = { type: "string" };
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 
-/** Current full device keys on a verified person chain: the published Ed25519 keys, not a passkey and not a key the web or the relay holds. @param {{ entries?: { kind?: string, held?: string, alg?: string, pub?: string }[] }} state */
-export function publishedDeviceKeys(state) {
-  return (state && state.entries || []).filter(e => e && e.kind === "device" && !e.held && !e.alg && typeof e.pub === "string").map(e => e.pub);
-}
-
-/** The directory's published device keys for a person id. Unreachable stays unreachable. A missing id is not_found. @param {string} personId */
-export async function directoryPublishedKeys(personId) {
-  const state = await idDirectory({ seen: memorySeen() }).resolveById(personId);
-  return publishedDeviceKeys(state);
-}
-
 /**
  * Redeem one install code on this server. The published key is checked before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
+ * The check is spaces.identity.confirm-key (assertPublishedKey). `publishedKeys` is the test seam.
  * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function }, meta: { get: Function, set: Function, del: Function }, now?: () => number, publishedKeys?: (personId: string) => Promise<string[]> }} o
  * @param {string} code
  */
@@ -32,16 +24,26 @@ export async function redeemInstallCode(o, code) {
   const now = o.now || Date.now;
   const v = verifyPairCode(String(code || ""), now);
   if (!v.ok) throw fail(v.code, v.message);
-  const keysOf = o.publishedKeys || directoryPublishedKeys;
-  /** @type {string[]} */
-  let pubs;
-  try { pubs = await keysOf(v.person); }
-  catch (e) {
-    const c = /** @type {any} */ (e).code;
-    if (c === "not_found" || c === "denied") throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
-    throw fail("unavailable", "The directory could not confirm this key. Wait a minute and run the install line again.");
+  const pub = Buffer.from(v.pub).toString("base64url");
+  if (o.publishedKeys) {
+    /** @type {string[]} */
+    let pubs;
+    try { pubs = await o.publishedKeys(v.person); }
+    catch (e) {
+      const c = /** @type {any} */ (e).code;
+      if (c === "not_found" || c === "denied") throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
+      throw fail("unavailable", "The directory could not confirm this key. Wait a minute and run the install line again.");
+    }
+    if (!Array.isArray(pubs) || !pubs.includes(pub)) throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
+  } else {
+    /** @type {any} */ let gate;
+    try { gate = await o.ctx.call("spaces.identity.confirm-key", { id: v.person, key: pub, full: true }); }
+    catch { throw fail("unavailable", "The directory could not confirm this key. Wait a minute and run the install line again."); }
+    if (!gate || gate.error) {
+      const c = gate && gate.error && gate.error.code;
+      throw fail(c === "unavailable" || c === "unreachable" || c === "no_such_tool" ? "unavailable" : "denied", c === "unavailable" || c === "unreachable" || c === "no_such_tool" ? "The directory could not confirm this key. Wait a minute and run the install line again." : "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
+    }
   }
-  if (!Array.isArray(pubs) || !pubs.includes(Buffer.from(v.pub).toString("base64url"))) throw fail("denied", "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");
   const meta = o.meta;
   const spent = `install-nonce:${v.nonceHash}`;
   if (meta.get("install_setup_locked") || meta.get(spent)) throw fail("locked", "This code was already used. Make a new install line in the Vyre app and run it again.");
@@ -52,7 +54,7 @@ export async function redeemInstallCode(o, code) {
   if (!meta.get("adopter")) meta.set("adopter", "install");
   meta.set("pair_to", v.person);
   /** @type {any} */ let adopted;
-  try { adopted = await o.ctx.call("spaces.owner.adopt", { person: v.person }); }
+  try { adopted = await o.ctx.call("spaces.owner.adopt", { person: v.person, key: pub }); }
   catch (e) { adopted = { error: { code: /** @type {any} */ (e).code || "unavailable", message: /** @type {any} */ (e).message } }; }
   const err = adopted && adopted.error;
   if (err && err.code !== "already_adopted") {
@@ -148,6 +150,10 @@ export function registerInstallPair(o) {
       const owner = o.meta.get("owner");
       if (owner && owner.identity) return { ok: true, owned: true, person: String(owner.identity) };
       if (!session) throw fail("bad_state", "Make an install line first, run it on the server, then ask again.");
+      /** @type {any} */ let gate;
+      try { gate = await ctx.call("spaces.identity.confirm-key", { id: session.person }); }
+      catch { throw fail("unavailable", "The directory could not confirm this key. Wait a minute and try again."); }
+      if (!gate || gate.error) throw fail(gate && gate.error && gate.error.code === "unavailable" ? "unavailable" : "denied", (gate && gate.error && gate.error.message) || "That person has no published key. Open the Vyre app and finish starting, then pair again.");
       const qr = typeof o.ticket === "function" ? await o.ticket(session) : await offerTicket(ctx, session);
       if (typeof o.pair !== "function") throw fail("unavailable", "This computer could not finish pairing. Open the Vyre app and it will finish.");
       const started = await o.pair(String(qr || ""), session.person);

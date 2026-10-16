@@ -11719,6 +11719,16 @@ Make a new recovery code (and optionally a new recovery password); the old code 
   - `password` string
 - Callers: any caller
 
+### `spaces.identity.confirm-key`
+
+Confirm this person id on the published chain, and the key when one is named. Pairing, adopt and enrol all use this.
+
+- Input:
+  - `id` string, required
+  - `full` boolean
+  - `key` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `spaces.identity.contact.key`
 
 As a recovery contact: make the approval key for someone's identity and give them its public half. This device keeps the private half and signs when they ask, after you approve.
@@ -12264,6 +12274,7 @@ For the pairing module, after it has PROVED the identity: make this home's owner
 
 - Input:
   - `person` string, required
+  - `key` string
   - `name` string
   - `presence_key` object
     - `device` string, required

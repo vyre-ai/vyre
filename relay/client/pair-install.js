@@ -39,3 +39,8 @@ export async function mintPairCode(o) {
   const code = base64url(raw);
   return { code, exp, person };
 }
+
+/** The one install line. Linux and an always-on Mac both run it. The code is an environment variable, never an argument. @param {string} code */
+export function installCommand(code) {
+  return `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`;
+}

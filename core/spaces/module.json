@@ -436,6 +436,11 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.confirm-key",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.identity.sign",
     "reach": "modules"
    },
