@@ -497,7 +497,7 @@ Stop using your own domain for an app's public pages: { host }.
 End every open sign-in to a preview (its access changed, or it was removed). Internal: the previews module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.front`
 
@@ -568,28 +568,28 @@ Where a running app is reached from this daemon: { origin }. For Vyre's own modu
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.remove`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.run`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.stop`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.remove`
 
@@ -613,28 +613,28 @@ List screens of running installed apps as [{ module, id, label, path, icon? }]; 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signed.revoke`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signing.request`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signing.waiting`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.start`
 
@@ -665,7 +665,7 @@ Stop an installed app. Its data stays.
 A one-time sign-in address for a preview, on its own origin: { url, host }. Internal: the previews module has already decided that this person may open it.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## approvals
 
@@ -6890,7 +6890,7 @@ Mute a node so memory never offers it, everywhere (scope '*') or in one project 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.pace`
 
@@ -6924,7 +6924,7 @@ Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.profile`
 
@@ -8571,7 +8571,7 @@ Remove an enrolled Lumen key, device key or passkey by id. Needs presence.
 The folder a files preview serves, for Publish: { root }. Internal: Publish only, for the person who pressed the card.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.frame`
 
@@ -8641,7 +8641,7 @@ The person types what a stuck run asked for (a code, an answer) on its card: { r
 Where a preview's host leads, for the front: { origin }. Internal: the appmods module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.restart`
 
@@ -8690,7 +8690,7 @@ Whether the person has finished signing in: { id, state } (waiting, done, cancel
 A folder's files as a static site that runs on its own: a React page becomes its page, compiled files and libraries. Internal: the builder module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.step`
 
@@ -8725,7 +8725,7 @@ The address to open a preview at: { url }, on its own origin, with a one-time si
 Is this the front's signed viewer header for a preview: { ok }. Internal: the runner module only, for the preview of a chat on a person's computer (a process on this box that finds that port cannot forge one).
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## projects
 
