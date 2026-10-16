@@ -60,7 +60,10 @@ jobs:
           cache: npm
       # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
       # (gocryptfs and fuse3 as runner-linux.yml has them: the lent-computer tests mount the encrypted workspace for real, and are counted)
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap gocryptfs fuse3 && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      # A runner that already has the tools skips apt; otherwise apt waits up to five minutes for the lock (runners on one host share it).
+      - run: |
+          command -v bwrap >/dev/null && command -v gocryptfs >/dev/null && command -v fusermount3 >/dev/null || { sudo apt-get -o DPkg::Lock::Timeout=300 update -qq && sudo apt-get -o DPkg::Lock::Timeout=300 install -y -qq bubblewrap gocryptfs fuse3; }
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       # The fscrypt workspace test needs a directory on a filesystem with encryption: a loop-mounted ext4. With VYRE_MUST_RUN=1 the tests listed in test/must-run.json fail the run when they skip.
       - name: A loop-mounted ext4 with fscrypt, and the must-run switch
         run: |
