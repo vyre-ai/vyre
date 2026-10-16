@@ -9,7 +9,7 @@ import { start } from "../daemon/index.js";
 import { asOwner, tempHome, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { FAKE } from "../sessions/testing/boot.js";
-import { listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
+import { listAllPersonRelayEntryPoints, listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -35,6 +35,8 @@ test("person-relay entry points: derived list matches live registry tools", { ti
   const eps = listPersonRelayEntryPoints(d.registry);
   assert.ok(eps.length >= 4, JSON.stringify(eps.map((e) => e.id)));
   for (const e of eps) assert.ok(d.registry.tools.has(e.tool), `${e.id} tool ${e.tool}`);
+  const all = listAllPersonRelayEntryPoints(d.registry);
+  assert.ok(all.some((e) => e.id === "agents.ask"), JSON.stringify(all.map((e) => e.id)));
 });
 
 test("each derived threads.slash entry point: group-chat /later stays on the caller's planner", { timeout: 150_000 }, async (t) => {
