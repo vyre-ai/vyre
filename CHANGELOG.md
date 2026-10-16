@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
 
+## 0.6
+
+- ci: a draft pull request runs the node tests on Node 24 only (5 shards); marking it ready starts the Node 22 and 24 run (node.yml now listens for ready_for_review), and release branches and main keep both. lumen-mac no longer also runs on a push to a work branch that has a pull request (it ran twice). The other heavy workflows (lumen-win, vault-mac, design, sessions-sdk, app, design-pictures) already run only when their paths change, and box-image decides from the package contents.
+
 ## 0.5.1
 
 - release: 0.5.1, a patch release (fixes only): package.json, package-lock.json and the Claude Code plugin manifest at 0.5.1 (scripts/bump-version.mjs), release/notes/0.5.1.md, and vyre.run's release line (scripts/gen-site.mjs) say what it fixes.
