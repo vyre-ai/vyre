@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(hands-chrome): `chrome.api` on the box (`learn`, `catalog` from CDP traffic via `lib/siteops/apilearn.js`); `route` and `call` stay Mac-only for now.
 - feat(computers): `AgentBrowser` and `lib/browser-access.js` are the one path for endpoint, helper, Glass CDP, checkout and model navigation egress; `test/browser-access-registry.test.js` guards `AGENT_BROWSER_GATES`.
 - feat(computers): shared headless browser is the default on a box (level 2): agents join `browser-shared` by `agents.uid`, `computers.endpoint` and Glass use CDP screencast at `/v1/streams/computers/browser-glass`, and desktop checkouts stay available when `computers.browse` is `desktop`.
 - feat(app): the operator card shows live Glass on web, Mac and Windows; the full-screen view uses `LiveScreen` with watch and take-over.

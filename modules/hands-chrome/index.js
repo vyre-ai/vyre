@@ -27,6 +27,7 @@ import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
 import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
 import { watchNetwork } from "./net-tool.js";
+import { hostOf, mergeApiCatalog, watchApiTraffic } from "./api-tool.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
@@ -289,6 +290,39 @@ export default {
 
     /** @type {Map<string, ReturnType<typeof watchNetwork>>} */
     const nets = new Map();
+    /** @type {Map<string, ReturnType<typeof watchApiTraffic>>} */
+    const apiNets = new Map();
+    /** @type {Map<string, any[]>} */
+    const apiCatalogs = new Map();
+
+    tool("chrome.api", "An app's own API on the box, learned from page traffic. learn: capture XHR/fetch and reduce to a catalog (shapes only, no secrets). catalog: read the catalog for a host. route and call are not on the box yet.",
+      obj({ agent: str, action: str, host: str }, ["action"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        if (action === "learn") {
+          await mayAct(agent, "chrome.api");
+          const { cdp, sessionId } = await session(agent);
+          const prev = apiNets.get(agent);
+          if (prev) prev.stop();
+          const w = watchApiTraffic(cdp, sessionId);
+          await w.start();
+          apiNets.set(agent, w);
+          const fresh = await w.collect();
+          const pageUrl = String((await cdp.send("Runtime.evaluate", { expression: "location.href", returnByValue: true }, sessionId)).result?.value || "");
+          const host = String(i.host || hostOf(pageUrl));
+          if (!host) throw new Error("say which host to learn, or open a page first");
+          const catalog = mergeApiCatalog(apiCatalogs, agent, host, fresh);
+          act_(meta, agent, "api", true, undefined, { summary: `learned ${catalog.length} entries for ${host}` });
+          return { host, entries: catalog.length, catalog };
+        }
+        if (action === "catalog") {
+          const host = String(i.host || "");
+          if (!host) throw new Error("host is required for catalog");
+          const catalog = apiCatalogs.get(`${agent}|${host}`) || [];
+          return { host, catalog };
+        }
+        throw new Error(`chrome.api on the box supports learn and catalog only; "${action}" is not available here yet`);
+      });
 
     tool("chrome.net", "The agent page's network traffic on the box (CDP). start: capture; list: recent requests (URLs only, no secrets).",
       obj({ agent: str, action: str }, ["action"]), async (i, meta) => {
