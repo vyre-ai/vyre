@@ -8,11 +8,12 @@ import { segments } from "../../kernel/core/urn.js";
 import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { isSystemType } from "../../lib/record-types.js";
+import { kindOf } from "../../lib/doc-refs.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 
 /** The Space, type and id a record's reference names. @param {any} urn */
 export function parseUrn(urn) {
@@ -68,6 +69,26 @@ export default {
       const all = (await d.gateway.definitions(d.chain)) || [];
       const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : t));
       return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
+    });
+    // What an address is, for the composer that turns a reference in instructions into a line a model reads. Answered from the TYPE DEFINITIONS alone, never a row: a first segment that is a record type the
+    // Space's people made (not one of the kernel's own) is a record, whatever kind of thing the same word names elsewhere. When the definitions cannot be read it says record, which takes no shortcut.
+    ctx.tool("records.address-kind", {
+      internal: true,
+      description: "Internal, for the composer: what a vyre:// address is, from the Space's record type definitions only (never a row). { kind, record_type? }.",
+      input: obj({ urn: str }, ["urn"]), callers: ["module"],
+      run: async (/** @type {any} */ i) => {
+        const urn = String(i.urn || "");
+        const space = (/^vyre:\/\/([^/]+)\//.exec(urn) || [])[1];
+        if (!space) return { kind: "record" };
+        try {
+          const h = ctx.kernel.for(space);
+          const owner = ctx.kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: ctx.kernel.owner, path: "direct" });
+          const defs = (await h.gateway.definitions(owner)) || [];
+          const custom = defs.filter((/** @type {any} */ t) => !isSystemType(String(t.name)) && !(t.name === "project" && t.kind === "project")).map((/** @type {any} */ t) => String(t.name));
+          const kind = kindOf(urn, custom);
+          return kind === "record" ? { kind, record_type: (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(urn) || [])[1] || null } : { kind };
+        } catch { return { kind: "record", unknown: true }; }
+      },
     });
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may.", obj({ space: str, diff: { type: "object" } }, ["diff"]), (i, d) => d.gateway.records.define(d.chain, i.diff));
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {

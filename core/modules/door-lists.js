@@ -24,7 +24,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
   "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
-  "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
+  "flows.actions", "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
   "memory.answer", "memory.ask", "memory.brief", "memory.card", "memory.context", "memory.decisions", "memory.facts", "memory.graph", "memory.prompt", "memory.relevant",
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
@@ -44,7 +44,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "rules.get", "rules.list", "rules.test",
   "runner.move",
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
-  "skills.draft", "skills.find", "skills.get", "skills.list",
+  "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.list",
   "spaces.list", "spaces.members.list",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
   "stream.send", "stream.typing",
@@ -63,6 +63,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
+  "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "about.text",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -81,7 +82,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "brand.draft", "brand.get", "brand.resolve", "brand.set",
   "bridges.accept", "bridges.continue", "bridges.copy", "bridges.get", "bridges.kit.export", "bridges.kit.install", "bridges.kit.plan", "bridges.list",
   "bridges.merge.links", "bridges.propose-projection", "bridges.propose-reference", "bridges.propose-view", "bridges.resolve", "bridges.revoke", "bridges.view.read",
-  "chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
+  "chrome.api", "chrome.click", "chrome.net", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
   "commands.list",
   "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
@@ -186,7 +187,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "sidebar.edit", "sidebar.get", "sidebar.pin", "sidebar.stored", "sidebar.team", "sidebar.unpin",
   "sight.frame", "sight.now", "sight.steps", "sight.targets", "sight.watch",
   "signin.answer", "signin.ask", "signin.dev", "signin.end", "signin.pending", "signin.status",
-  "skills.approve", "skills.rollback", "skills.versions",
+  "skills.approve", "skills.decline", "skills.rollback", "skills.versions",
   "spaces.assess-computer", "spaces.bundle.enrol", "spaces.bundle.export", "spaces.bundle.status", "spaces.cancel", "spaces.code.submit", "spaces.compute.accept",
   "spaces.compute.allow", "spaces.compute.status", "spaces.create", "spaces.devices.enrol", "spaces.devices.lend", "spaces.devices.lend.status", "spaces.devices.list",
   "spaces.devices.remove", "spaces.devices.restore", "spaces.devices.set", "spaces.devices.spaces", "spaces.get", "spaces.host-here", "spaces.identity.alias",
@@ -270,6 +271,11 @@ export const PLUMBING = Object.freeze(new Set([
  * The drift test fails for an outward tool on MEMBER_MAY that is not a key here, and for a key here that is not an outward tool on MEMBER_MAY.
  * @type {Readonly<Record<string, string>>}
  */
+/**
+ * Owner-scoped group tools (GROUP_OF, group not in SCOPED_GROUPS) that a member's named agent may pass the member door for. Each must be outward or ask-first and is held at the Gate as that member, never run as the owner. Every other tool in those groups stays door-refused for a member's agent.
+ */
+export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send"]));
+
 export const MEMBER_OUTWARD = Object.freeze({
   "files.linked.link": "the owner's yes: a link points the Space at a folder at a source, and the assistant's request lands as a held card in the owner's approvals; her own call from her device needs only her.",
   "files.linked.write": "the owner's yes for an assistant's request, held like the Space Drive's; her own save from her device goes through as her, in her own account at the source.",

@@ -13,7 +13,7 @@ import { createItems } from "./items.js";
 import { clean } from "../../lib/waiting-text.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const SURFACES = ["cli", "local", "deck", "capsule", "device"];
 const ASK_MS = 5 * 60_000, MAX_OPEN = 5, MAX_PROOF = 4096;
 /** Cards the same asker holds within this long of each other are one group (one list, one yes); a group has at most MAX_GROUP cards. */
 const GROUP_MS = 90_000, MAX_GROUP = 20;

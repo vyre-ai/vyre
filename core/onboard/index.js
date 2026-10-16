@@ -82,7 +82,7 @@ export const slug = s => {
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 
 /** Who may reach the setup tools at all: the person's surfaces, the owner's devices, the setup page's own loopback ("onboard") and modules. A model session is not one; each tool that changes something also checks personOnly(caller), which refuses an agent riding a person's label. */
-const ONBOARD_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "onboard", "module"]);
+const ONBOARD_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "tailnet", "device", "onboard", "module"]);
 
 /** `claude --version`, remembered for half a minute: the page asks every couple of seconds. */
 let known = { at: 0, version: /** @type {Promise<string|null>|null} */ (null) };

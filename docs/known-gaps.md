@@ -1,6 +1,6 @@
 ---
 title: Known gaps
-summary: What Vyre 0.5 does not do yet, what to do today instead, and what comes next.
+summary: What Vyre 0.6 does not do yet, what to do today instead, and what comes next.
 audience: users, builders, operators, agents
 owner: docs
 status: draft
@@ -8,19 +8,17 @@ status: draft
 
 # Known gaps
 
-These docs describe what the code does today. This page lists where Vyre 0.5 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
+These docs describe what the code does today. This page lists where Vyre 0.6 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
 
-## Next, in 0.6
+## Next, in 0.7
 
-The 0.6 plan is in [roadmap/0.6.md](../roadmap/0.6.md) and the 0.7 plan in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
+The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
 
-## Known gaps in 0.5
+## Known gaps in 0.6
 
 ### Members and custom record types
 
-A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.6.
-
-What to do today: keep sensitive rows in a built-in type, or in a Space the person is not a member of.
+A row of a record type your Space defined itself, linked to a project, is readable only by that project's team, as matters, tasks and files are. A row linked to two projects is readable by either team. A row linked to no project is still readable by every member, so link sensitive rows to a project.
 
 ### A Viewer's AI cannot open the project folder
 
@@ -33,9 +31,19 @@ Renaming a project changes its short name, which keys the project's folder group
 ### Flows
 
 - A "For each" step handles up to 50 items in the editor, although the engine allows 1000, and a longer list is cut without a note on the run page.
-- An agent step has no deadline yet. A session that ends without finishing is marked stuck, but an agent that never ends is not timed out. Deadlines and failure paths in the editor are planned for 0.6.
-- A Flow email cannot yet carry CC, BCC or attachments.
-- Members cannot inspect a Flow over MCP (`flows.describe`, `flows.runs` and `flows.connections` are for owners).
+- A Flow email carries CC, BCC and up to 10 attachments of 25 MB together, from Files or from a file an earlier step made. A Flow you turned on sends without asking; a person asks only when a step is marked to approve, or when an agent held the act. An attachment is read as the lesser of the person who approved the Flow and the person who started the run, and a file changed after approval stops the send. Only mail through Gmail, Google Apps Script, a mail login, Resend, Postmark, SendGrid and Mailgun carries attachments.
+
+### Audit screen window
+
+The admin Audit screen reads the signed event log forward from its last 100,000 events and says when it stopped short. A busier Space sees the recent past first; the older events are in the log itself.
+
+### Preview isolation
+
+A preview's process can reach its own loopback port and no other network address: on macOS through the sandbox profile, on Linux through a private network with the page carried out on a unix socket. Unix sockets that live in the filesystem under the same account (not the network) stay reachable to it, as before. Where bubblewrap cannot make a private network on a Linux box, the preview runs with shell limits only and its log says there is no network wall.
+
+### Standing permissions
+
+An agent's standing permission covers a send, post or payment through one connection to named recipients, up to a daily cap. It does not cover the default assistant. A sender with no connection of its own (a shared one, such as the Space's own mail service) is open to owners and admins only, so an agent working for a member is held there and asks as before. A permission that follows a list counts only addresses written by someone who holds the connection.
 
 ### Records export is a web feature
 
@@ -43,7 +51,7 @@ CSV export is in the web app. A phone does not offer it yet.
 
 ### Members and sign-ins
 
-- A member cannot add a setup token or API key as their own AI account; the member signs in with the provider's own sign-in.
+- A member adds a setup token or API key as their own AI account in their own vault. Only that member's own chats use it; a job, a Flow and an agent never do.
 - A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
 - A member's MCP servers that they sign in to inside a session are not carried to their next session.
 - The firm Microsoft 365 app is read-only. Member sends are not open.

@@ -28,5 +28,6 @@ export function Chip({ children, tone = "plain", icon, className, onPress, selec
       <Text size="caption" medium tone={ink[t]}>{children}</Text>
     </View>
   );
-  return onPress ? <Pressable accessibilityRole="button" accessibilityState={{ selected: !!selected }} onPress={onPress} className="self-start">{body}</Pressable> : body;
+  // A chip that is pressed is a button: on a phone its tap area is 44 high (the chip itself stays 26, centred in it), so the touch target is real and not a hitSlop.
+  return onPress ? <Pressable accessibilityRole="button" accessibilityState={{ selected: !!selected }} onPress={onPress} className="self-start" style={phone ? { minHeight: 44, justifyContent: "center" } : undefined}>{body}</Pressable> : body;
 }

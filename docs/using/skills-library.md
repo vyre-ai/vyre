@@ -17,7 +17,7 @@ A **skill** is a short set of instructions for one kind of task, in a `SKILL.md`
 - **Agent**: one agent's own toolkit.
 - **Project**: inside one project and its template.
 
-A name at a narrower level wins over the same name at a wider one. Every version is kept, with who drafted it and who said yes, and you can go back to an earlier one.
+Among agent, project and personal skills, a name at a narrower level wins over the same name at a wider one. A **Space** skill with a given name is enforced in every session: a personal, agent or project skill never replaces it. Personal skills belong to your **identity** (the home Space on each server you use): they are stored there and appear in every Space you belong to; other members never see them. Every version is kept, with who drafted it and who said yes, and you can go back to an earlier one.
 
 ## Draft, then approve
 

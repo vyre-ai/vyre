@@ -163,6 +163,7 @@
   "recall.setup",
   "recall.unwatch",
   "recall.watch",
+  "records.address-kind",
   "records.define",
   "records.dev-seed",
   "records.forget",

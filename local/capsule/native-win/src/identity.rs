@@ -88,6 +88,24 @@ pub fn chain_summary(message: &[u8]) -> Option<String> {
     }
 }
 
+/// A server ownership proof (relay/client/finish.js pairToProofMessage), read strictly: four lines, "vyre-wink-pair-to-v1", a 32-byte key in base64url (43 characters), a relay device id
+/// (16 of a-z and 2-7) and a ticket tag (24 hex). Anything else is None, and is not signed. The server's own name is not in the bytes, so the words do not claim one.
+pub fn pair_to_summary(message: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(message).ok()?;
+    let lines: Vec<&str> = text.split('\n').collect();
+    fn all(s: &str, n: usize, ok: fn(char) -> bool) -> bool { s.chars().count() == n && s.chars().all(ok) }
+    if lines.len() != 4 || lines[0] != "vyre-wink-pair-to-v1" { return None; }
+    if !all(lines[1], 43, |c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { return None; }
+    if !all(lines[2], 16, |c| c.is_ascii_lowercase() || ('2'..='7').contains(&c)) { return None; }
+    if !all(lines[3], 24, |c| c.is_ascii_digit() || ('a'..='f').contains(&c)) { return None; }
+    Some("Make the server you are pairing yours".to_string())
+}
+
+/// What the shell signs with the computer's key, in its own words: an identity-list change or a server ownership proof. None is not signed.
+pub fn sign_summary(message: &[u8]) -> Option<String> {
+    chain_summary(message).or_else(|| pair_to_summary(message))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +132,26 @@ mod tests {
         assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"robot"}}"#)), None);
         assert_eq!(chain_summary(b"not a chain message"), None);
         assert_eq!(chain_summary(&chain("{")), None);
+    }
+
+    // relay/client/pairto-vector.test.js pins the same bytes: what the app's identity signs to own a server (wink.server.adopt's proof).
+    #[test]
+    fn a_server_ownership_proof_the_real_bytes_is_read_and_any_other_shape_is_not() {
+        use base64::Engine;
+        let real = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode("dnlyZS13aW5rLXBhaXItdG8tdjEKQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Ywp5ZmJlcnByazJ4cTIya29iCjBiNjBjNDA2ZTZlMWE3YzM4YjY5MDBhMw").unwrap();
+        assert_eq!(sign_summary(&real).as_deref(), Some("Make the server you are pairing yours"));
+        let (b, d, t) = ("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc", "yfberprk2xq22kob", "0b60c406e6e1a7c38b6900a3");
+        for bad in [
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}\nUnlock Drive"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}\n"),
+            format!("vyre-wink-pair-to-v1\n{b}x\n{d}\n{t}"),
+            format!("vyre-wink-pair-to-v1\n{b}\nYFBERPRK2XQ22KOB\n{t}"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}00"),
+        ] {
+            assert_eq!(sign_summary(bad.as_bytes()), None, "{bad}");
+        }
+        assert_eq!(sign_summary(&chain(r#"{"type":"add","entry":{"kind":"code"}}"#)).as_deref(), Some("Add a recovery code"));
     }
 
     #[test]

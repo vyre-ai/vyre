@@ -27,6 +27,15 @@ const KEY = crypto.createHash("sha256").update(REPO_ROOT).digest("hex").slice(0,
 /** Every test temp dir in this checkout lives under here, never bare in $TMPDIR. */
 export const SCRATCH = path.join(os.tmpdir(), `vt-${KEY}`);
 fs.mkdirSync(SCRATCH, { recursive: true });
+/** Runner tests that mount an encrypted workspace: on Linux with VYRE_FSCRYPT_DIR, use the loop-mounted ext4 (CI and local) so fscrypt works without FUSE. */
+export function runnerScratch(prefix) {
+  const fsc = process.env.VYRE_FSCRYPT_DIR;
+  if (fsc && process.platform === "linux") {
+    fs.mkdirSync(fsc, { recursive: true });
+    return fs.mkdtempSync(path.join(fsc, prefix));
+  }
+  return fs.mkdtempSync(path.join(SCRATCH, prefix));
+}
 // Product code that makes its own temp folders (backup staging, image thumbnails) puts them under
 // VYRE_TMPDIR when set; point it here, for this process and every vyre/vyred a test spawns.
 if (!process.env.VYRE_TMPDIR) process.env.VYRE_TMPDIR = SCRATCH;

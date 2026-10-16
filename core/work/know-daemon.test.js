@@ -30,13 +30,15 @@ test("seed a session, a teammate in a later session recalls its decision from th
   fs.mkdirSync(cwd, { recursive: true });
   const sid = "22222222-bbbb-4000-8000-000000000002";
   const dir = path.join(claudeProjects, cwd.replace(/[^A-Za-z0-9]/g, "-"));
-  fs.mkdirSync(dir, { recursive: true });
   const base = { sessionId: sid, cwd, version: "2.1.0", userType: "external", isSidechain: false };
   const at = Date.now() - 86_400_000;
-  fs.writeFileSync(path.join(dir, `${sid}.jsonl`), [
-    { ...base, type: "user", uuid: "u1", parentUuid: null, timestamp: new Date(at).toISOString(), message: { role: "user", content: "decision: host Harlow on Vercel because Dana's IT team owns the Vercel account. The client's social security number is " + SSN } },
-    { ...base, type: "assistant", uuid: "u2", parentUuid: "u1", timestamp: new Date(at + 1000).toISOString(), message: { id: "msg_1", role: "assistant", model: "claude-sonnet", content: [{ type: "text", text: "Noted: Harlow hosting moves to Vercel under Dana's team." }] } },
-  ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const writeTranscript = () => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${sid}.jsonl`), [
+      { ...base, type: "user", uuid: "u1", parentUuid: null, timestamp: new Date(at).toISOString(), message: { role: "user", content: "decision: host Harlow on Vercel because Dana's IT team owns the Vercel account. The client's social security number is " + SSN } },
+      { ...base, type: "assistant", uuid: "u2", parentUuid: "u1", timestamp: new Date(at + 1000).toISOString(), message: { id: "msg_1", role: "assistant", model: "claude-sonnet", content: [{ type: "text", text: "Noted: Harlow hosting moves to Vercel under Dana's team." }] } },
+    ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  };
 
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
@@ -45,6 +47,9 @@ test("seed a session, a teammate in a later session recalls its decision from th
   const ask = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta = ownerMeta, caller = "cli") => d.registry.call(tool, input, caller, meta);
 
   assert.ok(!(await ask("projects.create", { name: "Harlow Legal", home: cwd })).error);
+  const projUrn = (await ask("work.project.ref", { project: "harlow-legal" })).data.urn;
+  assert.ok(projUrn, "the project record exists");
+  writeTranscript();
   const idx = await ask("recall.index", {});
   assert.ok(!idx.error, JSON.stringify(idx.error));
   // Space memory holds the session's lines now, scrubbed.
@@ -57,25 +62,23 @@ test("seed a session, a teammate in a later session recalls its decision from th
   // Two teammates, each a kernel agent actor. juno is ADDED BY THE PERSON through work.team.add from a role (its grants are narrowings of the adder's, on the Harlow PROJECT, which covers its
   // sessions); kit is an agent of the Space with no access to Harlow.
   const space = d.kernel.id.space;
-  const proj = `vyre://${space}/project/harlow-legal`;
-  const role = { name: "Harlow research", instructions: "Read about Harlow and report with sources.", wanted: [{ actions: ["records.read"], prefix: proj }] };
-  const cardOnly = await ask("work.team.add", { project: proj, role });
+  const role = { name: "Harlow research", instructions: "Read about Harlow and report with sources.", wanted: [{ actions: ["records.read"], prefix: projUrn }] };
+  const cardOnly = await ask("work.team.add", { project: projUrn, role });
   assert.ok(!cardOnly.error && cardOnly.data.card, "without approved the tool returns the card and creates nothing");
   const proof = { op: "stand-in", fields: {}, n: 1 };
   for (const name of ["harlow-research.harlow-legal", "kit"]) await d.kernel.gateway.grants.addActor(owner, { kind: "agent", id: name, space }, { presence: proof });
-  const added = await ask("work.team.add", { project: proj, role, approved: true }, { ...ownerMeta, kernel_proof: proof });
+  const added = await ask("work.team.add", { project: projUrn, role, approved: true }, { ...ownerMeta, kernel_proof: proof });
   assert.ok(!added.error, JSON.stringify(added.error));
   assert.equal(added.data.grants.length, 1);
   // the teammate works a task in the project (G22: it reaches the project only then)
-  const projUrn = (await ask("work.project.ref", { project: "harlow-legal" })).data.urn;
   await d.kernel.gateway.records.create(owner, "team-member", { name: "harlow-research", actor: { actor: { kind: "agent", id: "harlow-research.harlow-legal", space } }, kind: "assistant", project: { urn: projUrn } });
   const task = await ask("tasks.request", { task: { title: "Report on Harlow hosting", output: { kind: "note" }, doer: "harlow-research.harlow-legal", checker: d.kernel.id.owner, project: projUrn } });
   assert.ok(!task.error, JSON.stringify(task.error));
   const tokenOf = async (/** @type {string} */ agent) => (await d.kernel.surfaces.open(owner, { agent })).token;
-  const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("harlow-research.harlow-legal") }, "mcp:thread:t-juno");
+  const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("harlow-research.harlow-legal") });
   assert.ok(!juno.error, JSON.stringify(juno.error));
-  assert.ok(juno.data.hits.some((/** @type {any} */ h) => /Vercel/.test(h.snippet) && String(h.source).startsWith(`line:${sid}#`)), "the Harlow teammate recalls the decision from the earlier session, with its address");
-  const kit = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("kit") }, "mcp:thread:t-kit");
+  assert.ok(juno.data.hits.some((/** @type {any} */ h) => /Vercel/.test(h.snippet) && String(h.source).startsWith(`line:${sid}#`)), `the Harlow teammate recalls the decision from the earlier session, with its address: ${JSON.stringify(juno.data.hits)}`);
+  const kit = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("kit") });
   assert.ok(!kit.error, JSON.stringify(kit.error));
   assert.deepEqual(kit.data.hits.filter((/** @type {any} */ h) => /Vercel|Harlow/.test(h.snippet)), [], "another project's teammate is given nothing of it");
 

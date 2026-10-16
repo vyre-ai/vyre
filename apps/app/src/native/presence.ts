@@ -39,17 +39,6 @@ export async function presenceSupport(): Promise<PresenceSupport> {
   }
 }
 
-/** Sign `message` with the biometric key after the system prompt titled by `what`. The signature is DER, base64url. */
-export async function approveAndSign(message: string, what: string): Promise<PresenceResult> {
-  try {
-    await Keys.ensureKey(Keys.HUMAN, { biometric: true });
-    const signature = await Keys.sign(Keys.HUMAN, message, { prompt: promptTitle(what) });
-    return { ok: true, signature };
-  } catch (e) {
-    return refusal(failFrom(e));
-  }
-}
-
 /** The prompt alone, no signature: a yes from the person's own body for something local (showing a secret on this screen). */
 export async function confirmHere(what: string): Promise<PresenceResult> {
   try {

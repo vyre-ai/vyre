@@ -3,6 +3,8 @@
 // the owner's, in words that name whom to ask; the owner is served; the harness hooks and the member's own tools still run; a server with nobody but the owner gates nothing.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome, pairDevice } from "../../test/helpers.js";
@@ -19,6 +21,8 @@ const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 /** A team server: the owner, a member and an admin, each with a model session token. @param {any} t @param {boolean} team */
 async function rig(t, team = true, extra = {}) {
   const root = tempHome(t);
+  // a team server is a box on every platform: its tools (computers, publish) exist only for that role, and a Mac's default role is not it
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...extra });
   t.after(() => d.stop());
   const OWNER = d.kernel.id.owner;

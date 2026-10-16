@@ -24,7 +24,8 @@ if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [-
 fs.mkdirSync(out, { recursive: true });
 
 const fixturesFile = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../ui/blocks/fixtures.generated.json");
-const ids = Object.keys(JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures).filter((id) => !only.length || only.includes(id));
+const FIX = JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures;
+const ids = Object.keys(FIX).filter((id) => !only.length || only.includes(id));
 const SURFACES = [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }].filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
 const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
 
@@ -86,17 +87,36 @@ const open = async (s, t) => {
   page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text()); });
   return { ctx, page };
 };
+/** In the page: is this PNG one flat colour (nothing was drawn)? */
+const isFlat = (page, png) => page.evaluate(async (d) => {
+  const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = "data:image/png;base64," + d; });
+  const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+  const px = g.getImageData(0, 0, im.width, im.height).data;
+  for (let i = 4; i < px.length; i += 4) if (Math.abs(px[i] - px[0]) + Math.abs(px[i + 1] - px[1]) + Math.abs(px[i + 2] - px[2]) > 6) return false;
+  return true;
+}, png.toString("base64"));
 /** One picture: the page for a fixture, the element, its rule faults. Retried twice on a dead page or browser. */
 const shoot = async (cur, s, t, id) => {
   for (let attempt = 0; ; attempt++) {
     try {
       const { page } = cur;
-      await page.goto(`http://127.0.0.1:${port}/app/gallery?f=${id}&form=${s.form}`, { waitUntil: "load", timeout: 30000 });
+      const themeQ = id === "skills-real" ? `&theme=${t.name === "paper" ? "paper" : "dark"}` : "";
+      await page.goto(`http://127.0.0.1:${port}/app/gallery?f=${id}&form=${s.form}${themeQ}`, { waitUntil: "load", timeout: 30000 });
       await page.waitForSelector("#fixture", { timeout: 20000 }).catch(() => {});
-      await page.waitForTimeout(400);
+      if (id === "skills-real") {
+        await page.waitForFunction(() => document.getElementById("fixture")?.innerText?.includes("house-style"), { timeout: 15000 }).catch(() => {});
+      }
+      await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
       const el = page.locator("#fixture");
       if (!(await el.count())) return { missing: true };
-      return { after: await el.screenshot(), rules: await rules(page, s.name !== "app") };
+      // A slow runner shows #fixture before its content has painted, and a picture of that is one flat colour. Wait for it, a little longer each time; a fixture that still draws
+      // nothing is a rule fault, never a reference picture.
+      let after = await el.screenshot();
+      let flat = await isFlat(page, after);
+      for (let wait = 1; flat && wait <= 6; wait++) { await page.waitForTimeout(wait * 500); after = await el.screenshot(); flat = await isFlat(page, after); }
+      const bad = await rules(page, s.name !== "app");
+      if (flat) bad.push("the fixture drew nothing (one flat colour)");
+      return { after, rules: bad };
     } catch (e) {
       if (attempt >= 2) throw e;
       await cur.ctx.close().catch(() => {});
@@ -108,6 +128,7 @@ try {
   for (const s of SURFACES) for (const t of THEMES) {
     const cur = await open(s, t);
     for (const id of ids) {
+      if (!FIX[id]?.screens?.[s.form]) continue;
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
@@ -116,7 +137,9 @@ try {
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
       const refFile = path.join(refs, id, `${s.name}-${t.name}.png`);
-      if (update) { fs.mkdirSync(path.dirname(refFile), { recursive: true }); fs.writeFileSync(refFile, after); row.status = "written"; }
+      // a picture that drew nothing is never written as a reference
+      if (update && row.rules.some((x) => /drew nothing/.test(x))) row.status = "blank";
+      else if (update) { fs.mkdirSync(path.dirname(refFile), { recursive: true }); fs.writeFileSync(refFile, after); row.status = "written"; }
       else if (!fs.existsSync(refFile)) { row.status = "new"; failed++; }
       else {
         const before = fs.readFileSync(refFile), r = await compare(cur.page, before, after);

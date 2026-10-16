@@ -221,6 +221,7 @@
       "design/system/components/file-preview.md",
       "design/system/components/flow-step.md",
       "design/system/components/form-controls.md",
+      "design/system/components/form-fields.md",
       "design/system/components/glass-frame.md",
       "design/system/components/glass-mini.md",
       "design/system/components/icon-button.md",
@@ -288,5 +289,5 @@
     "agents/errors.md",
     "agents/behaviour.md"
   ],
-  "unpublished": ["proposals/", "design/boards/", "agents/"]
+  "unpublished": ["proposals/", "design/boards/", "agents/", "release/"]
 }

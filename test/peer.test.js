@@ -638,8 +638,9 @@ test("peer: a tmux or screen server needs one presence proof, then every pane on
     // No proof: presence_required, nothing made -- and the error names exactly this server.
     const bare = await inTmux("harlow-a", "kit");
     assert.equal(bare.error?.code, "presence_required", JSON.stringify(bare));
-    assert.equal(bare.error.server.exe, "/usr/bin/tmux", JSON.stringify(bare));
-    assert.match(bare.error.message, /\/usr\/bin\/tmux/, "the reason names the full path, not a basename");
+    const tmuxExe = bare.error.server.exe;
+    assert.ok(tmuxExe.includes("/") && tmuxExe.endsWith("tmux"), "the server is named by its full path, not a basename");
+    assert.match(bare.error.message, new RegExp(tmuxExe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "the reason names the full path, not a basename");
 
     // With a valid proof, from the SAME server (-L harlow-a again reaches it, tmux servers persist
     // across `tmux -L <name>` invocations until killed): it goes through, and the server is now

@@ -60,6 +60,24 @@ test("wipeHome refuses while a sealing process serves the folder, and destroys n
   assert.equal((await wipeHome({ home: r.home })).seal.master_destroyed, true);
 });
 
+test("wipeHome sees a sealing process the moment it is spawned, from the folder's own record, with no call made to it and no listing to catch it", async t => {
+  const r = await rig(t); fs.rmSync(r.seal, { recursive: true, force: true });
+  const s = startSealer({ dir: r.seal, timeoutMs: 8000, dev: true, unattested: true }); let closed = false;
+  t.after(async () => { if (!closed) await s.close(); });
+  assert.equal(fs.readFileSync(path.join(r.seal, "sealer.pid"), "utf8"), String(s.pid), "the spawner wrote the record with the pid");
+  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "sealer_running");
+  await s.close(); closed = true;
+  const gone = Date.now() + 5000; while (fs.existsSync(path.join(r.seal, "sealer.pid")) && Date.now() < gone) await new Promise(res => setTimeout(res, 20));
+  assert.equal(fs.existsSync(path.join(r.seal, "sealer.pid")), false, "the record goes with the process");
+});
+
+test("a record whose process is gone is stale and does not stop a wipe", async t => {
+  const r = await rig(t);
+  const dead = spawnSync(process.execPath, ["-e", "0"]); // a pid that has exited
+  fs.writeFileSync(path.join(r.seal, "sealer.pid"), String(dead.pid));
+  assert.equal((await wipeHome({ home: r.home })).seal.master_destroyed, true);
+});
+
 test("wipeHome never reports success while a key survives: a keychain keystore with no way to delete it, and a sealing master that is not a file, are refused by name", async t => {
   const r = await rig(t);
   const cfg = path.join(r.home, "config.json");

@@ -13,6 +13,7 @@
 
 import { expandConnections } from "./connection-step.js";
 import { runCases } from "./cases.js";
+import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
 import { linksFor, withLinks } from "./links.js";
@@ -1170,10 +1171,12 @@ export class FlowRunner {
         if (!items) {
           const list = ev(s.over);
           items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-          await this.#mark(ctx, key, { status: "started", output: { items } });
+          // a list longer than the limit is cut, and the ledger says so (the run page shows "cut at 50 of 200"); recorded once with the items, so a replay says the same
+          await this.#mark(ctx, key, { status: "started", output: { items, ...(Array.isArray(list) && list.length > items.length ? { total: list.length, cut: true } : {}) } });
         }
         for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-        return { count: items.length };
+        const was = (this.#led(ctx, key) || {}).output || {};
+        return { count: items.length, ...(was.cut ? { cut: true, total: was.total } : {}) };
       });
       return;
     }
@@ -1684,7 +1687,10 @@ export class FlowRunner {
       const id = recordId(val(s.record));
       if (!id) throw new StepFail("bad_input", `step ${s.id}: no record to act on`);
       const cur = await this.k.records.get(chain, s.type, id);
-      if (!cur) throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      if (!cur) {
+        if (s.kind === "remove") return { record: { id, type: s.type }, removed: true, already_gone: true };
+        throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      }
       if (cur.labels && (cur.labels.trust === "external" || cur.labels.trust === "untrusted")) ctx.run.tainted = true;
       if (s.kind === "remove") { const r = await this.k.records.remove(chain, s.type, id, cur.version, kernelOpts); return { record: plain(r), removed: true }; }
       const patch = s.kind === "stage" ? { [stageField ? stageField.name : "stage"]: s.to } : val(s.set);
@@ -1758,7 +1764,14 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
       const t = res.task || {};
-      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
+      // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
+      let values;
+      if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
+        const read = readForm(s.form, t.answer);
+        if (!read.ok) throw new StepFail("invalid_answer", `step ${s.id}: ${read.message}`);
+        values = read.values;
+      }
+      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(values ? { values } : {}), ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
     const who = s.kind === "agent" ? s.assistant : s.to;
     const need = { action: "ask.request", resource: `vyre://${ctx.cat.space}/task/*` };

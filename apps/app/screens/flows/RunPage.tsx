@@ -12,8 +12,8 @@ import { callT } from "../../src/real/call-tool";
 import { getReal, runReal, runsReal, explainReal } from "./real";
 import { ExplainCard } from "./ExplainCard";
 import { RunSteps } from "./RunSteps";
-import { canRetry, retryLimits, runHeader, threadOf } from "./run-model";
-import { retryReal } from "./run";
+import { canRetry, canStop, retryLimits, runHeader, threadOf } from "./run-model";
+import { cancelReal, retryReal } from "./run";
 import { explainText, shrunkNote, titleOf } from "./real-model.js";
 
 const when = (ms: number | null | undefined) => (ms ? dayTimeOf(ms) : "");
@@ -30,6 +30,7 @@ export function RunPage({ flow, run }: { flow: string; run: string }) {
   const [n, setN] = useState(0);
   const [threads, setThreads] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -65,6 +66,10 @@ export function RunPage({ flow, run }: { flow: string; run: string }) {
           : d.painted ? <Card flush><RunSteps rail painted={d.painted} steps={d.run?.steps} max={retryLimits(d.def)} fmt={when} name={name} threads={threads} openThread={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} /></Card>
           : <Card><EmptyState title="No steps to show" body="This run has no record of its steps." /></Card>}
         {canRetry(d.run?.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={async () => { setBusy(true); try { await retryReal(run); setN((x) => x + 1); } finally { setBusy(false); } }} /></View> : null}
+        {canStop(d.run?.state) && !d.run?.gate ? (confirmStop ? (
+          <View className="gap-s2 pt-s2"><Text size="caption" tone="label">Stopping keeps this run's record but it will not carry on, and what it waits on is withdrawn.</Text>
+            <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Stopping" : "Stop it"} disabled={busy} onPress={async () => { setBusy(true); try { await cancelReal(run); setConfirmStop(false); setN((x) => x + 1); } finally { setBusy(false); } }} /><Button kind="ghost" size="sm" label="Keep it" onPress={() => setConfirmStop(false)} /></View></View>
+        ) : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Stop this run" onPress={() => setConfirmStop(true)} /></View>) : null}
       </Sec>
     </Frame>
   );

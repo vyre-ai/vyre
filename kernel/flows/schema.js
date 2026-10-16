@@ -3,6 +3,7 @@
 // projection of this and nothing more. This file says what a stored Flow is, checks its shape, and makes its canonical form
 // and hash (the hash is what an approval binds to: two texts that store identically are one approval, 9.2).
 
+import { credentialIn } from "../../lib/credential-shapes.js";
 import crypto from "node:crypto";
 import { parse, ExprError } from "./expr.js";
 import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
@@ -181,7 +182,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
       case "ask":
         need("to", v => typeof v === "string" && /^(?:person|role):/.test(v), "ask a person or a role: person:<id> or role:<name>");
         need("title", () => true, "give the question"); value("title");
-        if (s.form !== undefined) { if (!Array.isArray(s.form) || !s.form.every((f/** @type {any} */) => isObj(f) && typeof f.name === "string")) out.push({ path: `${p}.form`, message: "a form is a list of fields with names" }); }
+        if (s.form !== undefined) checkForm(s.form, `${p}.form`, out);
         break;
       case "assign":
         need("to", v => typeof v === "string" && /^(?:person|teammate|role|pool):/.test(v), "assign to person:<id>, teammate:<name>, role:<name> or pool:<name>");
@@ -225,6 +226,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("path", v => typeof v === "string" && /^\/[^\s?#]*$/.test(v) && !v.split("/").includes(".."), "the path starts with / and is written out (the query goes in `query`)");
         if (s.query !== undefined) { if (!isObj(s.query)) out.push({ path: `${p}.query`, message: "the query is an object of names and values" }); else checkValue(s.query, `${p}.query`, out); }
         value("headers"); value("body");
+        // A key typed into a request is stored in the Flow, copied with it and read by models: the credential belongs to the Connection in the Vault, which adds it when the call is made.
+        for (const part of ["headers", "query"]) if (isObj(s[part])) for (const [k, v] of Object.entries(s[part])) if (typeof v === "string" && credentialIn(v, "ingest")) out.push({ path: `${p}.${part}.${k}`, message: "Keep keys in the Vault: use a connection for this step instead of typing the key here." });
         if (s.headers !== undefined && isObj(s.headers)) for (const h of Object.keys(s.headers)) if (/^(authorization|proxy-authorization|cookie|x-api-key|host)$/i.test(h)) out.push({ path: `${p}.headers.${h}`, message: `${h} is the vault's: a Flow never sets it` });
         if (s.drive !== undefined) {
           if (!isObj(s.drive)) out.push({ path: `${p}.drive`, message: "drive is { upload?, saveTo? }" });
@@ -294,6 +297,30 @@ function checkPolicy(s, p, out, ids, depth, budget, inHandler) {
       if (s.verify.readback === true && !["create", "update", "upsert", "stage"].includes(s.kind)) out.push({ path: `${p}.verify.readback`, message: "readback reads a record back, so it belongs on create, update, upsert or stage" });
     }
   }
+}
+
+/** The kinds of field an ask's form can have. */
+export const FORM_KINDS = Object.freeze(["text", "number", "date", "choice", "boolean", "file"]);
+export const FORM_LIMITS = Object.freeze({ fields: 20, label: 120, choices: 20, choice: 60 });
+
+/** The form an ask carries: up to 20 fields, each `{ name, label?, kind?, required?, choices? }`. `choices` (2 to 20 texts) belong to a `choice` field and only to it. @param {any} form @param {string} path @param {Problem[]} out */
+function checkForm(form, path, out) {
+  if (!Array.isArray(form) || form.length < 1 || form.length > FORM_LIMITS.fields) { out.push({ path, message: `a form is a list of 1 to ${FORM_LIMITS.fields} fields` }); return; }
+  const seen = new Set();
+  form.forEach((/** @type {any} */ f, /** @type {number} */ i) => {
+    const at = `${path}[${i}]`;
+    if (!isObj(f)) { out.push({ path: at, message: "a form field is an object: { name, label?, kind?, required?, choices? }" }); return; }
+    onlyKeys(f, ["name", "label", "kind", "required", "choices"], at, out);
+    if (typeof f.name !== "string" || !ID_RE.test(f.name)) out.push({ path: `${at}.name`, message: "a field name is lowercase letters, digits and underscores" });
+    else if (seen.has(f.name)) out.push({ path: `${at}.name`, message: `the field ${f.name} is named twice` }); else seen.add(f.name);
+    if (f.label !== undefined && (typeof f.label !== "string" || !f.label.trim() || f.label.length > FORM_LIMITS.label)) out.push({ path: `${at}.label`, message: `a label is a short text (1 to ${FORM_LIMITS.label} characters)` });
+    if (f.kind !== undefined && !FORM_KINDS.includes(f.kind)) out.push({ path: `${at}.kind`, message: `a field kind is one of ${FORM_KINDS.join(", ")}` });
+    if (f.required !== undefined && typeof f.required !== "boolean") out.push({ path: `${at}.required`, message: "required is true or false" });
+    if (f.choices !== undefined) {
+      if (f.kind !== "choice") out.push({ path: `${at}.choices`, message: "choices belong to a field of kind choice" });
+      else if (!Array.isArray(f.choices) || f.choices.length < 2 || f.choices.length > FORM_LIMITS.choices || !f.choices.every((/** @type {any} */ c) => typeof c === "string" && c.trim() && c.length <= FORM_LIMITS.choice)) out.push({ path: `${at}.choices`, message: `choices are 2 to ${FORM_LIMITS.choices} texts of at most ${FORM_LIMITS.choice} characters` });
+    } else if (f.kind === "choice") out.push({ path: `${at}.choices`, message: "a choice field lists its choices" });
+  });
 }
 
 /** @param {any} o @param {string} path @param {Problem[]} out */

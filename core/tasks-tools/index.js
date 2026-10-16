@@ -9,7 +9,7 @@ import { personZone, showTimes } from "../../lib/time/index.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 const STATES = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

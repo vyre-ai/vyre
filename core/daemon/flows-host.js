@@ -414,8 +414,18 @@ export function createFlowsHost(o) {
         if ((await sh.mint.list({ source: lendSource(t.id) })).some((/** @type {any} */ g) => g.subject && g.subject.actor && g.subject.actor.id === t.doer.id)) return;
         await sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(t.doer.id), space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 } }, source: lendSource(t.id), reason: "the agent was given this task" });
       };
-      const reclaim = (/** @type {string} */ id) => sh.mint.end({ source: lendSource(id), reason: "the task is over" });
-      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
+      // The connections the approved Kit names for this task are lent to the agent for the one job, and only when a person approved the task: that person must hold each one (the vault refuses otherwise). With no approver
+      // the agent lends nothing and runs on its own access. The lend ends with the task (reclaim) or at the day's end.
+      const lendConnections = async (/** @type {any} */ t) => {
+        const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : "";
+        if (!approver || !o.callModule) return;
+        let named;
+        try { named = await o.callModule("flows.kit.credentials", { task: String(t.id) }); } catch { return; }   // no approved Kit version names credentials for it: nothing to lend
+        if (!named || !Array.isArray(named.credentials) || !named.credentials.length) return;
+        await o.callModule("vault.connections.lend", { task: String(t.id), agent: String(t.doer.id), connections: named.credentials, until: clock() + 24 * 3600 * 1000, approver });
+      };
+      const reclaim = async (/** @type {string} */ id) => { await sh.mint.end({ source: lendSource(id), reason: "the task is over" }); try { await o.callModule("vault.connections.end", { task: String(id), reason: "the task is over" }); } catch { /* none was lent */ } };
+      const wakeUp = createAgentWake({ space, gw, chain: flowsChain, agentChain, lend: async (/** @type {any} */ t) => { await lend(t); await lendConnections(t); }, reclaim, editChain: t => (t.assigned_by && t.assigned_by.kind === "person" ? k.chains.forModule({ module: "flows", approver: personChain(String(t.assigned_by.id)) }) : personChain(ownerOf())), callModule: o.callModule, log: m => log(m) });
       k.log.subscribe("agent-wake", {}, wakeUp);
       // A job that ends with its task still open is not left in silence (core/daemon/agent-wake.js).
       if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });

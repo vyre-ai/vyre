@@ -41,6 +41,8 @@ export class FakeChrome {
     this.seen = [];
     this.n = 0;
     this.exited = false;
+    /** @type {Map<string, any[]>} */
+    this.cookies = new Map();
     this.newTarget("about:blank");
   }
 
@@ -172,6 +174,12 @@ export class FakeChrome {
         return ok({ success: true });
       }
       case "Target.createBrowserContext": return ok({ browserContextId: `ctx-${++this.n}` });
+      case "Storage.getCookies": return ok({ cookies: this.cookies.get(params.browserContextId) || [] });
+      case "Storage.setCookies": {
+        const id = params.browserContextId;
+        if (typeof id === "string") this.cookies.set(id, params.cookies || []);
+        return ok({});
+      }
       case "Browser.getVersion": return ok({ protocolVersion: "1.3", product: "Chrome/140.0.0.0", revision: "@fake", userAgent: "Mozilla/5.0 FakeChrome", jsVersion: "14.0" });
       case "Browser.close": ok({}); return this.exit();
       case "Fetch.enable": here.fetch = params; return ok({});

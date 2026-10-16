@@ -32,6 +32,7 @@ const WHAT = {
   "flows.health": "One-line health of a Flow: last run, this week, next run, what needs a person, red if a Connection is red. No id lists all.",
   "flows.access.get": "Who a Flow is shared with: { id }. Only its creator, an owner or an admin.",
   "flows.access.set": "Share a Flow with a person: { id, subject (the person), level: use | edit | null }. Can use runs and sees it; Can edit changes it too; null takes the access away. Only its creator, an owner or an admin.",
+  "flows.actions": "Actions a Flow call step may name: module tools offered as Flow steps, with inputs and outputs.",
   "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, step kinds, retries, checks, expressions, limits. Read it before writing a Flow.",
   "flows.from-chat": "Turn a chat's hand-made calls into a draft Flow: { name, calls: [{ tool, input }], variables?, propose? }. Never approved; propose also proposes it.",
   "flows.connections": "Which Flows use which Connections, with their health, so a red Connection shows what it stops. Name one Connection or list all.",
@@ -98,7 +99,7 @@ export default {
       if (!first || !first.actor || first.actor.kind !== "person") throw refuse("a Flow is changed or run under a person's own chain or an assistant's session; this call carries neither", "denied");
       return chain;
     };
-    const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"];
     for (const [name, description] of Object.entries(LIBRARY)) {
       ctx.tool(name, { description, input: { type: "object", additionalProperties: true, properties: { id: str } }, callers: CALLERS,
         run: async (/** @type {any} */ input) => {
@@ -108,7 +109,7 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {

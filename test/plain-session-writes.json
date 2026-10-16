@@ -61,7 +61,15 @@
    "class": "held",
    "why": "presence floor"
   },
+  "chrome.api": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
   "chrome.click": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "chrome.net": {
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
   },

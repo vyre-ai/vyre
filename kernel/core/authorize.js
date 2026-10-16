@@ -23,7 +23,7 @@ const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_conta
 /** Actions only a Flow run may ask (see `byRunner`). */
 const RUNNER_ONLY = new Set(["fn.run", "model.call"]);
 /** Actions only a grant that names them covers, whatever their risk: no wildcard (an owner's `*`) reaches them, so the limits on the grant that does is the only way in. */
-const NAMED_ONLY = new Set(["flows.act-standing"]);
+const NAMED_ONLY = new Set(["flows.act-standing", "gate.act-standing"]);
 export function patternCovers(pattern, action, since = 0, version = undefined, risk = undefined) {
   const a = action.split("."), p = pattern.split(".");
   const ok = pattern === "*" || (p.length === 2 && a.length === 2 && p.every((s, i) => s === "*" || s === a[i]));
@@ -43,7 +43,30 @@ const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_ver
 /** Resource types only the person they belong to may read (the `owner` attribute names them): a session's lines. */
 export const OWNER_SCOPED_TYPES = new Set(["session"]);
 const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
-const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once"]);
+const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount", "currency"]);
+/**
+ * Does a grant's `to` condition allow every recipient of this act: each must match a pattern (an address, or `*@domain`, case-insensitive) or be a member of one of the named lists (read through `listHas`).
+ * An act that names no recipients is never allowed by a `to` condition. @param {any} to @param {string[] | undefined} recipients @param {((list: string, address: string) => Promise<boolean> | boolean) | undefined} listHas
+ */
+export async function toAllows(to, recipients, listHas) {
+  if (!to || typeof to !== "object" || !Array.isArray(recipients) || !recipients.length) return false;
+  const patterns = Array.isArray(to.patterns) ? to.patterns.map((/** @type {any} */ p) => String(p).toLowerCase()) : [], lists = Array.isArray(to.lists) ? to.lists.map(String) : [];
+  for (const r of recipients) {
+    const a = plainAddress(r);
+    if (!a) return false;   // not one plain address: a display name, two addresses, a comma or a bracket never matches
+    let ok = patterns.some((/** @type {string} */ p) => (p.startsWith("*@") ? a.slice(a.indexOf("@") + 1) === p.slice(2) : p === a));
+    for (let i = 0; !ok && i < lists.length && typeof listHas === "function"; i++) { try { ok = Boolean(await listHas(lists[i], a)); } catch { ok = false; } }
+    if (!ok) return false;
+  }
+  return true;
+}
+/** One plain address, case-folded, or null: a single @, no spaces, commas, semicolons, quotes or brackets. @param {any} v @returns {string | null} */
+export function plainAddress(v) {
+  const s = String(v ?? "").trim();
+  if (!/^[^\s@,;<>"'()\[\]\\]+@[^\s@,;<>"'()\[\]\\]+$/.test(s)) return null;
+  const i = s.indexOf("@");
+  return `${s.slice(0, i).toLowerCase()}@${s.slice(i + 1).toLowerCase()}`;
+}
 const sameJson = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
 /** Is every member of `child` in `parent`? An absent child list is "no limit", which is wider than any parent list. @param {any[] | undefined} parent @param {any[] | undefined} child */
 const subsetOf = (parent, child) => parent === undefined || (Array.isArray(child) && Array.isArray(parent) && child.every(x => parent.includes(x)));
@@ -104,8 +127,13 @@ export function containsDims(parent, child, since = () => 0, riskOf = () => unde
   if (pc.rate) {
     if (!cc.rate || !(cc.rate.n <= pc.rate.n) || !(cc.rate.per_seconds >= pc.rate.per_seconds) || !onlyKeys(pc.rate, new Set(["n", "per_seconds"])) || !onlyKeys(cc.rate, new Set(["n", "per_seconds"]))) return false;
   }
+  // payment limits: the child's per-payment and per-day limits no larger than the parent's (and present when the parent has one), the same currency
+  for (const k of ["max_amount", "daily_amount"]) if (pc[k] !== undefined && !(typeof cc[k] === "number" && typeof pc[k] === "number" && cc[k] <= pc[k])) return false;
+  if (pc.currency !== undefined && cc.currency !== pc.currency) return false;
   // who may use it
   if (pc.audience !== undefined && !subsetOf(pc.audience, cc.audience)) return false;
+  // where an act may go: a child carries the very same destinations or none at all is refused (a delegated grant is never wider, and this is never narrowed in place)
+  if (pc.to !== undefined && !sameJson(pc.to, cc.to)) return false;
   return true;
 }
 
@@ -319,7 +347,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true, input.origin);
+          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true, input.origin, Array.isArray(input.recipients) ? input.recipients.map(String) : undefined);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
@@ -391,7 +419,7 @@ export function createAuthorizer(cfg) {
   }
 
   /** One candidate grant against one hop: coverage, selector, kernel attributes, conditions, narrowing. */
-  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false, origin = undefined) {
+  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false, origin = undefined, recipients = undefined) {
     const subj = g.subject;
     const subjectOk = subj.kind === "actor" ? subj.actor.kind === h.actor.kind && subj.actor.id === h.actor.id && subj.actor.space === h.actor.space
       : subj.kind === "role" ? Boolean(ms && ms.role === subj.name)
@@ -401,6 +429,8 @@ export function createAuthorizer(cfg) {
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
     const m = matchGrant(g, action, resource, { attrs, now, probe, origin, since: since(action), risk: riskOf(action) });
     if (!m.ok) return m;
+    // where the act may go: every recipient must match the grant's `to` (an act with no recipients, or one outside it, is not covered)
+    if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).
@@ -419,7 +449,7 @@ export function createAuthorizer(cfg) {
     if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, limit: c.budget.limit, amount: 1, grant: g.id });
     if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
     if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
-    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });
+    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once", "to", "max_amount", "daily_amount", "currency"].includes(k)) obs.push({ type: `unknown:${k}` });
     if (obsUnknownSchedule) obs.push({ type: "unknown:schedule" });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.
@@ -435,7 +465,7 @@ export function createAuthorizer(cfg) {
         const pms = cfg.members.membership ? cfg.members.membership(pa) : undefined;
         if (pms && pms.role === "temp" && (pms.expires === undefined || pms.expires <= now || !(pms.scope || []).some((/** @type {string} */ s) => covers(s, resource)))) return { ok: false, reason: "expired" };
       }
-      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe, origin);
+      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe, origin, recipients);
       if (!pr.ok) return pr;
       obs.push(...pr.obligations);
     }

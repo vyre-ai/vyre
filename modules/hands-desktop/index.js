@@ -16,6 +16,7 @@
 // past the one client it was built for.
 
 import { callerKind, agentClaim } from "../../core/modules/index.js";
+import { AGENT_NAME_RE, resolveComputerAgent } from "../../lib/computer-agent.js";
 import { createClient } from "./client.js";
 import * as snapshot from "./snapshot.js";
 import * as act from "./act.js";
@@ -24,9 +25,9 @@ import * as act from "./act.js";
 const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
-const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+const AGENT = AGENT_NAME_RE;
 /** The person's own surfaces and modules, plus an agent's own hands (a model session): resolveAgent refuses a model that names no agent of its own. */
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {
@@ -54,22 +55,7 @@ export default {
      * computers.js's ownSurface and sight) finds the claim under any transport, so the same
      * self-or-assistant rule now applies whichever way the agent's identity reached this call.
      */
-    const resolveAgent = async (input, caller) => {
-      const self = agentClaim(caller);
-      let agent;
-      if (self) {
-        if (!input.agent || input.agent === self) agent = self;
-        else if ((await kindOf(self)) === "assistant") agent = input.agent;
-        else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
-      } else {
-        // A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no computer of its own.
-        if (/^(mcp|harness)\b/.test(String(caller || ""))) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
-        if (!input.agent) throw new Error("say which agent's computer: agent is required");
-        agent = input.agent;
-      }
-      if (!AGENT.test(String(agent))) throw new Error(`"${agent}" is not an agent name`);
-      return String(agent);
-    };
+    const resolveAgent = (input, caller) => resolveComputerAgent(input, caller, kindOf);
 
     /** Where the agent's computerd answers, and a client for it. Throws with a readable reason. */
     const clientFor = async (agent, thread) => {

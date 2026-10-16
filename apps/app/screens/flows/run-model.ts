@@ -15,6 +15,9 @@ export function recordLines(nodes: PaintedNode[]): { id: string; title: string; 
 /** Only a failed or paused run can be retried (flows.retry puts it back to work after its cause was fixed). */
 export const canRetry = (state: string): boolean => state === "failed" || state === "paused";
 
+/** A run that is paused, failed, waiting or held can be stopped (flows.cancel); one that is running or finished cannot. */
+export const canStop = (state: string): boolean => state === "paused" || state === "failed" || state === "waiting" || state === "queued";
+
 /** The words for a refused start, from the box's code. */
 export function startRefusal(code: string | undefined, message: string): string {
   if (code === "not_active") return "That Flow is paused or has no approved version, so it cannot run.";
@@ -82,7 +85,7 @@ export function stepRows(painted: PaintedNode[], steps: Record<string, Ledger> |
       let status = "Running", tone: Tone = "plain", wakes = "";
       const w = e.wait;
       switch (e.status) {
-        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; break;
+        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; if ((e.output as any)?.cut) { status = `Done, cut at ${(e.output as any).count} of ${(e.output as any).total}`; tone = "warn"; } break;
         case "failed_handled": status = "Failed, handled"; tone = "warn"; break;
         case "skipped": status = e.substitute ? `Skipped, value given by ${e.skipped_by || "a person"}` : "Skipped"; break;
         case "failed": status = ask ? "Refused" : "Failed"; tone = "err"; break;

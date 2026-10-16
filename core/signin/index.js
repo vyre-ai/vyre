@@ -22,7 +22,7 @@ const NEW_ASK_MS = 30_000;
 const NEEDS_TERMINAL = "Run this in a terminal you are logged in on, not from a program.";
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "device"];
 
 /** @param {any} t the terminal meta the daemon measured */
 const loginKey = t => (t && typeof t === "object" ? t.key : typeof t === "string" ? t : null);

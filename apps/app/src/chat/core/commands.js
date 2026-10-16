@@ -42,6 +42,7 @@ export const COMMANDS = Object.freeze([
   { name: "later", description: "Schedule a follow-up message for later", hint: "\"at 5pm\" | \"every weekday 9am\" | \"when this finishes\"", aliases: ["remind"], source: "session" },
   { name: "goal", description: "Set a goal with milestones, notified as each one is done", hint: "<goal>", source: "session", local: "goal" },
   { name: "vyre", description: "Vyre status, ask an agent, recall past sessions, remember a lesson", hint: "[status | ask | recall | remember]", source: "vyre" },
+  { name: "skills", description: "Open the skills and plugins library", source: "vyre", local: "skills" },
 ]);
 
 /** @typedef {{ start: number, end: number, query: string }} CommandRange */

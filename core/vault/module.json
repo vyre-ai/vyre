@@ -182,6 +182,8 @@
       { "name": "vault.api.send", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.fetch.public", "reach": "modules" },
       { "name": "vault.credential.tokens", "reach": "modules" },
+      { "name": "vault.person.browser-profile-key", "reach": "modules" },
+      { "name": "vault.space.browser-profile-key", "reach": "modules" },
       { "name": "vault.forward", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.forward.file", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.service.forward", "asks": true, "outward": true, "reach": "modules" },

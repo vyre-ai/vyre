@@ -27,7 +27,10 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
 import { createMemberOps } from "./member-ops.js";
+import { identityKernel, personalSkillsOnHome } from "./home-kernel.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
+import { resolveApproved } from "../../lib/skill-resolve.js";
+import { runBrowse, roleOf } from "./browse-lib.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -79,7 +82,7 @@ export function sourcesOf(c) {
 }
 
 /** @param {any} s */
-const shown = (s) => ({ id: s.id, name: s.name, level: s.level, ...(s.scope ? { scope: s.scope } : {}), description: s.description, tokens: s.tokens, ...(s.needs ? { needs: s.needs } : {}) });
+const shown = (s) => ({ id: s.id, name: s.name, level: s.level, ...(s.scope ? { scope: s.scope } : {}), description: s.description, tokens: s.tokens, ...(s.needs ? { needs: s.needs } : {}), ...(s.degrade ? { degrade: s.degrade } : {}) });
 /**
  * Which of these skills work on a harness (R031-85): each is annotated `works: "degraded"` with its reason, or left out and named in `hidden` with the reason, by the one rule (lib/harness-caps.js fit).
  * A harness nobody has started has no caps and hides nothing. @param {any[]} rows the shown rows @param {Map<string, any>} byId the skills by id @param {Record<string, boolean | null> | null} caps @param {string} harness
@@ -104,13 +107,35 @@ export default {
 
     // ---- the library (R031-18..21): versions as `skill` records, approvals, and what each AI is given -----------------------------------------------------------------------------------
     const kernelOk = () => ctx.kernel && ctx.kernel.records && typeof ctx.kernel.serviceChain === "function";
-    const lib = createLibrary({
-      kernel: () => { if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel"); return ctx.kernel; },
+    /** The home Space id (identity library): pinned at start from the home's kernel record. */
+    let homeSpacePinned = "";
+    try { const j = JSON.parse(fs.readFileSync(path.join(home, "kernel", "space.json"), "utf8")); homeSpacePinned = String(j.space || ""); } catch { homeSpacePinned = kernelOk() ? String(ctx.kernel.space || "") : ""; }
+    const libDeps = () => ({
       agentOwner: async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.list", {}); const l = r && !r.error && Array.isArray(r.data) ? r.data : []; const a = l.find((/** @type {any} */ x) => x.name === name); return a && a.owner ? String(a.owner) : null; } catch { return null; } },
       projectOwner: async (/** @type {string} */ slug) => { try { const rows = (await ctx.kernel.records.query(ctx.kernel.serviceChain("skills"), "project", { filter: { field: "slug", op: "eq", value: slug }, page: { limit: 1 } })).rows; const o = rows[0] && rows[0].data.owner; return o && o.actor ? String(o.actor.id) : null; } catch { return null; } },
       mcpAdd: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.add", server); if (r.error) throw new Error(r.error.message); return r.data; },
       log: (/** @type {string} */ m) => ctx.log(m),
     });
+    const lib = createLibrary({ kernel: () => { if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel"); return ctx.kernel; }, ...libDeps() });
+    const identityLib = createLibrary({
+      kernel: () => {
+        if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel");
+        const k = identityKernel({ kernel: ctx.kernel, registry: null, homeSpacePinned });
+        if (!k || !k.records) throw err("unavailable", "the identity skill library needs the home Space");
+        return k;
+      },
+      ...libDeps(),
+    });
+    const personalOnHome = () => personalSkillsOnHome({ kernel: ctx.kernel, registry: null, homeSpacePinned });
+    const libraryFor = (/** @type {string | undefined} */ level) => (level === "personal" && personalOnHome() ? identityLib : lib);
+    /** Approved rows for this Space plus identity personal skills from the home Space when the running Space is hosted. */
+    const mergedApproved = async (/** @type {any} */ who) => {
+      const localRows = await lib.approved({ ...who, person: who.person || null });
+      if (!who.person || !personalOnHome()) return localRows;
+      const personalRows = await identityLib.approved({ person: who.person, agent: null, projects: [], allAgents: false });
+      const withoutPersonal = localRows.filter((/** @type {any} */ i) => i.level !== "personal");
+      return resolveApproved([...withoutPersonal, ...personalRows.filter((/** @type {any} */ i) => i.level === "personal")], who);
+    };
     /** The caller's kernel chain, or null when the call carries none (a guest, a bare label). @param {any} meta */
     const chainOf = async (meta) => { try { return kernelOk() && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { return null; } };
     const personIdOf = (/** @type {any} */ chain) => { const h = chain && chain.hops && chain.hops[0]; return h && h.actor.kind === "person" ? String(h.actor.id) : null; };
@@ -156,7 +181,7 @@ export default {
       let list = sourcesOf({ pkg, home, person: s.person, agent: s.agent, account: s.account, projects: s.projects });
       if (kernelOk() && s.account) {
         const chain = await chainOf(meta);
-        const approved = await lib.approved({ person: personIdOf(chain), agent: s.agent, projects: s.projects.map((/** @type {any} */ p) => p.slug), allAgents: Boolean(s.person && !s.agent) }).catch(() => []);
+        const approved = await mergedApproved({ person: personIdOf(chain), agent: s.agent, projects: s.projects.map((/** @type {any} */ p) => p.slug), allAgents: Boolean(s.person && !s.agent) }).catch(() => []);
         const seen = new Set(list.map((x) => x.id));
         list = [...list, ...entriesOf(approved).filter((x) => !seen.has(x.id))];
       }
@@ -168,16 +193,87 @@ export default {
     const harnessCaps = async (harness) => {
       try { const r = await ctx.call("sessions.harness.get", { provider: String(harness) }); const h = r && !r.error && r.data && Array.isArray(r.data.harnesses) ? r.data.harnesses[0] : null; return h ? h.caps : null; } catch { return null; }
     };
+    const membershipOf = async (/** @type {string | null} */ person) => {
+      if (!person || !kernelOk() || typeof ctx.kernel.membership !== "function") return null;
+      try { return await ctx.kernel.membership(person); } catch { return null; }
+    };
+    const approvedMapFor = async (/** @type {string | null} */ person) => {
+      const map = new Map();
+      if (!person) return map;
+      const items = await mergedApproved({ person, agent: null, projects: [], allAgents: false }).catch(() => []);
+      for (const i of items) for (const e of entriesOf([i])) map.set(e.id, { ...e, kind: i.kind, body: i.body });
+      return map;
+    };
+    const maySeeDraft = (/** @type {{ person: string | null, role: string }} */ who, /** @type {any} */ v) => {
+      if (v.level === "personal") return v.scope === who.person;
+      if (v.state !== "draft") return true;
+      if (who.role === "owner" || who.role === "admin") return true;
+      return v.proposer === `person:${who.person}`;
+    };
+    const maySeeVersion = (/** @type {{ person: string | null, role: string }} */ who, /** @type {any} */ v) => {
+      if (v.level === "personal") return v.scope === who.person;
+      if (v.level === "space" && v.state === "draft") return who.role === "owner" || who.role === "admin" || v.proposer === `person:${who.person}`;
+      return true;
+    };
+    const collectDrafts = async (/** @type {{ person: string | null, role: string }} */ who, /** @type {string | undefined} */ level) => {
+      if (!kernelOk()) return [];
+      /** @type {any[]} */ const out = [];
+      const libs = [{ L: lib, home: false }, ...(personalOnHome() ? [{ L: identityLib, home: true }] : [])];
+      for (const { L } of libs) {
+        const rows = await L.versions({ state: "draft", ...(level ? { level } : {}) });
+        out.push(...rows);
+      }
+      const seen = new Set();
+      return out.filter((v) => {
+        const k = `${v.level}|${v.scope}|${v.name}|${v.version}`;
+        if (seen.has(k) || !maySeeDraft(who, v)) return false;
+        seen.add(k);
+        return true;
+      });
+    };
+    /** @param {any} input @param {any} meta @param {{ member?: boolean, person?: string }} [o] */
+    const browsePack = async (input, meta, o = {}) => {
+      const chain = await chainOf(meta);
+      const person = o.person || personIdOf(chain);
+      const mem = person ? await membershipOf(person) : null;
+      const role = o.member ? roleOf(mem) : (mem && mem.role === "member" ? "member" : mem && mem.role === "admin" ? "admin" : "owner");
+      const visibleForBrowse = async (/** @type {{ level?: string }} */ q) => {
+        if (o.member && person) {
+          let list = sourcesOf({ pkg, home, person: true, agent: null, account: true, projects: [] });
+          if (kernelOk()) {
+            const approved = await mergedApproved({ person, agent: null, projects: [], allAgents: false }).catch(() => []);
+            const seen = new Set(list.map((/** @type {any} */ x) => x.id));
+            list = [...list, ...entriesOf(approved).filter((/** @type {any} */ x) => !seen.has(x.id))];
+          }
+          if (q.level) list = list.filter((/** @type {any} */ x) => x.level === q.level);
+          return list;
+        }
+        return visible(meta, { project: input.project, level: q.level });
+      };
+      const pack = await runBrowse({
+        shown,
+        identityPersonal: personalOnHome,
+        visible: visibleForBrowse,
+        versionsFor: async (lv, f) => libraryFor(lv).versions(f),
+        draftsFor: async (who, lv) => collectDrafts(who, lv),
+        maySeeVersion,
+        approvedMap: await approvedMapFor(person),
+      }, input, { person, role, chain });
+      return pack;
+    };
 
     ctx.tool("skills.list", {
       effect: "read",
       description: "The skills you may use, each { id, name, level, scope, description, tokens }. Narrow with project or level. skills.find ranks them.",
       input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "space", "personal", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 }, harness: { type: "string", maxLength: 20 } } },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        const list = await visible(meta, { project: input.project, level: input.level });
-        const rows = list.slice(0, input.limit || 100).map(shown);
-        if (!input.harness) return { skills: rows, total: list.length };
-        return { ...forHarness(rows, new Map(list.map((/** @type {any} */ s) => [s.id, s])), await harnessCaps(input.harness), String(input.harness)), total: list.length };
+        const pack = await browsePack(input, meta);
+        const list = pack.skills || [];
+        const rows = list.slice(0, input.limit || 100).map((/** @type {any} */ s) => ({ id: s.id, name: s.name, level: s.level, ...(s.scope ? { scope: s.scope } : {}), description: s.description, tokens: s.tokens, ...(s.harnesses ? { harnesses: s.harnesses } : {}), ...(s.needs ? { needs: s.needs } : {}), ...(s.degrade ? { degrade: s.degrade } : {}) }));
+        if (!input.harness) return { skills: rows, total: list.length, drafts: pack.drafts, role: pack.role };
+        const raw = await visible(meta, { project: input.project, level: input.level });
+        const byId = new Map(raw.map((/** @type {any} */ s) => [s.id, s]));
+        return { ...forHarness(rows, byId, await harnessCaps(input.harness), String(input.harness)), total: list.length };
       },
     });
 
@@ -211,14 +307,14 @@ export default {
     });
 
     // ---- drafting and approving: anyone drafts, the level's owner says yes -------------------------------------------------------------------------------------------------------------
-    const WHO_CAN = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    const WHO_CAN = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"];
     const need = async (/** @type {any} */ meta) => { const c = await chainOf(meta); if (!c) throw err("denied", "this call carries no person: a skill is drafted and approved for someone"); return c; };
     const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
     const common = { name: { type: "string" }, level: { type: "string", enum: [...LEVELS] }, scope: { type: "string", description: "personal: you (default); agent: the agent's name; project: its short name; space: leave out" } };
     ctx.tool("skills.draft", { effect: "write", callers: WHO_CAN,
       description: "Draft a skill or plugin into the library; nothing uses it until the level's owner approves. Body: SKILL.md, or plugin JSON for kind plugin.",
       input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string", description: "kind skill: a SKILL.md with name and description in its front matter. kind plugin: JSON { name, description, skills?, commands?, hooks?, mcp? }; a hook or MCP server is code and the draft says what it declares" }, note: { type: "string" } }, ["name", "level", "body"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.draft(await need(meta), i) });
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).draft(await need(meta), i) });
     // A lesson (a procedure the person keeps repeating, learn's proposal) is drafted for the install's owner, at the project level when it is a project's, else their own. A draft only: approving is the person's.
     ctx.tool("skills.draft.learned", { effect: "write", internal: true, callers: ["module"],
       description: "Draft a skill learn proposed from a repeated procedure: at the agent's own level when one agent repeated it, else the project's, else the owner's own. A draft; its level's owner approves it.",
@@ -233,21 +329,29 @@ export default {
     ctx.tool("skills.approve", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Say yes to a draft: it becomes the version in use at its level and the one before is retired. Only the level's owner: you for a personal skill, an agent's owner, a project's owner, an owner or an admin for the Space. A plugin with code needs ack: the value skills.draft gave, which is the hash of exactly what it declares.",
       input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "version"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.approve(await need(meta), i) });
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).approve(await need(meta), i) });
     ctx.tool("skills.rollback", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",
       input: obj({ ...common, to: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "to"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.rollback(await need(meta), i) });
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).rollback(await need(meta), i) });
+    ctx.tool("skills.decline", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
+      description: "Turn down a draft waiting for a yes: the proposer or the level's owner retires it.",
+      input: obj({ ...common, version: { type: "integer" } }, ["name", "level", "version"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).decline(await need(meta), i) });
     ctx.tool("skills.versions", { effect: "read", callers: WHO_CAN,
       description: "The library's versions, newest first, with who drafted each and which is in use. state: draft shows those waiting for a yes.",
       input: obj({ ...common, state: { type: "string", enum: ["draft", "approved", "retired"] } }),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { await need(meta); return { versions: await lib.versions(i) }; } });
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { await need(meta); return { versions: await libraryFor(i.level).versions(i) }; } });
+    ctx.tool("skills.browse", { effect: "read", callers: WHO_CAN,
+      description: "Skills and plugins in the library for the Skills screen: list what you may use at each level, drafts you proposed, and version history for one skill.",
+      input: obj({ level: { type: "string", enum: [...LEVELS] }, state: { type: "string", enum: ["draft", "approved", "retired"] }, name: { type: "string" }, scope: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } }),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => browsePack(i, meta) });
 
     // the proposal kind "skill" (flows-host.js): the same card as any other change
     ctx.tool("skills.change.draft", { internal: true, callers: ["module"], description: "Check a draft can be approved and say whose yes it needs. For the proposals path.",
       input: obj({ name: { type: "string" }, level: { type: "string" }, scope: { type: "string" }, version: { type: "integer" }, proposer: { type: "string" } }, ["name", "level", "version", "proposer"]),
       run: async (/** @type {any} */ i) => {
-        const rec = await lib.get(String(i.name), String(i.level), String(i.scope ?? ""), Number(i.version));
+        const rec = await libraryFor(String(i.level)).get(String(i.name), String(i.level), String(i.scope ?? ""), Number(i.version));
         if (rec.data.state !== "draft") throw err("bad_state", `version ${i.version} is a ${rec.data.state}, not a draft`);
         const owner = rec.data.owner || null;
         let ack; if (rec.data.kind === "plugin") { const p = JSON.parse(String(rec.data.body)); if (hasCode(p)) ack = ackOf(p); }
@@ -255,16 +359,16 @@ export default {
       } });
     const parseId = (/** @type {string} */ id) => { const [level, scope, name, version] = String(id).split("|"); return { level, scope, name, version: Number(version) }; };
     ctx.tool("skills.change.title", { internal: true, callers: ["module"], description: "The title a stored skill change really has, or null. For the proposals path.", input: obj({ id: { type: "string" }, hash: { type: "string" } }, ["id", "hash"]),
-      run: async (/** @type {any} */ i) => { try { const k = parseId(i.id); const rec = await lib.get(k.name, k.level, k.scope, k.version); return rec.data.state === "draft" && rec.data.hash === i.hash ? `Use the ${rec.data.kind} ${rec.data.name} (${rec.data.level}${rec.data.scope ? " " + rec.data.scope : ""}, version ${rec.data.version})?` : null; } catch { return null; } } });
+      run: async (/** @type {any} */ i) => { try { const k = parseId(i.id); const rec = await libraryFor(k.level).get(k.name, k.level, k.scope, k.version); return rec.data.state === "draft" && rec.data.hash === i.hash ? `Use the ${rec.data.kind} ${rec.data.name} (${rec.data.level}${rec.data.scope ? " " + rec.data.scope : ""}, version ${rec.data.version})?` : null; } catch { return null; } } });
     ctx.tool("skills.change.apply", { internal: true, callers: ["module"], description: "Approve the draft on its owner's yes. For the proposals path.", input: obj({ id: { type: "string" }, hash: { type: "string" }, approver: { type: "string" }, ack: { type: "string" } }, ["id", "hash", "approver"]),
-      run: async (/** @type {any} */ i) => { const k = parseId(i.id); const rec = await lib.get(k.name, k.level, k.scope, k.version); if (rec.data.hash !== i.hash) throw err("conflict", "that draft changed since it was proposed"); let ack = i.ack; if (rec.data.kind === "plugin") { const p = JSON.parse(String(rec.data.body)); if (hasCode(p)) ack = ackOf(p); } return lib.applyApproval({ kind: "person", id: String(i.approver) }, { ...k, ack }); } });
+      run: async (/** @type {any} */ i) => { const k = parseId(i.id); const store = libraryFor(k.level); const rec = await store.get(k.name, k.level, k.scope, k.version); if (rec.data.hash !== i.hash) throw err("conflict", "that draft changed since it was proposed"); let ack = i.ack; if (rec.data.kind === "plugin") { const p = JSON.parse(String(rec.data.body)); if (hasCode(p)) ack = ackOf(p); } return store.applyApproval({ kind: "person", id: String(i.approver) }, { ...k, ack }); } });
 
     // ---- what each AI is given, and a plugin's hooks ---------------------------------------------------------------------------------------------------------------------------
     ctx.tool("skills.materialise", { internal: true, callers: ["module"], description: "Write the approved library for one AI and one session (ai: claude, codex or grok; person, agent, project): a plugin folder for Claude and Grok, a skills folder for Codex. Returns the folder.",
       input: obj({ ai: { type: "string", enum: [...AIS] }, manifest: { type: "string" }, person: { type: "string" }, agent: { type: "string" }, project: { type: "string" } }, ["ai"]),
       run: async (/** @type {any} */ i) => {
         if (!kernelOk()) return { dir: null, skills: [] };
-        const approved = await lib.approved({ person: i.person || String(ctx.kernel.owner || ""), agent: i.agent || null, projects: i.project ? [String(i.project)] : [], allAgents: false });
+        const approved = await mergedApproved({ person: i.person || String(ctx.kernel.owner || ""), agent: i.agent || null, projects: i.project ? [String(i.project)] : [], allAgents: false });
         if (!approved.length) return { dir: null, skills: [] };
         const id = createHash("sha256").update(JSON.stringify([i.ai, approved.map((/** @type {any} */ a) => [a.name, a.level, a.scope, a.version, a.hash])])).digest("hex").slice(0, 16);
         const dir = path.join(home || os.tmpdir(), "materialised", String(i.ai), id);
@@ -286,7 +390,12 @@ export default {
         return { ...r.data, declared: hook.network || [] };
       } });
     // A team member's own skills on the team's server: the member door's rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); the home Space's library only.
-    const memberOps = createMemberOps({ library: lib, entriesOf, shown, vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre") });
+    const memberLibrary = { ...lib, approved: mergedApproved, draft: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).draft(c, i), approve: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).approve(c, i), decline: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).decline(c, i), rollback: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).rollback(c, i), versions: (/** @type {any} */ f) => libraryFor(f.level).versions(f) };
+    const memberOps = createMemberOps({
+      library: memberLibrary, entriesOf, shown,
+      vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre"),
+      browse: async (/** @type {string} */ person, /** @type {any} */ chain, /** @type {any} */ input) => browsePack(input, { caller: "module", kernelFacts: chain }, { member: true, person }),
+    });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw err("denied", "only the team server's member door runs this");
       if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel");
@@ -297,8 +406,8 @@ export default {
       return /** @type {any} */ (memberOps)[i.call](String(h.actor.id), chain, i.input && typeof i.input === "object" ? i.input : {});
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
-    ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["list", "get", "versions"]), run: serve(["list", "get", "versions"]) });
-    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft or approve, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve"]), run: serve(["draft", "approve"]) });
+    ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["browse", "list", "get", "versions"]), run: serve(["browse", "list", "get", "versions"]) });
+    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve", "decline", "rollback"]), run: serve(["draft", "approve", "decline", "rollback"]) });
     return { async stop() {} };
   },
 };

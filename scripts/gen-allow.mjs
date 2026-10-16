@@ -335,6 +335,8 @@ export const DECLARED_SINCE = Object.freeze({
   "sidebar.pin": "2ee4e9077@9 Oct 2026",
   "sidebar.unpin": "2ee4e9077@9 Oct 2026",
   "skills.approve": "95132d453@9 Oct 2026",
+  "skills.browse": "c8601dbce@16 Oct 2026",
+  "skills.decline": "c8601dbce@16 Oct 2026",
   "skills.draft": "95132d453@9 Oct 2026",
   "skills.rollback": "95132d453@9 Oct 2026",
   "skills.versions": "95132d453@9 Oct 2026",
@@ -486,6 +488,7 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.connections": "lists, per Connection, the Flows that use it with their health lines: names and levels, no data",
   "flows.attention": "lists the runs that need a person, in plain words with the message redacted; no step data",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
+  "flows.actions": "lists module tools a Flow call step may name, with inputs and outputs; read it to pick a call-step action",
 });
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";

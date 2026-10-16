@@ -479,7 +479,14 @@ export const withOrigin = (origin, f) => (origin ? runInTurn({ ...(currentCall()
 const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f, inheritSpace = true) => {
   // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
   const outer = callStore.getStore();
-  let inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  let inherited = meta;
+  if (outer && outer.live) {
+    inherited = { ...meta };
+    if (typeof outer.meta.token === "string" && typeof inherited.token !== "string") inherited.token = outer.meta.token;
+    // A module's nested gate.request (mail.send filing a send) must still know which agent asked.
+    if (inherited.agent === undefined && outer.meta.agent !== undefined) inherited.agent = outer.meta.agent;
+    if (inherited.thread === undefined && outer.meta.thread !== undefined) inherited.thread = outer.meta.thread;
+  }
   // a module a cross-space call reaches (ctx.call) is still in that Space: the registry sets these only from callInSpace, so inheriting them from the running turn is as trusted as the turn
   // ...but only into a tool that declares it may run in another Space (`crossSpace`): a home-wide runtime (the Switchboard) a team chat's call reaches stays the home's, with its one store
   if (inheritSpace && outer && outer.live && typeof outer.meta.in_space === "string" && typeof inherited.in_space !== "string") inherited = { ...inherited, in_space: outer.meta.in_space, in_space_chain: outer.meta.in_space_chain };
@@ -602,7 +609,7 @@ export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(c
  * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
  * to decide, not this list's. "mobile" is the old bare phone label: any caller can claim it, and the phone arrives as its paired device (`device:<id>`), so a callers list that still names it never admits a bare "mobile".
  */
-const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent", "mobile"]);
+const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
 
 /** The raw kernel of a hosted Space, keyed by the view a module holds for it. Module-private: only routedKernel reads it. @type {WeakMap<object, any>} */
 const HOSTED_KERNEL = new WeakMap();
@@ -662,6 +669,7 @@ const RELAY_ALLOWED = Object.freeze({
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
 });
 
 export class Registry {
@@ -1758,6 +1766,7 @@ export class Registry {
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
     // A first-party module's tool that the person's card already covers files a nested outward tool it names in `covers` (comms.send files mail.send): that is the same act, so it rides the same yes.
     const rideMark = String(caller).startsWith("module:") ? coveredRide(this.tools, currentCall(), tool, caller) : null;
+    // Standing permissions skip the Gate hold after the tool runs; they never skip the registry one-tap for an agent (only the owner's own surface is a person caller here).
     if (def.outward === true && !def.asks && !door && !rideMark && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
       let fields = holdFields(input);

@@ -10,6 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const RECORD = path.join(REPO, "test", "test-counts.json");
@@ -29,6 +30,19 @@ export function mustRunProblems(skipped, mustRun) {
   return out;
 }
 export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/**/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "updates/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js", "scripts/**/*.test.js", "site/**/*.test.js", "harness/**/*.test.js", "examples/**/*.test.js"];
+
+/** Flags for each per-file test process. Node 24 turns on type stripping by default; Node 22 needs the switch so apps/app tests can import .ts. @type {string[]} */
+export const NODE_TEST_EXEC_FLAGS = process.features.typescript ? [] : ["--experimental-strip-types"];
+
+/** Refuse a Node build that cannot run Recall, Files linked-index, or the kernel FTS tables (22.14's node:sqlite has no fts5). */
+export function assertTestNode() {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 16)) {
+    throw new Error(`Node ${process.versions.node} is too old for the test suite; use 22.16 or newer.`);
+  }
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE VIRTUAL TABLE _vyre_fts_check USING fts5(x)");
+}
 
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {
@@ -96,6 +110,7 @@ const BOOT_FIRST = ["test/daemon-smoke.test.js", "kernel/boot.test.js"];
 const [cmd, ...rest] = process.argv.slice(2);
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
+    try { assertTestNode(); } catch (/** @type {any} */ e) { console.error("test-counts: " + e.message); process.exit(2); }
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
     const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).sort();
@@ -124,7 +139,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           const rep = path.join(dir, `rep-${i}`);
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
-          const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
+          const child = spawn(process.execPath, [...NODE_TEST_EXEC_FLAGS, "--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
             { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f, VYRE_TEST_SKIPS_OUT: `${out}.skips` } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };

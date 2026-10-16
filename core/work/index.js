@@ -32,12 +32,13 @@ import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
+import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 /** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
-const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
+const WORK_CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 /** The modules that ask work.project.may-read: the memory module, the sessions module (for the references in a prompt's instructions), and the module that runs a person's threads. */
 const MAY_READ_ASKERS = ["module:memory", "module:switchboard", "module:agents", "module:projects", "module:sessions"];
 /** Followers (log subscriptions) one caller keeps for work.team.doing; the oldest is dropped past this. */
@@ -87,8 +88,17 @@ export default {
         try {
           const meta = engineOf().lines.meta(m[1]);
           if (!meta) return {};
-          const p = /^vyre:\/\/[^/]+\/project\/([a-z0-9][a-z0-9_-]{0,79})$/i.exec(meta.record);
-          return { owner: String(ctx.kernel.owner), ...(p ? { project: p[1] } : {}) };
+          const p = /^vyre:\/\/[^/]+\/project\/([^/]+)$/.exec(meta.record);
+          if (!p) return { owner: String(ctx.kernel.owner) };
+          const tail = p[1];
+          let project = SLUG_RE.test(tail) ? tail : null;
+          if (!project && isProjectRecordId(tail) && ctx.store?.db) {
+            try {
+              const row = ctx.store.db.prepare("SELECT json_extract(data, '$.slug') AS slug FROM kernel_records WHERE type = 'project' AND id = ? AND deleted_at IS NULL").get(tail);
+              if (row?.slug && SLUG_RE.test(String(row.slug))) project = String(row.slug);
+            } catch { /* kernel store not in this db */ }
+          }
+          return { owner: String(ctx.kernel.owner), ...(project ? { project } : {}) };
         } catch { return {}; }
       });
     }
@@ -891,7 +901,11 @@ export default {
         spec = markReviewed(spec, adder.id);
         const ok = checkAdd({ spec, adder, count: Number(input.count) || 0, humanApproved: adder.kind === "person" });
         if (!ok.ok) throw fail(ok.reason === "cap" ? "cap" : "needs_human", String(ok.detail));
-        const teammate = { kind: /** @type {const} */ ("agent"), id: `${spec.name}.${input.project.split("/").pop()}`, space: k.space };
+        const projRec = await hubOf().projectOf(input.project).catch(() => null);
+        const projTail = (projRec && projRec.data && typeof projRec.data.slug === "string" && projRec.data.slug)
+          ? String(projRec.data.slug)
+          : String(input.project).split("/").pop();
+        const teammate = { kind: /** @type {const} */ ("agent"), id: `${spec.name}.${projTail}`, space: k.space };
         const made = await delegateGrants(k, chain, { adder, teammate, wanted: spec.wanted, presence: typeof k.proofFrom === "function" ? (/** @type {any} */ _i) => k.proofFrom(extra).presence : null });
         return { teammate, grants: made.grants.map((/** @type {any} */ g) => g.id), obligations: made.obligations };
       },
@@ -960,9 +974,14 @@ export default {
         const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 2000).filter((/** @type {any} */ l) => l && Number.isInteger(l.seq) && typeof l.text === "string" && ["user", "assistant", "tool"].includes(String(l.role))).map((/** @type {any} */ l) => ({ seq: l.seq, role: String(l.role), text: l.text.slice(0, 20_000), at: Number(l.at) || 0 }));
         // The record a reader must be allowed to read: the one named, else the project's own record when the caller names a project (a project-wide teammate grant then covers its sessions),
         // else the session's own address.
-        const projectRecord = typeof input.project === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/i.test(input.project) ? `vyre://${kernelOf().space}/project/${input.project}` : null;
+        let projectRecord = null;
+        if (typeof input.project === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/i.test(input.project)) {
+          const rec = await hubOf().projectOf(String(input.project)).catch(() => null);
+          projectRecord = rec && rec.urn ? String(rec.urn) : `vyre://${kernelOf().space}/project/${input.project}`;
+        }
         const record = input.record && urnOk(input.record) ? input.record : projectRecord;
-        const kept = e.lines.ingest(String(input.session), lines, record ? { record } : {});
+        const gate = record || `vyre://${kernelOf().space}/session/${String(input.session)}`;
+        const kept = e.lines.ingest(String(input.session), lines, { record: gate });
         const seqs = lines.map((/** @type {{ seq: number }} */ l) => l.seq);
         const indexed = await e.index({ kind: "lines", session: String(input.session), ...(seqs.length ? { from: Math.min(...seqs), to: Math.max(...seqs) } : {}) });
         collectIfHeavy();

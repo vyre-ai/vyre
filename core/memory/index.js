@@ -1919,12 +1919,12 @@ export default {
         const one = (sql) => Number(/** @type {any} */ (db.prepare(sql).get(list))?.n || 0);
         // Graph nodes and facts no other session supports: what deleting would take away.
         const only = `SELECT e.id, e.src FROM memory_edges e WHERE e.room = '*' AND e.rel != 'mentioned_in'
-          AND EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session IN (SELECT value FROM json_each(?1)))
-          AND NOT EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session NOT IN (SELECT value FROM json_each(?1)))`;
+          AND EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session IN (SELECT value FROM json_each(?)))
+          AND NOT EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session NOT IN (SELECT value FROM json_each(?)))`;
         const nodes = kind => Number(/** @type {any} */ (db.prepare(`SELECT COUNT(DISTINCT n.id) n FROM memory_nodes n WHERE n.kind = ? AND n.id IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session IN (SELECT value FROM json_each(?)))
           AND n.id NOT IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session NOT IN (SELECT value FROM json_each(?)))`).get(kind, list, list))?.n || 0);
         return { machine: m, sessions: ids.length, turns: one("SELECT COUNT(*) n FROM recall_turns WHERE session IN (SELECT value FROM json_each(?))"),
-          facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
+          facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list, list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
       }, "memory.device"),
     });
     ctx.tool("memory.sealscan", {

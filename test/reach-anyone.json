@@ -525,6 +525,10 @@
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
+  "flows.actions": {
+   "module": "flows",
+   "reason": "read-only: lists Flow call-step actions from the running modules; the same caller chain as flows.list (core/flows/index.js)"
+  },
   "flows.list": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
@@ -2308,6 +2312,14 @@
   "skills.approve": {
    "module": "skills",
    "reason": "person and owner check: the callers list leaves out the plain mcp and harness, approval needs a chain of exactly one person hop (an assistant is refused), and mayApprove() allows only the level's owner or an admin; a plugin with code also needs the ack hash"
+  },
+  "skills.browse": {
+   "module": "skills",
+   "reason": "read-only: the Skills screen library view; lists only what the caller may use at each level (the same project reach and placement rules as skills.list, core/skills/browse-lib.js)"
+  },
+  "skills.decline": {
+   "module": "skills",
+   "reason": "person and owner check: the call must carry a verified person chain (need()), and decline() allows only the draft's proposer or the level's owner (core/skills/library.js)"
   },
   "skills.draft": {
    "module": "skills",

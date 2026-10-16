@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { readInside, listInside, writeInside } from "./safefs.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
@@ -16,11 +16,11 @@ import { createLease } from "./lease.js";
 import { createRunner, reconcile, weakest } from "./runner.js";
 import { createEgress } from "./egress.js";
 import { checkBind, plan, unavailable } from "./sandbox.js";
-import { driverFor, workspaceUnavailable } from "./workspace.js";
+import { driverFor, workspaceUnavailable, fscryptSupported } from "./workspace.js";
 import { watch } from "./watchdog.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
-const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hd-"));
+const tmp = () => runnerScratch("hd-");
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const POSIX = process.platform !== "win32";
@@ -162,7 +162,7 @@ test("Z5c: kill -9 the runner and the real workspace is closed by the watchdog",
   const child = spawn(process.execPath, [new URL("./testing/open-and-wait.mjs", import.meta.url).pathname, base], { stdio: ["ignore", "pipe", "inherit"] });
   let dir = "";
   await new Promise((res, rej) => { child.stdout.on("data", d => { const m = /ready (.+)/.exec(String(d)); if (m) { dir = m[1].trim(); res(undefined); } }); child.on("exit", () => rej(new Error("child exited"))); setTimeout(() => rej(new Error("timeout")), 30000); });
-  const drv = driverFor(process.platform);
+  const drv = driverFor(process.platform, { base, prefer: fscryptSupported(base) ? "fscrypt" : undefined });
   t.after(async () => { try { await drv.unmount(dir); } catch {} });
   assert.equal(drv.isMounted(dir), true, "open while the runner lives");
   child.kill("SIGKILL");
@@ -404,7 +404,6 @@ test("Windows: lending is refused with one plain line, placement never says here
 
 // ---- fscrypt, the kernel-native Linux workspace ------------------------------------------------------------------------
 
-import { fscryptSupported } from "./workspace.js";
 const FSDIR = process.env.VYRE_FSCRYPT_DIR || "";
 test("fscrypt workspace: opens with the leased key, locks with no key, a wrong key never opens it", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR), timeout: 60_000 }, async t => {
   const base = fs.mkdtempSync(path.join(FSDIR, "fsc-")); t.after(() => rm(base));

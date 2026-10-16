@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, startDaemonBounded } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { FAKE } from "../sessions/testing/boot.js";
 import { ownSurface } from "./lease.js";
@@ -37,8 +37,7 @@ test("on a kernel-on daemon the keyboard holder follows the chain: a web, setup,
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", network: { owner: "owner@example" }, transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
-  t.after(() => d.stop());
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true });
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const owner = d.kernel.id.owner;

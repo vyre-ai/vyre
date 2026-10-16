@@ -192,6 +192,7 @@ test("capsule: held and needs come back as themselves, never as sent", async t =
   const n = await act("needs");
   assert.deepEqual([n.kind, n.code, n.need], ["needs", "needs_credential", { kind: "credential", need: "imap", module: "mail", label: "Mail key" }], "a needs frame names the credential so Lumen can open Add your key");
   assert.deepEqual(needOf({ item: "ghl-api-key" }), { need: { kind: "credential", item: "ghl-api-key" } });
+  assert.deepEqual(needOf({ unlock: "vault.me.account.unlock", vault: "person" }), { need: { kind: "unlock", tool: "vault.me.account.unlock", vault: "person" } });
   assert.deepEqual(needOf({}), {});
   assert.equal((await act("nope")).code, "not_found");
   assert.equal((await reg.call("capsule.view", { module: "north", command: "gone" }, "capsule")).error.code, "not_found");

@@ -4,7 +4,10 @@
     "core/runner/hardening.test.js": ["*"],
     "core/runner/lent-wire.test.js": ["*"],
     "core/runner/lent-pipe-runner.test.js": ["*"],
-    "core/runner/runner.test.js": ["*"],
+    "core/runner/runner.foundation.test.js": ["*"],
+    "core/runner/runner.session.test.js": ["*"],
+    "core/runner/runner.handover.test.js": ["*"],
+    "core/runner/runner.handover-slow.test.js": ["*"],
     "core/runner/beat-loop.test.js": ["*"]
   }
 }
