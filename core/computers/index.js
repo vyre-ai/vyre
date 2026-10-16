@@ -28,6 +28,7 @@ import { AgentBrowser } from "./agent-browser.js";
 import { BrowserGlass } from "./browser-glass.js";
 import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
 import { resolveMemberBrowserProfileKey } from "../../lib/member-browser-profile-key.js";
+import { resolveAgentBrowserProfileKey } from "../../lib/agent-browser-profile-key.js";
 import { personIdOf } from "./person-id.js";
 import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member-browser-handback.js";
 import * as egress from "./egress.js";
@@ -89,7 +90,7 @@ export default {
     pool.browserProfiles = new BrowserProfiles({
       pool,
       dataRoot,
-      agentKey: () => ctx.vault.fetch(AGENT_BROWSER_PROFILE_KEY),
+      agentKey: () => resolveAgentBrowserProfileKey(ctx.call),
       memberKey: personId => resolveMemberBrowserProfileKey(ctx.call, personId),
       log: ctx.log,
     });
