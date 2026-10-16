@@ -2,6 +2,7 @@
 // identity/login-start: turns the sign-in service (kernel/identity/space-login.js) on for a server. It listens on loopback and tells the public gate its port (lib/login-door.js).
 // A computer that is not a server has no space address to sign in to, so nothing listens there. Records live in identity/logins.json, 0600.
 
+import crypto from "node:crypto";
 import path from "node:path";
 import { hostedOrigins, isServer } from "../config/index.js";
 import { readJson, writePrivate } from "../../kernel/identity/files.js";
@@ -48,7 +49,7 @@ export async function startLogin(ctx, seam = {}) {
       if (typeof k.owner === "string" && k.owner === person) return true;
       try { const m = await k.membership(person, k.space); return Boolean(m && m.member === true); } catch { return false; }
     },
-    onNewDevice: e => { try { ctx.events.emit("identity.new-device", { username: e.username, label: e.label, at: e.at }); } catch { /* the notice is best effort; the sign-in is not blocked */ } },
+    onNewDevice: e => { try { ctx.events.emit("signin.new-device", { device: crypto.createHash("sha256").update(`${e.username}\n${e.address}\n${e.at}`).digest("base64url").slice(0, 16), at: e.at }); } catch { /* the notice is best effort; the sign-in is not blocked */ } },
   });
   const l = await (seam.listen || listen)({ origins: () => hostedOrigins(cfg.network), handle: (q, source) => loginHandle(q, svc, source) });
   setLoginPort(l.port);

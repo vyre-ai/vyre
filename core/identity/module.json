@@ -17,7 +17,7 @@
       { "name": "identity.card", "effect": "read", "reach": "person" }
     ]
   },
-  "watches": { "emits": ["identity.new-device"] },
+  "watches": { "emits": ["signin.new-device"] },
   "shows": { "cli": [] },
   "needs": { "tools": ["spaces.identity.create", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key", "vault.master.install"] },
   "teaches": {}

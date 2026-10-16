@@ -67,8 +67,9 @@ test("a page signs in over the listener: register, begin, derive on the device, 
   assert.equal(fin.status, 200, JSON.stringify(fin.body));
   assert.deepEqual(aesUnwrap(d.K, fin.body.bundle.passwordWrap, "vyre:master:password:v1"), rk);
   assert.equal(b.events.length, 1);
-  assert.equal(b.events[0][0], "identity.new-device");
-  assert.equal(b.events[0][1].label, "Aina's phone");
+  assert.equal(b.events[0][0], "signin.new-device");
+  assert.match(b.events[0][1].device, /^[A-Za-z0-9_-]{16}$/);
+  assert.equal(JSON.stringify(b.events[0][1]).includes("alex"), false, "the notice names a device, not the username");
   const onDisk = fs.readFileSync(path.join(b.root, "identity", "logins.json"), "utf8");
   assert.equal(onDisk.includes(PASSWORD), false);
   assert.equal(onDisk.includes(d.K.toString("base64url")), false, "the server never held K");
