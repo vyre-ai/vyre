@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): screens to create, unlock and migrate an identity. They call identity.create, identity.unlock and identity.migrate, the same tools the first-run flow uses. A recovery key asks for a confirmation on the device and does not open the vault.
 - fix(identity): a recovery key unlocks the identity only after a confirmation on the device. It does not unwrap the personal vault. The master password does. See ADR 0054.
 - fix(vault): the master password protects the personal vault key. After it is set, the plaintext vault/key file is removed. This box lends from the unlocked session or from a sealed server wrap. A home with no master password keeps its file or keychain keystore.
 - fix(spaces): removing a member drops that member's space vault wrap first. If the key does not finish rotating, the removal fails loudly, Vyre retries, and the member who left cannot open the vault meanwhile.
