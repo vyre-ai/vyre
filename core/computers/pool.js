@@ -75,6 +75,8 @@ export const LIMITS = Object.freeze({ cpus: { min: 1, max: 16 }, memoryGb: { min
 /** How long a Glass ticket lives: long enough to open a WebSocket, too short to be worth stealing. */
 export const TICKET_MS = 30_000;
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+/** Member agent_id on a shared computer: agents.uid (agt_<uuid>), never a display name. */
+const MEMBER_AGENT_ID = /^[a-z][a-z0-9._-]{1,80}$/;
 
 export const NO_DRIVER = "no computer driver is configured on this machine: set computers.docker in config.json to the restricted Docker proxy";
 
@@ -808,6 +810,19 @@ export class Pool {
     return { helper: { url: `http://${h.host}:${h.ports.helper}`, token: String(r.helper_token) } };
   }
 
+  /**
+   * A shared computer member's derived CDP token (never stored). Used by hands-chrome and Glass
+   * screencast against the member's browser context.
+   * @param {string} computerId @param {string} agentId
+   */
+  async memberCdpToken(computerId, agentId) {
+    if (!this.memberTokenKey) throw new Error("no member-token key configured (computers.memberTokenKey)");
+    const m = /** @type {any} */ (this.db.prepare("SELECT generation FROM computers_members WHERE computer_id = ? AND agent_id = ?").get(computerId, agentId));
+    if (!m) throw new Error(`${agentId} is not on ${computerId}`);
+    const key = await this.memberTokenKey();
+    return memberToken(key, computerId, agentId, m.generation);
+  }
+
   size(_agent) { return { ...this.opts.size }; }
 
   // ---- shared (browser-kind) computers, agent-browsers.md level 2 ------------------------
@@ -830,7 +845,7 @@ export class Pool {
    */
   async addAgent(computerId, agentId, agentName) {
     if (!AGENT.test(String(computerId || ""))) throw new Error(`"${computerId}" is not a computer id`);
-    if (!AGENT.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
+    if (!MEMBER_AGENT_ID.test(String(agentId || ""))) throw new Error(`"${agentId}" is not an agent id`);
     return this.serial(computerId, async () => {
       // LOW 2 (reviewer, 28 Sep): an agent belongs to at most one shared computer at a time.
       // computers_members_agent_id's own unique index enforces this at the storage layer, but the

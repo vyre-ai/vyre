@@ -25,6 +25,7 @@ import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
 import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
+import { watchNetwork } from "./net-tool.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
@@ -283,6 +284,32 @@ export default {
         await cdp.send("Input.insertText", { text: String(i.text) }, sessionId);
         act_(meta, agent, "type", true, undefined, { summary: ctl.name || ctl.role });
         return { ok: true, control: ctl };
+      });
+
+    /** @type {Map<string, ReturnType<typeof watchNetwork>>} */
+    const nets = new Map();
+
+    tool("chrome.net", "The agent page's network traffic on the box (CDP). start: capture; list: recent requests (URLs only, no secrets).",
+      obj({ agent: str, action: str }, ["action"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
+        const action = String(i.action || "");
+        if (action === "start") {
+          await mayAct(agent, "chrome.net");
+          const { cdp, sessionId } = await session(agent);
+          const prev = nets.get(agent);
+          if (prev) prev.stop();
+          const w = watchNetwork(cdp, sessionId);
+          await w.start();
+          nets.set(agent, w);
+          act_(meta, agent, "net", true, undefined, { summary: "capturing network" });
+          return { capturing: true };
+        }
+        if (action === "list") {
+          const w = nets.get(agent);
+          if (!w) throw new Error("call chrome.net with action start before list");
+          return { requests: w.list() };
+        }
+        throw new Error(`chrome.net does not know action "${action}"; use start or list`);
       });
 
     tool("chrome.screenshot", "A PNG of the agent's current page, base64-encoded.", obj({ agent: str }),
