@@ -43,15 +43,15 @@ export function registerSpaceTools(ctx) {
     run: async (input) => { spaceOk(input); return SV.grant(dirOf(input), input.person, input.pub); },
   });
   ctx.tool("vault.space.put", {
-    description: "Store a space vault item. The value is sealed and never returned.",
-    input: obj({ space: str, id: str, name: str, value: str }, ["space", "id", "name", "value"]),
+    description: "Store a space vault item for the hosts it may be sent to. The value is sealed and never returned.",
+    input: obj({ space: str, id: str, name: str, value: str, hosts: { type: "array", items: str } }, ["space", "id", "name", "value", "hosts"]),
     presence: { summary: (/** @type {any} */ i) => `Store "${i && i.name}" in the space vault of ${i && i.space}` },
     run: async (input, meta) => {
       spaceOk(input);
       const caller = String((meta && meta.caller) || "");
       if (!isPerson(caller) && !caller.startsWith("module:")) throw refuse("Enter the value on your device. An agent cannot supply it.", "secret_refused");
       if (modelSuppliedSecret(caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
-      return SV.put(dirOf(input), { id: input.id, name: input.name, value: input.value });
+      return SV.put(dirOf(input), { id: input.id, name: input.name, value: input.value, hosts: input.hosts });
     },
   });
   ctx.tool("vault.space.list", {
@@ -66,7 +66,7 @@ export function registerSpaceTools(ctx) {
     run: async (input) => { spaceOk(input); return SV.rotate(dirOf(input), { remove: input.person ? [input.person] : [] }); },
   });
   ctx.tool("vault.space.use", {
-    description: "Use a space vault item on an outbound request. The caller gets the response, never the value.",
+    description: "Use a space vault item on a host it was saved for. Another host, including a redirect, is refused. The response never includes the value.",
     input: obj({
       space: str, id: str, url: str, method: str,
       headers: { type: "object" }, body: str,
@@ -78,8 +78,9 @@ export function registerSpaceTools(ctx) {
         id: input.id,
         request: { url: input.url, method: input.method, headers: input.headers, body: input.body },
         transport: async (req) => {
-          const r = await userHostFetch(req.url, { method: req.method, headers: req.headers, body: req.body });
-          return { status: r.status, body: await r.text() };
+          const r = await userHostFetch(req.url, { method: req.method, headers: req.headers, body: req.body, redirect: "manual" });
+          const location = typeof r.headers?.get === "function" ? (r.headers.get("location") || "") : "";
+          return { status: r.status, headers: location ? { location } : {}, body: await r.text() };
         },
       });
     },

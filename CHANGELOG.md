@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(spaces): removing a member drops that member's space vault wrap first. If the key does not finish rotating, the removal fails loudly, Vyre retries, and the member who left cannot open the vault meanwhile.
+- fix(vault): the server's space vault private key is sealed at rest. On a Mac the seal key is in the OS keystore. Otherwise it is a 0600 file outside the space directory, so a member's copy of the vault does not have it.
+- fix(vault): a space vault item is saved with the hosts it may be sent to. Lending anywhere else is refused, including a redirect. The caller still receives the response and never the value.
 - docs: the sitemap lists the master password guide and ADR 0054, and the app lists the space vault tools that take a space.
 - test(tools): vault.space.use has three ordinary asks, so an agent can find it from what a person would say.
 - test(vault): a plain session's use of a space vault item is the session's own request. The server wrap places the value, and the response is redacted.
