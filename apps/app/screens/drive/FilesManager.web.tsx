@@ -1,4 +1,4 @@
-// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked, On your server, On your computer), the open folder in the middle as a list or a grid
+// Files on the web: a real file manager. A folder tree on the left (react-arborist: Space, Shared, Linked, On your server), the open folder in the middle as a list or a grid
 // (@tanstack/react-table for the columns, @tanstack/react-virtual for the rows), breadcrumbs and a search above it, multi-select with a bulk bar, and a detail panel on the right. Every read
 // and write is an existing files.* tool (files-real.ts); what a source cannot do is not offered (files-model.ts abilities). The detail panel's preview is a slot: native-mount's FileViewer
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
@@ -178,7 +178,6 @@ function Manager({ wide }: { wide: boolean }) {
   );
 
   const main = root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
-    : root === "computer" ? <Card>{status ? <View className="gap-s2"><Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>{status.why ? <Text tone="muted">{status.why}</Text> : null}{status.fix ? <Text tone="label">{status.fix}</Text> : null}</View> : <LoadingState rows={2} />}</Card>
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>
     : rows === null ? <LoadingState rows={4} />
     : !shown.length ? emptyState

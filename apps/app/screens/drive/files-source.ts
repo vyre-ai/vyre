@@ -1,5 +1,5 @@
 // The Files screen's reads, over injected sources (the real ones are the Space Drive, linked folders and the box's shares in real.ts; a test gives fakes): a place's rows, and the folders
-// under a place for the tree. A place the screen draws on its own (Shared, On your computer) has no rows.
+// under a place for the tree. A place the screen draws on its own (Shared) has no rows.
 import { children } from "./space-model.ts";
 import { parsePlace, placeId, rowsFromBox, rowsFromLinked, rowsFromSpace, type FileRow, type TreeNode } from "./files-model.ts";
 import type { LinkedEntry } from "./linked-model.ts";

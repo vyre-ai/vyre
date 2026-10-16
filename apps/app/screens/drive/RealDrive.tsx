@@ -17,9 +17,9 @@ import { PlaceTag } from "../../src/real/PlaceTag";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
 
-type Tab = "space" | "shared" | "linked" | "files" | "sharing";
-const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", files: "server", sharing: "laptop" };
-const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what agents made for you", linked: "Live folders from Google Drive", files: "Folders your server offers", sharing: "Sharing to your computer" };
+type Tab = "space" | "shared" | "linked" | "files";
+const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", files: "server" };
+const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what agents made for you", linked: "Live folders from Google Drive", files: "Folders your server offers" };
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
@@ -79,17 +79,6 @@ export default function RealDrive() {
     </>
   );
 
-  const sharing = status ? (
-    <Card>
-      <View className="gap-s3">
-        <Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>
-        {status.why ? <Text tone="muted">{status.why}</Text> : null}
-        {status.fix ? <Text tone="label">{status.fix}</Text> : null}
-        {status.shares.map((s) => <Row key={s.name} dense title={s.name} sub={`${s.access === "rw" ? "Read and write" : "Read only"}, ${s.shared ? "shared now" : "not shared now"}`} />)}
-      </View>
-    </Card>
-  ) : <LoadingState rows={3} />;
-
   return (
     <Frame title="Files" sub="The space's files with their versions, and the box's own folders." actions={<Button kind="secondary" size="sm" icon="file" label="Documents" onPress={() => router.push("/u/documents" as never)} />}>
       <PlaceTag of="home" />
@@ -100,7 +89,7 @@ export default function RealDrive() {
           ))}
         </Card>
       ) : <Breadcrumb crumbs={[{ name: "Files", key: "" }, { name: (REAL_TABS as unknown as [Tab, string][]).find((t) => t[0] === tab)?.[1] ?? "", key: tab }]} onPress={() => setTab(null)} />}
-      {tab === null ? null : tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}
+      {tab === null ? null : tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : files}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

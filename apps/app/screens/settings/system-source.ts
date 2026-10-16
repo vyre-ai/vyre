@@ -23,10 +23,6 @@ export function systemSource(call: Call) {
     wink: () => maybe("network.wink.status"),
     handback: () => maybe("computers.handback.status"),
     setHandback: (minutes: number) => ask<any>("computers.handback.set", { minutes }),
-    drive: () => maybe("files.drive.status"),
-    /** The share's access: "ro" or "rw". */
-    setAccess: (name: string, mode: "ro" | "rw") => ask<{ access?: string }>("files.drive.access", { name, mode }),
-    audit: () => ask<any>("files.drive.audit"),
     testPush: () => ask("push.test"),
   };
 }

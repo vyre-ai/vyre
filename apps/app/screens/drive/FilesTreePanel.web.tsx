@@ -1,4 +1,4 @@
-// Files' own tree as the sidebar's panel (the same drill-in as Chat, Settings and Build): Space, Shared, Linked, On your server and On your computer, each folder opening beneath it. Picking one
+// Files' own tree as the sidebar's panel (the same drill-in as Chat, Settings and Build): Space, Shared, Linked and On your server, each folder opening beneath it. Picking one
 // opens it in the page (files-nav.ts); a linked folder's files can be dragged to another folder in the same linked folder.
 import { useEffect, useMemo } from "react";
 import { useWindowDimensions } from "react-native";
@@ -12,7 +12,7 @@ import { spaceDriveRefusal } from "./space-model";
 import { driveRefusal } from "./real-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
-const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", box: "server", computer: "laptop" };
+const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", box: "server" };
 
 export function FilesTreePanel() {
   const { height } = useWindowDimensions();

@@ -25,7 +25,7 @@ export const useFilesNav = create<Nav>((set, get) => ({
     statusReal().then((status) => set({ status })).catch(() => set({ status: null }));
   },
   openNode: (id) => {
-    if (get().kids[id] || ["shared", "computer", "linked", "box"].includes(id)) return;
+    if (get().kids[id] || ["shared", "linked", "box"].includes(id)) return;
     loader.dirs(id).then((d) => set((s) => ({ kids: { ...s.kids, [id]: d } }))).catch(() => {});
   },
   setKids: (place, nodes) => set((s) => ({ kids: { ...s.kids, [place]: nodes } })),

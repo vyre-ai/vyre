@@ -8,14 +8,14 @@ import assert from "node:assert/strict";
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const NOW = 1_800_000_000_000;
 
-test("the roots are Space, Shared, Linked (with a child per linked folder), On your server and On your computer", { skip: !strip }, async () => {
+test("the roots are Space, Shared, Linked (with a child per linked folder) and On your server", { skip: !strip }, async () => {
   const m = await import("./files-model.ts");
   const roots = m.rootsOf({ linked: [{ id: "l1", name: "Client-docs" }], shares: [{ name: "Documents" }] });
-  assert.deepEqual(roots.map((r) => [r.id, r.label]), [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "On your server"], ["computer", "On your computer"]]);
+  assert.deepEqual(roots.map((r) => [r.id, r.label]), [["space", "Space"], ["shared", "Shared"], ["linked", "Linked"], ["box", "On your server"]]);
   assert.deepEqual(roots[2].kids.map((k) => [k.id, k.label]), [["linked:l1", "Client-docs"]]);
   assert.deepEqual(roots[3].kids.map((k) => k.label), ["Documents"]);
   assert.equal(roots[0].kids, undefined, "the Space's folders load when it is opened");
-  assert.deepEqual(m.rootsOf({ linked: [], shares: [] }).map((r) => r.id), ["space", "shared", "linked", "box", "computer"], "a root with nothing in it is still there");
+  assert.deepEqual(m.rootsOf({ linked: [], shares: [] }).map((r) => r.id), ["space", "shared", "linked", "box"], "a root with nothing in it is still there");
 });
 
 test("a place is one string, and it comes apart again", { skip: !strip }, async () => {
@@ -137,5 +137,5 @@ test("the loader lists a place from the right source, and its folders alone for 
   assert.deepEqual((await L.dirs("box:Documents")).map((n) => n.id), ["box:Documents:/sub"]);
   assert.deepEqual((await L.dirs("space")).map((n) => n.id), ["space:Clients", ]);
   await assert.rejects(L.rows("nonsense"), /place/);
-  assert.deepEqual(await L.rows("shared"), [], "shared and computer have their own panes, not rows");
+  assert.deepEqual(await L.rows("shared"), [], "shared has its own pane, not rows");
 });

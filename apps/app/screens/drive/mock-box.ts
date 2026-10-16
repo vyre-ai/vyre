@@ -27,7 +27,7 @@ export function mockBox(now: () => number = () => SAMPLE_NOW) {
   const call = (async (tool: string, input: Record<string, unknown> = {}): Promise<Out> => {
     const i = input as Record<string, any>;
     switch (tool) {
-      case "files.drive.status": return { data: { enabled: true, access: "ro", shares: [{ name: "Documents", access: "ro", shared: true }] } };
+      case "files.drive.status": return { data: { shares: [{ name: "Documents", access: "ro" }] } };
       case "files.drive.list": return { data: { share: "Documents", path: String(i.path ?? ""), entries: [{ name: "Notes.txt", dir: false, kind: "text", mime: "text/plain", size: 29, mtime: new Date(SAMPLE_NOW - DAY).toISOString() }], total: 1 } };
       case "files.drive.read": return { data: { share: "Documents", path: String(i.path ?? ""), kind: "text", mime: "text/plain", size: 29, mtime: new Date(SAMPLE_NOW).toISOString(), offset: 0, length: 29, base64: b64("Call Dana Wine about the trust."), done: true } };
       case "files.drive.space.list": return { data: { entries: files.map((f) => ({ path: f.path, size: f.size, ver: f.ver, at: f.at, by: f.by })), next: null } };

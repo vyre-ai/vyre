@@ -7,7 +7,7 @@ import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Se
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
 import { RunHere } from "../runner/RunHere";
-import { winkCard, accessWord, auditLines, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
+import { winkCard, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, type Card as StatusCard } from "./system-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -27,7 +27,6 @@ export function SystemScreen() {
       <Tests />
       <Banner>The cards below are for people who run their own home computer. A command is shown to copy and run yourself. Vyre never runs one for you.</Banner>
       <Advanced />
-      <Drive />
     </Page>
   );
 }
@@ -165,35 +164,3 @@ function Advanced() {
   );
 }
 
-function Drive() {
-  const [d, setD] = useState<ReturnType<typeof sharesOf> | null>(null);
-  const [audit, setAudit] = useState<{ ok: boolean; lines: string[] } | null>(null);
-  const [problem, setProblem] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [canSwitch, setCanSwitch] = useState(true);
-  useEffect(() => { system.drive().then((x) => setD(x ? sharesOf(x) : null)); }, []);
-  if (!d) return null;
-  const flip = (name: string, access?: string) => {
-    setBusy(true); setProblem("");
-    system.setAccess(name, flipAccess(access)).then((r) => setD({ ...d, shares: d.shares.map((s) => (s.name === name ? { ...s, access: r?.access === "rw" || r?.access === "ro" ? r.access : flipAccess(access) } : s)) }))
-      .catch((e) => { if ((e as { code?: string }).code === "no_such_tool") setCanSwitch(false); else setProblem(say(e)); }).finally(() => setBusy(false));
-  };
-  const check = () => { setBusy(true); setProblem(""); system.audit().then((a) => setAudit(auditLines(a))).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
-  return (
-    <Sec title="VyreDrive">
-      <Card flush>
-        <View className="gap-s1 p-s3"><Text strong>{d.enabled ? "On" : "Off"}</Text><Text size="caption" tone="label">VyreDrive opens your home's folders in Finder on your Mac.</Text>{d.why ? <Text size="caption" tone="warn">{`Not available: ${d.why}`}</Text> : null}</View>
-        {d.enabled && !d.shares.length ? <View className="p-s3"><Text tone="muted">Your home offers no folders yet.</Text></View> : null}
-        {d.shares.map((s) => (
-          <View key={s.name}><Divider />
-            <Row title={s.name} sub={`${s.shared ? "Shared" : "Not shared"}, ${accessWord(s.access).toLowerCase()}${s.mounted ? ", mounted on this Mac" : ""}`}
-              end={canSwitch && s.shared ? <Button size="sm" kind="secondary" disabled={busy} label={s.access === "rw" ? "Make read only" : "Make read and write"} onPress={() => flip(s.name, s.access)} /> : undefined} />
-          </View>
-        ))}
-      </Card>
-      {d.enabled ? <View className="flex-row"><Button size="sm" kind="secondary" label="Check who can reach them" disabled={busy} onPress={check} /></View> : null}
-      {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
-      {audit ? <Card className="gap-s1">{audit.lines.map((l, i) => <Text key={i} size="secondary" tone={audit.ok ? "muted" : "warn"}>{l}</Text>)}</Card> : null}
-    </Sec>
-  );
-}

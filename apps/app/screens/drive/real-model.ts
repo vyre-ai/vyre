@@ -4,8 +4,8 @@ import { dayOf } from "../../src/time/show.js";
 
 export type Entry = { name: string; dir: boolean; kind: string; mime: string; size: number; mtime: string; virtual?: boolean; artifact?: string };
 export type Listing = { share: string; path: string; entries: Entry[]; total: number; next?: number };
-export type Share = { name: string; path?: string; access: string; shared: boolean };
-export type Status = { enabled: boolean; why?: string; fix?: string; access?: string; shares: Share[] };
+export type Share = { name: string; path?: string; access: string };
+export type Status = { shares: Share[] };
 export type Chunk = { share: string; path: string; kind: string; mime: string; size: number; mtime: string; offset: number; length: number; base64: string; done: boolean };
 
 /** 184 KB, 2.1 MB: one decimal from a megabyte up. */

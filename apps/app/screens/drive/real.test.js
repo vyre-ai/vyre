@@ -15,7 +15,7 @@ function box(o = {}) {
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     seen.push({ tool, input });
     if (o[tool]) return o[tool];
-    if (tool === "files.drive.status") return { data: { enabled: false, why: "the tailnet policy does not let this box share folders", access: "ro", shares: [{ name: "projects", path: "/work", access: "ro", shared: false }], list: [] } };
+    if (tool === "files.drive.status") return { data: { shares: [{ name: "projects", path: "/work", access: "ro" }] } };
     if (tool === "files.drive.list") return input.offset ? { data: { share: input.share, path: input.path, entries: [{ name: "notes.md", dir: false, kind: "text", mime: "text/markdown", size: 11, mtime: "2026-10-01T10:00:00.000Z" }], total: 3 } }
       : { data: { share: input.share, path: input.path, total: 3, next: 2, entries: [{ name: "Juniper Studio", dir: true, kind: "folder", mime: "inode/directory", size: 0, mtime: "2026-10-01T10:00:00.000Z" }, { name: "Trail map.pdf", dir: false, kind: "pdf", mime: "application/pdf", size: 2200000, mtime: "2026-09-20T10:00:00.000Z" }] } };
     if (tool === "files.drive.read") return { data: { share: input.share, path: input.path, kind: "text", mime: "text/markdown", size: 11, mtime: "2026-10-01T10:00:00.000Z", offset: 0, length: 11, base64: b64("Hi Kit, é ok"), done: true } };
@@ -24,12 +24,12 @@ function box(o = {}) {
   return { call, seen };
 }
 
-test("status gives the offered folders and why sharing is off", { skip: !strip }, async () => {
+test("status gives the offered folders", { skip: !strip }, async () => {
   const { driveSource } = await import("./source.ts");
   const b = box();
   const s = await driveSource(b.call).statusReal();
   assert.deepEqual(b.seen, [{ tool: "files.drive.status", input: {} }]);
-  assert.deepEqual([s.enabled, s.shares.map((x) => x.name), /tailnet policy/.test(s.why ?? "")], [false, ["projects"], true]);
+  assert.deepEqual(s.shares.map((x) => x.name), ["projects"]);
 });
 
 test("a folder is listed a page at a time, and the next page continues it", { skip: !strip }, async () => {
