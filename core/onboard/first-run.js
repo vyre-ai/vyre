@@ -44,7 +44,7 @@ export function registerFirstRun(ctx, io) {
     if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? `${tool.split(".")[0]} is not running on this machine` : r.error.message), { code: r.error.code });
     return r.data;
   };
-  const tryCall = (tool, input) => personCall(tool, input).catch(e => ({ __error: e.message }));
+  const tryCall = (tool, input) => personCall(tool, input).catch(e => ({ __error: e.message, __code: e.code }));
   const ob = () => (ctx.config && ctx.config.onboard) || {};
   const seeded = ob();
   const DEVICE_KEY = "__device__";
@@ -303,7 +303,9 @@ export function registerFirstRun(ctx, io) {
       if (!row) throw bad("That install is not one this device started.");
       let status = null;
       try { status = await personCall("wink.install.status", {}); } catch { status = null; }
-      const adopted = await resolveInstallOnline({ tryCall, meta });
+      const seen = /** @type {{ contested?: boolean }} */ ({});
+      const adopted = await resolveInstallOnline({ tryCall, meta, seen });
+      if (seen.contested) return { id, online: false, expired: false, contested: true, kind: row.kind, expiresAt: row.expiresAt, message: "Another server answered this install line first. Nothing was paired. Make a new install line and run it only on your own server." };
       const sid = adopted ? vaultSpace(status && status.space) : "";
       const { held, personId } = await heldOf(meta);
       if (adopted && sid && isPerson(meta && meta.caller)) {
