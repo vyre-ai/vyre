@@ -39,6 +39,15 @@ test("Retry is flows.retry on the run, and only a failed or paused run offers it
   assert.deepEqual(["failed", "paused", "done", "running", "waiting"].map(canRetry), [true, true, false, false, false]);
 });
 
+test("Stop is flows.cancel on the run, and only a paused, failed, waiting or held run offers it", { skip: !strip }, async () => {
+  const { runSource } = await import("./run-source.ts");
+  const { canStop } = await import("./run-model.ts");
+  const b = box({ "flows.cancel": { data: { ok: true, state: "cancelled" } } });
+  await runSource(b.call).cancelReal("run_9");
+  assert.deepEqual(b.seen, [{ tool: "flows.cancel", input: { run: "run_9" } }]);
+  assert.deepEqual(["paused", "failed", "waiting", "queued", "running", "done", "cancelled"].map(canStop), [true, true, true, true, false, false, false]);
+});
+
 test("the run's record says what each step did, in the Flow's order", { skip: !strip }, async () => {
   const { recordLines } = await import("./run-model.ts");
   const lines = recordLines([
