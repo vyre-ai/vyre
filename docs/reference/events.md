@@ -177,8 +177,8 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `computer.frozen` | `agent` |
 | `computer.handed-back` | built in a variable before the emit; see the source |
 | `computer.idle-warning` | `agent`, `at`, `surface` |
-| `computer.joined` | `agent`, `node`, `stableId` |
-| `computer.left` | `agent` |
+| `computer.joined` | not found in the source (the type is built at run time) |
+| `computer.left` | not found in the source (the type is built at run time) |
 | `computer.member-added` | `agent`, `computer`, `generation` |
 | `computer.member-removed` | `agent`, `computer` |
 | `computer.member-rotated` | `agent`, `computer`, `generation` |

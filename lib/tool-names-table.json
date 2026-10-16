@@ -1740,28 +1740,6 @@
    "was": "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when screens are busy."
   },
   {
-   "old": "computers.egress.set",
-   "name": "computer.computers.egress.update",
-   "area": "computer",
-   "object": "computers.egress",
-   "verb": "update",
-   "effect": "write",
-   "review": false,
-   "description": "Change computers egress (a browser or desktop an agent drives).",
-   "was": "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it appl"
-  },
-  {
-   "old": "computers.egress.status",
-   "name": "computer.computers.egress.get",
-   "area": "computer",
-   "object": "computers.egress",
-   "verb": "get",
-   "effect": "read",
-   "review": false,
-   "description": "Get computers egress (a browser or desktop an agent drives).",
-   "was": "Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, whether the egress sidecar answers"
-  },
-  {
    "old": "computers.get",
    "name": "computer.computers.get",
    "area": "computer",
@@ -1936,28 +1914,6 @@
    "review": false,
    "description": "Stop computers (a browser or desktop an agent drives).",
    "was": "Stop an agent's computer. Its home volume stays; the next checkout starts it again."
-  },
-  {
-   "old": "computers.tailnet.set",
-   "name": "computer.computers.tailnet.update",
-   "area": "computer",
-   "object": "computers.tailnet",
-   "verb": "update",
-   "effect": "write",
-   "review": false,
-   "description": "Change computers tailnet (a browser or desktop an agent drives). Needs: enabled.",
-   "was": "Turn on or off each computer joining the tailnet as its own ephemeral node tagged tag:vyre-agent. The owner's to change, never an agent's; i"
-  },
-  {
-   "old": "computers.tailnet.status",
-   "name": "computer.computers.tailnet.get",
-   "area": "computer",
-   "object": "computers.tailnet",
-   "verb": "get",
-   "effect": "read",
-   "review": false,
-   "description": "Get computers tailnet (a browser or desktop an agent drives).",
-   "was": "Whether computers join the tailnet as their own tagged nodes (config computers.tailnet), the tag, whether the auth key is in the vault and g"
   },
   {
    "old": "computers.takeover",
