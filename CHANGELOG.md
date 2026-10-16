@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - feat(computers): shared headless browser is the default on a box (level 2): agents join `browser-shared` by `agents.uid`, `computers.endpoint` and Glass use CDP screencast at `/v1/streams/computers/browser-glass`, and desktop checkouts stay available when `computers.browse` is `desktop`; `computer.default-browser` and `computers.defaultBrowser` keep browser-only agents on the shared pool.
 - feat(computers): `profile-store.js` derives per-agent browser profile keys from vault items (`vyre-browser-agent-profile-key`, `vyre-browser-member-profile-key`) when members join a shared computer.
-- feat(app): the operator card shows live Glass on web, Mac and Windows; the full-screen view uses `LiveScreen` with watch and take-over.
+- feat(app): the operator card shows live Glass inline on web, Mac and Windows (not stills); one tap opens `LiveScreen` full viewport with watch and take-over.
 - feat(hands-chrome): box `chrome.net` and `chrome.api` (learn, catalog, route, call) over CDP with the same grant and plan guards as Mac; `chrome.plan` / `chrome.plan.check` on the box.
 - fix(mcp): `lib/tools-shelved.js` hides `glass.files.*`, `term.open`, and `threads.shell` from MCP and harness catalogs; Glass Files tab and the session terminal UI are hidden in the app (tools unchanged on the box).
 - feat(hands-chrome): `chrome.net` on the box captures page traffic over CDP (`start` / `list` / `get`).

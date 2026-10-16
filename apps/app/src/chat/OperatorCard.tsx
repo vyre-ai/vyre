@@ -1,27 +1,22 @@
-// The operator card (R031-91, R031-88): a computer at work, in the chat. The picture is the computer's own screen: a still that follows what it does (and refreshes every few seconds while it works), and on the web
-// the live view (Glass) one tap away, where you can take over the keyboard. Under it, one plain sentence of what it is doing now, breathing while it works, and a short track of the last steps. When it is stuck and
-// asked for something (a code), the box to type it is right here; when it is stuck on something else, Take over is. The screen itself is Glass's (LiveScreen), so every rule Glass has holds.
+// The operator card (R031-91, R031-88): a computer at work, in the chat. The picture is Glass's live view on every platform (not a still); one tap opens it full viewport with Watching and Take control. Under it, one plain
+// sentence of what it is doing now, breathing while it works, and a short track of the last steps. When it is stuck and asked for something (a code), the box to type it is right here; when it is stuck on something
+// else, Take over is on the live screen. The screen itself is Glass's (LiveScreen), so every rule Glass has holds.
 import { useEffect, useState } from "react";
-import { Image, Modal, Pressable, TextInput, View } from "react-native";
+import { Modal, Pressable, TextInput, View } from "react-native";
 import { Banner, Button, Chip, Icon, Pulse, Text, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { LiveScreen } from "./LiveScreen";
-import { useStill } from "./useStill";
-import { asksForCode, dots, runWord, stillWord, totpLogins } from "./screen-model.js";
+import { asksForCode, dots, runWord, totpLogins } from "./screen-model.js";
 
 type Op = { block: "operator"; run: string; computer: string; title: string; state: "working" | "done" | "stuck" | "paused"; line: string; ask?: string; steps: { line: string; state: string }[] };
 
 /** `sample` is a stand-in picture for the sample world (the shots); a real card asks the box. */
 export function OperatorCard({ block, sample }: { block: Op; sample?: string }) {
   const { color } = useUiTheme();
-  const [watch, setWatch] = useState(false);
   const [big, setBig] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const busyState = block.state === "working" || block.state === "stuck";
-  const real = useStill(block.run, `${block.line}|${block.state}`, busyState && !watch && !sample);
-  const still = sample ? { src: sample, why: undefined } : real;
   const track = dots(block.steps);
   const wantsCode = block.state === "stuck" && !!block.ask && asksForCode(block.ask);
   const [seeds, setSeeds] = useState<{ name: string; near: boolean }[]>(sample ? [{ name: "GoHighLevel agency login", near: true }] : []);
@@ -43,12 +38,13 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
   };
   return (
     <View style={{ borderWidth: 1, borderColor: block.state === "stuck" ? color["edge-strong"] : color.edge, backgroundColor: block.state === "stuck" ? color["warn-wash"] : color["surface-2"], borderRadius: 14, marginVertical: 4, maxWidth: 560, overflow: "hidden" }}>
-      {watch ? (
-        <View style={{ padding: 10 }}><LiveScreen computer={block.computer} /></View>
+      {sample ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${block.title} full screen`} onPress={() => setBig(true)} style={{ aspectRatio: 16 / 10, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
+          <Icon name="globe" size={24} tone="label" />
+        </Pressable>
       ) : (
-        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${block.title} larger`} onPress={() => setBig(true)} style={{ aspectRatio: 16 / 10, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
-          {still.src ? <Image accessibilityLabel={`What ${block.computer} is showing`} source={{ uri: still.src }} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
-            : <View style={{ alignItems: "center", gap: 6, padding: 16 }}><Icon name="globe" size={24} tone="label" /><Text size="caption" tone="label" style={{ textAlign: "center" }}>{stillWord(still.why)}</Text></View>}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${block.title} full screen`} onPress={() => setBig(true)} style={{ padding: 10 }}>
+          <LiveScreen computer={block.computer} />
         </Pressable>
       )}
       <View style={{ padding: 14, gap: 10 }}>
@@ -78,17 +74,21 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {block.state === "stuck" && block.ask ? <Button kind={wantsCode && seeds.length ? "ghost" : "primary"} size="sm" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /> : null}
-          <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => setWatch((w) => !w)} />
-          {!watch ? <Button kind="ghost" size="sm" icon="globe" label="Open larger" onPress={() => setBig(true)} /> : null}
+          {!sample ? <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon="globe" label="Open full screen" onPress={() => setBig(true)} /> : null}
         </View>
       </View>
       <Modal visible={big} transparent animationType="fade" onRequestClose={() => setBig(false)}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setBig(false)} style={{ flex: 1, backgroundColor: color.scrim, alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <View style={{ width: "100%", maxWidth: 960, gap: 10 }} onStartShouldSetResponder={() => true}>
-            <LiveScreen computer={block.computer} />
-            <Text tone="inverse" size="caption">{block.line}</Text>
+        <View style={{ flex: 1, backgroundColor: color.scrim, padding: 16, justifyContent: "center" }}>
+          <View style={{ alignSelf: "flex-end", marginBottom: 8 }}>
+            <Button kind="ghost" size="sm" label="Close" onPress={() => setBig(false)} />
           </View>
-        </Pressable>
+          {sample ? <Text tone="inverse" style={{ textAlign: "center" }}>{block.title}</Text> : (
+            <View style={{ flex: 1, maxHeight: "90%", width: "100%", maxWidth: 960, alignSelf: "center" }}>
+              <LiveScreen computer={block.computer} />
+            </View>
+          )}
+          <Text tone="inverse" size="caption" style={{ marginTop: 10, textAlign: "center" }}>{block.line}</Text>
+        </View>
       </Modal>
     </View>
   );
