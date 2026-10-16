@@ -9,6 +9,7 @@ import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { tempHome } from "../../test/helpers.js";
 import { createMaster, TEST_KDF, serverVaultKey, readVaultKeyFile } from "../../kernel/identity/master.js";
+import { openVaultKey } from "../../kernel/identity/vault-at-rest.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import { clearPersonal, currentPersonalKey, forgetAll, holdPersonal } from "../../kernel/identity/holder.js";
 import { installHeldKey } from "./master-root.js";
@@ -35,11 +36,15 @@ function master(root, vaultKey) {
 
 test("the master key is the vault root, and lending still opens with nobody unlocked", async (t) => {
   const { root, vault } = home(t);
+  const plain = path.join(root, "vault", "key");
+  // home() made a vault with its plaintext key file, the way a home from before the master password has one.
   const made = serverVaultKey(root);
   assert.ok(made && made.length === 32);
-  const fileKey = readVaultKeyFile(path.join(root, "vault", "key"));
+  const fileKey = readVaultKeyFile(plain);
   assert.ok(fileKey && fileKey.equals(made));
   master(root, Buffer.from(made));
+  assert.equal(fs.existsSync(plain), false, "making the master password sealed the key and removed the plaintext file");
+  assert.ok(openVaultKey(root)?.equals(made), "the sealed copy opens to the same key");
   assert.ok(currentPersonalKey()?.equals(made));
   clearPersonal();
   await vault.put({ name: "northwind", kind: "secret", fields: { value: "in-the-air-9f3a" } }, "cli");
@@ -49,12 +54,34 @@ test("the master key is the vault root, and lending still opens with nobody unlo
   const body = await vault.open(row);
   assert.equal(body.fields.value, "in-the-air-9f3a");
   const held = Buffer.from(made);
-  fs.writeFileSync(path.join(root, "vault", "key"), `${"ab".repeat(32)}\n`, { mode: 0o600 });
+  fs.writeFileSync(plain, `${"ab".repeat(32)}\n`, { mode: 0o600 });
   holdPersonal(held);
   vault.lock();
   const again = await vault.open(row);
   assert.equal(again.fields.value, "in-the-air-9f3a");
-  assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), made.toString("hex"));
+  assert.equal(fs.existsSync(plain), false, "a plaintext copy that came back is gone once the held key is sealed");
+  assert.ok(openVaultKey(root)?.equals(made), "and the sealed copy is the held key, so the two cannot diverge");
+});
+
+test("a plaintext vault key left from before the master password is sealed and removed, with a migration that keeps lending working", async (t) => {
+  const { root, vault } = home(t);
+  const plain = path.join(root, "vault", "key");
+  await vault.put({ name: "harlow", kind: "secret", fields: { value: "survives-migration" } }, "cli");
+  const row = /** @type {any} */ (vault.db.prepare("SELECT * FROM vault_items WHERE name = ?").get("harlow"));
+  const raw = /** @type {Buffer} */ (readVaultKeyFile(plain));
+  assert.ok(raw);
+  // a master record that was made without sealing (an older build): the plaintext is still there
+  createMaster({ root, username: "alex", id: "id_alex", password: "correct horse battery", recoveryCode: newRecoveryCode(), privateKeyB64: Buffer.from("a".repeat(32)).toString("base64url"), kdf: TEST_KDF });
+  assert.equal(fs.existsSync(plain), true);
+  assert.equal(openVaultKey(root), null);
+  clearPersonal();
+  vault.lock();
+  assert.equal((await vault.open(row)).fields.value, "survives-migration", "still opens");
+  assert.equal(fs.existsSync(plain), false, "the plaintext file is removed");
+  assert.ok(openVaultKey(root)?.equals(raw), "after the sealed copy opens to the same key");
+  vault.lock();
+  assert.equal((await vault.open(row)).fields.value, "survives-migration", "and lending works from the sealed copy with nobody unlocked");
+  assert.equal(fs.existsSync(plain), false, "no plaintext was made again");
 });
 
 test("a master key that does not open the agent vault fails closed and leaves the server copy", async (t) => {
@@ -67,7 +94,7 @@ test("a master key that does not open the agent vault fails closed and leaves th
   assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8"), before);
   clearPersonal();
   fs.rmSync(path.join(root, "vault", "key"));
-  master(root, crypto.randomBytes(32));
+  master(root, /** @type {any} */ (null));
   clearPersonal();
   await assert.rejects(vault.key(), (e) => /** @type {any} */ (e).code === "locked" && /no server copy/.test(e.message));
   assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);

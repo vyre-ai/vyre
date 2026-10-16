@@ -27,7 +27,7 @@ export async function openPrivateKey(kid) {
   if (!kid) return null;
   try {
     const { tool } = await import("../real/box");
-    const r = await tool("stream.decrypt", { kid });
+    const r = /** @type {any} */ (await tool("stream.decrypt", { kid }));
     return r.key ? fromB64u(r.key) : null;
   } catch {
     return resolveDecryptKid(kid);

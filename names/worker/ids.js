@@ -58,6 +58,27 @@ const unb64 = C.unb64;
 
 export { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
 import { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
+import { RELAY_ASSERT_KEY } from "../../lib/relay-keys.js";
+
+/** A space's address: one label under vyre.run. @param {unknown} a */
+const spaceAddress = a => { const t = String(a || "").trim().toLowerCase(); return /^[a-z][a-z0-9-]{1,30}\.vyre\.run$/.test(t) ? t : ""; };
+
+/**
+ * The relay's GitHub assertion, checked with WebCrypto (the Worker has no node:crypto). "<payload b64url>.<sig b64url>", signed over `vyre-gh-assert-v1\n<payload>` by the relay's pinned Ed25519 key.
+ * @param {string} token @param {string} pub @param {string} audience @param {number} now @returns {Promise<{ id: string, name: string } | null>}
+ */
+async function verifyRelayAssertion(token, pub, audience, now) {
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig || !pub) return null;
+  const un = (/** @type {string} */ x) => Uint8Array.from(atob(x.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+  try {
+    const key = await crypto.subtle.importKey("raw", un(pub), { name: "Ed25519" }, false, ["verify"]);
+    if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, un(sig), new TextEncoder().encode(`vyre-gh-assert-v1\n${payload}`)))) return null;
+    const p = JSON.parse(new TextDecoder().decode(un(payload)));
+    if (!p || p.v !== 1 || p.space !== audience || !Number.isFinite(p.exp) || p.exp <= now || !/^[0-9]{1,18}$/.test(String(p.id))) return null;
+    return { id: String(p.id), name: typeof p.name === "string" ? p.name : "" };
+  } catch { return null; }
+}
 
 /** A hostname the directory will accept as an alias: letters, digits, dashes, at least two labels, no IP, nothing under vyre.run. @param {unknown} raw */
 export function aliasDomain(raw) {
@@ -440,6 +461,51 @@ export const idOps = {
     return { fqdn, pinned: uri };
   },
 
+  /** The spaces a person belongs to are kept here, per username, as addresses. The identity adds and removes them with a signed act, as for an alias. Nothing public reads the list. @this {any} */
+  async op_idSpaceAdd(b) {
+    const v = verdict(b.name);
+    const rec = v.status === "invalid" ? null : await this.idLiveRecord(v.name);
+    if (!rec || rec.kind !== "person") throw err(404, "not_found", "no such name");
+    const address = spaceAddress(b.address);
+    if (!address) throw err(400, "bad_address", "that is not a space address");
+    await this.idCheckAct(rec, b.act, "space-add", address);
+    const held = Array.isArray(rec.spaces) ? rec.spaces : [];
+    if (!held.includes(address)) {
+      if (held.length >= 32) throw err(409, "too_many", "at most 32 spaces");
+      rec.spaces = [...held, address];
+      await this.idSave(rec);
+    }
+    return { name: rec.name, spaces: rec.spaces || held };
+  },
+
+  /** @this {any} */
+  async op_idSpaceRemove(b) {
+    const v = verdict(b.name);
+    const rec = v.status === "invalid" ? null : await this.idLiveRecord(v.name);
+    if (!rec || rec.kind !== "person") throw err(404, "not_found", "no such name");
+    const address = spaceAddress(b.address);
+    if (!address) throw err(400, "bad_address", "that is not a space address");
+    await this.idCheckAct(rec, b.act, "space-remove", address);
+    rec.spaces = (Array.isArray(rec.spaces) ? rec.spaces : []).filter((/** @type {string} */ a) => a !== address);
+    await this.idSave(rec);
+    return { name: rec.name, spaces: rec.spaces };
+  },
+
+  /**
+   * The spaces of the person a relay GitHub assertion names, and nobody else's: the assertion is the relay's signed word (two minutes, for the audience "names") that GitHub confirmed the
+   * account linked to that Vyre name. Anything not valid, not for "names", expired, or for a name with no list answers the same 404.
+   * @this {any}
+   */
+  async op_idSpaces(b, _a, ip) {
+    await this.count("spaces", String(ip || "x"), 60, "too many tries; wait");
+    const who = await verifyRelayAssertion(String(b.assertion || ""), String(this.env.RELAY_ASSERT_KEY || RELAY_ASSERT_KEY), "names", this.now());
+    const v = who && who.name ? verdict(who.name) : null;
+    const rec = v && v.status !== "invalid" ? await this.idLiveRecord(v.name) : null;
+    if (!rec || rec.kind !== "person") throw err(404, "not_found", "no such sign-in");
+    const spaces = (Array.isArray(rec.spaces) ? rec.spaces : []).map((/** @type {string} */ a) => ({ name: a.split(".")[0], address: a }));
+    return { username: rec.name, spaces };
+  },
+
   /** Give the name up. Only an entry that is not a newcomer can; used for any time, the name is a tombstone for good. @this {any} */
   async op_idRelease(b) {
     const v = verdict(b.name);
@@ -461,8 +527,8 @@ export const idOps = {
 
 export const ID_ROUTES = Object.freeze({
   "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/reserved-for": "idReservedFor", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
-  "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
+  "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease", "POST /v1/ids/spaces": "idSpaces", "POST /v1/ids/spaces/add": "idSpaceAdd", "POST /v1/ids/spaces/remove": "idSpaceRemove",
   "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa", "POST /v1/ids/server": "idServer",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa", "idServer"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa", "idServer", "idSpaces", "idSpaceAdd", "idSpaceRemove"]));

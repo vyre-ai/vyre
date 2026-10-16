@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { TEST_KDF } from "./master.js";
 import { aesWrap, aesUnwrap } from "./wrap.js";
-import { acceptKdf, bundleHash, createLoginService, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
+import { acceptKdf, buildRegistration, bundleHash, createLoginService, githubLinkMessage, GH_ASSERT_TAG, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
 
 const SPACE = "juniper";
 const PERSON = "per_" + "a".repeat(26);
@@ -19,13 +19,20 @@ function identityKey() {
 }
 
 /** A service, a clock the test moves, and one registered person. */
+const relayKey = identityKey();
+/** A relay assertion for one space, as the relay's GitHub app signs it. @param {{ id?: string, space?: string, iat?: number, exp?: number, key?: any }} [o] @param {number} now */
+function assertion(o = {}, now = 1_800_000_000_000) {
+  const payload = Buffer.from(JSON.stringify({ v: 1, id: o.id ?? "4242", login: "alex-gh", space: o.space ?? SPACE, iat: o.iat ?? now, exp: o.exp ?? now + 120_000 })).toString("base64url");
+  return `${payload}.${(o.key || relayKey).sign(Buffer.from(`${GH_ASSERT_TAG}\n${payload}`))}`;
+}
+
 async function rig(o = {}) {
   const clock = { t: 1_800_000_000_000 };
   const store = new Map();
   const events = /** @type {any[]} */ ([]);
   const idKey = identityKey();
   const svc = createLoginService({
-    space: SPACE, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
     verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex" || u === "blair",
     onNewDevice: e => events.push(e), ...o,
   });
@@ -45,7 +52,7 @@ async function signIn(r, username, password, address = "203.0.113.5", kdf = TEST
   if (b.error) return b;
   const d = deriveLogin(password, b.salt, kdf);
   const sig = d.sign(loginMessage(SPACE, username, b.challenge));
-  return { ...r.svc.finish({ username, challenge: b.challenge, sig, device: { label: "Aina's laptop" } }, address), K: d.K, challenge: b.challenge, sig };
+  return { ...(await r.svc.finish({ username, challenge: b.challenge, sig, device: { label: "Aina's laptop" } }, address)), K: d.K, challenge: b.challenge, sig };
 }
 
 test("the right password gets the record, opens it with K, and the server never held K", async () => {
@@ -73,17 +80,17 @@ test("a wrong password, an unknown name and a replayed or expired challenge all 
   // replay: the same signed challenge twice
   const first = await signIn(r, "alex", PASSWORD, "203.0.113.9");
   assert.equal(first.ok, true);
-  const again = r.svc.finish({ username: "alex", challenge: first.challenge, sig: first.sig }, "203.0.113.9");
+  const again = await r.svc.finish({ username: "alex", challenge: first.challenge, sig: first.sig }, "203.0.113.9");
   assert.deepEqual(again.error, wrong.error);
   // expiry
   const b = r.svc.begin({ username: "alex" }, "203.0.113.10");
   const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
   r.clock.t += 61_000;
-  assert.deepEqual(r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)) }, "203.0.113.10").error, wrong.error);
+  assert.deepEqual((await r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)) }, "203.0.113.10")).error, wrong.error);
   // a signature for another space does not log in here
   const c = r.svc.begin({ username: "alex" }, "203.0.113.11");
   const e = deriveLogin(PASSWORD, c.salt, TEST_KDF);
-  assert.deepEqual(r.svc.finish({ username: "alex", challenge: c.challenge, sig: e.sign(loginMessage("other", "alex", c.challenge)) }, "203.0.113.11").error, wrong.error);
+  assert.deepEqual((await r.svc.finish({ username: "alex", challenge: c.challenge, sig: e.sign(loginMessage("other", "alex", c.challenge)) }, "203.0.113.11")).error, wrong.error);
 });
 
 test("a username is locked out after five misses, an address after twenty tries, and the lockout ends", async () => {
@@ -95,12 +102,48 @@ test("a username is locked out after five misses, an address after twenty tries,
   assert.equal((await signIn(r, "alex", PASSWORD, "198.51.100.98")).error.code, "rate_limited", "even the right password waits");
   r.clock.t += 20_000;
   assert.equal((await signIn(r, "alex", PASSWORD, "198.51.100.97")).ok, true, "after the wait the right password works");
-  // one address hammering many names
+  // begin has only a high burst and never counts toward an address's failures, so nobody can lock others out with no password
   const r2 = await rig();
   let limited = 0;
-  for (let i = 0; i < 40; i += 1) if (r2.svc.begin({ username: `user${i}x` }, "192.0.2.1").error) limited += 1;
-  assert.ok(limited > 0, "an address is slowed down");
+  for (let i = 0; i < 130; i += 1) if (r2.svc.begin({ username: `user${i}x` }, "192.0.2.1").error) limited += 1;
+  assert.ok(limited > 0, "a flood of begins is slowed");
   assert.equal(r2.svc.begin({ username: "alex" }, "192.0.2.77").error, undefined, "another address is not");
+  const r3 = await rig();
+  for (let i = 0; i < 100; i += 1) r3.svc.begin({ username: "alex" }, "192.0.2.9");
+  assert.equal((await signIn(r3, "alex", PASSWORD, "192.0.2.10")).ok, true, "begins from one address never keep a member out");
+  // twenty failed finishes from one address lock that address, whatever names it tries
+  const r4 = await rig();
+  for (let i = 0; i < 20; i += 1) await signIn(r4, `guess${i}xx`, "whatever whatever", "192.0.2.50");
+  assert.equal(r4.svc.begin({ username: "alex" }, "192.0.2.50").error.code, "rate_limited");
+  assert.equal(r4.svc.begin({ username: "alex" }, "192.0.2.51").error, undefined);
+  // strikes fall back after a clean day
+  const r5 = await rig();
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.60");
+  const first = r5.svc.begin({ username: "alex" }, "192.0.2.61").error.retry;
+  r5.clock.t += 20_000;
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.62");
+  const second = r5.svc.begin({ username: "alex" }, "192.0.2.63").error.retry;
+  assert.ok(second > first, "the second lock is longer");
+  r5.clock.t += 25 * 3_600_000;
+  for (let i = 0; i < 5; i += 1) await signIn(r5, "alex", "wrong wrong wrong", "192.0.2.64");
+  assert.ok(r5.svc.begin({ username: "alex" }, "192.0.2.65").error.retry <= first, "after a clean day it starts over");
+});
+
+test("a known device does not ring the other devices again, and a new device id does", async () => {
+  const r = await rig();
+  const go = async (/** @type {any} */ device, address) => {
+    const b = r.svc.begin({ username: "alex" }, address);
+    const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
+    return r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)), device }, address);
+  };
+  assert.equal((await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.70")).ok, true);
+  assert.equal((await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.71")).ok, true);
+  assert.equal(r.events.length, 1, "the same browser again rings nobody");
+  assert.equal(r.events[0].device, "browser-aaaaaaaa");
+  await go({ id: "browser-bbbbbbbb", label: "A phone" }, "203.0.113.72");
+  assert.equal(r.events.length, 2);
+  await go({ label: "No id" }, "203.0.113.73");
+  assert.equal(r.events.length, 3, "a sign-in that sends no device id is always new");
 });
 
 test("registering needs the identity's signature, a published key, a member and the same person", async () => {
@@ -130,4 +173,49 @@ test("a device refuses a KDF that is too weak or too heavy, and the login key is
   assert.notEqual(Buffer.from(d.loginPub, "base64url").toString("hex"), d.K.toString("hex"));
   assert.equal(deriveLogin(PASSWORD, "AAAAAAAAAAAAAAAAAAAAAA", TEST_KDF).loginPub, d.loginPub, "deterministic");
   assert.notEqual(deriveLogin(PASSWORD, "BBBBBBBBBBBBBBBBBBBBBB", TEST_KDF).loginPub, d.loginPub, "salted");
+});
+
+test("a password change makes a new salt and a new login key, and the old password stops working", async () => {
+  const r = await rig();
+  const change = await buildRegistration({
+    space: SPACE, username: "alex", person: PERSON, password: "a brand new master password", kdf: TEST_KDF, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) },
+    makeBundle: K => ({ v: 1, username: "alex", id: PERSON, passwordWrap: aesWrap(K, r.rk, "vyre:master:password:v1") }), now: () => r.clock.t,
+  });
+  assert.notEqual(change.body.salt, r.salt, "a new salt");
+  assert.notEqual(change.body.loginPub, r.login.loginPub, "the login key rotated");
+  assert.equal((await r.svc.register(change.body)).ok, true);
+  assert.equal((await signIn(r, "alex", PASSWORD, "203.0.113.20")).error.code, "bad_login", "the old password no longer signs in");
+  const next = await signIn(r, "alex", "a brand new master password", "203.0.113.21");
+  assert.equal(next.ok, true);
+  assert.deepEqual(aesUnwrap(next.K, next.bundle.passwordWrap, "vyre:master:password:v1"), r.rk);
+});
+
+test("GitHub sign-in: linked only by the relay's assertion plus the identity's signature, one account per username, and every miss is the plain bad login", async () => {
+  const r = await rig();
+  const link = (/** @type {any} */ o = {}) => {
+    const ts = r.clock.t, a = o.assertion ?? assertion({}, r.clock.t);
+    return r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "4242", ts)), assertion: a, ...o });
+  };
+  // not linked yet: a good assertion signs in as nobody
+  assert.deepEqual((await r.svc.githubFinish({ assertion: assertion({}, r.clock.t) }, "203.0.113.30")).error.code, "bad_login");
+  // the assertion alone does not link, the signature alone does not link, and neither does a forged or foreign one
+  await assert.rejects(() => link({ sig: r.idKey.sign(Buffer.from("no")) }), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(() => link({ assertion: assertion({ key: identityKey() }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "not the relay's key");
+  await assert.rejects(() => link({ assertion: assertion({ space: "other" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "another space's");
+  await assert.rejects(() => link({ assertion: assertion({ iat: r.clock.t - 300_000, exp: r.clock.t - 1000 }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "expired");
+  await assert.rejects(() => link({ assertion: "typed-login" }), (/** @type {any} */ e) => e.code === "denied", "a typed login is no assertion");
+  await assert.rejects(() => link({ person: "per_" + "b".repeat(26) }), (/** @type {any} */ e) => e.code === "denied", "someone else's username");
+  assert.equal((await link()).ok, true);
+  // now the same GitHub account signs in, and gets the record and the salt to open it with the password
+  const got = await r.svc.githubFinish({ assertion: assertion({}, r.clock.t), device: { label: "Aina's phone" } }, "203.0.113.31");
+  assert.equal(got.ok, true);
+  assert.equal(got.salt, r.salt);
+  assert.ok(got.bundle && got.session);
+  assert.equal(r.events.length, 1);
+  // another GitHub account, a forged assertion and another space's all get the same answer
+  const none = await r.svc.githubFinish({ assertion: assertion({ id: "999" }, r.clock.t) }, "203.0.113.32");
+  assert.deepEqual(none.error, (await r.svc.githubFinish({ assertion: assertion({ key: identityKey() }, r.clock.t) }, "203.0.113.33")).error);
+  assert.deepEqual(none.error, (await r.svc.githubFinish({ assertion: assertion({ space: "other" }, r.clock.t) }, "203.0.113.34")).error);
+  // one username, one GitHub account; one GitHub account, one username
+  await assert.rejects(() => r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts: r.clock.t, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "5555", r.clock.t)), assertion: assertion({ id: "5555" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied" && /different GitHub/.test(e.message));
 });

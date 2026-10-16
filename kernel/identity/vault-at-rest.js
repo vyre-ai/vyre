@@ -3,6 +3,7 @@
 // The plaintext vault/key file is removed. A sealed copy stays on this box so lending works with nobody unlocked.
 // The key-encryption key is the OS keystore on macOS, or a 0600 file under identity/seals, which a member copy of one space does not include.
 
+import crypto from "node:crypto";
 import path from "node:path";
 import { aesUnwrap, aesWrap } from "./wrap.js";
 import { readJson, rmQuiet, writePrivate } from "./files.js";
@@ -25,7 +26,10 @@ export function adoptVaultKey(root, vaultKey) {
     const box = aesWrap(kek, vaultKey, AAD);
     writePrivate(vaultWrapPath(root), JSON.stringify({ v: 1, ...box }) + "\n");
   } finally { kek.fill(0); }
-  rmQuiet(plainVaultKeyPath(root));
+  // The plaintext goes only after the sealed copy opens to this very key.
+  const back = openVaultKey(root);
+  if (back && back.length === vaultKey.length && crypto.timingSafeEqual(back, vaultKey)) rmQuiet(plainVaultKeyPath(root));
+  if (back) back.fill(0);
 }
 
 /** Remove a plaintext vault/key file. The sealed wrap is the copy this box opens. @param {string} root */

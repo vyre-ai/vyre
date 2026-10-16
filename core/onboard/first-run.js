@@ -16,8 +16,13 @@ import { canAssign } from "../../lib/spaces/members.js";
 import { commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { modelCaller } from "../modules/needs-you-hold.js";
+import { httpFetch } from "../../lib/http.js";
+import { vouch } from "../../lib/github-verified.js";
+import { githubAccount, githubConfig, requestDeviceCode } from "./github-subject.js";
 
 const OPEN = Object.freeze(["cli", "local", "deck", "capsule", "device", "mcp", "harness"]);
+/** The tools that take the master password are the person's own surfaces only: a model never sees a password field here. An agent that wants the person to do these asks for a link or a Needs-you card instead. */
+const PERSON_ONLY = Object.freeze(["cli", "local", "deck", "capsule", "device"]);
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
@@ -32,17 +37,20 @@ const links = new Map();
 
 /**
  * @param {any} ctx
- * @param {{ save: (patch: any) => void, flow?: { load: (person: string) => any, save: (person: string, payload: any) => void, clear?: (person: string) => void }, adapters?: () => Iterable<string> }} io
+ * @param {{ fetch?: typeof fetch, save: (patch: any) => void, flow?: { load: (person: string) => any, save: (person: string, payload: any) => void, clear?: (person: string) => void }, adapters?: () => Iterable<string> }} io
  */
 export function registerFirstRun(ctx, io) {
   const { save, flow, adapters } = io;
+  const fetchGitHub = io.fetch || httpFetch;
+  /** @type {{ code: string, expires: number } | null} */
+  let device = null;
   /** Relay the running person's call (core/modules RELAY_ALLOWED onboard). Not named `call`: reach-module-calls scans literal call(). */
   const personCall = async (tool, input = {}) => {
     const r = await ctx.call(tool, input, { relay: true });
     if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? `${tool.split(".")[0]} is not running on this machine` : r.error.message), { code: r.error.code });
     return r.data;
   };
-  const tryCall = (tool, input) => personCall(tool, input).catch(e => ({ __error: e.message }));
+  const tryCall = (tool, input) => personCall(tool, input).catch(e => ({ __error: e.message, __code: e.code }));
   const ob = () => (ctx.config && ctx.config.onboard) || {};
   const seeded = ob();
   const DEVICE_KEY = "__device__";
@@ -182,7 +190,7 @@ export function registerFirstRun(ctx, io) {
     effect: "write",
     description: "Create this person's identity and vault from a username and master password. Returns the recovery key once.",
     input: obj({ username: str, password: str, confirm: str }, ["username", "password"]),
-    callers: [...OPEN],
+    callers: [...PERSON_ONLY],
     run: async ({ username, password, confirm }, meta) => {
       refuseAgentSecret(meta, { username, password, confirm });
       const { held, personId } = await heldOf(meta);
@@ -216,24 +224,54 @@ export function registerFirstRun(ctx, io) {
     callers: [...OPEN],
     run: async () => {
       const url = githubStart(ctx.config);
-      if (url) return { url };
+      const gh = githubConfig(ctx.config);
+      if (gh.clientId && !(device && device.expires > Date.now())) {
+        try {
+          const began = await requestDeviceCode(gh.clientId, fetchGitHub);
+          device = { code: began.deviceCode, expires: Date.now() + began.expiresIn * 1000 };
+        } catch { device = null; }
+      }
+      const exchange = Boolean(device && device.expires > Date.now());
+      if (url) return exchange ? { url, exchange: true } : { url };
       return { url: null, pending: ["github.start"] };
     },
   });
 
   ctx.tool("onboard.github.finish", {
     effect: "write",
-    description: "Link a GitHub login to this person. The master password is still required to unlock the vault.",
-    input: obj({ login: str, subject: str }, ["login"]),
+    description: "Link a GitHub login to this person. The account id is read from GitHub. The master password still unlocks the vault.",
+    input: obj({
+      login: str,
+      subject: str,
+      code: { type: "string", description: "The code from the GitHub login. The account id is read from GitHub." },
+    }, []),
     callers: [...OPEN],
-    run: async ({ login, subject }) => {
+    run: async ({ login, code }) => {
       const name = String(login ?? "").trim().toLowerCase();
-      if (!/^[a-z0-9-]{1,39}$/.test(name)) throw bad("That GitHub login cannot be linked.");
-      const id = String(subject ?? "").trim();
-      if (!id) return { linked: false, login: name, vault: "password", pending: ["identity.github.link"] };
-      const linked = await personCall("identity.github.link", { login: name, subject: id });
-      save({ onboard: { github: name } });
-      return { linked: true, login: (linked && linked.login) || name, vault: "password" };
+      if (name && !/^[a-z0-9-]{1,39}$/.test(name)) throw bad("That GitHub login cannot be linked.");
+      const gh = githubConfig(ctx.config);
+      const authCode = String(code ?? "").trim();
+      const deviceCode = !authCode && device && device.expires > Date.now() ? device.code : "";
+      if (!authCode && !deviceCode) return { linked: false, login: name || null, vault: "password", pending: ["github.start"] };
+      /** @type {{ id?: string, login?: string, pending?: string }} */
+      let account;
+      try { account = await githubAccount({ ...gh, code: authCode, deviceCode, fetch: fetchGitHub }); }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        if (err && err.code === "bad_input") device = null;
+        if (err && err.code === "unavailable") throw Object.assign(new Error("GitHub did not answer. Try again in a minute."), { code: "unavailable" });
+        throw bad(err && err.message ? err.message : "GitHub did not confirm this sign-in.");
+      }
+      if (account.pending) return { linked: false, login: name || null, vault: "password", pending: [account.pending] };
+      const who = String(account.login || "").toLowerCase();
+      device = null;
+      if (!/^[a-z0-9-]{1,39}$/.test(who)) throw bad("That GitHub login cannot be linked.");
+      if (name && who !== name) throw bad("That GitHub login is not the account that signed in.");
+      vouch(who, String(account.id));
+      const linked = await personCall("identity.github.link", { login: who, subject: String(account.id) });
+      save({ onboard: { github: who } });
+      const shown = (linked && linked.login) || who;
+      return { linked: true, login: shown, vault: "password" };
     },
   });
 
@@ -310,7 +348,9 @@ export function registerFirstRun(ctx, io) {
       if (!row) throw bad("That install is not one this device started.");
       let status = null;
       try { status = await personCall("wink.install.status", {}); } catch { status = null; }
-      const adopted = await resolveInstallOnline({ tryCall, meta });
+      const seen = /** @type {{ contested?: boolean }} */ ({});
+      const adopted = await resolveInstallOnline({ tryCall, meta, seen });
+      if (seen.contested) return { id, online: false, expired: false, contested: true, kind: row.kind, expiresAt: row.expiresAt, message: "Another server answered this install line first. Nothing was paired. Make a new install line and run it only on your own server." };
       const sid = adopted ? vaultSpace(status && status.space) : "";
       const { held, personId } = await heldOf(meta);
       if (adopted && sid && isPerson(meta && meta.caller)) {
@@ -370,7 +410,7 @@ export function registerFirstRun(ctx, io) {
     effect: "write",
     description: "Sign this computer into every space this identity belongs to. Each space uses its own server.",
     input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str, name: str, type: str, fingerprint: str }, ["password"]),
-    callers: [...OPEN],
+    callers: [...PERSON_ONLY],
     run: async ({ url, username, password, github, login, subject }, meta) => {
       refuseAgentSecret(meta, { url, username, password, github, login, subject });
       const { held, personId } = await heldOf(meta);
@@ -424,13 +464,15 @@ export function registerFirstRun(ctx, io) {
 
   ctx.tool("onboard.phone.add", {
     effect: "write",
-    description: "Add this person's phone. Returns a link the phone opens. Changes which devices can reach the space.",
+    description: "Add this person's phone as one of their own devices. Returns the link and the typed code the phone uses, good for one phone and five minutes. It is not an invite to a space.",
     input: obj({ space: str, name: str, type: str, fingerprint: str }),
     callers: [...OPEN],
-    run: async ({ space }, meta) => {
-      const { held, personId } = await heldOf(meta);
-      const made = remember(await invite(personCall, held, personId, space, "member", 1, false));
-      return { link: made.link, space: made.space, role: "member" };
+    run: async (_input, meta) => {
+      // A phone is a device of this identity (wink.phone.open: a QR and a code, one phone, five minutes). It is never a member invite, which would add a second person.
+      const opened = await personCall("wink.phone.open", {});
+      const link = String((opened && (opened.link || opened.qr)) || "");
+      if (!link) throw bad("The phone link did not come back. Try again.");
+      return { link, role: "device", expires: opened.expires ?? null, ...(opened.code ? { code: String(opened.code) } : {}) };
     },
   });
 

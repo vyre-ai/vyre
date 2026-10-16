@@ -95,7 +95,8 @@ test("first-run progress and done are kept with the identity, and a step this st
 function spaceWorld(t) {
   const d = directory(t);
   const rec = new Map();
-  const svc = createLoginService({ space: "juniper", store: { get: (k) => rec.get(k), set: (k, v) => rec.set(k, v) }, now: d.now, verifyIdentity: async () => true, isMember: async () => true });
+  const SPACE_ROW = (role) => [{ id: "spc_juniperaaaaaaaa", name: "juniper", role, server: "https://juniper.vyre.run" }];
+  const svc = createLoginService({ space: "juniper", store: { get: (k) => rec.get(k), set: (k, v) => rec.set(k, v) }, now: d.now, verifyIdentity: async () => true, isMember: async () => true, describe: async () => ({ role: "member", spaces: SPACE_ROW("member") }) });
   const posts = [];
   const fetchAll = async (url, init = {}) => {
     const u = new URL(url);
@@ -103,10 +104,9 @@ function spaceWorld(t) {
       assert.equal(init.headers["content-type"], "text/plain", "text/plain keeps the browser from sending a preflight");
       const body = JSON.parse(init.body);
       posts.push(body);
-      const withSpace = (r) => (r && r.ok ? { ...r, spaces: [{ id: "spc_juniperaaaaaaaa", name: "juniper", role: r.role || "member", server: "https://juniper.vyre.run" }] } : r);
-      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? withSpace(svc.finish(body, "203.0.113.5"))
+      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? await svc.finish(body, "203.0.113.5")
         // GitHub (the relay's assertion for this space, stood in by a fixed string here): the record comes back with its salt and cost, to be opened with the password on the device.
-        : body.op === "github" ? (body.assertion === "assert:juniper" ? withSpace({ ok: true, session: "s", salt: rec.get("login:alex").salt, kdf: rec.get("login:alex").kdf, bundle: rec.get("login:alex").bundle, role: "admin" }) : { error: { code: "bad_login", message: "That username and password do not match." } })
+        : body.op === "github" ? (body.assertion === "assert:juniper" ? { ok: true, session: "s", salt: rec.get("login:alex").salt, kdf: rec.get("login:alex").kdf, bundle: rec.get("login:alex").bundle, role: "admin", spaces: SPACE_ROW("admin") } : { error: { code: "bad_login", message: "That username and password do not match." } })
         : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
       return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
     }
@@ -263,7 +263,7 @@ test("a space that does not say which space it is gets no row, and nothing is ke
   const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
   await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
   await w.svc.register(await one.registerLogin("juniper", PASSWORD));
-  const noSpace = async (url, init = {}) => (new URL(url).pathname === "/login" ? new Response(JSON.stringify(w.svc.finish ? await (async () => { const b = JSON.parse(init.body); return b.op === "begin" ? w.svc.begin(b, "203.0.113.5") : w.svc.finish(b, "203.0.113.5"); })() : {}), { status: 200 }) : w.fetch(url, init));
+  const noSpace = async (url, init = {}) => (new URL(url).pathname === "/login" ? new Response(JSON.stringify(w.svc.finish ? await (async () => { const b = JSON.parse(init.body); if (b.op === "begin") return w.svc.begin(b, "203.0.113.5"); const r = await w.svc.finish(b, "203.0.113.5"); const { spaces: _s, ...bare } = r; return bare; })() : {}), { status: 200 }) : w.fetch(url, init));
   const store = memoryStore();
   const two = createHost({ store, directory: w.base, fetch: noSpace, now: w.now });
   await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_space");
