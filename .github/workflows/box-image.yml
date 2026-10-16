@@ -47,7 +47,7 @@ jobs:
   build-smoke:
     needs: detect
     if: needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       IMAGE: vyre-box:ci
