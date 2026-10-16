@@ -3081,7 +3081,7 @@ Check a screen against the design language: { ok, problems }. Each problem names
 
 ### `devices.signin`
 
-Sign this device in with a server, your username and your master password.
+Sign this device in on a space server you belong to, with your username and master password.
 
 - Input:
   - `password` string, required

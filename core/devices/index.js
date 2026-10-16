@@ -1,5 +1,5 @@
 // @ts-check
-// devices: sign a computer in with the space server, the username and the master password (ADR 0054). GitHub resolves the username and still asks for the password.
+// devices: sign a computer in on any of the person's space servers, with the username and the master password (ADR 0054). Each space has its own server. GitHub resolves the username and still asks for the password.
 
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import * as M from "../../kernel/identity/master.js";
@@ -23,7 +23,7 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const root = ctx.paths.root;
     ctx.tool("devices.signin", {
-      description: "Sign this device in with a server, your username and your master password.",
+      description: "Sign this device in on a space server you belong to, with your username and master password.",
       input: obj({
         server: str,
         username: str,
