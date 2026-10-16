@@ -16,6 +16,7 @@
   "core/switchboard/said.js": 1,
   "core/undo/index.js": 1,
   "kernel/remote/wink.js": 1,
+  "lib/person-relay.js": 1,
   "modules/hands-desktop/index.js": 1
  }
 }
