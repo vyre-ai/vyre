@@ -3,6 +3,7 @@
 // An agent's issue or complete waits at the Gate. The person's own call runs now. The private key never leaves the identity store, and never appears in a tool result.
 // Redeem reads the published chain for that person id (the directory's ii/ index, the same chain identity.create stores) and adopts only when the key in the code is a current device key. A miss, or a directory that cannot be reached, leaves the server unowned.
 
+import crypto from "node:crypto";
 import { mintPairCode, verifyPairCode, installCommand } from "../../lib/pair-code.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { assertPublishedKey, publishedDeviceKeys } from "../../lib/identity/published-key.js";
@@ -34,12 +35,15 @@ const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = [
  * Redeem one install code on this server. The one published-key check runs before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
  * `directory` is the test seam. Production asks the directory this computer is configured to use, through assertPublishedKey. There is no second check.
  * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function, kernel?: { space?: string, owner?: string }, config?: { names?: { directory?: string } } }, meta: { get: Function, set: Function, del: Function }, now?: () => number, directory?: { resolveById: (id: string) => Promise<any> } }} o
- * @param {string} code
+ * `via.page` is a code pasted at the setup page. It is accepted only when it carries the same setup code as the install line this server was started with (`via.expect`), so a code signed by some other
+ * identity's key, which the directory would also confirm, cannot take a server it was never made for. No install line, no page redeem.
+ * @param {string} code @param {{ page?: boolean, expect?: string }} [via]
  */
-export async function redeemInstallCode(o, code) {
+export async function redeemInstallCode(o, code, via = {}) {
   const now = o.now || Date.now;
   const v = verifyPairCode(String(code || ""), now);
   if (!v.ok) throw fail(v.code, v.message);
+  if (via.page && !sameSetup(via.expect, v.setup)) throw fail("denied", "That code is not for this server. Paste the code the Vyre app made for the install line you ran here, or make a new install line in the app.");
   const pub = Buffer.from(v.pub).toString("base64url");
   try { await assertPublishedKey(directoryClient(o), v.person, pub, { fullDevice: true }); }
   catch (e) {
@@ -73,6 +77,12 @@ export async function redeemInstallCode(o, code) {
     throw fail(err.code === "no_such_tool" ? "unavailable" : (err.code || "unavailable"), "This server could not be made yours. Make a new install line in the Vyre app and run it again.");
   }
   return finishInstall(o, meta, v.person, now);
+}
+
+/** @param {string|undefined} want @param {string} got the 43-character setup codes, compared in constant time */
+function sameSetup(want, got) {
+  if (typeof want !== "string" || want.length !== 43 || typeof got !== "string" || got.length !== 43) return false;
+  return crypto.timingSafeEqual(Buffer.from(want), Buffer.from(got));
 }
 
 /**
@@ -110,8 +120,15 @@ export function registerInstallPair(o) {
   /** @type {{ person: string, exp: number, os: string, secret: Uint8Array, key: any } | null} */
   let session = null;
   const locked = () => Boolean(o.meta.get("install_setup_locked") || o.meta.get("owner"));
-  const fromLine = () => process.env.VYRE_INSTALL_FROM_LINE === "1";
-  const page = createSetupPage({ redeem: (code) => redeemInstallCode(o, code), locked, hidePaste: fromLine });
+  /** The setup code of the install line this server was started with, taken from the line's own code at boot. Nothing pasted at the page is accepted without it. @type {string} */
+  let lineSetup = "";
+  const page = createSetupPage({ redeem: (code) => redeemInstallCode(o, code, { page: true, expect: lineSetup }), locked, stopWhenPaired: true });
+  /** The page listens only after the line's own redeem at boot failed, and only where the box serves it. It stops listening once this server is paired. */
+  const openPage = () => {
+    if (page.listening || locked() || !(process.env.VYRE_SETUP_HTTP === "1" || process.env.VYRE_SUPERVISOR === "docker")) return;
+    try { page.start({ port: Number(process.env.VYRE_SETUP_PORT || 8080) }); }
+    catch (e) { (o.log || (() => {}))(`wink: the setup page did not start: ${/** @type {any} */ (e).message}`); }
+  };
 
   ctx.tool("wink.server.install-redeem", {
     internal: true,
@@ -119,7 +136,11 @@ export function registerInstallPair(o) {
     input: obj({ code: str }, ["code"]),
     run: async (input, meta = {}) => {
       if (String(meta.caller || "") !== "module:relay") throw fail("denied", "Only the install on this server can redeem a pairing code. Use the setup page, or run the install line again.");
-      return redeemInstallCode(o, String(input.code || ""));
+      const code = String(input.code || "");
+      const line = verifyPairCode(code, now);
+      if (line.ok) lineSetup = line.setup;
+      try { return await redeemInstallCode(o, code); }
+      catch (e) { if (line.ok && /** @type {any} */ (e).code !== "locked") openPage(); throw e; }
     },
   });
 
@@ -154,6 +175,8 @@ export function registerInstallPair(o) {
       const os = input && (input.kind === "mac" || input.os === "mac") ? "mac" : "linux";
       session = { person, exp: minted.exp, os, secret, key };
       o.meta.set("install_client", { person, exp: minted.exp, os, at: now() });
+      o.meta.del("install_remote");
+      o.meta.del("install_space");
       const line = installCommand(os, minted.code);
       return { command: line, code: minted.code, line, expires: minted.exp, person, os };
     },
@@ -168,19 +191,21 @@ export function registerInstallPair(o) {
     input: obj(),
     run: async () => {
       const row = o.meta.get("install_client");
-      const owner = o.meta.get("owner");
+      const ownerHere = o.meta.get("owner");
+      let lockedNow = Boolean(o.meta.get("install_setup_locked"));
+      // A computer that made an install line is not the server the line is for. Its own owner record says nothing about that server: only a redeem here (the line ran on this computer) or the server's own answer does.
+      const owner = row && !lockedNow ? null : ownerHere;
       const person = owner && owner.identity ? String(owner.identity) : (row && row.person) || null;
       const stored = o.meta.get("install_space");
       let space = (typeof stored === "string" && SPACE_ID.test(stored) ? stored : "") || (owner ? kernelSpace(ctx) : "");
-      let owned = Boolean(owner);
-      let lockedNow = Boolean(o.meta.get("install_setup_locked"));
+      let owned = Boolean(owner) || Boolean(row && o.meta.get("install_remote"));
       // The computer that issued the line does not hold the space. Once it is paired, it asks the adopting server.
       if (!space && row && !owner && typeof o.askServer === "function") {
         try {
           const remote = await o.askServer();
           const remoteSpace = remote && typeof remote.space === "string" && SPACE_ID.test(remote.space) ? remote.space : "";
           if (remoteSpace) { space = remoteSpace; o.meta.set("install_space", remoteSpace); }
-          if (remote && (remote.owned || remote.locked || remoteSpace)) { owned = owned || Boolean(remote.owned || remoteSpace); lockedNow = lockedNow || Boolean(remote.locked); }
+          if (remote && (remote.owned || remote.locked || remoteSpace)) { owned = owned || Boolean(remote.owned || remoteSpace); lockedNow = lockedNow || Boolean(remote.locked); if (owned) o.meta.set("install_remote", { at: now() }); }
         } catch { /* the server is not paired yet; the next read asks again */ }
       }
       return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null };
@@ -192,7 +217,8 @@ export function registerInstallPair(o) {
     input: obj(),
     run: async () => {
       const owner = o.meta.get("owner");
-      if (owner && owner.identity) return { ok: true, owned: true, person: String(owner.identity) };
+      // On the computer that made the line, this computer's own owner is not the server's. Owned here means the line was redeemed here.
+      if (owner && owner.identity && (!o.meta.get("install_client") || o.meta.get("install_setup_locked"))) return { ok: true, owned: true, person: String(owner.identity) };
       if (!session) throw fail("bad_state", "Make an install line first, run it on the server, then ask again.");
       /** @type {any} */ let ck;
       try { ck = await ctx.call("spaces.identity.confirm-key", { id: session.person }); }
@@ -205,12 +231,7 @@ export function registerInstallPair(o) {
     },
   });
 
-  const wantPage = process.env.VYRE_SETUP_HTTP === "1" || process.env.VYRE_SUPERVISOR === "docker";
-  if (wantPage) {
-    try { page.start({ port: Number(process.env.VYRE_SETUP_PORT || 8080) }); }
-    catch (e) { (o.log || (() => {}))(`wink: the setup page did not start: ${/** @type {any} */ (e).message}`); }
-  }
-  return { redeem: (code) => redeemInstallCode(o, code), page, stop: () => page.stop() };
+  return { redeem: (code) => redeemInstallCode(o, code), page, openPage, stop: () => page.stop() };
 }
 
 /**

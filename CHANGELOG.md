@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(install): the setup page takes only the install line's own code. A code is accepted at `/setup` only when it carries the same setup code the server was started with, so a code signed by some other identity's published key cannot take the server first. The page opens only after the install line's redeem at boot failed, answers a form posted from another site with 403 and more than ten tries a minute with 429, and stops listening once the server is paired.
+- fix(install): a computer that made an install line no longer reports its own owner as the new server's. `wink.install.status` and `wink.install.complete` say owned only when the line was redeemed on that computer or the server itself answered, so a Mac that already owns its local Vyre does not jump to Ready. The setup offer is refused to anyone but the person the server was paired to.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
