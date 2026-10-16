@@ -27,7 +27,7 @@ const memoryStore = () => { let kept = null; return { load: async () => (kept ? 
 
 /** The relay, the setup channel and the pairing as a test drives them: a server that answers the line when `serverUp` is set, and one pairing the page makes. */
 function ports() {
-  const seen = { pairs: [], forgot: [], tickets: [], resolveAs: null, claims: [], calls: [], claimFails: [] };
+  const seen = { pairs: [], forgot: [], tickets: [], resolveAs: null, claims: [], calls: [], claimFails: [], joins: [], closed: 0 };
   const offer = { relay: "wss://relay.example", route: "r".repeat(26), box: new Uint8Array(32) };
   const p = {
     seen,
@@ -53,6 +53,10 @@ function ports() {
       return "spc_abcdefghijkl";
     },
     call: async (name, input, box) => { seen.calls.push({ name, input, box }); return {}; },
+    join: async (link, who) => {
+      seen.joins.push({ link, who: { id: who.id, name: who.name, hasKey: typeof who.key.sign === "function" } });
+      return { card: { space: "juniper.vyre.run", role: "admin", fingerprint_words: "one two three four" }, accept: async () => ({ joined: true, space: "spc_zzzzzzzzzzzz", membership: { role: "admin" } }), close() { seen.closed += 1; } };
+    },
     forget: async (box) => { seen.forgot.push(box); },
   };
   return p;
@@ -62,7 +66,20 @@ async function ready(t, extra = {}) {
   const d = directory(t);
   const store = memoryStore();
   const pp = ports();
-  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5, ...extra });
+  // The directory's list of a username's spaces (the add and remove acts) is answered here; everything else is the real names Worker.
+  const posted = [];
+  pp.seen.directoryDown = 0;
+  const fetchSeen = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.pathname.startsWith("/v1/ids/spaces/")) {
+      posted.push({ path: u.pathname, body: JSON.parse(init.body), order: pp.seen.calls.length });
+      if (pp.seen.directoryDown > 0) { pp.seen.directoryDown -= 1; return new Response("{}", { status: 503 }); }
+      return new Response("{}", { status: 200 });
+    }
+    return d.fetch(url, init);
+  };
+  pp.seen.posted = posted;
+  const host = createHost({ store, directory: d.base, fetch: fetchSeen, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5, ...extra });
   const made = await host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
   return { d, store, pp, host, made };
 }
@@ -100,6 +117,9 @@ test("create a space from a page: the line carries a code the server's own check
   // The space is made usable: the directory claim is signed by this identity through the paired server, then the space vault is made on that server.
   assert.deepEqual(pp.seen.claims, [{ who: { id: made.id, name: "alex", hasOps: true, hasKey: true }, name: "alex-space", box: "boxA" }]);
   assert.deepEqual(pp.seen.calls, [{ name: "vault.space.create", input: { space: "spc_abcdefghijkl" }, box: "boxA" }]);
+  // Then the space is added to this username's list in the directory (so GitHub sign-in finds it), signed by the identity key, after the claim and the vault.
+  assert.deepEqual(pp.seen.posted.map((p) => [p.path, p.body.name, p.body.address, p.order]), [["/v1/ids/spaces/add", "alex", "alex-space.vyre.run", 1]]);
+  assert.equal(typeof pp.seen.posted[0].body.act.sig, "string");
   assert.equal(pp.seen.pairs.length, 1);
   assert.deepEqual(pp.seen.pairs[0].who, { id: made.id, name: "alex", hasKey: true });
 
@@ -138,7 +158,9 @@ test("Not your server? Remove it forgets the pairing and the space; a line that 
   pp.seen.resolveAs = "one";
   await until(host, open.id, (r) => r.online);
   await assert.rejects(() => host.call("onboard.space.remove", { space: "spc_nobody" }), /not one this identity belongs to/);
-  assert.deepEqual(await host.call("onboard.space.remove", { space: "spc_abcdefghijkl" }), { removed: true, id: "spc_abcdefghijkl" });
+  assert.deepEqual(await host.call("onboard.space.remove", { space: "spc_abcdefghijkl" }), { removed: true, id: "spc_abcdefghijkl", unpublished: true });
+  assert.deepEqual(pp.seen.posted.map((p) => p.path), ["/v1/ids/spaces/add", "/v1/ids/spaces/remove"]);
+  assert.equal(pp.seen.posted[1].body.address, "alex-space.vyre.run");
   assert.deepEqual(pp.seen.forgot, ["boxA"]);
   assert.deepEqual((await host.call("onboard.space.list")).spaces, []);
 
@@ -197,4 +219,66 @@ test("a vault that already exists on the server is fine; any other vault refusal
   const bad = await until(two.host, o2.id, (r) => r.failed);
   assert.equal(bad.code, "unavailable");
   assert.deepEqual((await two.host.call("onboard.space.list")).spaces, []);
+});
+
+test("the directory being down after the claim and the vault is tried again on the next poll, without claiming or making the vault twice, and nothing is kept until it takes the space", async (t) => {
+  const { pp, host } = await ready(t);
+  pp.seen.directoryDown = 2;
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  const retrying = await until(host, open.id, (r) => r.failed);
+  assert.equal(retrying.retrying, true);
+  assert.equal(retrying.code, "directory");
+  assert.deepEqual((await host.call("onboard.space.list")).spaces, [], "nothing is kept while the directory has not taken the space");
+  const done = await until(host, open.id, (r) => r.online);
+  assert.equal(done.space, "spc_abcdefghijkl");
+  assert.equal(pp.seen.claims.length, 1, "the name was claimed once");
+  assert.equal(pp.seen.calls.length, 1, "the space vault was made once");
+  assert.equal(pp.seen.posted.length, 3, "two refused tries and one that took");
+  assert.equal((await host.call("onboard.space.list")).spaces.length, 1);
+});
+
+test("removing a space whose directory line cannot be dropped still removes it here and says the line is still there", async (t) => {
+  const { pp, host } = await ready(t);
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  await host.call("identity.lock");
+  const r = await host.call("onboard.space.remove", { space: "spc_abcdefghijkl" });
+  assert.deepEqual([r.removed, r.unpublished], [true, false]);
+  assert.deepEqual(pp.seen.forgot, ["boxA"]);
+  assert.deepEqual((await host.call("onboard.space.list")).spaces, []);
+});
+
+test("joining a space reads the card, accepts as the identity the page holds, keeps the row and adds the space to the directory's list", async (t) => {
+  const { pp, host, made } = await ready(t);
+  const link = "https://juniper.vyre.run/join/abcdefgh.ijklmnop";
+  const card = await host.call("onboard.join.read", { link });
+  assert.deepEqual([card.link, card.role, card.space, card.fingerprint_words], [link, "admin", "juniper", "one two three four"]);
+  assert.equal(pp.seen.posted.length, 0, "reading a card lists nothing");
+  const joined = await host.call("onboard.space.join", { link });
+  assert.deepEqual(joined, { joined: true, space: "juniper", id: "spc_zzzzzzzzzzzz", role: "admin", server: "https://juniper.vyre.run", listed: true });
+  assert.equal(pp.seen.joins.length, 1, "the card stream read first is the one accepted");
+  assert.deepEqual(pp.seen.joins[0].who, { id: made.id, name: "alex", hasKey: true });
+  assert.equal(pp.seen.closed, 1);
+  assert.deepEqual(pp.seen.posted.map((p) => [p.path, p.body.name, p.body.address]), [["/v1/ids/spaces/add", "alex", "juniper.vyre.run"]]);
+  const list = await host.call("onboard.space.list");
+  assert.deepEqual(list.spaces, [{ id: "spc_zzzzzzzzzzzz", name: "juniper", role: "admin", server: "https://juniper.vyre.run" }]);
+  assert.equal(list.current, "spc_zzzzzzzzzzzz");
+  // The directory being down does not undo the join: the person is a member, and the answer says the list line is not there yet.
+  pp.seen.directoryDown = 1;
+  const again = await host.call("onboard.space.join", { link });
+  assert.equal(again.listed, false);
+  assert.equal((await host.call("onboard.space.list")).spaces.length, 1, "the same space is one row");
+  await assert.rejects(() => host.call("onboard.join.read", { link: "" }), /does not open a space/);
+});
+
+test("the join steps need the unlocked identity and a page that can join; without ports the host does not claim them", async (t) => {
+  const { host } = await ready(t);
+  await host.call("identity.lock");
+  await assert.rejects(() => host.call("onboard.join.read", { link: "https://juniper.vyre.run/join/abcdefgh.ijklmnop" }), (e) => e.code === "locked");
+  const bare = createHost({ store: memoryStore(), directory: BASE });
+  assert.equal(bare.has("onboard.join.read"), false);
+  assert.equal(bare.has("onboard.space.join"), false);
+  assert.equal(bare.has("onboard.person.create"), true);
 });
