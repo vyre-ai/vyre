@@ -18,7 +18,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(mcp): `onboard.machine`, `onboard.windows`, `releases.info` and the first-run tools are kernel tools an MCP caller can drive. Only an assistant's change to people, devices or vault access waits for one Needs-you tap. A person in their own app does not wait. An assistant never receives a vault value. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.
 - ci(windows): lumen-win typechecks the Tauri app and the ncrypt path on windows-latest. The check does not need a TPM or the web bundle.
 - fix(tools): the descriptions of the onboarding, device and invite tools an agent can now see are each twenty-five words or fewer.
-- feat(release): lumen-win signs the installer with Authenticode when the `windows` environment has WINDOWS_AUTHENTICODE_PFX_B64 and WINDOWS_AUTHENTICODE_PFX_PASSWORD, and otherwise publishes the unsigned installer and names each missing secret. release.yml passes `sign` on a publish and does not name the certificate. WINDOWS_SIGNING=required fails a publish that is still unsigned. Release notes draft: release/notes/0.5.3.md.
+- feat(release): lumen-win signs the Authenticode installer when the `windows` environment has WINDOWS_AUTHENTICODE_PFX_B64 and WINDOWS_AUTHENTICODE_PFX_PASSWORD, and otherwise publishes the unsigned installer and names each missing secret. release.yml passes `sign` on a publish and does not name the certificate. WINDOWS_SIGNING=required fails a publish that is still unsigned.
+- test(release): the install proof walk follows the 0.5.3 first run: identity, one install line with a code, the server adopts without four words, and the same identity can own two servers (scripts/lib/proof/walk.mjs, live.mjs, journeys/lib/world.mjs, app.mjs autoPair).
+- release: 0.5.3 (scripts/bump-version.mjs): package.json, package-lock.json, the plugin manifest, release/notes/0.5.3.md and vyre.run's release line.
 
 ## 0.5.2
 

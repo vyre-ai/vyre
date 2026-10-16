@@ -4,8 +4,6 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import { createApp } from "./app.mjs";
-import { reserveAnswer } from "../../../site/setup/reserve.js";
-import { codeLooksRight } from "../../../apps/app/screens/install/first-run.js";
 import { startDaemonServer } from "./server-daemon.mjs";
 import { startInstallerServer } from "./server-installer.mjs";
 import { startMacServer } from "./server-mac.mjs";
@@ -24,35 +22,17 @@ export async function walk(w) {
   fs.mkdirSync(dir, { recursive: true });
   const person = `walker${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`;
   const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
-  /** @type {any} */ let reservation = null, flow = null, srv = null, session = null;
+  /** @type {any} */ let reservation = null, flow = null, srv = null, srv2 = null, session = null;
 
   try {
-    await run.step(S("reserve a name on the setup page"), async () => {
+    await run.step(S("create an identity in the app (username and recovery code)"), async () => {
       reservation = await mac.reserve(person);
-      assert.match(reservation.code, /^VYRE(-[A-Z0-9]{4}){4}$/);
-      return `${reservation.name}, code ${reservation.code.slice(0, 9)}...`;
-    });
-    await run.step(S("the setup page and the app accept every code the directory can make"), async () => {
-      // the directory's alphabet (names/worker/ids.js ALPHA32) against the page's parser (site/setup/reserve.js) and the app's paste check (first-run.js codeLooksRight)
-      const alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      const bad = [];
-      for (const ch of alpha) {
-        const code = `VYRE-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`;
-        const page = reserveAnswer(200, { data: { code, expires: 1 } }).ok, app = codeLooksRight(code);
-        if (!page || !app) bad.push(`${ch}${page ? "" : " page"}${app ? "" : " app"}`);
-      }
-      assert.equal(bad.length, 0, `refused characters the directory uses: ${bad.join(", ")} (site/setup/reserve.js and apps/app/screens/install/first-run.js accept A-Z and 2-7; names/worker/ids.js makes A-Z without I and O, and 2-9)`);
-      assert.ok(reservation.page.ok, "the page took this reservation");
-    }, { needs: [S("reserve a name on the setup page")] });
-    await run.step(S("become yourself in the app (the code is spent)"), async () => {
       const me = await mac.becomeYourself({ name: reservation.name, code: reservation.code });
       assert.ok(me.id && me.recoveryCode, "an identity and a recovery code");
       const r = await fetch(`${ins.names}/v1/ids/resolve?name=${reservation.name}`);
       assert.equal(r.status, 200, "the directory resolves the new name");
-      // the code is good once
-      await assert.rejects(mac.becomeYourself({ name: reservation.name, code: reservation.code }), /./, "a second use of the code is refused");
-      return `${me.id}`;
-    }, { needs: [S("reserve a name on the setup page")] });
+      return `${reservation.name} ${me.id}`;
+    });
 
     await run.step(S("add a server: the app shows the install line"), async () => {
       flow = mac.addServer();
@@ -61,7 +41,7 @@ export async function walk(w) {
       assert.ok(line.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
       assert.ok(line.includes("VYRE_STORE=auto"), "the app's line always carries Records");
       return line.replace(flow.state.code, "<code>");
-    }, { needs: [S("become yourself in the app (the code is spent)")] });
+    }, { needs: [S("create an identity in the app (username and recovery code)")] });
 
     await run.step(S(`the server installs from the line (${server})`), async () => {
       const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store, ...(server === "installer" ? { devBuild: true, recreate: false, ownerId: mac.identity.id } : {}) };
@@ -69,25 +49,13 @@ export async function walk(w) {
       return `${srv.kind}`;
     }, { needs: [S("add a server: the app shows the install line")] });
 
-    await run.step(S("the app finds the server"), async () => {
-      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 60_000, "the app to find the server");
-      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
-      return `${flow.state.box.name || "server"}`;
-    }, { needs: [S(`the server installs from the line (${server})`)] });
-
-    await run.step(S("the four words in the app are the ones the server shows"), async () => {
-      const held = await srv.words();
-      assert.equal(flow.state.box.words.join(" "), held);
-      assert.equal(flow.state.box.words.length, 4);
-      return held;
-    }, { needs: [S("the app finds the server")] });
-
-    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
-      await flow.confirmWords();
+    await run.step(S("the server adopts this identity and the app is ready"), async () => {
+      await mac.until(() => flow.state.stage === "done" || flow.state.stage === "stopped", 120_000, "the app to finish pairing");
       assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
       assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
-      return `owner ${JSON.stringify(mac.pairing.owner.id || mac.pairing.owner).slice(0, 40)}`;
-    }, { needs: [S("the four words in the app are the ones the server shows")] });
+      assert.equal(flow.state.box && flow.state.box.words ? flow.state.box.words.length : 0, 0, "the install line does not ask for four words");
+      return `${flow.state.box && flow.state.box.name || "server"}`;
+    }, { needs: [S(`the server installs from the line (${server})`)] });
 
     await run.step(S("the app reaches the server and calls a tool"), async () => {
       if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id, srv.kind === "installer" ? mac.presenceSigner : undefined));
@@ -95,9 +63,24 @@ export async function walk(w) {
       const info = await mac.callTool("system.info");
       assert.ok(info, "system.info answered");
       return `system.info ok`;
-    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    }, { needs: [S("the server adopts this identity and the app is ready")] });
 
     const CALL = S("the app reaches the server and calls a tool");
+    /** @type {any} */ let flow2 = null;
+    await run.step(S("the same identity adds a second server from another install line"), async () => {
+      flow2 = mac.addServer();
+      await flow2.begin();
+      assert.ok(flow2.state.installLine.includes(`VYRE_CODE=${flow2.state.code}`));
+      const a = { dir: path.join(dir, "server2"), repo, code: flow2.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store, ...(server === "installer" ? { devBuild: true, recreate: false, ownerId: mac.identity.id } : {}) };
+      srv2 = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store, ownerId: mac.identity.id });
+      await mac.until(() => flow2.state.stage === "done" || flow2.state.stage === "stopped", 120_000, "the second server to adopt this identity");
+      assert.equal(flow2.state.stage, "done", flow2.state.error && flow2.state.error.message);
+      const firstOwner = await srv.operator("spaces.owner.status", {});
+      const secondOwner = await srv2.operator("spaces.owner.status", {});
+      assert.equal(firstOwner && firstOwner.identity, mac.identity.id, "the first server kept this identity as owner");
+      assert.equal(secondOwner && secondOwner.identity, mac.identity.id, "the second server adopted the same identity");
+      return `two servers, one identity`;
+    }, { needs: [CALL] });
     /** @type {any} */ let team = null, invite = null;
     await run.step(S("create a team space on the server (named in the app, signed with the identity)"), async () => {
       team = await mac.createTeamSpace(`team${person.slice(-6)}`);
@@ -207,6 +190,7 @@ export async function walk(w) {
       try { fs.writeFileSync(path.join(dir, "server.log"), (srv.logs || []).join("\n") + "\n"); } catch { /* the log is a courtesy */ }
       await srv.stop().catch(() => {});
     }
+    if (srv2) await srv2.stop().catch(() => {});
   }
 }
 
@@ -329,19 +313,14 @@ export async function walkUpdate(w) {
       const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
       srv = await startInstallerServer(a);
     }, { needs: [S("add a server: the app shows the install line")] });
-    await run.step(S("the app finds the server and the four words match"), async () => {
-      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
-      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
-      assert.equal(flow.state.box.words.join(" "), await srv.words());
-    }, { needs: [S(`the old release (${update.oldVersion}) installs from the line`)] });
-    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
-      await flow.confirmWords();
+    await run.step(S("the server adopts this identity and the app is ready"), async () => {
+      await mac.until(() => flow.state.stage === "done" || flow.state.stage === "stopped", 120_000, "the app to finish pairing");
       assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
-    }, { needs: [S("the app finds the server and the four words match")] });
+    }, { needs: [S(`the old release (${update.oldVersion}) installs from the line`)] });
     await run.step(S("the app reaches the server and calls a tool"), async () => {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
-    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    }, { needs: [S("the server adopts this identity and the app is ready")] });
     await updateSteps({ w: { update, out: w.out }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
     if (w.after) await w.after({ mac, srv: () => srv, S, back: S("the host's unit installs the candidate and the server comes back as it") });
   } finally {

@@ -132,31 +132,21 @@ export async function walkLive(w) {
       assert.match(line, /^curl -fsSL vyre\.run\/i \| /, "the line is the published installer");
       return line.replace(flow.state.code, "<code>");
     }, { needs });
-    await run.step(S("the server installs from that line (the published release): it shows four words"), async () => {
+    await run.step(S("the server installs from that line (the published release)"), async () => {
       // --install-from TAG: the install line is run as a person would run it, but from that release's own assets on GitHub (vyre.run may serve another release): its install-box.sh, told where its files are.
       const base = w.installFrom ? `https://github.com/vyre-ai/vyre/releases/download/${w.installFrom}/` : "";
       const line = base ? flow.state.installLine.replace("curl -fsSL vyre.run/i", `curl -fsSL ${base}install-box.sh`).replace(/\| (VYRE_CODE=)/, `| VYRE_BOX_URL=${base} $1`) : flow.state.installLine;
       assert.ok(!base || line.includes(base) && line.includes("VYRE_BOX_URL="), `the install line was not rewritten: ${line.replace(/VYRE_CODE=\S+/, "VYRE_CODE=<hidden>")}`);
       installed = startInstall(host, line, dir);
-      const words = await installed.words();
-      return words;
+      return "install started";
     }, { needs: [S("add a server: the app shows the install line")] });
-    await run.step(S("the app finds the server"), async () => {
-      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
-      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
-      return `${flow.state.box.name || "server"}`;
-    }, { needs: [S("the server installs from that line (the published release): it shows four words")] });
-    await run.step(S("the four words in the app are the ones the server shows"), async () => {
-      const held = await installed.words();
-      assert.equal(flow.state.box.words.join(" "), held);
-      assert.equal(flow.state.box.words.length, 4);
-      return held;
-    }, { needs: [S("the app finds the server")] });
-    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
-      await flow.confirmWords();
+    await run.step(S("the server adopts this identity and the app is ready"), async () => {
+      await mac.until(() => flow.state.stage === "done" || flow.state.stage === "stopped", 120_000, "the app to finish pairing");
       assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
       assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
-    }, { needs: [S("the four words in the app are the ones the server shows")] });
+      assert.equal(flow.state.box && flow.state.box.words ? flow.state.box.words.length : 0, 0, "the install line does not ask for four words");
+      return `${flow.state.box && flow.state.box.name || "server"}`;
+    }, { needs: [S("the server installs from that line (the published release)")] });
     await run.step(S("the installer finishes on the server once the app has adopted it"), async () => {
       const r = await installed.finish();
       assert.equal(r.code, 0, `the installer exited ${r.code}: ${r.tail}`);
@@ -165,12 +155,12 @@ export async function walkLive(w) {
       installedVersion = ver;
       if (expectVersion && store === "plain") assert.equal(ver, expectVersion, `the server runs ${ver || "no version"}, not ${expectVersion}`);
       return `exit 0${ver ? `, ${ver}` : ""}`;
-    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    }, { needs: [S("the server adopts this identity and the app is ready")] });
     await run.step(S("the app reaches the server and calls a tool"), async () => {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
       return "system.info ok";
-    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    }, { needs: [S("the server adopts this identity and the app is ready")] });
     return S("the app reaches the server and calls a tool");
   };
 
