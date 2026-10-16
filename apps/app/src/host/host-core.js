@@ -29,7 +29,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 
 /**
  * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number,
- *   space?: { load: () => Promise<SpacePorts> }, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null }} o
+ *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -129,6 +129,8 @@ export function createHost(o) {
     "onboard.first.done": async () => {
       const k = await o.store.load();
       if (k) await o.store.save({ ...k, done: true, progress: null });
+      // The Windows app starts hidden in the tray from now on (shell.ts shellSetupDone); a page with no such shell has nothing to tell.
+      if (o.done) { try { await o.done(); } catch { /* the shell opens its window until this lands */ } }
       return { done: true };
     },
     "onboard.status": async () => {

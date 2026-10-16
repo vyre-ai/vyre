@@ -4,14 +4,17 @@ import { Platform } from "react-native";
 import { createHost } from "./host-core.js";
 import { hostStore } from "./host-store";
 import { spacePorts } from "./space-ports";
+import { hostWantedFor } from "./wanted.js";
+import { shellSetupDone } from "../shell/shell";
 
-const HOSTED = /^web\.vyre\.run$/i;
-
-/** Is this page one with no daemon of its own, which answers the first-run tools itself? */
+/** Is this page one with no daemon of its own, which answers the first-run tools itself? The hosted web app, a build made for it, and the Mac or Windows app's window with no vyred. */
 export function hostWanted(): boolean {
-  if (Platform.OS !== "web") return false;
-  if (typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_HOST === "1") return true;
-  return typeof location !== "undefined" && HOSTED.test(location.hostname);
+  return hostWantedFor({
+    web: Platform.OS === "web",
+    flag: typeof process !== "undefined" ? process.env.EXPO_PUBLIC_VYRE_HOST : undefined,
+    hostname: typeof location !== "undefined" ? location.hostname : undefined,
+    shell: typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: { kind?: string; boxless?: boolean } }).__vyreShell ?? null,
+  });
 }
 
 function directory(): string {
@@ -21,6 +24,6 @@ function directory(): string {
 
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
-  if (!host) host = createHost({ store: hostStore, directory: directory(), space: { load: spacePorts } });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), space: { load: spacePorts }, done: shellSetupDone });
   return host;
 }
