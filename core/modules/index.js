@@ -45,7 +45,7 @@ const LOADER_FEATURES = ["modules.status"];
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 /** The sign-in tools: they authenticate a person (a passkey or the device's own key) and open a person session; the presence verifier still checks that proof. */
 const SIGN_IN = new Set(["presence.person.start"]);
-export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status", "wink.install.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */

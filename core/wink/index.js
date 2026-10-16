@@ -408,6 +408,11 @@ export function createWink(inject = {}) {
     pairing.tools();
     const installPair = registerInstallPair({
       ctx, meta: pairing.meta, now, log: (m) => ctx.log(m),
+      askServer: async () => {
+        const sid = pairing.homeServerId();
+        if (!sid) return null;
+        return pairing.serverLinks().sessionFor(sid).call("wink.install.status", {});
+      },
       pair: (qr, person) => {
         const scan = parseServerQr(String(qr));
         if (!scan) throw fail("bad_input", "The server gave a ticket this computer cannot read. Make a new install line in the Vyre app.");

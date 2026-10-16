@@ -23,6 +23,7 @@ import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
 import { armInstallBoot } from "./boot-pair.js";
+import { PAIR_CODE_LEN } from "../../lib/pair-code.js";
 import { relayLink } from "./link.js";
 import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
@@ -1538,6 +1539,7 @@ export default {
     // ahead: a missing, garbage or future stamp means no code, so a restart of vyred never re-arms an old one.
     const bootEnv = seam.env || process.env;
     const bootCode = bootEnv.VYRE_SETUP_CODE, bootAt = Number(bootEnv.VYRE_SETUP_CODE_AT);
+    if (typeof bootCode === "string" && bootCode.length === PAIR_CODE_LEN) process.env.VYRE_INSTALL_FROM_LINE = "1";
     if (!seam.env) { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
     if (bootCode) {
       const at = bootAt > 1e12 ? bootAt : bootAt * 1000, age = Date.now() - at;

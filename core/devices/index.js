@@ -3,6 +3,7 @@
 
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import * as M from "../../kernel/identity/master.js";
+import { closeDials, dialLive } from "./live.js";
 
 const MIGRATIONS = [
   `CREATE TABLE devices_signin (
@@ -45,11 +46,14 @@ export default {
         if (!username) throw refuse("Give the username, or a linked GitHub account.", "bad_input");
         const opened = M.unlockMaster({ root, password: input.password, identityFile: M.identityPath(root) });
         if (username !== opened.username) throw refuse("That username does not match this device.", "bad_input");
+        const dial = typeof ctx.dialServer === "function" ? ctx.dialServer : (info) => dialLive(ctx, info);
+        const live = await dial({ server, username: opened.username, identityId: opened.id });
+        if (!live || live.live !== true || typeof live.device !== "string" || !live.device) throw refuse("That space's server did not admit this computer.", "denied");
         const id = `dev_${Date.now().toString(36)}`;
         ctx.store.db.prepare("INSERT INTO devices_signin (id, server, username, at) VALUES (?, ?, ?, ?)").run(id, server, opened.username, Date.now());
-        return { ok: true, username: opened.username, id: opened.id, server, unlocked: true, carry: M.signinCarry(root) };
+        return { ok: true, username: opened.username, id: opened.id, server, unlocked: true, live: true, device: live.device, carry: M.signinCarry(root) };
       },
     });
-    return { async stop() {} };
+    return { async stop() { closeDials(); } };
   },
 };

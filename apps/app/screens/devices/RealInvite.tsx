@@ -6,7 +6,7 @@ import { isPhone } from "../install/first-run.js";
 import { deviceKindHere } from "../../src/real/pair-say";
 import { AckCode } from "./TypeCode";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, Field, Row, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { InviteRolePicker } from "../roles/InviteRolePicker";
 import { InviteMade } from "./InviteMade";
@@ -14,7 +14,7 @@ import { roleLabel } from "../spaces/roles.js";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
 import { invitesHere } from "../../src/real/team-join";
-import { createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
+import { inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
 
@@ -28,7 +28,6 @@ export function RealInvite() {
   const [projects, setProjects] = useState<string[]>([]);
   const [levels, setLevels] = useState<Record<string, string>>({});
   const [to, setTo] = useState("");
-  const [anyone, setAnyone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<ReturnType<typeof madeNote> | null>(null);
   const [words, setWords] = useState("");
@@ -49,13 +48,9 @@ export function RealInvite() {
   const make = () => {
     if (!card) return;
     setProblem(""); setWords("");
-    if (!anyone && !to.trim()) { setProblem("Name the person this is for, or choose Anyone with the link."); return; }
     setBusy(true);
-    // This app keeps the name and the server holds none: the invite is made by this app, answering the home's yes with the name's key (src/real/team-invite.js).
-    void (async () => {
-      const input = createInput({ space: card.id, role, to, anyone, days: Number(days), projects, levels });
-      return (await invitesHere()) ? (await import("../../src/real/team-join")).makeTeamInvite({ space: card.id, name: card.name, role: input.role, ...(input.to ? { to: input.to } : {}), ...(input.expires ? { expires: input.expires } : {}) }) : tool("spaces.invites.create", input);
-    })().then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
+    // Role and days are checked inside onboard.member.link, the same tool the first run uses.
+    void tool("onboard.member.link", { space: card.id, role: role === "temp" ? "guest" : role, ttlDays: Number(days) }).then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
       setProblem(why(e));
       if ((e as { code?: string }).code !== "this_computer") return;
       // The way forward depends on whether a server is paired (wink.access, rows of kind server): make a space on it, or pair one first.
@@ -94,8 +89,8 @@ export function RealInvite() {
       ) : (
         <Card className="max-w-read gap-s3">
           <InviteRolePicker actor={card.role} role={role} onRole={setRole} projects={projects} onProjects={setProjects} levels={levels} onLevels={setLevels} days={days} onDays={setDays} />
-          <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
-          {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
+          <Field label="Their name, for your own list" value={to} onChangeText={setTo} placeholder="Sam" />
+          <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean.</Text></Banner>
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           {onComputer && !isPhone(deviceKindHere()) && deviceKindHere() !== "web" ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/u/install/create") as never)} /></View> : null}
           <View className="flex-row"><Button kind="primary" label={busy ? "Making" : "Make the invitation"} onPress={busy ? () => {} : make} /></View>

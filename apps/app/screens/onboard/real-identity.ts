@@ -51,67 +51,26 @@ const claimSay = (c: string | undefined): string => {
   return "No name was claimed. Try again.";
 };
 
-/** Reserve the name at the directory (24 hours, one code), as vyre.run/setup does. The code goes straight to the claim and is never shown. */
-async function reserve(name: string): Promise<string> {
-  const { DIRECTORY } = await import("../../src/real/install");
-  let r: Response;
-  try { r = await fetch(`${DIRECTORY}/v1/ids/reserve`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name }) }); }
-  catch { throw Object.assign(new Error("unreachable"), { code: "unreachable" }); }
-  const body = await r.json().catch(() => null);
-  if (r.ok && body?.data?.code) return String(body.data.code);
-  throw Object.assign(new Error("refused"), { code: r.status === 429 ? "rate_limited" : body?.error?.code ?? "unreachable" });
-}
-
 /**
- * Make a new name on this device: reserve it, make this device's key, claim. The recovery code comes back in this answer only: the screen shows it once and drops it.
+ * Make a new name on this device through onboard.person.create. The recovery key comes back in this answer only: the screen shows it once and drops it.
  * A browser never makes a name (claimBlocked); it says so before anything is asked.
  */
-export async function claimNewName(raw: string): Promise<Outcome<{ name: string; recoveryCode: string }>> {
+export async function claimNewName(raw: string, password = ""): Promise<Outcome<{ name: string; recoveryCode: string }>> {
   if (MOCK) { await slow(600); return { ok: true, name: nameOf(raw), recoveryCode: DEMO.recoveryCode }; }
   if (claimBlocked()) return { ok: false, say: "Create your name on your iPhone, then sign in here. A browser cannot make one." };
   try {
     const name = nameOf(raw);
-    const held = await reserve(name);
-    const { createIdentity } = await import("../../src/real/install");
-    const made = await createIdentity(held, deviceLabel());
-    return { ok: true, name: made.name, recoveryCode: made.recoveryCode };
+    const { tool } = await import("../../src/real/box");
+    const made = await tool<{ username?: string; recoveryKey?: string | null }>("onboard.person.create", { username: name, password, confirm: password });
+    return { ok: true, name: made.username || name, recoveryCode: made.recoveryKey || "" };
   } catch (e) { return { ok: false, say: claimSay(code(e)) }; }
 }
 
-/**
- * Sign in on a new device by name: this device asks on the relay, a device that is already signed in shows the same three words and the person approves there. No code is typed. The name is
- * resolved first so a join that lands on another identity is refused. Resolves the name this device now holds. `onWords` gets the three words to match.
- */
+/** A new computer signs in with onboard.computer.add: the space address, the username and the master password. */
 export async function requestSignIn(o: { name: string; onWords: (w: string[]) => void; signal?: AbortSignal }): Promise<Outcome<{ name: string }>> {
   if (MOCK) { o.onWords(SIGNIN_WORDS); await slow(900); return { ok: true, name: nameOf(o.name) || "alex" }; }
-  try {
-    const { addDeviceToName, addSay } = await import("../../src/identity/add-device");
-    const who = await resolveId(o.name);
-    try {
-      const r = await addDeviceToName({ byName: nameOf(o.name), ...(who ? { expectIdentity: who } : {}), deviceLabel: deviceLabel(), onWords: (w) => o.onWords(w.split(/\s+/).filter(Boolean)), ...(o.signal ? { signal: o.signal } : {}) });
-      return { ok: true, name: r.name };
-    } catch (e) { return { ok: false, say: askSay(code(e)) ?? addSay(code(e)) }; }
-  } catch { return { ok: false, say: "Vyre could not start signing in. Nothing was added. Try again, or use your recovery kit." }; }
-}
-
-const askSay = (c: string | undefined): string | undefined => {
-  if (c === "bad_name") return "That is not a Vyre name. Go back and type the name you chose.";
-  if (c === "rate_limited") return "Too many sign-in requests for that name. Wait a minute, then ask again.";
-  if (c === "expired") return "Nobody approved in 2 minutes. Open Vyre on a device where you are signed in, then ask again, or use your recovery kit.";
-  if (c === "denied") return "Your other device said no, or the words did not match. Nothing was added. Ask again, or use your recovery kit.";
-  if (c === "cancelled") return "Signing in was cancelled.";
-  if (c === "unreachable") return "Vyre cannot reach the relay right now. Nothing was added. Try again in a minute.";
-  return undefined;
-};
-
-/** The identity id the directory holds for a name, or "" when it cannot be read (the join is then not pinned; the pairing still needs the other device's yes). */
-async function resolveId(raw: string): Promise<string> {
-  try {
-    const { DIRECTORY } = await import("../../src/real/install");
-    const r = await fetch(`${DIRECTORY}/v1/ids/resolve?name=${encodeURIComponent(nameOf(raw))}`, { headers: { accept: "application/json" }, cache: "no-store" });
-    const body = await r.json().catch(() => null);
-    return r.ok && body?.data?.id ? String(body.data.id) : "";
-  } catch { return ""; }
+  void o.signal;
+  return { ok: false, say: "Add this computer with its space address, your username and your master password." };
 }
 
 /** Sign in with the recovery code from the kit: the form is checked first, then the existing recovery (restore.ts), which puts this device's key on the name's list. */

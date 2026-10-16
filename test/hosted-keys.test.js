@@ -26,6 +26,8 @@ test("hosted door: the allowed set equals the reviewed allowlist exactly, and a 
   const reviewed = { allow: Object.keys(file), refused: JSON.parse(fs.readFileSync(REFUSED, "utf8")).refused };
   for (const [n, why] of Object.entries(file)) assert.ok(typeof why === "string" && why.length > 20, `${n} says why a hosted key may use it`);
   const all = [...d.registry.tools.keys()].sort();
+  for (const n of ["onboard.person.create", "onboard.space.open", "onboard.computer.add", "wink.install.issue", "wink.install.status", "wink.install.complete"]) assert.equal(hostedKeyMay(n), false, `${n} stays refused for a hosted key`);
+  for (const n of all) if (n.startsWith("onboard.") || n.startsWith("wink.install.")) assert.equal(hostedKeyMay(n), false, `${n} stays refused for a hosted key`);
   const allowed = all.filter(hostedKeyMay);
   const gate = [...HOSTED_GATE].filter(n => all.includes(n));
   assert.deepEqual(allowed, [...new Set([...reviewed.allow, ...gate])].sort(), "the hosted set is the reviewed allowlist plus the exact Gate proposals");
