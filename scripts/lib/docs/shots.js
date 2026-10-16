@@ -19,7 +19,7 @@
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
 //   world    which sample world renders it: app (the app's web export, sample world), deck (the Deck, from web/test/world.js), onboard
-//            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
+//            (a fresh box in its onboarding, with a fake network and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass)
 //   url      the route to open (deck), or the onboarding step (#you ... #devices)

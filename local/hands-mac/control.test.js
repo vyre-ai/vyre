@@ -48,10 +48,10 @@ test("floor: a password manager is untouchable, and observe does not even read i
 });
 
 test("floor: the Deck in a browser is off limits by the box's origin, which comes from the link", async () => {
-  const f = fakeApp(composer({ app: "Safari", bundle: "com.apple.Safari", window: "Vault", origin: "https://box.tailnet-juno.ts.net" }));
-  const h = new Hands({ run: f.run, sleep: nosleep, known: async () => ({ box: "https://box.tailnet-juno.ts.net/" }) });
+  const f = fakeApp(composer({ app: "Safari", bundle: "com.apple.Safari", window: "Vault", origin: "https://box.tailnet-juno.wink.example" }));
+  const h = new Hands({ run: f.run, sleep: nosleep, known: async () => ({ box: "https://box.tailnet-juno.wink.example/" }) });
   assert.equal((await h.observe({})).blind, "a Vyre surface in the browser");
-  const other = new Hands({ run: fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://northwind.example" })).run, known: async () => ({ box: "https://box.tailnet-juno.ts.net" }) });
+  const other = new Hands({ run: fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://northwind.example" })).run, known: async () => ({ box: "https://box.tailnet-juno.wink.example" }) });
   assert.equal((await other.observe({})).blind, undefined, "an ordinary page was blinded");
 });
 
@@ -61,14 +61,14 @@ test("floor: the module asks link.status for the box, and no link module means n
   t.after(() => db.close());
   const tools = new Map();
   /** @type {any[]} */ const asked = [];
-  const f = fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://box.tailnet-juno.ts.net" }));
+  const f = fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://box.tailnet-juno.wink.example" }));
   const ctx = (/** @type {any} */ answer) => ({
     config: { hands: { runner: f.run, sleep: nosleep } }, events: { emit() {} },
     store: { db, migrate: () => {} }, log: () => {},
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
     call: async (/** @type {string} */ tool) => { asked.push(tool); return tool === "link.status" ? answer : { error: { code: "no_such_tool", message: `no tool ${tool}` } }; },
   });
-  await mod.start(ctx({ data: { linked: true, box: { address: "https://box.tailnet-juno.ts.net" } } }));
+  await mod.start(ctx({ data: { linked: true, box: { address: "https://box.tailnet-juno.wink.example" } } }));
   assert.equal((await tools.get("hands.observe").run({}, { caller: "cli" })).blind, "a Vyre surface in the browser");
   assert.deepEqual(asked.filter(t => t === "link.status"), ["link.status"]);
   tools.clear();
