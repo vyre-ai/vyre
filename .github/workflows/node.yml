@@ -24,7 +24,7 @@ jobs:
     strategy:
       matrix:
         node: ${{ fromJSON(((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       VYRE_NO_DIALOGS: "1"
@@ -48,7 +48,7 @@ jobs:
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
-    runs-on: ${{ (vars.NODE_ON_TESTBOX == '1' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       VYRE_NO_DIALOGS: "1"
