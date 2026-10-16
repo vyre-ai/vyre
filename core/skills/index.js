@@ -334,7 +334,7 @@ export default {
       description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",
       input: obj({ ...common, to: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "to"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).rollback(await need(meta), i) });
-    ctx.tool("skills.decline", { effect: "write", callers: WHO_CAN,
+    ctx.tool("skills.decline", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Turn down a draft waiting for a yes: the proposer or the level's owner retires it.",
       input: obj({ ...common, version: { type: "integer" } }, ["name", "level", "version"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).decline(await need(meta), i) });

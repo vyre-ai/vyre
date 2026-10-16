@@ -161,8 +161,8 @@ function swWorld(dir) {
     const m = /** @type {Map<string, Response>} */ (store.get(name));
     const key = r => (typeof r === "string" ? r : new URL(r.url).pathname);
     return {
-      match: async r => { const x = m.get(key(r)); return x ? x.clone() : undefined; },
-      put: async (r, res) => { m.set(key(r), res.clone()); },
+      match: async r => { const x = m.get(key(r)); return x ? new Response(x) : undefined; },
+      put: async (r, res) => { m.set(key(r), new Uint8Array(await res.arrayBuffer())); },
       delete: async r => m.delete(key(r)),
     };
   };
@@ -347,7 +347,8 @@ test("pairing.js, from the sealed tree: the in-app scanner hands back the decode
   const tick = () => new Promise(r => realSet(r, 0));
   /** @type {any} */ let cam = null;
   const done = scanTicket({ relay: "wss://relay.test", crypto: {}, nav: { userAgent: "Mozilla/5.0 (Linux; Android 14)" }, startScan: (/** @type {any} */ o) => { cam = o; return { stop() {} }; } });
-  for (let i = 0; i < 4; i++) await tick();
+  for (let i = 0; i < 200 && !cam; i++) await tick();
+  assert.ok(cam, "the in-app scanner started before a ticket is handed in");
   cam.onFound(TICKET);
   for (let i = 0; i < 8; i++) { await tick(); while (timers.length) timers.shift()?.(); }
   assert.deepEqual([...await done], [...TICKET]);

@@ -18,7 +18,7 @@
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
 import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
-import { SPECIAL_BUILDER_ACTIONS } from "../../../../core/flows/special-builder-actions.js";
+import { SPECIAL_BUILDER_ACTIONS } from "./special-builder-actions.js";
 
 export { policyWords };
 

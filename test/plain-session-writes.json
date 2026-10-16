@@ -465,10 +465,6 @@
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
   },
-  "skills.decline": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: this call carries no person, and declining a draft is the level owner's act"
-  },
   "skills.draft": {
    "class": "own",
    "why": "writes a DRAFT only, as the person the call carries; nothing uses it until the level's owner approves"

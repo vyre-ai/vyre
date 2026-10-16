@@ -42,7 +42,7 @@ const ALLOWED = new Map([
   ["core/resilience/web.js", BROWSER], ["core/appmods/browser-probe.cjs", BROWSER + " (a probe page)"],
   ["names/worker/", WORKER], ["relay/worker/", WORKER], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
   // test support
-  [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS], ["core/runner/testing/", HARNESS], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
+  [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS],   ["core/runner/testing/", HARNESS], ["core/runner/runner-test-lib.js", HARNESS + " (loopback helper for split runner tests)"], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
 ]);
 const PATTERNS = [/(?<![\w.$])fetch\(|globalThis\.fetch(?!\.bind)|\bhttps?\.(request|get)\(|\b(?:lib|mod)\.request\(|new WebSocket\(/];
 
