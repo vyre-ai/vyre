@@ -150,6 +150,7 @@ export function IdNew({ ctx, set, go, back, steps }: ScreenProps) {
     return () => { live = false; clearTimeout(t); };
   }, [ctx.name]);
   const reserve = async () => {
+    if (!MOCK) { go("id.master"); return; }
     setBusy(true); setSay("");
     const r = await claimNewName(ctx.name);
     setBusy(false);

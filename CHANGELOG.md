@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(identity): a recovery key unlocks the identity only after a confirmation on the device. It does not unwrap the personal vault. The master password does. See ADR 0054.
+- fix(vault): the master password protects the personal vault key. After it is set, the plaintext vault/key file is removed. This box lends from the unlocked session or from a sealed server wrap. A home with no master password keeps its file or keychain keystore.
 - fix(spaces): removing a member drops that member's space vault wrap first. If the key does not finish rotating, the removal fails loudly, Vyre retries, and the member who left cannot open the vault meanwhile.
 - fix(vault): the server's space vault private key is sealed at rest. On a Mac the seal key is in the OS keystore. Otherwise it is a 0600 file outside the space directory, so a member's copy of the vault does not have it.
 - fix(vault): a space vault item is saved with the hosts it may be sent to. Lending anywhere else is refused, including a redirect. The caller still receives the response and never the value.
