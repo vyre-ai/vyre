@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../../scripts/mac-test-guard.mjs";
 import { registerComposerSlashTools } from "./composer-slash.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 
 /** @type {any} */ let slash;
 const str = { type: "string" };
@@ -32,9 +33,11 @@ function boot(/** @type {Record<string, unknown>[]} */ seen) {
 test("threads.slash runs /later and /find as the calling person's surface", async () => {
   const seen = [];
   boot(seen);
-  await slash({ thread: "t1", line: "/later at 5pm tea" }, { caller: "deck" });
-  await slash({ thread: "t1", line: "/find intake" }, { caller: "cli" });
-  assert.deepEqual(seen.map((x) => [x.tool, x.opts]), [["planner.add", { as: "deck" }], ["recall.search", { as: "cli" }]]);
+  const deckMeta = { caller: "deck", token: "tok-d", kernelFacts: { kind: "device", person: "per_deck" } };
+  const cliMeta = { caller: "cli", token: "tok-c" };
+  await slash({ thread: "t1", line: "/later at 5pm tea" }, deckMeta);
+  await slash({ thread: "t1", line: "/find intake" }, cliMeta);
+  assert.deepEqual(seen.map((x) => [x.tool, x.opts]), [["planner.add", personCallOpts("deck", deckMeta)], ["recall.search", personCallOpts("cli", cliMeta)]]);
 });
 
 test("threads.slash refuses /later and /find from a model session", async () => {

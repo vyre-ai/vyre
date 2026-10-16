@@ -19,6 +19,7 @@
 // map entry for an id it refuses.
 
 import { isAgent } from "../../lib/caller.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -34,7 +35,7 @@ export function createAccess({ ctx, groups, logs }) {
   async function thread(session, meta) {
     const caller = String((meta && meta.caller) || "");
     let r;
-    try { r = await ctx.call("threads.get", { thread: session, limit: 1 }, { as: caller }); }
+    try { r = await ctx.call("threads.get", { thread: session, limit: 1 }, personCallOpts(caller, meta) || undefined); }
     catch (e) { throw fail("denied", `${/** @type {Error} */ (e).message}`); }
     if (!r || !r.error) return Boolean(r && r.data);
     const code = String(r.error.code || "");
