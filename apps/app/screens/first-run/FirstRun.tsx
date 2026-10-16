@@ -176,7 +176,7 @@ export function FirstRun() {
         <Field label="Username" value={username} onChangeText={setUsername} />
         <PasswordField label="Master password" value={password} onChangeText={setPassword} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await signInGithub();
+          const r = await signInGithub(addr ? addr.space : undefined);
           if (!r.ok) { setFailure(r.message); return; }
           const list = Array.isArray(r.spaces) ? r.spaces : [];
           if (!list.length) { setFailure(SIGNIN_COPY.none); return; }

@@ -34,6 +34,15 @@ export async function spacePorts(): Promise<SpacePorts> {
       return makeServerSpace(name, name, { key: route.box, route }, who as never);
     },
     call: async (name, input, box) => (await import("../real/box")).tool(name, input, { server: box }),
+    // The person's yes to a join link, read and accepted through the team's own server (src/real/join-team.js), as the identity the page holds. The list in the vault is told in the same breath, as the app's own join does.
+    join: async (link, who) => {
+      const { joinDeps } = await import("../real/team-join");
+      const { openInvite } = await import("../real/join-team.js");
+      const d = await joinDeps({ id: who.id, name: who.name, eid: who.key.eid, key: who.key });
+      if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+      const inv = await openInvite(d as never, link);
+      return { card: inv.card, accept: async () => { const r = await inv.accept(); void import("../real/space-list-app").then((m) => m.recordJoined()).catch(() => {}); return r; }, close: () => inv.close() };
+    },
     forget: async (box) => {
       const { removePairingFor } = await import("../api/relay");
       await removePairingFor(box);
