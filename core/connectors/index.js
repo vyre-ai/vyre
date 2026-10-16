@@ -13,6 +13,7 @@
 //   rotates a refresh token.
 
 import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
@@ -269,7 +270,7 @@ export default {
           }
         }
         if (rec.light === "out_of_step") throw fail(rec.reason || "this Connection needs rebuilding", "out_of_step");
-        const opts = PEOPLE.includes(caller) ? { as: caller } : undefined;
+        const opts = personCallOpts(caller, meta) || undefined;
         const r = await ctx.call("vault.request", { credential: credentialName(id), operation: op, input: input.input && typeof input.input === "object" ? input.input : {} }, opts);
         if (r.error) throw fail(r.error.message, r.error.code || "failed");
         // a key the service refuses is a Connection that needs the person (the Needs you card "the key for <host> stopped working"); a good answer puts it right again
