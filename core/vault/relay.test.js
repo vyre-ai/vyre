@@ -13,7 +13,7 @@ import { newIdentity } from "./crypto.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import {
   encodeCard, decodeCard, encodeTicket, decodeTicket, envelope, checkEnvelope, dbNonces, secureTarget, isLoopback,
-  requestAllowed, checkBind, allowedOrigin, substitute, scrub, send, serve, callRelay,
+  requestAllowed, allowedOrigin, substitute, scrub, send, serve, callRelay,
 } from "./relay.js";
 
 /** @param {http.RequestListener} handler */
@@ -209,7 +209,7 @@ test("send throws past maxBytes and times out", async () => {
   } finally { await srv.close(); }
 });
 
-test("serve and callRelay round-trip; a 500 carries no message; the login header needs identity tailscale", async () => {
+test("serve and callRelay round-trip; a 500 carries no message; a forged login header is no identity", async () => {
   const id = newIdentity();
   /** @type {any[]} */
   const got = [];
@@ -234,7 +234,7 @@ test("serve and callRelay round-trip; a 500 carries no message; the login header
 
     const forged = await fetch(relay.url + "/v1/relay", { method: "POST", headers: { "tailscale-user-login": "alex@example.com" }, body: JSON.stringify(env) });
     assert.equal(forged.status, 200);
-    assert.equal(got.at(-1).meta.login, null, "without identity tailscale the header is ignored");
+    assert.equal("login" in got.at(-1).meta, false, "the listener takes no identity from a header: the pass binds to the holder's key and the signed request");
 
     const miss = await fetch(relay.url + "/v1/other", { method: "POST", body: "{}" });
     assert.equal(miss.status, 404);
@@ -245,14 +245,6 @@ test("serve and callRelay round-trip; a 500 carries no message; the login header
     assert.equal(junk.status, 400);
   } finally { await relay.close(); }
 
-  const ts = await serve({ identity: "tailscale", onRelay });
-  try {
-    await fetch(ts.url + "/v1/relay", { method: "POST", headers: { "tailscale-user-login": "alex@example.com" }, body: "{}" });
-    assert.equal(got.at(-1).meta.login, "alex@example.com");
-  } finally { await ts.close(); }
-  await assert.rejects(serve({ host: "0.0.0.0", identity: "tailscale", onRelay }), /needs vault.relay.host to be 127.0.0.1/);
-  assert.throws(() => checkBind("100.64.0.1", "tailscale"), /forge the Tailscale login header/);
-  assert.doesNotThrow(() => checkBind("0.0.0.0", null));
 });
 
 test("callRelay to a closed port is unreachable", async () => {
