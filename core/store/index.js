@@ -9,7 +9,6 @@
 //     built in parallel by different people never collide on a table.
 
 import "../../lib/mac-test-refusal.js";
-import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,7 +32,8 @@ export function open(file) {
   const old = process.umask(0o077);
   let db;
   try {
-    db = process.env.VYRE_DOCS_HARVEST === "1" ? openForDocsHarvest(file) : new DatabaseSync(file);
+    // Harvest must not load node:sqlite in the same process as better-sqlite3 (Node 24 crashes on teardown).
+    db = process.env.VYRE_DOCS_HARVEST === "1" ? openForDocsHarvest(file) : new (require("node:sqlite").DatabaseSync)(file);
     // busy_timeout FIRST: switching to WAL itself needs a lock, and with the timeout not yet set a second
     // process opening the same file (the installer's `code` command while the daemon starts) failed at once with "database is locked".
     db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
