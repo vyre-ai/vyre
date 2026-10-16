@@ -37,9 +37,9 @@ export function register({ vault, tool, internal }) {
     obj({ agent: str, tool: str, arguments: { type: "object" }, source: str }, ["agent", "tool"]),
     ({ agent, tool, arguments: args, source }, { caller }) => { outsideOnly(String(caller)); return vault.mcp.agentCall(String(agent), String(tool), args, String(source || "agent")); });
   // The task credential lease (core/vault/access.js lend): only the flows module, after the person's yes at the Kit install, lends; ending needs the same caller.
-  const flowsOnly = (/** @type {string} */ caller, /** @type {string} */ what) => { if (caller !== "module:flows") throw Object.assign(new Error(`only the flows module ${what}`), { code: "denied" }); };
-  internal("vault.connections.lend", "A task's doer may use named Connections for that task: { task, agent, connections: [ids], until }. Only the flows module asks, and only for credentials the task's approved Kit version names. Use only; anything outward is still held. Idempotent per task, agent and Connection. { lent, already }.",
-    obj({ task: str, agent: str, connections: { type: "array", items: str }, until: { type: "number" } }, ["task", "agent", "connections", "until"]),
+  const flowsOnly = (/** @type {string} */ caller, /** @type {string} */ what) => { if (caller !== "module:flows" && caller !== "module:vyred") throw Object.assign(new Error(`only the flows module ${what}`), { code: "denied" }); };
+  internal("vault.connections.lend", "A task's doer may use named Connections for that task: { task, agent, connections: [ids], until, approver }. Only the flows module (through the Space's own host) asks, and the approver, the person who approved the task, must hold each Connection, and only for credentials the task's approved Kit version names. Use only; anything outward is still held. Idempotent per task, agent and Connection. { lent, already }.",
+    obj({ task: str, agent: str, connections: { type: "array", items: str }, until: { type: "number" }, approver: str }, ["task", "agent", "connections", "until", "approver"]),
     (input, { caller }) => { flowsOnly(String(caller), "lends a Connection to a task"); return vault.access.leaseTask(input); });
   internal("vault.connections.end", "A task is over: take back every Connection lent for it: { task, reason? }. Only the flows module asks. { ended }.",
     obj({ task: str, reason: str }, ["task"]),

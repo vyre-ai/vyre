@@ -129,6 +129,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
                   <Switch label="The Flow waits for the agent to finish" on={s.await !== false} onChange={(on) => setStep(s.id, { await: on ? undefined : false })} />
                   <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
+                  <Text size="caption" tone="label">{`Runs as ${s.agent || "the agent"}, with its own access. A Connection the approved Kit names for the task is lent for that task only, and only from someone who holds it.`}</Text>
                 </>
               ) : null}
               {s.kind === "assign" ? (

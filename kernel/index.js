@@ -16,7 +16,7 @@ import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { mayWrite, mayReadTask, judgeWriter, projectTeamOf } from "./gateway/ownership.js";
 import { sealerPresence } from "./core/presence.js";
-import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
+import { OWNER_SCOPED_TYPES, matchGrant, toAllows } from "./core/authorize.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
@@ -116,6 +116,53 @@ export async function createKernel(cfg) {
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
+  /**
+   * May this person use the vault connection a Gate sender goes through now: `mail:<connection>` and `google:<connection>` name one; anything else has no connection of its own and counts as yes.
+   * @param {string} person @param {string} via
+   */
+  const mayUseVia = async (person, via) => {
+    const m = /^(?:mail|google):([A-Za-z0-9_.-]{1,80})$/.exec(String(via));
+    if (!m || !grantsStore) return true;
+    // the vault is the owner's: no role bundle carries vault.call (a connection is used by what the owner shared), so the owner holds every connection of it
+    if (grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) === "owner") return true;
+    try {
+      const res = `vyre://${cfg.space}/vault/${await grantsStore.personalVault()}/connection/${m[1]}`;
+      return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "use-check", person, path: "direct", session: "use-check" }), action: "vault.call", resource: res })).effect === "allow";
+    } catch { return false; }
+  };
+  /**
+   * Whether an address belongs to a named list of a standing permission's `to` (kernel/core/authorize.js toAllows): `contact:<id>` is that contact's own addresses, `project:<id>:clients` the addresses of the
+   * contact the project is for. Read straight from the store, no gate (the rule's own question, as ownership.js does), and nothing here returns a row: only yes or no.
+   * @param {string} list @param {string} address
+   */
+  const listHas = async (list, address, via = undefined) => {
+    const addrsOf = async (/** @type {string} */ id) => { const c = await store.get("contact", id).catch(() => null); if (!c || !c.data) return []; return [c.data.email, ...(Array.isArray(c.data.other_emails) ? c.data.other_emails : [])].filter((/** @type {any} */ x) => typeof x === "string").map((/** @type {string} */ x) => x.toLowerCase()); };
+    // a list that is followed as it changes only counts what someone who holds the connection last wrote: the record's last writer must still hold use of `via`
+    const trusted = async (/** @type {string} */ type, /** @type {string} */ id) => {
+      if (via === undefined) return true;
+      let e = null; try { e = log.latestFor(`vyre://${cfg.space}/${type}/${id}`); } catch { e = null; }
+      const who = e && typeof e.actor === "string" && e.actor.startsWith("person:") ? e.actor.slice(7) : null;
+      return who ? mayUseVia(who, via) : true;
+    };
+    const m = /^contact:([A-Za-z0-9_-]{1,80})$/.exec(list) || null, p = /^project:([A-Za-z0-9_-]{1,80}):clients$/.exec(list) || null;
+    if (m) return (await addrsOf(m[1])).includes(address.toLowerCase()) && (await trusted("contact", m[1]));
+    if (p) {
+      const pr = await store.get("project", p[1]).catch(() => null);
+      const link = pr && pr.data ? pr.data.client : null, urn = link && typeof link === "object" ? String(link.urn || "") : typeof link === "string" ? link : "";
+      const id = urn.split("/").pop();
+      return id ? (await addrsOf(id)).includes(address.toLowerCase()) && (await trusted("contact", id)) && (await trusted("project", p[1])) : false;
+    }
+    return false;
+  };
+  /** The addresses a list holds now, for a person who may read them (a standing permission snapshots them when it is made). @param {string} person @param {string} list @returns {Promise<string[]>} */
+  const snapshotList = async (person, list) => {
+    const chain = chains.fromFacts({ kind: "device", device_key_id: "snapshot", person, path: "direct", session: "snapshot" });
+    const contactAddrs = async (/** @type {string} */ id) => { const c = await gateway.records.get(chain, "contact", id); if (!c) throw new KernelError("not_found", "no such contact you may read"); return [c.data.email, ...(Array.isArray(c.data.other_emails) ? c.data.other_emails : [])].filter((/** @type {any} */ x) => typeof x === "string").map((/** @type {string} */ x) => x.toLowerCase()); };
+    const m = /^contact:([A-Za-z0-9_-]{1,80})$/.exec(list), p = /^project:([A-Za-z0-9_-]{1,80}):clients$/.exec(list);
+    if (m) return contactAddrs(m[1]);
+    if (p) { const pr = await gateway.records.get(chain, "project", p[1]); if (!pr) throw new KernelError("not_found", "no such project you may read"); const link = pr.data.client, urn = link && typeof link === "object" ? String(link.urn || "") : ""; const id = urn.split("/").pop(); return id ? contactAddrs(id) : []; }
+    throw new KernelError("bad_input", "a list is contact:<id> or project:<id>:clients");
+  };
   gateway = createGateway({
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
@@ -130,7 +177,7 @@ export async function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, listHas, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
   const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, port: roomPort, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;
@@ -322,7 +369,54 @@ export async function createKernel(cfg) {
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
       ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
-      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
+      // The Gate only: may THIS agent send, post or pay this by itself (a person's standing permission). Read-only and answered from the kernel's own grants: the verified call chain must end in a named agent (never the
+      // default assistant or a model slot), the grant must name that agent, be live, cover the connection, hold every recipient (an address, `*@domain` or a list read now) and, for a payment, its per-act and daily amount. The
+      // issuer must still be an owner or admin, or the grant matches nothing. Counts the act against the grant's daily cap, and answers { grant } or null (the Gate then asks, as it always did).
+      ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number, currency?: string, agentOwner?: string | null }} */ q) => {
+        let chain; try { chain = await handle.chain(meta || {}); } catch { return null; }
+        const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null, last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
+        if (!first || first.actor.kind !== "person" || !last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
+        if (!q || !["send", "spend"].includes(q.kind) || typeof q.via !== "string" || !Array.isArray(q.to) || !q.to.length) return null;
+        const now = clock();
+        // the person the agent works for must hold use of the connection the act goes through (a member's chat never sends as an address she could not use herself)
+        if (!(await mayUseVia(String(first.actor.id), q.via))) return null;
+        // a send may be a post: a permission for either kind covers a Gate send through that connection
+        const resources = (q.kind === "send" ? ["send", "post"] : [q.kind]).map(k => `vyre://${cfg.space}/outbox/${k}/${q.via}`);
+        for (const g of [...(await grantsStore.provider.forSubject(last.actor, undefined, { chain }))].filter((/** @type {any} */ x) => x.status === "active" && x.space === cfg.space && Array.isArray(x.actions) && x.actions.includes("gate.act-standing") && String(x.source || "").startsWith("gate:standing:")).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.id < b.id ? -1 : 1))) {
+          if (!resources.some(resource => matchGrant(g, "gate.act-standing", resource, { attrs: {}, now, since: 0, risk: "write" }).ok)) continue;
+          const c = g.conditions || {};
+          // gate:standing:<agent>:<person who granted it>: that person must still be an owner or admin, or the agent's owner, and still hold use of the connection, or the grant matches nothing
+          const issuer = String(g.source).split(":")[3] || "";
+          const role = issuer ? grantsStore.roleOf({ kind: "person", id: issuer, space: cfg.space }) : null;
+          if (!(role === "owner" || role === "admin" || (issuer && q.agentOwner === issuer))) continue;
+          if (!(await mayUseVia(issuer, q.via))) continue;
+          if (!(await toAllows(c.to, q.to, (l, a) => listHas(l, a, q.via)))) continue;
+          if (q.kind === "spend") {
+            const amount = Number(q.amount);
+            if (!(amount > 0) || !(Number(c.max_amount) >= amount) || !(Number(c.daily_amount) > 0) || typeof c.currency !== "string" || String(q.currency || "").toUpperCase() !== c.currency) continue;
+            try { const id = limits.reserve(chain, { key: `${g.id}|${Math.floor(now / 86_400_000)}`, meter: "standing_pay", amount, limit: Number(c.daily_amount), grant: g.id }); limits.settle(chain, id, amount); } catch { continue; }
+          } else {
+            if (!c.rate || !(c.rate.n > 0)) continue;
+            try { limits.rate(chain, g.id, c.rate); } catch { continue; }
+          }
+          return { grant: g.id, source: g.source };
+        }
+        return null;
+      },
+      // Whether a person may use the connection a send goes through (yes or no; for a creator, at the moment they grant it). A sender with no connection of its own (a static one from the config) has none to check.
+      mayUseConnection: (/** @type {string} */ person, /** @type {string} */ via) => mayUseVia(person, via),
+      // The addresses a list holds now, for a grantor who may read them (a standing permission snapshots them when it is made).
+      snapshotList: (/** @type {string} */ person, /** @type {string} */ list) => snapshotList(String(person), String(list)),
+      // A person's role in the Space, for who may grant and revoke (yes/no questions only).
+      roleOf: (/** @type {string} */ person) => grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) || null } : {}),
+      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
+        // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
+        personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+          if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !["vault.call", "vault.read", "vault.fill"].includes(action)) throw new KernelError("bad_input", "name one person and a credential action");
+          // the vault is the owner's: the owner holds every credential of it (no role bundle carries vault.call; what others hold is a grant)
+          if (grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner") return true;
+          try { return (await gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+        } }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder

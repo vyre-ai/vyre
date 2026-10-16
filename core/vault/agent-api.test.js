@@ -172,12 +172,14 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   await cred("conn-cn1"); await cred("conn-cn2");
   await v.access.convertScopes();
   const until = rig.clock() + 5000;
-  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn2"], until }), /not named by the task's Kit/);
-  await assert.rejects(v.access.leaseTask({ task: "task-2", agent: "kit", connections: ["cn1"], until }), /no approved Kit/);
-  await assert.rejects(v.access.leaseTask({ task: "task-9", agent: "kit", connections: ["cn1"], until }), /no approved Kit/);
-  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "stranger", connections: ["cn1"], until }), /no agent named/);
-  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until }), { lent: 1, already: 0 });
-  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until }), { lent: 0, already: 1 }, "twice is once, so a restart does not double it");
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn2"], until, approver: rig.K.owner }), /not named by the task's Kit/);
+  await assert.rejects(v.access.leaseTask({ task: "task-2", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), /no approved Kit/);
+  await assert.rejects(v.access.leaseTask({ task: "task-9", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), /no approved Kit/);
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "stranger", connections: ["cn1"], until, approver: rig.K.owner }), /no agent named/);
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until }), /needs the person who approved/, "no approver: the agent runs on its own access");
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: "per_stranger" }), /not one you may use/, "an approver who does not hold the Connection lends nothing");
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), { lent: 1, already: 0 });
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), { lent: 0, already: 1 }, "twice is once, so a restart does not double it");
   const lease = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1");
   assert.equal(lease.length, 1);
   assert.match(lease[0].reason, /intake@2/, "the grant records the Kit and its version");
@@ -189,13 +191,13 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   assert.ok(held.held && net.calls.length === 1 && gate.items.size === 1, "an outward call is held for a yes, not run");
   // a task's end takes it back; another task's lease of the same Connection to the same agent is independent
   kits["task-3"] = { approved: true, kit: "intake", version: "2", credentials: ["cn1"] };
-  await v.access.leaseTask({ task: "task-3", agent: "kit", connections: ["cn1"], until });
+  await v.access.leaseTask({ task: "task-3", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner });
   assert.deepEqual(await v.access.leaseEnd({ task: "task-1" }), { ended: 1 });
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "task-3 still holds it");
   await v.access.leaseEnd({ task: "task-3" });
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/);
   // expiry ends it by itself, and the owner's manage is its parent
-  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3000 });
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3000, approver: rig.K.owner });
   for (let i = 0; i < 4000; i++) rig.clock();
   const real = v.clock; v.clock = () => real() + 10_000;
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
