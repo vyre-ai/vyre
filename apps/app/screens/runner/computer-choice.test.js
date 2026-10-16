@@ -28,15 +28,17 @@ test("the status line says what the computer does and what runs on it, with no n
   for (const c of /** @type {const} */ (["always", "ask", "never"])) assert.doesNotMatch(statusLine(c, { running: 1 }), /percent|%|megabyte|\bMB\b|\bGB\b/i);
 });
 
-test("choosing between Always allow and Ask writes the mode and nothing else", async () => {
+test("choosing between Always allow and Ask writes the mode setting and nothing else", async () => {
   /** @type {{ tool: string, input: any }[]} */ const calls = [];
-  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { calls.push({ tool, input }); return { data: { ...DEFAULT_SETTINGS, enabled: true, mode: input.mode ?? "always" } }; };
+  let held = "always";
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { calls.push({ tool, input }); if (tool === "settings.set") held = input.value; return { data: tool === "settings.get" ? { value: held } : { ok: true } }; };
   const src = runnerSource(/** @type {any} */ (call));
   assert.equal(await src.setMode("ask"), "ask");
   assert.equal(await src.mode(), "ask");
-  assert.deepEqual(calls[0], { tool: "runner.settings.set", input: { mode: "ask" } });
-  assert.deepEqual(calls[1], { tool: "runner.settings", input: {} });
+  assert.deepEqual(calls[0], { tool: "settings.set", input: { key: "runner.mode", value: "ask", level: "account" } });
+  assert.deepEqual(calls[1], { tool: "settings.get", input: { key: "runner.mode" } });
   assert.equal(await src.setMode("always"), "always");
+  assert.equal(calls.some((c) => c.tool.startsWith("runner.")), false, "the runner.settings contract is untouched");
 });
 
 test("a box without the runner answers no mode: the page reads Always allow and shows nothing", async () => {

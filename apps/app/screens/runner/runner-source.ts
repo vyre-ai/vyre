@@ -19,9 +19,9 @@ export function runnerSource(call: Call) {
     async whyNot(thread: string): Promise<string | null> { const d = await maybe<any>("runner.why-not", { thread }); return d && typeof d.reason === "string" ? d.reason : null; },
     async settings(): Promise<MacSettings | null> { const d = await maybe<any>("runner.settings"); return d ? pickSettings(d) : null; },
     async setSettings(s: MacSettings): Promise<MacSettings> { return pickSettings(await ask("runner.settings.set", { enabled: s.enabled, pluggedInOnly: s.pluggedInOnly, cpuPercent: s.cpuPercent, memoryMb: s.memoryMb })); },
-    /** What an allowed computer does on its own: always or ask. */
-    async mode(): Promise<"always" | "ask"> { return pickMode(await maybe<any>("runner.settings")); },
-    async setMode(mode: "always" | "ask"): Promise<"always" | "ask"> { return pickMode(await ask("runner.settings.set", { mode })); },
+    /** What an allowed computer does on its own: always or ask. A setting like any other, read and written through the settings tools; the runner.settings contract is the four limits. */
+    async mode(): Promise<"always" | "ask"> { return pickMode({ mode: (await maybe<any>("settings.get", { key: "runner.mode" }))?.value }); },
+    async setMode(mode: "always" | "ask"): Promise<"always" | "ask"> { await ask("settings.set", { key: "runner.mode", value: mode, level: "account" }); return mode; },
     async here() { return pickHere(await maybe("runner.here")); },
     pauseAll: () => ask("runner.pause-all"),
     resumeAll: () => ask("runner.resume-all"),
