@@ -642,8 +642,8 @@
    "why": "locking is always allowed"
   },
   "vault.space.use": {
-   "class": "review",
-   "why": "an outbound request with a space vault item: the server wrap opens it while nobody is unlocked, and the response redacts the value"
+   "class": "own",
+   "why": "the session's own outbound request: the server wrap places the item on it, and the response is redacted so the session never receives the value"
   },
   "vault.ssh.generate": {
    "class": "review",

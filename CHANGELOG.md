@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(vault): a plain session's use of a space vault item is the session's own request. The server wrap places the value, and the response is redacted.
 - fix(vault): a space vault response is redacted by the shared scrub, so a lent value never comes back in the answer.
 - fix(identity): creating a username claims the name as the person who asked, so the person-only name claim runs for them.
 - fix(vault): the master password is the root of the personal vault. When it is unlocked, that key is the device key the vault adopts, and `vault/key` is rewritten from it so the two cannot diverge. With nobody unlocked, that server copy still opens the agent vault, so lending does not wait. A master record with no held key and no server copy does not invent a second key. A held key that does not open the agent vault fails closed. See ADR 0054.
