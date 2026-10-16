@@ -19,6 +19,7 @@
 // granted to this module); only its public half lives in this module's table.
 
 import crypto from "node:crypto";
+import { personOfChain, personOfMeta } from "../../lib/lent-placement.js";
 import { vapidKeys, send } from "./webpush.js";
 
 export const MIGRATIONS = [
@@ -80,17 +81,55 @@ export function outgoing(m) {
 /** For tests only: the clock and the hold. */
 export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
 
+/** Thread id from a Deck path (/threads/<id>), for mute checks. @param {string} path */
+export function threadFromPath(path) {
+  const m = /^\/threads\/([^/?]+)/.exec(String(path || ""));
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
+/**
+ * The person behind a push device's stored caller (deck, capsule, person:…), for mute checks.
+ * @param {{ kernel?: { chain?: (meta: any) => Promise<any> } }} ctx @param {string} who
+ * @returns {Promise<string | null>}
+ */
+export async function personForMute(ctx, who) {
+  const s = String(who || "");
+  if (/^per_/.test(s)) return s;
+  if (s.startsWith("person:")) return s.slice(7);
+  if (ctx.kernel && typeof ctx.kernel.chain === "function") {
+    try {
+      const c = await ctx.kernel.chain({ caller: s });
+      const p = personOfChain(c);
+      if (p) return p;
+    } catch { /* no chain for this caller */ }
+  }
+  return null;
+}
+
+/**
+ * Whether a person muted this chat (work.chat.prefs). Used before a push or glance names a thread.
+ * @param {{ call: (tool: string, input?: any) => Promise<any>, kernel?: { chain?: (meta: any) => Promise<any> } }} ctx
+ * @param {string} personOrCaller person id or the device's `by` caller @param {string} thread
+ */
+export async function chatMuted(ctx, personOrCaller, thread) {
+  if (!personOrCaller || !thread) return false;
+  const person = await personForMute(ctx, personOrCaller);
+  if (!person) return false;
+  const r = await ctx.call("work.chat.prefs.muted", { person, chat: String(thread) }).catch(() => null);
+  return Boolean(r && !r.error && r.data && r.data.muted);
+}
+
 /**
  * What each event becomes. Titles are fixed words; the only variable part is an id in the path.
  * `loud` rings through quiet hours: an alarm or a timer the user set themselves (ADR 0025).
  * @type {Record<string, (e: any, s: any) => { kind: string, title: string, path: string, tag: string, body?: string, actions?: string[], loud?: boolean } | null>}
  */
 export const NOTES = {
-  "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}` }),
+  "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}`, ...(e.thread ? { thread: String(e.thread) } : {}) }),
   "gate.held": e => ({ kind: "draft", title: "Something is waiting for your approval", path: `/needs/${enc(e.payload.id)}`, tag: `draft-${e.payload.id}` }),
   "thread.watched": e => ({ kind: "watch",
     title: e.payload.reason === "asked" ? "A thread you are watching is asking" : e.payload.reason === "stopped" ? "A thread you are watching stopped" : "A thread you are watching finished",
-    path: `/threads/${enc(e.thread)}`, tag: `watch-${e.payload.watch}` }),
+    path: `/threads/${enc(e.thread)}`, tag: `watch-${e.payload.watch}`, thread: String(e.thread) }),
   "lesson.proposed": e => ({ kind: "lesson", title: "Vyre has a lesson for you to review", path: "/settings?section=lessons", tag: `lesson-${e.payload.lesson}` }),
   // A fixed word per item kind, and the ring's key as the tag (planner-<item>-<due>), so a second
   // ring replaces the first, and a device that rang it from its own schedule shows it once (ADR
@@ -197,11 +236,13 @@ export default {
 
     /** Send one message to every device (or one), dropping those the service says are gone. */
     const deliver = async (message0, only = null) => {
+      const thread = message0.thread || threadFromPath(message0.path);
       const message = outgoing(message0);
       const k = await key();
       const devices = /** @type {any[]} */ (db.prepare(`SELECT * FROM push_devices ${only ? "WHERE id = ?" : ""}`).all(...(only ? [only] : [])));
       const out = { sent: 0, failed: 0, dropped: 0 };
       await Promise.all(devices.map(async d => {
+        if (thread && d.by && await chatMuted(ctx, String(d.by), thread)) return;
         if (d.expires && d.expires < Date.now()) { db.prepare("DELETE FROM push_devices WHERE id = ?").run(d.id); out.dropped++; return; }
         const r = await send({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, message,
           { privateKey: k.privateKey, publicKey: k.publicKey, subject, urgency: ["ask", "draft", "planner"].includes(message.kind) ? "high" : "normal" });
@@ -297,6 +338,19 @@ export default {
         const made = make(e, s);
         if (!made) return;
         const { loud, ...n } = made;
+        const thread = n.thread || threadFromPath(n.path);
+        if (thread) {
+          const owners = /** @type {any[]} */ (db.prepare("SELECT DISTINCT by FROM push_devices").all());
+          if (owners.length) {
+            let skip = true;
+            for (const row of owners) {
+              const person = await personForMute(ctx, String(row.by || ""));
+              if (!person) { skip = false; break; }
+              if (!(await chatMuted(ctx, person, thread))) { skip = false; break; }
+            }
+            if (skip) return;
+          }
+        }
         if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
         if (HELD.has(n.kind)) {
@@ -352,12 +406,14 @@ export default {
 
     tool("push.subscribe", "Keep this browser's PushSubscription, so the moments you are needed reach this device. Returns the device id.",
       { type: "object", required: ["subscription"], properties: { subscription: { type: "object" }, label: str } },
-      async (i, { caller }) => {
+      async (i, meta) => {
         const s = check(i.subscription);
         const id = crypto.createHash("sha256").update(s.endpoint).digest("base64url").slice(0, 12);
+        const person = personOfMeta(meta);
+        const by = person ? String(person) : String(meta.caller || "");
         db.prepare(`INSERT INTO push_devices (id, endpoint, p256dh, auth, label, by, at, expires) VALUES (?,?,?,?,?,?,?,?)
           ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = COALESCE(excluded.label, push_devices.label),
-          expires = excluded.expires, fails = 0`).run(id, s.endpoint, s.p256dh, s.auth, i.label ? String(i.label).slice(0, 80) : null, String(caller), Date.now(), s.expires);
+          by = excluded.by, expires = excluded.expires, fails = 0`).run(id, s.endpoint, s.p256dh, s.auth, i.label ? String(i.label).slice(0, 80) : null, by, Date.now(), s.expires);
         // The push service's name only: never the endpoint or the keys.
         const row = /** @type {any} */ (db.prepare("SELECT label FROM push_devices WHERE id = ?").get(id));
         ctx.events.emit("push.subscribed", { device: id, label: row ? row.label : null, service: new URL(s.endpoint).hostname });
