@@ -178,3 +178,8 @@ export type { DocOverlayProps } from "./files/DocOverlay";
 export type { AssistProps } from "./files/MarkdownDoc";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
+export {
+  SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
+  FEATURED_SLASHES, NATIVE_SLASHES,
+} from "./chat";
+export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps } from "./chat";

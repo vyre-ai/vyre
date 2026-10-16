@@ -53,6 +53,7 @@ export const COMMANDS = Object.freeze([
   { name: "memory", description: "Open memory for this chat", hint: "[search]", aliases: ["mem"], source: "session" },
   { name: "resume", description: "Resume a stopped session", source: "session" },
   { name: "effort", description: "Reasoning effort for this session", hint: "[low|medium|high|max]", source: "session" },
+  { name: "roll", description: "Roll the context window now", source: "session" },
 ]);
 
 /** @typedef {{ start: number, end: number, query: string }} CommandRange */

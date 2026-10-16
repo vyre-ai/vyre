@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, Chip, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, Markdown, MatchWords, PasswordField, ProviderRow, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, LaterPlannerNote, Markdown, MatchWords, PanelCapabilityRows, PasswordField, ProviderRow, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -222,19 +222,18 @@ function Sample({ name }: { name: string }) {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }
   if (name === "chat-capabilities") {
-    const slash = ["compact", "rewind", "later", "memory", "export", "roll", "goal", "find", "context", "status"];
     return (
       <View style={{ gap: 16, maxWidth: 620 }}>
-        <Text strong>Slash commands (threads.slash on the kernel)</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{slash.map((c) => <Chip key={c} tone="plain">{`/${c}`}</Chip>)}</View>
-        <Text strong>Rewind, fork, and move</Text>
-        <Card flush><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></Card>
+        <SlashChips title="Slash commands (threads.slash on the kernel)" />
+        <ChatForkPanel><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></ChatForkPanel>
         <Text strong>Chat panel: context roll, tasks, transcript</Text>
         <PanelSample phone={false} page="context" />
         <Text strong>Follow-up (/later → planner)</Text>
-        <FlowDraftNote s={{ kind: "ready", id: "pl_1", title: "Check the filing status" }} onClear={() => {}} />
+        <LaterPlannerNote s={{ kind: "scheduled", title: "Check the filing status", when: "at 5pm" }} onClear={() => {}} />
         <Text strong>Background task card</Text>
-        <Card flush><RunSteps painted={[{ id: "a", label: "npm run e2e" }]} steps={{ a: { status: "started", started_at: Date.now() } }} max={{}} fmt={dayTimeOf} /></Card>
+        <BackgroundTasksCard tasks={[{ id: "a", title: "npm run e2e", status: "started", live: true }]} />
+        <Text strong>Design library: panel rows</Text>
+        <Card flush><PanelCapabilityRows first onMemory={() => {}} onExport={() => {}} onRoll={() => {}} onContext={() => {}} onTasks={() => {}} onTranscript={() => {}} runningCount={1} /></Card>
       </View>
     );
   }

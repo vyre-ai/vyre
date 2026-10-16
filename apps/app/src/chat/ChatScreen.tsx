@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -44,6 +44,7 @@ import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
+import { LaterPlannerBar, useChatCapabilityChrome, useLaterPlanner } from "./ChatCapabilityChrome";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
 import { MovedLines, PlacementChip, usePlacement } from "./placement";
@@ -134,6 +135,14 @@ export function ChatScreen(p: ChatScreenProps) {
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
+  const realComposerOn = !allowsMock();
+  const caps = useChatCapabilityChrome({
+    chat: p.sessionId,
+    store,
+    faces: store.group.participants().map((f) => ({ id: f.id, name: f.name, family: f.family })),
+    real: realComposerOn,
+    onOpenPanel: (page) => setPanel(page),
+  });
   const [note, setNote] = useState<string | null>(null);
   // A key in the message is on its way into the Vault: the label of the one being secured now.
   const [securing, setSecuring] = useState<string | null>(null);
@@ -211,6 +220,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const needs = useNeeds();
   const router = useRouter();
   const chatId = here.thread ?? p.sessionId;
+  const later = useLaterPlanner();
+  const [modelNudge, setModelNudge] = useState<"model" | null>(null);
   // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
   // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.
   const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null });
@@ -253,8 +264,10 @@ export function ChatScreen(p: ChatScreenProps) {
               if (!r.ok) setNote(r.reason);
               else if (r.thread) onBranched?.(r.thread);
             },
+            onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
+            onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid),
           }
-        : {}),
+        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid) }),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
@@ -277,7 +290,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -303,9 +316,13 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
-      if (why) setNote(why); else att.clear();
+      if (why) setNote(why);
+      else {
+        att.clear();
+        if (/^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
+      }
     },
-    [store, editing, actions, replyTo, highlights, att],
+    [store, editing, actions, replyTo, highlights, att, later],
   );
   sendRef.current = (text: string) => onSend(text);
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
@@ -355,6 +372,9 @@ export function ChatScreen(p: ChatScreenProps) {
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} noFork={noFork} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         away={here.away} state={threadState} projectSlug={chatProject.current?.slug ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
+        onMemory={() => { setPanel(null); router.push("/u/memory" as never); }}
+        onExport={() => { void onSend("/export"); showToast("Export started in the chat."); }}
+        onRoll={() => { void onSend("/roll"); }}
       />
   );
   const body = (
@@ -466,6 +486,8 @@ export function ChatScreen(p: ChatScreenProps) {
       {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
       <MovedLines lines={placed.lines} />
       <FlowDraftNote s={flowDraft.s} onClear={flowDraft.clear} />
+      <LaterPlannerBar s={later.s} onClear={later.clear} />
+      {caps.ui}
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
@@ -486,7 +508,24 @@ export function ChatScreen(p: ChatScreenProps) {
           onModel={realComposer?.onModel}
           slots={answerSlots}
           peopleOnly={peopleChat}
-          onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
+          onLocalCommand={(name) => {
+            if (name === "move") { setPanel("project"); return true; }
+            if (name === "rewind") { caps.api.openRewind(); return true; }
+            if (name === "find") { setFindOpen(true); return true; }
+            if (name === "model") { setModelNudge("model"); setTimeout(() => setModelNudge(null), 0); return true; }
+            if (name === "undo") { if (chatProject.current?.slug) setPanel("back"); return !!chatProject.current?.slug; }
+            if (name === "goal") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? `${d} /goal ` : "/goal "); setDraftN((n) => n + 1); return true; }
+            if (name === "memory") { router.push("/u/memory" as never); return true; }
+            return false;
+          }}
+          onMenuCapability={(id) => {
+            if (id === "export") void onSend("/export");
+            else if (id === "memory") router.push("/u/memory" as never);
+            else if (id === "roll") void onSend("/roll");
+            else if (id === "later") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? `${d} /later ` : "/later "); setDraftN((n) => n + 1); }
+            else if (id === "find") setFindOpen(true);
+          }}
+          localNudge={modelNudge}
           runsOn={placed.placement ? runsOn : undefined}
           onRunsOn={placed.placement ? () => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); } : undefined}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}

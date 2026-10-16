@@ -2,7 +2,7 @@
 // mention someone, context used, what it is doing, go back, transcript. The chat's header or composer opens it; this file owns nothing of the chat.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Divider, EmptyState, Field, LoadingState, Row, SectionLabel, Segmented, Sheet, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Divider, EmptyState, Field, LoadingState, PanelCapabilityRows, Row, SectionLabel, Segmented, Sheet, Switch, Text, showToast } from "@vyre/ui";
 import { chatTools } from "./instance";
 import { forkMoveOffer } from "./fork-move.js";
 import { ChatFiles } from "./ChatFiles";
@@ -25,6 +25,9 @@ export type ChatToolsProps = {
   replyMode?: string | null; shared?: boolean;
   /** A person picked someone or something: the text to put in the draft. */
   onMention?: (text: string) => void;
+  onMemory?: () => void;
+  onExport?: () => void;
+  onRoll?: () => void;
 };
 type Page = "main" | "files" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "mention";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
@@ -89,6 +92,14 @@ export function ChatToolsSheet(p: ChatToolsProps) {
                 ))}
               </>
             ) : null}
+            <PanelCapabilityRows
+              onMemory={p.onMemory}
+              onExport={p.onExport}
+              onRoll={p.onRoll}
+              onContext={() => go("context")}
+              onTasks={() => go("tasks")}
+              onTranscript={() => go("transcript")}
+            />
             <SectionLabel>Around it</SectionLabel>
             {p.shared && p.chat ? <><Row dense title="AI replies" sub={p.replyMode === "mention" ? "Only when someone mentions it or replies to it" : p.replyMode === "every" ? "To every message, each on its sender's own AI" : "As the chat decides"} state={p.replyMode === "mention" ? "When mentioned" : p.replyMode === "every" ? "Every message" : undefined} chevron
               onPress={() => run(() => chatTools.replyMode(p.chat as string, p.replyMode === "mention" ? "every" : "mention"), undefined, "Changed. Everyone in the chat sees it.")} /><Divider /></> : null}

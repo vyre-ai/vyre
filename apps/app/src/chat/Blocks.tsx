@@ -78,6 +78,10 @@ export type BlockCtx = {
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
   onBranchFrom?: (uuid: string) => void;
+  /** Go back to before this message (threads.rewind). */
+  onRewindTo?: (uuid: string) => void;
+  /** Ask another assistant or model for a second opinion on this answer (stream.second-opinion). */
+  onSecondOpinion?: (uuid: string) => void;
   /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
   onReplyTo?: (message: string, name: string, text?: string) => void;
   /** Tapping a quote goes to the original message and lights it up. */
