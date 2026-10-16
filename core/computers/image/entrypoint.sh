@@ -140,7 +140,7 @@ as_vyre chmod 0660 "${CHROME_LOG}" || exit 1
 # ---- the three homes -------------------------------------------------------------------------
 # The agent's home is group-writable (setgid, so new folders keep the group) for computerd's
 # Files; the agent can undo that for any folder it wants private.
-as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox"'
+as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox" "$HOME/Downloads"'
 as_vyre sh -c 'umask 077; mkdir -p "$HOME/.vnc"'
 # browser's own subtree (the Chrome profile, downloads) is pre-made by the Dockerfile with its
 # final ownership already on it -- a fresh volume copies that as-is, so nothing here needs to
@@ -379,6 +379,6 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     AGENT_TOKENS_FILE="${VYRE_HOME}/.agent-tokens" \
-    AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
+    AGENT_DOWNLOADS="${AGENT_HOME}/Downloads" \
     VYRE_FREEZE_FD=9 VNC_SOCKET="${VNC_SOCKET}" \
   node /opt/computerd/index.js

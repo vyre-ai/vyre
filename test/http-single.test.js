@@ -38,7 +38,8 @@ const ALLOWED = new Map([
   ["kernel/seal/androidattest.js", "inside the sealing process, which imports nothing from lib/ (one 500 ms call to Google's attestation status)"],
   // other runtimes
   ["apps/app/", BROWSER], ["web/", BROWSER], ["relay/app/", BROWSER], ["relay/client/", BROWSER + " (the device client; the Windows capsule ships it alone)"], ["modules/vault-extension/", BROWSER],
-  ["local/hands-chrome-mac/", BROWSER + " (the extension) or " + HARNESS], ["core/resilience/web.js", BROWSER], ["core/appmods/browser-probe.cjs", BROWSER + " (a probe page)"],
+  ["local/hands-chrome-mac/", BROWSER + " (the extension) or " + HARNESS], ["modules/hands-chrome/", LOCAL + " (in-page fetch over CDP to the agent's browser on this box)"],
+  ["core/resilience/web.js", BROWSER], ["core/appmods/browser-probe.cjs", BROWSER + " (a probe page)"],
   ["names/worker/", WORKER], ["relay/worker/", WORKER], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
   // test support
   [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS], ["core/runner/testing/", HARNESS], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
