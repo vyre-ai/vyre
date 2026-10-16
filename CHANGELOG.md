@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(vault): once a master password exists the personal vault key is never written as a plaintext file. Making the master password seals the key and removes any `vault/key`, the held key is kept sealed (not rewritten into a file), and a plaintext key left from before is sealed and removed the first time the vault opens, after the sealed copy opens to the same key. Agents and Flows still lend with nobody unlocked from the sealed copy.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
