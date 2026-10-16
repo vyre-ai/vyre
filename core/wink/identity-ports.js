@@ -25,7 +25,17 @@ export function identityPorts(o) {
         entries = st && Array.isArray(st.entries) ? st.entries : [];
       }
       const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-      return e && typeof e.pub === "string" ? { eid: String(e.eid), kind: "device", pub: e.pub, identity, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) } : null;
+      if (!e || typeof e.pub !== "string") return null;
+      // The same published-key check as install redeem and owner adopt. Passkeys and enclave keys count (full is left unset).
+      /** @type {any} */ let confirmed;
+      try { confirmed = await o.call("spaces.identity.confirm-key", { id: identity, key: e.pub }); }
+      catch { throw Object.assign(new Error("the directory could not be reached"), { code: "unreachable" }); }
+      if (!confirmed || confirmed.error) {
+        const c = confirmed && confirmed.error && confirmed.error.code;
+        const m = String((confirmed && confirmed.error && confirmed.error.message) || "the published key was refused");
+        throw Object.assign(new Error(m), { code: c === "unavailable" || c === "unreachable" ? "unreachable" : (c === "denied" || c === "not_found" ? "refused" : "failed") });
+      }
+      return { eid: String(e.eid), kind: "device", pub: e.pub, identity, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) };
     },
     /** @param {Uint8Array} message */
     signIdentity: async message => {

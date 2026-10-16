@@ -111,7 +111,7 @@ Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, R
 2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
-5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. Confirm the four words in the app.
+5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. The server installs Vyre and pairs itself.
 6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
 
 ## What it costs

@@ -628,6 +628,10 @@ export const OPEN = new Set([
   "wink.code.status",
   "wink.offers",
   "wink.pair.status",
+  "wink.install.status", // whether an install line is outstanding and whether this server is owned: a read
+  "spaces.pair.install", // the Create step's install line; a proven assistant is held at the Gate, and the person's own call runs now
+  "wink.install.issue", // the same mint as spaces.pair.install; a proven assistant is held at the Gate, and the signing key stays on this device
+  "wink.install.complete", // a proven assistant may ask; the outward flag holds the call at the Gate, and the signing key stays on this device
   "wink.storage.card",
   "wink.storage.discover",
   "wink.storage.offers",
@@ -705,7 +709,7 @@ export const HOSTED_NEVER = Object.freeze({
   code: ["appmods.", "term.", "hooks.", "runner.", "code.", "threads.shell", "agents.spawn", "team.duties.run-now", "learn.skill-", "work.template.install", "flows.kit.", "bridges.kit.install", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute.", "mcp.add", "mcp.update", "mcp.call"],
   desktop: ["hands-", "hands.", "computer.", "chrome.", "glass.", "screen."],
   credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside.", "settings.", "onboard.", "push.", "memory.backup."],
-  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
+  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "spaces.pair.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
   people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access.", "work.chat.keys.", "work.team.", "work.project.level", "work.know.move-", "work.chat.upgrade-", "work.chat.history-import"],
   keys: ["mcpconn.", "pluginagent."],
 });

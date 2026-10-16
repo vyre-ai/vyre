@@ -814,6 +814,14 @@ export function createPairing(o) {
       },
     });
     const meta0Set = (/** @type {string} */ to) => { meta.set("pair_to", to); };
+    // Every pairing path confirms the published chain through spaces.identity.confirm-key before it writes an owner or enrols a device.
+    const confirmPublished = async (/** @type {string} */ id, /** @type {string | undefined} */ key) => {
+      if (typeof ctx.call !== "function") throw fail("unavailable", "The directory could not confirm this key. Wait a minute and try again.");
+      /** @type {any} */ let r;
+      try { r = await ctx.call("spaces.identity.confirm-key", { id, ...(key ? { key } : {}) }); }
+      catch (/** @type {any} */ e) { throw fail(e && e.code === "unavailable" ? "unavailable" : "denied", (e && e.message) || "The directory could not confirm this key. Wait a minute and try again."); }
+      if (r && r.error) throw fail(r.error.code === "unavailable" ? "unavailable" : "denied", String(r.error.message || "That person has no published key. Open the Vyre app and finish starting, then pair again."));
+    };
     // An app-led install (spec 0.3.0 part 10): the server was installed with a setup code its owner's app made. The app, once the words match, opens the setup channel (it alone holds the code's key) and asks
     // here for the pairing ticket, for ITS identity only: the same single-use ticket and the same identity proof as an install with --pair-to, so nobody is asked a yes at a terminal.
     ctx.tool("wink.server.setup-offer", {
@@ -821,9 +829,12 @@ export function createPairing(o) {
       input: obj({ identity: str }, ["identity"]),
       run: async (input, meta1 = {}) => {
         if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
-        if (hasOwner()) throw fail("owned", "This server already belongs to someone.");
         const to = String((input && input.identity) || "").trim();
         if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
+        if (!/^per_[a-z2-7]{26}$/.test(to)) throw fail("denied", "That is not a person id. Pair again from the Vyre app.");
+        await confirmPublished(to);
+        const cur = meta.get("owner");
+        if (cur && String(cur.identity || cur.id) !== to) throw fail("owned", "This server already belongs to someone.");
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr({});
@@ -1529,6 +1540,12 @@ export function createPairing(o) {
     /** The yes, done: the phone is a device of this identity now (the relay makes it, the identity list takes its key, a paired session opens). Used by the person's answer and by a typed code's own ack. @param {any} a @param {any} presence */
     const acceptPhone = async (a, presence) => {
       const identity = await o.identity();
+      const id = String(identity || "");
+      // Confirm only when this device holds that identity, because that is when the list change is signed here. A server that holds no identity records the phone and the owner's app signs it.
+      if (/^per_[a-z2-7]{26}$/.test(id) && typeof ctx.call === "function") {
+        const self = await ctx.call("spaces.identity.id", {}).catch(() => null);
+        if (self && self.data && self.data.id === id) await confirmPublished(id);
+      }
       const dev = devices.add({ id: a.device, identity, kind: "phone", name: a.name, fingerprint: a.fingerprint, target: { kind: "identity", id: identity } });
       // the relay makes the device only now (X-1); if it will not, nothing stays here either
       /** @type {any} */ let confirmed = null;
@@ -1582,6 +1599,10 @@ export function createPairing(o) {
         owner(meta, "the phone's enrolment");
         const a = phoneLive();
         if (!a || a.state !== "enrolling" || a.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be added to the name's list");
+        if (input.ok === true) {
+          const id = input.identity && typeof input.identity.id === "string" ? String(input.identity.id) : String(await o.identity());
+          await confirmPublished(id);
+        }
         a.enrolled = input.ok === true;
         if (!a.enrolled) a.enrolReason = cleanName(input.reason, 200) || "The app that holds your name could not add this device.";
         if (input.identity && typeof input.identity.id === "string") a.joinedIdentity = { id: String(input.identity.id).slice(0, 64), ...(typeof input.identity.vyre === "string" ? { vyre: input.identity.vyre.slice(0, 253) } : {}) };

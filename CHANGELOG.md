@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(install): a server pairs from one install line. The person's own app shows the line at once. The Create step calls spaces.pair.install, declared on the spaces module, which calls the wink.install.issue mint. An agent's call waits at the Gate. The code is signed by the device key and names the identity chain's person id. Redeem adopts only when that key is still published for the id, and leaves the server unowned when the directory disagrees or cannot be reached. Linux and a Mac that stays on use the same line. The line carries the code in its environment, works once, and expires in 30 minutes. The setup page at /setup takes the same code and locks after pairing. Status and complete are wink.install.status and wink.install.complete. The signing key stays on the device. The install line, the setup page, the app, MCP, a phone, a Mac server and Windows all confirm that published key through spaces.identity.confirm-key. The Windows installer clears VYRE_CODE before it starts the app. That app is a device, and pairing on it is wink.server.adopt.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

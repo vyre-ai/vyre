@@ -1,6 +1,7 @@
 {
  "name": "spaces",
  "version": "0.1.0",
+ "main": "boot.js",
  "description": "Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.",
  "roles": [
   "box",
@@ -330,6 +331,11 @@
     "reach": "person"
    },
    {
+    "name": "spaces.pair.install", "outward": true, "effect": "write",
+    "reach": "person",
+    "covers": ["wink.install.issue"]
+   },
+   {
     "name": "spaces.move.plan", "effect": "read",
     "reach": "person"
    },
@@ -424,6 +430,11 @@
    {
     "name": "spaces.identity.enrol",
     "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.confirm-key",
+    "reach": "modules",
+    "effect": "read"
    },
    {
     "name": "spaces.identity.sign",

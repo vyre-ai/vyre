@@ -776,7 +776,7 @@ async function startLocked(opts, root, p, release) {
         let entries = st && Array.isArray(st.entries) ? st.entries : [];
         if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
         const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-        if (!e || typeof e.pub !== "string") return null;
+        if (!e || typeof e.pub !== "string" || !(await ask("spaces.identity.confirm-key", { id: identity, key: e.pub }))) return null;
         // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
         let age = e;
         if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
