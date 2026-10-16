@@ -10,6 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const RECORD = path.join(REPO, "test", "test-counts.json");
@@ -32,6 +33,16 @@ export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.
 
 /** Flags for each per-file test process. Node 24 turns on type stripping by default; Node 22 needs the switch so apps/app tests can import .ts. @type {string[]} */
 export const NODE_TEST_EXEC_FLAGS = process.features.typescript ? [] : ["--experimental-strip-types"];
+
+/** Refuse a Node build that cannot run Recall, Files linked-index, or the kernel FTS tables (22.14's node:sqlite has no fts5). */
+export function assertTestNode() {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 16)) {
+    throw new Error(`Node ${process.versions.node} is too old for the test suite; use 22.16 or newer.`);
+  }
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE VIRTUAL TABLE _vyre_fts_check USING fts5(x)");
+}
 
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {
@@ -99,6 +110,7 @@ const BOOT_FIRST = ["test/daemon-smoke.test.js", "kernel/boot.test.js"];
 const [cmd, ...rest] = process.argv.slice(2);
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
+    try { assertTestNode(); } catch (/** @type {any} */ e) { console.error("test-counts: " + e.message); process.exit(2); }
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
     const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).sort();

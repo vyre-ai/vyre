@@ -2,11 +2,15 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { declared, problems, mustRunProblems, MUST_RUN, NODE_TEST_EXEC_FLAGS } from "../scripts/test-counts.mjs";
+import { declared, problems, mustRunProblems, MUST_RUN, NODE_TEST_EXEC_FLAGS, assertTestNode } from "../scripts/test-counts.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
 const FILE = "test/test-counts.test.js";
+
+test("assertTestNode accepts this Node (22.16+ with fts5 in node:sqlite)", () => {
+  assertTestNode();
+});
 
 test("declared counts the test( and it( registrations at the start of a line", () => {
   assert.ok(declared(FILE) >= 3);
