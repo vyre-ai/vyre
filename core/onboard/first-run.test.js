@@ -1,5 +1,6 @@
 // @ts-check
 import "../../scripts/mac-test-guard.mjs";
+import { claim } from "../../lib/github-verified.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -40,7 +41,7 @@ test("the join path never names a server, and identity leads to the path the per
   assert.equal(afterAi({ path: "phone" }), "phone.add");
 });
 
-/** @param {{ status?: any }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[] }} */
+/** @param {{ status?: any, config?: any, fetch?: typeof fetch }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[], ctx: any }} */
 function harness(opt = {}) {
   const tools = new Map();
   const saved = [];
@@ -58,6 +59,7 @@ function harness(opt = {}) {
       try { return { data: await dispatch(tool, input) }; }
       catch (e) { return { error: { code: /** @type {any} */ (e).code || "failed", message: String(/** @type {any} */ (e).message || e) } }; }
     },
+    config: opt.config || {},
   };
   const dispatch = async (name, input) => {
     if (name === "identity.status") return person ? { exists: true, username: person.username, id: person.id } : { exists: false, username: null, id: null };
@@ -93,7 +95,7 @@ function harness(opt = {}) {
     if (name === "identity.github.link") return { login: input.login };
     throw Object.assign(new Error(`missing ${name}`), { code: "no_such_tool" });
   };
-  registerFirstRun(ctx, { save: (p) => saved.push(p) });
+  registerFirstRun(ctx, { save: (p) => saved.push(p), fetch: opt.fetch });
   return { tools, saved, calls, ctx };
 }
 
@@ -135,6 +137,80 @@ test("github start returns the address from the kernel config and nothing else",
   ctx.config = { github: { start: "http://github.com/login/device" } };
   const refused = await tools.get("onboard.github.start").run({}, {});
   assert.equal(refused.url, null);
+});
+
+test("github finish reads the numeric account id from GitHub and does not take it from the caller", async () => {
+  /** @type {{ url: string, body: any, method: string }[]} */
+  const seen = [];
+  const token = "gho_testtokenvalue";
+  const fetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(String(init.body)) : null;
+    seen.push({ url: String(url), body, method: String(init && init.method || "GET") });
+    if (String(url) === "https://github.com/login/oauth/access_token") return { ok: true, status: 200, json: async () => ({ access_token: token, token_type: "bearer" }) };
+    if (String(url) === "https://api.github.com/user") {
+      assert.equal(init && init.headers && init.headers.authorization, `Bearer ${token}`);
+      return { ok: true, status: 200, json: async () => ({ id: 4242, login: "Alex-GH" }) };
+    }
+    if (String(url).startsWith("https://api.github.com/applications/") && init && init.method === "DELETE") return { ok: true, status: 204, json: async () => ({}) };
+    throw new Error(String(url));
+  };
+  const { tools, calls } = harness({
+    fetch,
+    config: { github: { clientId: "Ov23ct6h9OU5wJHjbqBl", clientSecret: "secret-value-not-returned", redirect: "https://vyre.example/github" } },
+  });
+  const skipped = await tools.get("onboard.github.finish").run({ login: "alex-gh", subject: "99999" }, { caller: "cli" });
+  assert.equal(skipped.linked, false);
+  assert.deepEqual(skipped.pending, ["github.start"]);
+  assert.equal(calls.some((c) => c.name === "identity.github.link"), false);
+  const done = await tools.get("onboard.github.finish").run({ login: "alex-gh", code: "the-login-code", subject: "99999" }, { caller: "cli" });
+  assert.equal(done.linked, true);
+  assert.equal(done.login, "alex-gh");
+  assert.equal(done.vault, "password");
+  assert.equal(JSON.stringify(done).includes(token), false);
+  assert.equal(JSON.stringify(done).includes("secret-value"), false);
+  const link = calls.find((c) => c.name === "identity.github.link");
+  assert.ok(link);
+  assert.equal(link.input.login, "alex-gh");
+  assert.equal(link.input.subject, "4242");
+  assert.equal(claim("alex-gh", "99999"), false, "an id the caller typed has no receipt");
+  assert.equal(claim("alex-gh", "4242"), true, "the id GitHub returned was vouched for the link");
+  const exchange = seen.find((s) => s.url === "https://github.com/login/oauth/access_token");
+  assert.ok(exchange);
+  assert.equal(exchange.body.code, "the-login-code");
+  assert.equal(exchange.body.client_id, "Ov23ct6h9OU5wJHjbqBl");
+  assert.equal(seen.some((s) => s.method === "DELETE"), true);
+  const line = lineOfOp("onboard.github.finish", { login: "alex-gh", code: "the-login-code", subject: "99999" }, "An assistant");
+  assert.match(line, /alex-gh/);
+  assert.doesNotMatch(line, /the-login-code/);
+  assert.doesNotMatch(line, /99999/);
+  await assert.rejects(() => tools.get("onboard.github.finish").run({ login: "other-person", code: "the-login-code" }, {}), /not the account/);
+});
+
+test("github finish after start reads the account id from the device sign-in", async () => {
+  const fetch = async (url, init) => {
+    const u = String(url);
+    const body = init && init.body ? JSON.parse(String(init.body)) : null;
+    if (u === "https://github.com/login/device/code") return { ok: true, status: 200, json: async () => ({ device_code: "devicecodevalue", user_code: "ABCD-EFGH", verification_uri: "https://github.com/login/device", expires_in: 900 }) };
+    if (u === "https://github.com/login/oauth/access_token") {
+      assert.equal(body.device_code, "devicecodevalue");
+      assert.equal(body.grant_type, "urn:ietf:params:oauth:grant-type:device_code");
+      assert.equal(body.client_secret, undefined);
+      return { ok: true, status: 200, json: async () => ({ access_token: "gho_device" }) };
+    }
+    if (u === "https://api.github.com/user") return { ok: true, status: 200, json: async () => ({ id: 4242, login: "alex-gh" }) };
+    throw new Error(u);
+  };
+  const { tools, calls } = harness({ fetch, config: { github: { start: "https://github.com/login/device", clientId: "Ov23ct6h9OU5wJHjbqBl" } } });
+  const started = await tools.get("onboard.github.start").run({}, {});
+  assert.equal(started.url, "https://github.com/login/device");
+  assert.equal(started.exchange, true);
+  const done = await tools.get("onboard.github.finish").run({ login: "alex-gh" }, { caller: "cli" });
+  assert.equal(done.linked, true);
+  assert.equal(JSON.stringify(done).includes("gho_device"), false);
+  const link = calls.find((c) => c.name === "identity.github.link");
+  assert.ok(link);
+  assert.equal(link.input.subject, "4242");
+  assert.equal(link.input.login, "alex-gh");
 });
 
 test("creating a person calls identity.create and never puts the password in the card line", async () => {

@@ -39,10 +39,14 @@ export async function startGithub() {
   catch (e) { return fail(e); }
 }
 
-/** @param {string} login */
-export async function finishGithub(login) {
+/** @param {string} [login] @param {string} [code] */
+export async function finishGithub(login, code) {
   if (MOCK) return mock.finishGithub(login);
-  try { return done(await tool("onboard.github.finish", { login })); }
+  /** @type {Record<string, string>} */
+  const input = {};
+  if (login) input.login = login;
+  if (code) input.code = code;
+  try { return done(await tool("onboard.github.finish", input)); }
   catch (e) { return fail(e); }
 }
 
