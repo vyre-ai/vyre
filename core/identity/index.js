@@ -9,6 +9,7 @@ import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js"
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import * as M from "../../kernel/identity/master.js";
 import { checkUsername, publicCard } from "../../kernel/identity/username.js";
+import { startLogin } from "./login-start.js";
 
 const MIGRATIONS = [
   `CREATE TABLE identity_master (
@@ -165,6 +166,8 @@ export default {
         return publicCard({ name: rec.username, id: rec.id, discoverable: rec.discoverable === true, github: rec.github });
       });
 
-    return { async stop() { M.lockMaster(idFile); } };
+    let login = { async stop() {} };
+    try { login = await startLogin(ctx); } catch (e) { ctx.log && ctx.log(`identity: no sign-in door (${/** @type {Error} */ (e).message})`); }
+    return { async stop() { await login.stop(); M.lockMaster(idFile); } };
   },
 };

@@ -103,7 +103,7 @@ function limiter(now) {
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
  * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
- *   isMember?: (username: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
+ *   isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
   const now = o.now || Date.now;
@@ -172,7 +172,7 @@ export function createLoginService(o) {
       const msg = registerMessage(o.space, username, input.loginPub, bundleHash(input.bundle), Number(input.ts));
       if (!verifies(String(input.pub), msg, String(input.sig))) throw fail("denied", "That request is not signed by the identity.");
       if (!o.verifyIdentity || !(await o.verifyIdentity(String(input.person), String(input.pub)))) throw fail("denied", "That key is not one this person has published.");
-      if (o.isMember && !(await o.isMember(username))) throw fail("denied", "That username is not a member of this space.");
+      if (o.isMember && !(await o.isMember(username, String(input.person)))) throw fail("denied", "That username is not a member of this space.");
       const held = record(username);
       if (held && held.person !== input.person) throw fail("denied", "That username belongs to someone else.");
       o.store.set(`login:${username}`, { person: String(input.person), salt: input.salt, kdf: { ...LOGIN_KDF }, loginPub: input.loginPub, bundle: input.bundle, at: now() });

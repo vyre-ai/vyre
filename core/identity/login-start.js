@@ -1,0 +1,52 @@
+// @ts-check
+// identity/login-start: turns the sign-in service (kernel/identity/space-login.js) on for a server. It listens on loopback and tells the public gate its port (lib/login-door.js).
+// A computer that is not a server has no space address to sign in to, so nothing listens there. Records live in identity/logins.json, 0600.
+
+import path from "node:path";
+import { hostedOrigins, isServer } from "../config/index.js";
+import { readJson, writePrivate } from "../../kernel/identity/files.js";
+import { createLoginService } from "../../kernel/identity/space-login.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
+import { assertPublishedKey } from "../../lib/identity/published-key.js";
+import { setLoginPort } from "../../lib/login-door.js";
+import { listen } from "./login-listener.js";
+
+/** One tool-free HTTP door: begin, finish, register. @param {{ op?: string } & Record<string, any>} q @param {ReturnType<typeof createLoginService>} svc @param {string} source */
+export async function loginHandle(q, svc, source) {
+  const op = String(q && q.op || "");
+  if (op === "begin") { const r = svc.begin(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 400) : 200, body: r }; }
+  if (op === "finish") { const r = svc.finish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
+  if (op === "register") {
+    try { return { status: 200, body: await svc.register(/** @type {any} */ (q)) }; }
+    catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
+  }
+  return { status: 400, body: { error: { code: "bad_input", message: "That request was not understood." } } };
+}
+
+/** @param {any} ctx @param {{ listen?: typeof listen, directory?: { resolveById: (id: string) => Promise<any> } }} [seam] */
+export async function startLogin(ctx, seam = {}) {
+  const cfg = ctx.config || {};
+  if (!isServer(cfg.machine) || typeof cfg.name !== "string" || !cfg.name) return { async stop() {} };
+  const file = path.join(ctx.paths.root, "identity", "logins.json");
+  const store = {
+    get: (/** @type {string} */ k) => { const all = readJson(file); return all ? all[k] : undefined; },
+    set: (/** @type {string} */ k, /** @type {any} */ v) => { const all = readJson(file) || {}; all[k] = v; writePrivate(file, JSON.stringify(all) + "\n"); },
+  };
+  const rawDir = cfg.names && cfg.names.directory;
+  const dir = seam.directory || idDirectory({ ...(typeof rawDir === "string" && /^https?:\/\//.test(rawDir) ? { base: rawDir } : {}), seen: memorySeen() });
+  const svc = createLoginService({
+    space: String(cfg.name), store,
+    verifyIdentity: async (person, pub) => { try { await assertPublishedKey(dir, person, pub, { fullDevice: true }); return true; } catch { return false; } },
+    isMember: async (_username, person) => {
+      const k = ctx.kernel;
+      if (!k || typeof k.membership !== "function") return false;
+      if (typeof k.owner === "string" && k.owner === person) return true;
+      try { const m = await k.membership(person, k.space); return Boolean(m && m.member === true); } catch { return false; }
+    },
+    onNewDevice: e => { try { ctx.events.emit("identity.new-device", { username: e.username, label: e.label, at: e.at }); } catch { /* the notice is best effort; the sign-in is not blocked */ } },
+  });
+  const l = await (seam.listen || listen)({ origins: () => hostedOrigins(cfg.network), handle: (q, source) => loginHandle(q, svc, source) });
+  setLoginPort(l.port);
+  ctx.log && ctx.log(`identity: POST /login listening on ${l.url}`);
+  return { async stop() { setLoginPort(null); await l.close(); } };
+}
