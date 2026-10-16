@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(deploy): `relay-deploy.yml` has a `github_assert_key` input that sets the relay's `GITHUB_ASSERT_KEY` from the deploy environment secret `GH_ASSERT_KEY`; without that key no GitHub assertion exists and GitHub sign-in to a space is refused (the public half is `RELAY_ASSERT_KEY` in `lib/relay-keys.js`).
 - fix(web): a by-hand web-deploy run is held to the release rule: its commit must be exactly the commit of a published stable release, or nothing is deployed. A worker test pins the policy so images, fonts, connections, frames, forms and base never widen.
 - fix(web): web.vyre.run may connect to `*.vyre.run` (a space's own address, where the sign-in door lives) and no longer names a tailnet address, which the no-other-VPN rule forbids.
 - fix(web): web.vyre.run allows inline styles (scripts stay strict). Under a hash-only style policy the app rendered a blank page with "Refused to apply inline style", which the rehearsal found.

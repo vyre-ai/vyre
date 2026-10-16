@@ -46,6 +46,10 @@ on:
         description: "Also set the relay's GitHub sign-in secrets GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET from the deploy environment secrets GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET (GitHub reserves the GITHUB_ prefix) (relay/worker/github.js)"
         type: boolean
         default: false
+      github_assert_key:
+        description: "Also set the relay's GITHUB_ASSERT_KEY (the Ed25519 seed whose public half is RELAY_ASSERT_KEY in lib/relay-keys.js) from the deploy environment secret GH_ASSERT_KEY. Without it no GitHub assertion exists and GitHub sign-in to a space is refused."
+        type: boolean
+        default: false
       escrow:
         description: "Deploy escrow/worker (escrow.vyre.run) and set its ESCROW_RELAY_SECRET, ESCROW_KEK_<kid> and ESCROW_KEK_CURRENT, and the relay's ESCROW_RELAY_SECRET, from the deploy environment secrets ESCROW_RELAY_SECRET, ESCROW_KEK, ESCROW_KEK_ID. Never remove an old ESCROW_KEK_<kid> from the escrow Worker: there is no rewrap yet, and every bundle sealed under it would be lost"
         type: boolean
@@ -155,6 +159,16 @@ jobs:
           [ -n "$GITHUB_OAUTH_CLIENT_ID" ] && [ -n "$GITHUB_OAUTH_CLIENT_SECRET" ] || { echo "::error::GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET must be environment secrets"; exit 1; }
           printf %s "$GITHUB_OAUTH_CLIENT_ID" | "$W" secret put GITHUB_OAUTH_CLIENT_ID
           printf %s "$GITHUB_OAUTH_CLIENT_SECRET" | "$W" secret put GITHUB_OAUTH_CLIENT_SECRET
+      - name: relay/worker GitHub assertion key
+        if: ${{ inputs.relay && inputs.github_assert_key }}
+        working-directory: relay/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_ASSERT_KEY: ${{ secrets.GH_ASSERT_KEY }}
+        run: |
+          [ -n "$GITHUB_ASSERT_KEY" ] || { echo "::error::GH_ASSERT_KEY must be an environment secret"; exit 1; }
+          printf %s "$GITHUB_ASSERT_KEY" | "$W" secret put GITHUB_ASSERT_KEY
       - name: escrow/worker
         if: ${{ inputs.escrow }}
         working-directory: escrow/worker
