@@ -68,7 +68,7 @@ export default {
         const recoveryKey = r.data && r.data.recoveryCode;
         if (!recoveryKey) throw refuse("The identity did not return a recovery key. Try again.", "failed");
         const legacy = JSON.parse(fs.readFileSync(idFile, "utf8"));
-        const vaultKey = M.readVaultKeyFile(path.join(root, "vault", "key"));
+        const vaultKey = M.serverVaultKey(root);
         M.createMaster({
           root, username: name, id: legacy.id, password, recoveryCode: recoveryKey,
           privateKeyB64: legacy.privateKey, agreePrivateB64: legacy.agreePrivate || null,
@@ -98,7 +98,7 @@ export default {
         refuseModel(meta, input);
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
         const recoveryKey = newRecoveryCode();
-        const vaultKey = M.readVaultKeyFile(path.join(root, "vault", "key"));
+        const vaultKey = M.serverVaultKey(root);
         const made = M.migrateLegacy({ root, identityFile: idFile, password: input.password, recoveryCode: recoveryKey, vaultKey, kdf: kdf() });
         ctx.store.db.prepare("INSERT INTO identity_master (id, state, username, at) VALUES (1, 'wrapped', ?, ?) ON CONFLICT(id) DO UPDATE SET state = 'wrapped', username = excluded.username, at = excluded.at").run(made.username, Date.now());
         return forCaller(meta, { username: made.username, id: made.id, url: made.url, recoveryKey });
