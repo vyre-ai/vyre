@@ -178,8 +178,9 @@ export function createHost(o) {
         if (!k) throw bad("Make your username first.", "no_identity");
         const p = w.paired;
         const row = /** @type {KeptSpace} */ ({ id: spaceKey("", w.name), name: w.name, role: "owner", server: p && /\.vyre\.run$/.test(p.name) ? `https://${p.name}` : null, paired: p || null });
+        const hostname = (p && p.name) || (st.box && st.box.name) || "";
         if (!w.saved) { await keepSpace(k, row); w.saved = true; }
-        return { ...base, online: true, expired: false, space: row.id, server: { name: (p && p.name) || (st.box && st.box.name) || "", route: (p && p.route) || (st.box && st.box.route) || "", box: (p && p.box) || "" }, canRemove: Boolean(p && p.box) };
+        return { ...base, online: true, expired: false, space: row.id, server: { hostname, address: row.server || "", space: row.id, name: hostname, route: (p && p.route) || (st.box && st.box.route) || "", box: (p && p.box) || "" }, canRemove: Boolean(p && p.box) };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";

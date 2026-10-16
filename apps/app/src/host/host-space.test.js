@@ -86,6 +86,7 @@ test("create a space from a page: the line carries a code the server's own check
   pp.seen.resolveAs = "one";
   const done = await until(host, open.id, (r) => r.online);
   assert.equal(done.server.name, "alex-space.vyre.run");
+  assert.deepEqual([done.server.hostname, done.server.address, done.server.space], ["alex-space.vyre.run", "https://alex-space.vyre.run", "spc_alex-space"]);
   assert.equal(done.canRemove, true);
   assert.equal(done.space, "spc_alex-space");
   assert.equal(pp.seen.pairs.length, 1);
