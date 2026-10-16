@@ -1,4 +1,5 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { awayOf, whereLine } from "./members.js";

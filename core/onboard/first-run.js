@@ -8,6 +8,8 @@
 
 import { randomBytes } from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
+import { newPrefixedId } from "../../lib/id.js";
+import { resolveInstallOnline } from "../../lib/install-online.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { loginAdapters } from "../../lib/agent-adapters.js";
 import { canAssign } from "../../lib/spaces/members.js";
@@ -274,7 +276,7 @@ export function registerFirstRun(ctx, io) {
       const issued = await call("wink.install.issue", { os: place });
       const command = issued && typeof issued.line === "string" ? issued.line : "";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
-      const id = `fr_${randomBytes(8).toString("hex")}`;
+      const id = newPrefixedId("fr");
       const expiresAt = new Date(Number(issued.expires) * 1000).toISOString();
       waits.set(id, { command, expiresAt, kind: place, name: label });
       const row = rememberSpace(held, personId, { id: spaceKey("", label), name: label, role: "owner", server: null });
@@ -292,7 +294,8 @@ export function registerFirstRun(ctx, io) {
       if (!row) throw bad("That install is not one this device started.");
       let status = null;
       try { status = await call("wink.install.status", {}); } catch { status = null; }
-      const adopted = Boolean(status && (status.owned || status.locked));
+      const online = await resolveInstallOnline({ tryCall: call, meta });
+      const adopted = online;
       const sid = adopted ? vaultSpace(status && status.space) : "";
       const { held, personId } = await heldOf(meta);
       if (adopted && sid && isPerson(meta && meta.caller)) {
@@ -304,13 +307,6 @@ export function registerFirstRun(ctx, io) {
       const expMs = status && status.expires ? Number(status.expires) * 1000 : Date.parse(row.expiresAt);
       if (Number.isFinite(expMs) && expMs < Date.now() && !(status && status.issued)) {
         return { id, online: false, expired: true, kind: row.kind, expiresAt: row.expiresAt, message: "The install window ended. Go back and show a new command." };
-      }
-      // The person's own screen may finish pairing. An agent calls wink.install.complete, which is held for a tap.
-      if (isPerson(meta && meta.caller)) {
-        try {
-          const done = await call("wink.install.complete", {});
-          if (done && done.ok) return { id, online: true, expired: false, kind: row.kind };
-        } catch { /* the server has not taken the line yet */ }
       }
       return { id, online: false, expired: false, kind: row.kind, expiresAt: row.expiresAt };
     },

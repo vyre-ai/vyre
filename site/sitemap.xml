@@ -691,6 +691,11 @@
     <priority>0.4</priority>
   </url>
   <url>
+    <loc>https://vyre.run/docs/architecture/person-relay-entrypoints</loc>
+    <lastmod>2026-10-16</lastmod>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://vyre.run/docs/architecture/features/spaces-and-members</loc>
     <lastmod>2026-10-16</lastmod>
     <priority>0.4</priority>

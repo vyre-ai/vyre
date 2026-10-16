@@ -1,7 +1,7 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import "../../scripts/mac-test-guard.mjs";
 import { resolveTags } from "./said.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
