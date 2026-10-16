@@ -64,7 +64,7 @@ The Switchboard also emits thread.limit, thread.started, thread.sent, thread.tur
 - Module-only (not for models): `threads.launch`, `sessions.accounts.resolve`, `sessions.models.resolve`.
 - Through MCP these appear via `tools_find` and `tools_call`, see [MCP and the Engineer](./mcp-and-engineer.md). See also sessions, memory and context (agent doc "sessions-and-context"), authority (agent doc "authority") and tools (agent doc "tools").
 
-## Extend it
+## Limits and extension points
 
 In 0.5 Claude is the model Vyre has run end to end on real accounts. Codex and Grok run against recorded sessions, and the Grok driver notes that some of its behaviour is assumed. Gemini has no driver. `team.ask` hands a request to Codex or Grok with `--model` and uses whatever accounts the person signed in to. Sending one message to several models is proven for the answers. Plan, diff and terminal blocks look the same for every provider. Vyre records a Grok account's privacy mode, and xAI holds the setting. A member signs in to a provider with the provider's own sign-in, and sessions read the sign-ins, mail and calendar entries in a member's vault but not other items. A Mac as the server passes its installer test on a clean macOS in CI. The virtual machine for agents' computers has not run on real Mac hardware.
 

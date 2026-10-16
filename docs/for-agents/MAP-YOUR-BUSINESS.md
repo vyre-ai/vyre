@@ -14,17 +14,17 @@ Take every noun from the owner. Do not assume an industry, and do not invent peo
 
 If the owner gave you [the prompt](https://vyre.run/docs/for-agents/PROMPT.md), you were sent through [Start here](https://vyre.run/docs/for-agents/START-HERE.md), and this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
 
-## What to tell the owner Vyre does
+## What Vyre has
 
-Say this early, in the owner's terms, and name the page each point comes from. [What makes Vyre strong](https://vyre.run/docs/project/ARCHITECTURE.md#what-makes-vyre-strong) has the full statement. Each point below names the step where you use it.
+The parts the steps below use. Each links to the page that describes it. The design choices behind them are in [Architecture](https://vyre.run/docs/project/ARCHITECTURE.md#design-choices).
 
-- **Records you shape** (step 3): as many objects as the business has, linked in any web, with views and sealed fields.
-- **Playbooks and Flows** (steps 4 and 5): each kind of work runs as its own Playbook and Flows, side by side, over shared records.
-- **Documents and signing** (step 6): the business's own Word templates, filled from records, signed by people with no account.
-- **Sites** (step 7): an agent builds, previews and publishes on one yes.
-- **Agents in one group chat** (step 8): Claude, Codex, Grok and others answer in the same chat, each with its own job.
-- **A vault for people and agents** (step 9): an agent uses a credential without seeing it.
-- **The Gate** (step 10): nothing leaves the Space until a person approves the exact words.
+- **Records** (step 3): objects of any type, linked in any web, with views and sealed fields. [Records](https://vyre.run/docs/architecture/features/records.md)
+- **Playbooks and Flows** (steps 4 and 5): each kind of work runs as its own Playbook and Flows over shared records. [Flows](https://vyre.run/docs/architecture/features/flows.md), [Tasks, Needs you and Playbooks](https://vyre.run/docs/architecture/features/tasks-and-needs-you.md)
+- **Documents and signing** (step 6): Word templates filled from records, signed by people with no account. [Documents and signing](https://vyre.run/docs/architecture/features/documents-and-signing.md)
+- **Sites** (step 7): an agent builds and previews a site, and publishing waits for one yes. [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md)
+- **Agents in one group chat** (step 8): Claude, Codex, Grok and others answer in the same chat, each with its own job. [Sessions and models](https://vyre.run/docs/architecture/features/sessions-and-models.md)
+- **Vault** (step 9): an agent uses a credential without seeing it. [Vault](https://vyre.run/docs/architecture/features/vault.md)
+- **The Gate** (step 10): nothing leaves the Space until a person approves the exact words. [Gate](https://vyre.run/docs/architecture/features/gate.md)
 
 ## Step 1. Interview, then list
 
@@ -140,7 +140,7 @@ List each outside system and the logins the team shares.
 
 Put every login in the Vault: [Vault](https://vyre.run/docs/architecture/features/vault.md). Share an item with a person as Can use or Can edit, or give an agent use of it without the value. Each member also has a vault of their own that the owner cannot read.
 
-If a system has no connection yet, see "Extend it" below.
+If a system has no connection yet, see "When something is not in Vyre" below.
 
 ## Step 10. What must never go out without a yes becomes the Gate
 
@@ -178,17 +178,17 @@ flowchart LR
   C --> G[Task for a member]
 ```
 
-## Extend it
+## When something is not in Vyre
 
-Some parts of a business will not match what Vyre ships. Treat those as work to do, not as dead ends.
+Some parts of a business will not match what Vyre ships. State each one as it is, with what ships today and what the roadmap plans.
 
 **Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](https://vyre.run/docs/build/module-contract.md), [writing a module](https://vyre.run/docs/build/writing-a-module.md) and [the module list](https://vyre.run/docs/MODULES.md). `vyre module new` starts one.
 
-**Integrations.** Integrations with popular applications are Next, in 0.7 ([plan](https://vyre.run/docs/roadmap/0.7.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
+**Integrations.** Integrations with popular applications are planned for 0.7 ([plan](https://vyre.run/docs/roadmap/0.7.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
-**You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can write it for the business's own server. Installing a module on the server is the owner's act, so offer to write one and do not install it without the owner's yes. If the owner needs something Vyre does not do, offer to build it. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
+**Writing a module.** An agent can write a module for the business's own server, following the contract. Installing a module on the server is the owner's act: do not install one without the owner's yes. [The agent brief](https://vyre.run/docs/build/AGENT-BRIEF.md) is where you start.
 
-**Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.7. The table below pairs what works today with what is planned next, by version. Plan with the owner around it, and name the version each planned item arrives in. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
+**Where each part is going.** The method above describes what ships in 0.5.0, except Integrations, which are Next in 0.7. The table below pairs what works today with what is planned next, by version. Name the version each planned item is planned for. The plans are in [the roadmap](https://vyre.run/docs/roadmap/README.md).
 
 | Area | Today | Next |
 | --- | --- | --- |

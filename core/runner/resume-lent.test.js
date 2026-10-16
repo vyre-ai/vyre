@@ -9,6 +9,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { createCheckpointStore } from "./checkpoint-store.js";
 import { createResumeLent } from "./resume-lent.js";
 import { coverOf } from "./sync.js";
+import { grokSessionRemote, serverTranscriptPlace } from "../sessions/drivers/lent-agent.js";
 
 const SPACE = "spc_harlow000001", LENT = "ses_lent0000001", NATIVE = "7c1f0a52-0000-4000-8000-000000000001";
 const chain = { space: SPACE, hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }], labels: { trust: "member", red: "internal", source_spaces: [SPACE] } };
@@ -16,7 +17,7 @@ const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "rl-")));
 const line = (/** @type {number} */ n) => JSON.stringify({ type: "user", n });
 
 /** A lender's store with `whole` lines checkpointed and `extra` more lines that were sent after (the cut turn), and a server with a project folder. */
-async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @type {Record<string, string>} */ ({}), noCover = false } = {}) {
+async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @type {Record<string, string>} */ ({}), noCover = false, provider = "claude" } = {}) {
   const dir = tmp(); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const lent = createCheckpointStore({ space: SPACE, root: path.join(dir, "lent"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
   const own = createCheckpointStore({ space: SPACE, root: path.join(dir, "own"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
@@ -25,14 +26,29 @@ async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @
   /** @type {Record<string, any>} */ const manifest = {};
   for (const [rel, text] of Object.entries(files)) { const r = await lent.putFile(LENT, `files/${rel}`, Buffer.from(text)); manifest[`files/${rel}`] = { hash: crypto.createHash("sha256").update(text).digest("hex"), version: r.version, len: text.length }; }
   if (whole) await lent.putCheckpoint(LENT, { turn: 1, seq: whole, manifest, state: noCover ? {} : { cover: coverOf(manifest, entries.filter(e => e.seq <= whole), whole, 1) } });
-  const cwd = path.join(dir, "project"); fs.mkdirSync(cwd, { recursive: true });
-  const root = path.join(dir, "claude", "projects"); fs.mkdirSync(root, { recursive: true });
-  const file = path.join(root, cwd.replace(/[^A-Za-z0-9]/g, "-"), `${NATIVE}.jsonl`);
+  const cwdDir = path.join(dir, "w"); fs.mkdirSync(cwdDir, { recursive: true });
+  const cwd = cwdDir;
+  let file, root;
+  if (provider === "codex") {
+    root = path.join(dir, "codex", "sessions");
+    const d = new Date();
+    const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
+    file = path.join(root, String(d.getUTCFullYear()), pad(d.getUTCMonth() + 1), pad(d.getUTCDate()), `rollout-fixture-${NATIVE}.jsonl`);
+  } else if (provider === "grok") {
+    const home = path.join(dir, "server");
+    const at = serverTranscriptPlace({ provider: "grok", folders: [], cwd, native: NATIVE, accountHome: home });
+    assert.ok(at, "grok transcript place");
+    file = at.file;
+    root = at.root;
+  } else {
+    root = path.join(dir, "claude", "projects"); fs.mkdirSync(root, { recursive: true });
+    file = path.join(root, cwd.replace(/[^A-Za-z0-9]/g, "-"), `${NATIVE}.jsonl`);
+  }
   /** @type {any[]} */ const said = [];
-  const resume = createResumeLent({ target: async thread => (thread === "thread_a" ? { file, root, native: NATIVE, cwd } : null), port: () => own, say: (type, p) => said.push([type, p]) });
+  const resume = createResumeLent({ target: async thread => (thread === "thread_a" ? { file, root, native: NATIVE, cwd, provider } : null), port: () => own, say: (type, p) => said.push([type, p]) });
   const view = { checkpoint: () => lent.getCheckpoint(LENT), transcript: (/** @type {number} */ f, /** @type {number} */ l) => lent.getTranscript(LENT, f, l), file: (/** @type {string} */ rel, /** @type {number} */ v) => lent.getFile(LENT, rel, v) };
   const go = (/** @type {any} */ over = {}) => resume({ space: SPACE, session: LENT, thread: "thread_a", chat: null, view, ...over });
-  return { dir, cwd, file, own, go, said, lentView: view };
+  return { dir, cwd, cwdDir, file, own, go, said, lentView: view };
 }
 
 test("the lender's last whole turn becomes the chat's own transcript here, and the cut turn is not in it", async t => {
@@ -52,6 +68,53 @@ async function withFile(/** @type {any} */ view, /** @type {string} */ remote, /
   const lines = (await view.transcript(1, 1000)).filter((/** @type {any} */ e) => e.seq <= cp.seq);
   return { ...cp, manifest, state: { cover: coverOf(manifest, lines, cp.seq, cp.turn) } };
 }
+
+test("Codex failover resume: the rollout file named in the manifest becomes the server transcript", async t => {
+  const own = "{\"type\":\"session\",\"provider\":\"codex\"}\n{\"type\":\"user\",\"content\":\"codex-lent\"}\n";
+  const w = await world(t, { whole: 2, extra: 0, files: {}, provider: "codex" });
+  const remoteRel = `agent/codex/sessions/${path.relative(path.join(w.dir, "codex", "sessions"), w.file).replace(/\\/g, "/")}`;
+  const bytes = Buffer.from(own);
+  const view = { ...w.lentView, checkpoint: () => withFile(w.lentView, remoteRel, { hash: crypto.createHash("sha256").update(own).digest("hex"), version: 1, len: bytes.length }), file: async (/** @type {string} */ rel, /** @type {number} */ v) => (rel === remoteRel && v === 1 ? bytes : w.lentView.file(rel, v)) };
+  const r = await w.go({ view });
+  assert.equal(r.resumed, true);
+  assert.equal(fs.readFileSync(w.file, "utf8"), own);
+});
+
+test("Grok resume with a real-length workspace path stores a long manifest key and still places the transcript", async t => {
+  const own = "{\"role\":\"user\",\"content\":\"grok-long-cwd\"}\n";
+  const dir = tmp();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const longCwd = path.join(dir, "Users", "member", "Projects", "vyre-app-" + "segment/".repeat(24).slice(0, 180));
+  fs.mkdirSync(longCwd, { recursive: true });
+  const lent = createCheckpointStore({ space: SPACE, root: path.join(dir, "lent"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
+  const ownStore = createCheckpointStore({ space: SPACE, root: path.join(dir, "own"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
+  const entries = [1, 2].map(n => ({ seq: n, line: line(n) }));
+  await lent.appendTranscript(LENT, entries);
+  const remoteRel = grokSessionRemote(longCwd, NATIVE);
+  const bytes = Buffer.from(own);
+  const put = await lent.putFile(LENT, remoteRel, bytes);
+  const manifest = { [remoteRel]: { hash: crypto.createHash("sha256").update(own).digest("hex"), version: put.version, len: bytes.length } };
+  await lent.putCheckpoint(LENT, { turn: 1, seq: 2, manifest, state: { cover: coverOf(manifest, entries, 2, 1) } });
+  const at = serverTranscriptPlace({ provider: "grok", folders: [], cwd: longCwd, native: NATIVE, accountHome: path.join(dir, "server") });
+  assert.ok(at);
+  const { file, root } = at;
+  const resume = createResumeLent({ target: async () => ({ file, root, native: NATIVE, cwd: longCwd, provider: "grok" }), port: () => ownStore });
+  const view = { checkpoint: () => lent.getCheckpoint(LENT), transcript: (f, l) => lent.getTranscript(LENT, f, l), file: (rel, v) => lent.getFile(LENT, rel, v) };
+  const r = await resume({ space: SPACE, session: LENT, thread: "thread_a", view });
+  assert.equal(r.resumed, true);
+  assert.equal(fs.readFileSync(file, "utf8"), own);
+});
+
+test("Grok failover resume: vyre-resume.jsonl from the manifest becomes the server transcript", async t => {
+  const own = "{\"role\":\"user\",\"content\":\"grok-lent\"}\n";
+  const w = await world(t, { whole: 2, extra: 0, files: {}, provider: "grok" });
+  const remoteRel = grokSessionRemote(w.cwd, NATIVE);
+  const bytes = Buffer.from(own);
+  const view = { ...w.lentView, checkpoint: () => withFile(w.lentView, remoteRel, { hash: crypto.createHash("sha256").update(own).digest("hex"), version: 1, len: bytes.length }), file: async (/** @type {string} */ rel, /** @type {number} */ v) => (rel === remoteRel && v === 1 ? bytes : w.lentView.file(rel, v)) };
+  const r = await w.go({ view });
+  assert.equal(r.resumed, true);
+  assert.equal(fs.readFileSync(w.file, "utf8"), own);
+});
 
 test("a provider that keeps its own session file: the file the computer's agent wrote is the chat's transcript here, not the lines its program printed", async t => {
   // a real Claude prints stream events on stdout (those are the lent transcript lines); its session file is another thing, and it is the only thing a resumed Claude can read ("No conversation found" otherwise)

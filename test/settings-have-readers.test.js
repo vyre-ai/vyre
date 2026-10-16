@@ -26,7 +26,7 @@ const DEAD = {
   "sessions.fallback_model": "sessions", "sessions.send_while_busy": "sessions", "sessions.tool_detail": "sessions", "sessions.max_turns": "sessions",
   "sessions.output_style": "sessions", "sessions.box_teammates": "sessions", "sessions.box_subagents": "sessions",
   // found by the stricter check (2026-10-10, issue 117): shown in Settings, read nowhere in the module's own code
-  "presence.confirm_pairing": "presence", "sessions.fast": "sessions", "sessions.folders": "sessions", "sessions.checkpoints": "sessions",
+  "presence.confirm_pairing": "presence", "sessions.fast": "sessions", "sessions.checkpoints": "sessions",
   "vault.lock_idle": "vault", "vault.lock_max": "vault", "vault.lock_on_sleep": "vault", "vault.lock_on_screen_lock": "vault",
 };
 

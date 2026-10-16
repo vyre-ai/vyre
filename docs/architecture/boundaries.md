@@ -49,7 +49,8 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/comms -> core/mail` | imap.js | the sending service reuses the mail module's IMAP adapter; it becomes a ctx.call when the adapter has a tool | ctx.call |
 | `core/files -> core/google` | drive-seam.js | linked Google Drive folders use the Drive seam's client directly; it goes through google.drive.* tools when the bridge is split | ctx.call |
 | `core/import -> core/sessions` | credfiles.js | import must never move a login file; it shares the one credential-file test, which belongs in lib | lib |
-| `core/runner -> core/sessions` | credfiles.js | the runner skips login files when it reads or syncs a home; it shares the one credential-file test, which belongs in lib | lib |
+| `core/runner -> core/sessions` | credfiles.js, lent-agent.js | the runner skips login files when it reads or syncs a home; lent-agent holds per-provider lent layout (runner, resume-lent, sync) | lib |
+| `core/sessions -> core/import` | codex.js | lent-agent lists Codex rollout files for resume paths | lib |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
@@ -72,7 +73,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/sessions -> core/switchboard` | runner.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/sessions -> core/transcripts` | sanitize.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/harness` | rules.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
-| `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
+| `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js, lent-agent.js | sessions/switchboard split (ADR 0030); adopt uses lent-agent transcript paths for failover | ctx.call |
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |

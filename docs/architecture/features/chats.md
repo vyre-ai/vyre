@@ -59,7 +59,7 @@ A chat is a conversation thread. People and agents both take part, and the model
 - An agent that wants to send mail, post or pay files the act with `gate.request`, see [Gate](./gate.md).
 - See tools (agent doc "tools"), authority (agent doc "authority") and sessions and context (agent doc "sessions-and-context").
 
-## Extend it
+## Limits and extension points
 
 In 0.5 a Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. A message can go to several models at once, and each answer shows in its own block. Plans, diffs and terminals look the same for every provider. The phone app receives web push when closed, and native push waits on Apple and Google push accounts. While an agent works in a private chat on a server, that server's operator can see the chat in use, see [Private chats](../../using/private-chats.md).
 

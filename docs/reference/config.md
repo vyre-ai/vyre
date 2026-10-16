@@ -100,6 +100,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js`, `core/daemon/main.js` |
 | `VYRE_DEV_ALLOW_LISTEN` | Not described yet. | `core/daemon/dev-ports.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
+| `VYRE_DOCS_HARVEST` | Not described yet. | `core/store/index.js` |
 | `VYRE_DOCUMENTS_PDF` | Not described yet. | `core/documents/index.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |

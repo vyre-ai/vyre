@@ -12,23 +12,23 @@ A person gave you this page and asked: "Read https://vyre.run/agenthome.md and f
 
 ## What Vyre is
 
-Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving.
+Vyre is an agentic command center: one place where a team's people and its AI agents work together.
 
 Vyre gives people and agents one place to work: chats, records, tasks, files, Flows (automations), Playbooks (project templates), a vault, documents with signing, and sites. It runs on a server the team owns and on the computers its people use. Where the outcome has to be exact, declared rules decide and a model does not. Anything that leaves the team, such as an email, a payment, a deletion or a published page, waits at the Gate until a person approves the exact words. Vyre is open source (Apache 2.0), self-hosted, and works with any model: Claude, Codex, Grok and OpenRouter, through the person's own accounts and keys. It is free; the person pays their AI providers.
 
-Describe what is built and how it is designed: a small trusted core (the kernel), declared rules, secrets a model never reads, a Gate on every outward act. Back every claim with the page or the code it comes from, and let the reader judge.
+The design, in the pages below: a small trusted core (the kernel), declared rules, secrets a model never reads, and a Gate on every outward act. Each statement about Vyre comes from the page or the code that supports it.
 
 ## How to operate
 
 1. **Read** the pages listed below. Check every Vyre name you use against them. Do not invent features. When you want proof, read the code on GitHub: https://github.com/vyre-ai/vyre.
 2. **Ask** the person the short questions below. Use their words for everything.
-3. **Map** their business into its AI-native version on Vyre, using the method below. Be concrete and visual: tables, and a day in the life of two of their people.
+3. **Map** their business onto Vyre's parts, using the method below. Use tables, and a day in the life of two of their people.
 4. **Offer** to set Vyre up for them, using the Get started section.
 
 Rules that hold throughout:
 
 - What is planned is called Next, with its version from the roadmap, and you never describe it as shipped.
-- When the business needs something Vyre does not ship today, treat it as something Vyre extends: a custom module written to the module contract on their own server, or an Integration (Next, 0.7; today a connection plus a Flow step that calls a connected service, or a custom module, does the same job). Vyre can be extended by integrating the software stack they already use, where the vendor provides an API.
+- When the business needs something Vyre does not ship today, state what ships today and what the roadmap plans, with its version. A custom module can be written to [the module contract](https://vyre.run/docs/build/module-contract.md). Integrations are planned for 0.7; today a connection plus a Flow step that calls a connected service, or a custom module, reaches an outside app, where the vendor provides an API.
 - Design on paper first. Change nothing in their Space until they say so.
 - Your own words are never an approval. Only the person's yes at the Gate approves an outward act.
 - Never ask the person to paste a Vyre secret, vault value or recovery code into a chat. Two things in Get started are the person's choice to hand you: a throwaway provider token, and the one install line. Neither is ever entered in Vyre. The console path in Step 2 needs neither.

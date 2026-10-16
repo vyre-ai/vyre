@@ -30,6 +30,8 @@ const PERSON_PROXY = new Set([
   // core/appmods relays the person who installs or removes an app to that app's own Connection (ctx.call as: meta.caller; the registry limits it to connectors.connection.create and .delete, checkRelayTool): the person calling, not a module.
   "appmods:connectors.connection.create",
   "appmods:connectors.connection.delete",
+  // core/daemon/index.js wires the lent home's compute hook: module:vyred reads a member's spaces.compute.status (the tool allows vyred for { person } ≠ self; see onlyModules in spaces.compute.status).
+  "daemon:spaces.compute.status",
 ]);
 
 /** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */

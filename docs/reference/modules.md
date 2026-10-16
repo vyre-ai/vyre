@@ -158,7 +158,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [29](tools.md#appmods)
+- Tools: [29](tools.md#appmods), 10 of them only for other modules
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
@@ -619,7 +619,7 @@ The person's own AI, connected: Claude Code or Codex on a computer of theirs, th
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [71](tools.md#memory), 2 of them only for other modules
+- Tools: [71](tools.md#memory), 4 of them only for other modules
 - Emits: [17 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"sealDetect":true}`
@@ -754,7 +754,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/previews`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [23](tools.md#previews)
+- Tools: [23](tools.md#previews), 4 of them only for other modules
 - Emits: [6 events](events.md#previews)
 - Shows on: cli
 - Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`
