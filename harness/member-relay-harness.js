@@ -2,17 +2,17 @@
 // Shared live-daemon setup for person-relay isolation tests (agent-agnostic fake session adapters).
 import fs from "node:fs";
 import path from "node:path";
-import { start } from "../daemon/index.js";
-import { asOwner, tempHome, present } from "../../test/helpers.js";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { start } from "../core/daemon/index.js";
+import { asOwner, tempHome, present } from "../test/helpers.js";
+import { SCRATCH } from "../test/scratch.mjs";
 import {
   applyFakeSessionProvider,
   ensureFakeSessionProvider,
   ensureMemberLoginAccounts,
   FAKE_SESSION_PROVIDERS,
   threadStartProviderFields,
-} from "../sessions/testing/fake-agent-harness.js";
-import { RECALL_LIVE_CONFIG, hookRecallTestEmbedder } from "../sessions/testing/recall-live.js";
+} from "../core/sessions/testing/fake-agent-harness.js";
+import { RECALL_LIVE_CONFIG, hookRecallTestEmbedder } from "../core/sessions/testing/recall-live.js";
 
 export { FAKE_SESSION_PROVIDERS };
 

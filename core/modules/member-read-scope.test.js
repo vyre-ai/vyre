@@ -18,7 +18,7 @@ import {
   twoMembers,
   scratchWork,
   tokenMeta,
-} from "../person-scope/member-relay-harness.js";
+} from "../../harness/member-relay-harness.js";
 import {
   ensureFakeSessionProvider,
   threadStartProviderFields,
@@ -37,7 +37,7 @@ import {
   seedPersonalSkill,
   seedRecallSession,
   seedVaultMeName,
-} from "../../lib/member-read-scope-seed.js";
+} from "../../test/member-read-scope-seed.js";
 
 process.env.VYRE_KERNEL ??= "1";
 process.env.VYRE_SEAL_DEV = "1";

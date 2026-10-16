@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeTranscripts } from "../../test/fixtures/corpus.js";
 import { composerPersonRelayTargets, listAllPersonRelayEntryPoints, listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
-import { CAROL, BOB, relayDaemon, twoMembers, groupChat, scratchWork, tokenMeta, FAKE_SESSION_PROVIDERS } from "./member-relay-harness.js";
+import { CAROL, BOB, relayDaemon, twoMembers, groupChat, scratchWork, tokenMeta, FAKE_SESSION_PROVIDERS } from "../../harness/member-relay-harness.js";
 import { threadStartProviderFields } from "../sessions/testing/fake-agent-harness.js";
 import { indexCorpusTranscripts } from "../sessions/testing/recall-live.js";
 

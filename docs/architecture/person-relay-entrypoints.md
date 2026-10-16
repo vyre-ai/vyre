@@ -34,7 +34,7 @@ Live isolation tests (parametrized over **claude**, **grok**, **codex**):
 - [`core/person-scope/member-relay-entrypoints.test.js`](../../core/person-scope/member-relay-entrypoints.test.js)
 - [`core/switchboard/composer-slash-member-live.test.js`](../../core/switchboard/composer-slash-member-live.test.js)
 
-Harness: [`core/person-scope/member-relay-harness.js`](../../core/person-scope/member-relay-harness.js). `/find` live cases boot recall via [`core/sessions/testing/recall-live.js`](../../core/sessions/testing/recall-live.js) (Node **22.16+** for FTS5 in `node:sqlite`).
+Harness: [`harness/member-relay-harness.js`](../../harness/member-relay-harness.js). `/find` live cases boot recall via [`core/sessions/testing/recall-live.js`](../../core/sessions/testing/recall-live.js) (Node **22.16+** for FTS5 in `node:sqlite`).
 
 ## Primary surfaces
 

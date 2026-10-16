@@ -8,13 +8,14 @@
 
 import { randomBytes } from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
+import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { commandOk, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 
 const OPEN = Object.freeze(["cli", "local", "deck", "capsule", "device", "mcp", "harness"]);
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
-const ROLES = new Set(["owner", "admin", "member", "guest", "temp"]);
+const ROLES = new Set([...ROLE_IDS, "guest"]);
 const VAULT_SPACE = /^spc_[a-z2-7]{8,}$/;
 const TEST_SPACE = /^spc_test_[a-z0-9_-]{1,40}$/;
 

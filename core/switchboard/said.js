@@ -6,22 +6,12 @@
 // module's call never reach this file (the caller check is in personTurn).
 
 import crypto from "node:crypto";
-import { isPerson } from "../../lib/caller.js";
+import { personTurn } from "../../lib/caller.js";
+
+export { personTurn };
 
 /** Most mentions one turn can carry. */
 export const MAX_MENTIONS = 8;
-
-/**
- * A caller that is the person at their own surface: lib/caller's isPerson (cli, local, deck,
- * capsule, the owner's device over the tailnet; never an agent or thread label, a bare mcp,
- * harness, hook or guest) or the box's link. Labels are matched whole, never by prefix.
- * @param {unknown} caller
- */
-export function personTurn(caller) {
-  const c = String(caller || "");
-  if (isPerson(c)) return true;
-  return /^link:[^\s:]+$/.test(c);
-}
 
 /**
  * The names a turn mentions, in order, once each: `#Name` or `#"Name with spaces"`, only after the

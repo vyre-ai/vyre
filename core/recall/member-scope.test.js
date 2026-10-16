@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeTranscripts, SESSIONS, HOME } from "../../test/fixtures/corpus.js";
 import { listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
-import { CAROL, BOB, relayDaemon, twoMembers, scratchWork, tokenMeta } from "../person-scope/member-relay-harness.js";
+import { CAROL, BOB, relayDaemon, twoMembers, scratchWork, tokenMeta } from "../../harness/member-relay-harness.js";
 import { threadStartProviderFields, ensureMemberLoginAccounts } from "../sessions/testing/fake-agent-harness.js";
 import { indexCorpusTranscripts, recallFts5Available } from "../sessions/testing/recall-live.js";
 
