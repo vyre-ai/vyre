@@ -271,6 +271,11 @@ export const PLUMBING = Object.freeze(new Set([
  * The drift test fails for an outward tool on MEMBER_MAY that is not a key here, and for a key here that is not an outward tool on MEMBER_MAY.
  * @type {Readonly<Record<string, string>>}
  */
+/**
+ * Owner-scoped group tools (GROUP_OF, group not in SCOPED_GROUPS) that a member's named agent may pass the member door for. Each must be outward or ask-first and is held at the Gate as that member, never run as the owner. Every other tool in those groups stays door-refused for a member's agent.
+ */
+export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send"]));
+
 export const MEMBER_OUTWARD = Object.freeze({
   "files.linked.link": "the owner's yes: a link points the Space at a folder at a source, and the assistant's request lands as a held card in the owner's approvals; her own call from her device needs only her.",
   "files.linked.write": "the owner's yes for an assistant's request, held like the Space Drive's; her own save from her device goes through as her, in her own account at the source.",

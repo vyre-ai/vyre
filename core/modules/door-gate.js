@@ -5,7 +5,7 @@
 // A server with no member but the owner has nobody to keep out, so nothing is gated there (asked on every call, nothing cached).
 // What a member may call depends on her role (k.roleTools): a Member has MEMBER_MAY, a Guest (kernel role `temp`) has the smaller GUEST_MAY, and a custom role (Member-based) adds the tool groups it turns on
 // (mail, calendar, documents, files, publish, computers, browser: TOOL_GROUPS in door-lists.js, each tool owner-only otherwise). An unknown tool, or a role this gate cannot read, is refused.
-import { MEMBER_MAY, PLUMBING, SELF_GATED, GROUP_OF, GUEST_MAY, SCOPED_GROUPS } from "./door-lists.js";
+import { MEMBER_MAY, PLUMBING, SELF_GATED, GROUP_OF, GUEST_MAY, SCOPED_GROUPS, MEMBER_NAMED_AGENT_GROUP } from "./door-lists.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
 import { WEB_REACH } from "./agent-reach.js";
 
@@ -114,7 +114,7 @@ export function createDoorGate(k) {
     const r = await roleFor(j.actor);
     if (roleMay(tool, r)) return null;
     const scoped = k.scopedGroups || SCOPED_GROUPS;
-    if (provenNamedAgent(caller, meta) && group && !scoped.includes(group)) return null;
+    if (provenNamedAgent(caller, meta) && group && !scoped.includes(group) && MEMBER_NAMED_AGENT_GROUP.has(tool)) return null;
     return { error: { code: "denied", message: group ? refusal(tool) : guestRefusal() } };
   };
   /** The test a tool list is cut by for this caller: null when the caller is not a member (the whole list), else whether a tool shows. @param {string} caller @param {any} meta */
