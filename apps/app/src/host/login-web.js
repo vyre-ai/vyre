@@ -20,7 +20,13 @@ const enc = new TextEncoder();
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
 
-/** A server-supplied KDF is refused outside the floor and ceiling. @param {any} kdf */
+/**
+ * A server-supplied KDF is refused outside the floor and ceiling. Why the floor is where it is for 0.5.3: a new device has nothing to compare a server's answer with, so a hostile server can push it
+ * down to the floor, and the record it then hands back is only worth anything to that server if the person's password opens it, so the harm is cheaper offline guessing at the floor's cost (19 MiB, 2 passes: a
+ * second or less on a phone), not a way in. Records are made at the full cost (LOGIN_KDF) and a device that already knows a space keeps what it was made with. Raising the floor would make slow phones
+ * fail a legitimate older record; lowering it would let a hostile server pay almost nothing per guess. A device that remembers the cost of a space it has signed in to, and refuses less next time, is the next step.
+ * @param {any} kdf
+ */
 export function acceptKdf(kdf) {
   const k = kdf && typeof kdf === "object" ? kdf : {};
   const ok = Number.isInteger(k.memoryKiB) && Number.isInteger(k.passes) && k.lanes === 1 && k.tagLength === 32
