@@ -3,9 +3,8 @@
 // A computer that is not a server has no space address to sign in to, so nothing listens there. Records live in identity/logins.json, 0600.
 
 import crypto from "node:crypto";
-import path from "node:path";
 import { hostedOrigins, isServer } from "../config/index.js";
-import { readJson, writePrivate } from "../../kernel/identity/files.js";
+import { createLoginStore } from "./login-store.js";
 import { createLoginService } from "../../kernel/identity/space-login.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { assertPublishedKey } from "../../lib/identity/published-key.js";
@@ -16,12 +15,12 @@ import { listen } from "./login-listener.js";
 export async function loginHandle(q, svc, source) {
   const op = String(q && q.op || "");
   if (op === "begin") { const r = svc.begin(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 400) : 200, body: r }; }
-  if (op === "finish") { const r = svc.finish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
+  if (op === "finish") { const r = await svc.finish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
   if (op === "register") {
     try { return { status: 200, body: await svc.register(/** @type {any} */ (q)) }; }
     catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
   }
-  if (op === "github") { const r = svc.githubFinish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
+  if (op === "github") { const r = await svc.githubFinish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
   if (op === "link-github") {
     try { return { status: 200, body: await svc.linkGithub(/** @type {any} */ (q)) }; }
     catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
@@ -33,14 +32,17 @@ export async function loginHandle(q, svc, source) {
 export async function startLogin(ctx, seam = {}) {
   const cfg = ctx.config || {};
   if (!isServer(cfg.machine) || typeof cfg.name !== "string" || !cfg.name) return { async stop() {} };
-  const file = path.join(ctx.paths.root, "identity", "logins.json");
-  const store = {
-    get: (/** @type {string} */ k) => { const all = readJson(file); return all ? all[k] : undefined; },
-    set: (/** @type {string} */ k, /** @type {any} */ v) => { const all = readJson(file) || {}; all[k] = v; writePrivate(file, JSON.stringify(all) + "\n"); },
-  };
+  const store = createLoginStore(ctx.paths.root);
   const rawDir = cfg.names && cfg.names.directory;
   const dir = seam.directory || idDirectory({ ...(typeof rawDir === "string" && /^https?:\/\//.test(rawDir) ? { base: rawDir } : {}), seen: memorySeen() });
+  const roleOf = async (/** @type {string} */ person) => {
+    const k = ctx.kernel;
+    if (!k) return "member";
+    if (typeof k.owner === "string" && k.owner === person) return "owner";
+    try { const m = await k.membership(person, k.space); return m && typeof m.role === "string" ? m.role : "member"; } catch { return "member"; }
+  };
   const svc = createLoginService({
+    describe: async (_username, rec) => { const role = await roleOf(String(rec.person)); return { role, spaces: [{ id: String((ctx.kernel && ctx.kernel.space) || ""), name: String(cfg.name), role, server: `https://${cfg.name}.vyre.run` }] }; },
     space: String(cfg.name), store, relayPub: cfg.github && typeof cfg.github.assertKey === "string" ? cfg.github.assertKey : "",
     verifyIdentity: async (person, pub) => { try { await assertPublishedKey(dir, person, pub, { fullDevice: true }); return true; } catch { return false; } },
     isMember: async (_username, person) => {

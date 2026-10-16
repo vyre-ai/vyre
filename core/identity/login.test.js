@@ -66,6 +66,8 @@ test("a page signs in over the listener: register, begin, derive on the device, 
   const fin = await b.post({ op: "finish", username: "alex", challenge: begin.body.challenge, sig: d.sign(loginMessage("juniper", "alex", begin.body.challenge)), device: { label: "Aina's phone" } });
   assert.equal(fin.status, 200, JSON.stringify(fin.body));
   assert.deepEqual(aesUnwrap(d.K, fin.body.bundle.passwordWrap, "vyre:master:password:v1"), rk);
+  assert.equal(fin.body.role, "owner", "the reply names the role, so the signed-in row is real");
+  assert.deepEqual(fin.body.spaces, [{ id: "spc_aaaaaaaaaa", name: "juniper", role: "owner", server: "https://juniper.vyre.run" }]);
   assert.equal(b.events.length, 1);
   assert.equal(b.events[0][0], "signin.new-device");
   assert.match(b.events[0][1].device, /^[A-Za-z0-9_-]{16}$/);

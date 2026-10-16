@@ -52,7 +52,7 @@ async function signIn(r, username, password, address = "203.0.113.5", kdf = TEST
   if (b.error) return b;
   const d = deriveLogin(password, b.salt, kdf);
   const sig = d.sign(loginMessage(SPACE, username, b.challenge));
-  return { ...r.svc.finish({ username, challenge: b.challenge, sig, device: { label: "Aina's laptop" } }, address), K: d.K, challenge: b.challenge, sig };
+  return { ...(await r.svc.finish({ username, challenge: b.challenge, sig, device: { label: "Aina's laptop" } }, address)), K: d.K, challenge: b.challenge, sig };
 }
 
 test("the right password gets the record, opens it with K, and the server never held K", async () => {
@@ -80,17 +80,17 @@ test("a wrong password, an unknown name and a replayed or expired challenge all 
   // replay: the same signed challenge twice
   const first = await signIn(r, "alex", PASSWORD, "203.0.113.9");
   assert.equal(first.ok, true);
-  const again = r.svc.finish({ username: "alex", challenge: first.challenge, sig: first.sig }, "203.0.113.9");
+  const again = await r.svc.finish({ username: "alex", challenge: first.challenge, sig: first.sig }, "203.0.113.9");
   assert.deepEqual(again.error, wrong.error);
   // expiry
   const b = r.svc.begin({ username: "alex" }, "203.0.113.10");
   const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
   r.clock.t += 61_000;
-  assert.deepEqual(r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)) }, "203.0.113.10").error, wrong.error);
+  assert.deepEqual((await r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)) }, "203.0.113.10")).error, wrong.error);
   // a signature for another space does not log in here
   const c = r.svc.begin({ username: "alex" }, "203.0.113.11");
   const e = deriveLogin(PASSWORD, c.salt, TEST_KDF);
-  assert.deepEqual(r.svc.finish({ username: "alex", challenge: c.challenge, sig: e.sign(loginMessage("other", "alex", c.challenge)) }, "203.0.113.11").error, wrong.error);
+  assert.deepEqual((await r.svc.finish({ username: "alex", challenge: c.challenge, sig: e.sign(loginMessage("other", "alex", c.challenge)) }, "203.0.113.11")).error, wrong.error);
 });
 
 test("a username is locked out after five misses, an address after twenty tries, and the lockout ends", async () => {
@@ -161,7 +161,7 @@ test("GitHub sign-in: linked only by the relay's assertion plus the identity's s
     return r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "4242", ts)), assertion: a, ...o });
   };
   // not linked yet: a good assertion signs in as nobody
-  assert.deepEqual(r.svc.githubFinish({ assertion: assertion({}, r.clock.t) }, "203.0.113.30").error.code, "bad_login");
+  assert.deepEqual((await r.svc.githubFinish({ assertion: assertion({}, r.clock.t) }, "203.0.113.30")).error.code, "bad_login");
   // the assertion alone does not link, the signature alone does not link, and neither does a forged or foreign one
   await assert.rejects(() => link({ sig: r.idKey.sign(Buffer.from("no")) }), (/** @type {any} */ e) => e.code === "denied");
   await assert.rejects(() => link({ assertion: assertion({ key: identityKey() }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "not the relay's key");
@@ -171,15 +171,15 @@ test("GitHub sign-in: linked only by the relay's assertion plus the identity's s
   await assert.rejects(() => link({ person: "per_" + "b".repeat(26) }), (/** @type {any} */ e) => e.code === "denied", "someone else's username");
   assert.equal((await link()).ok, true);
   // now the same GitHub account signs in, and gets the record and the salt to open it with the password
-  const got = r.svc.githubFinish({ assertion: assertion({}, r.clock.t), device: { label: "Aina's phone" } }, "203.0.113.31");
+  const got = await r.svc.githubFinish({ assertion: assertion({}, r.clock.t), device: { label: "Aina's phone" } }, "203.0.113.31");
   assert.equal(got.ok, true);
   assert.equal(got.salt, r.salt);
   assert.ok(got.bundle && got.session);
   assert.equal(r.events.length, 1);
   // another GitHub account, a forged assertion and another space's all get the same answer
-  const none = r.svc.githubFinish({ assertion: assertion({ id: "999" }, r.clock.t) }, "203.0.113.32");
-  assert.deepEqual(none.error, r.svc.githubFinish({ assertion: assertion({ key: identityKey() }, r.clock.t) }, "203.0.113.33").error);
-  assert.deepEqual(none.error, r.svc.githubFinish({ assertion: assertion({ space: "other" }, r.clock.t) }, "203.0.113.34").error);
+  const none = await r.svc.githubFinish({ assertion: assertion({ id: "999" }, r.clock.t) }, "203.0.113.32");
+  assert.deepEqual(none.error, (await r.svc.githubFinish({ assertion: assertion({ key: identityKey() }, r.clock.t) }, "203.0.113.33")).error);
+  assert.deepEqual(none.error, (await r.svc.githubFinish({ assertion: assertion({ space: "other" }, r.clock.t) }, "203.0.113.34")).error);
   // one username, one GitHub account; one GitHub account, one username
   await assert.rejects(() => r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts: r.clock.t, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "5555", r.clock.t)), assertion: assertion({ id: "5555" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied" && /different GitHub/.test(e.message));
 });

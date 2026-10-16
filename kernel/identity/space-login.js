@@ -139,7 +139,7 @@ export async function buildRegistration(o) {
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
  * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
- *   relayPub?: string, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
+ *   relayPub?: string, describe?: (username: string, rec: any) => Promise<Record<string, any>> | Record<string, any>, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
   const now = o.now || Date.now;
@@ -171,7 +171,7 @@ export function createLoginService(o) {
       return { salt: rec ? rec.salt : fakeSalt(username), kdf: { ...LOGIN_KDF }, challenge, expires: now() + CHALLENGE_TTL_MS };
     },
     /** Step 2. A challenge is spent the first time it is seen, right or wrong. Every failure is the same answer. */
-    finish(/** @type {{ username?: string, challenge?: string, sig?: string, device?: { label?: string } }} */ input, /** @type {string} */ address) {
+    async finish(/** @type {{ username?: string, challenge?: string, sig?: string, device?: { label?: string } }} */ input, /** @type {string} */ address) {
       const username = String(input && input.username || "").trim().toLowerCase();
       const wait = limited(username, address);
       if (wait) return tooMany(wait);
@@ -194,7 +194,8 @@ export function createLoginService(o) {
       sessions.set(session, { username, exp: now() + SESSION_TTL_MS });
       const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
       try { o.onNewDevice && o.onNewDevice({ username, label, address, at: now() }); } catch { /* the notice failing never blocks the person */ }
-      return { ok: true, session, expires: now() + SESSION_TTL_MS, bundle: rec.bundle };
+      const more = o.describe ? await Promise.resolve(o.describe(username, rec)).catch(() => ({})) : {};
+      return { ok: true, session, expires: now() + SESSION_TTL_MS, bundle: rec.bundle, ...more };
     },
     /**
      * Set or replace a username's record. The identity key signs it; the person must be a member of this space and the key must be one the person has published. A replace needs the same.
@@ -219,7 +220,7 @@ export function createLoginService(o) {
      * Every failure is the same answer as a wrong password.
      * @param {{ assertion?: string, device?: { label?: string } }} input @param {string} address
      */
-    githubFinish(input, address) {
+    async githubFinish(input, address) {
       const wait = Math.max(lim.wait(`a:${address}`, PER_ADDR, WINDOW), 0);
       if (wait) return tooMany(wait);
       sweep();
@@ -232,7 +233,8 @@ export function createLoginService(o) {
       sessions.set(session, { username: String(username), exp: now() + SESSION_TTL_MS });
       const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
       try { o.onNewDevice && o.onNewDevice({ username: String(username), label, address, at: now() }); } catch { /* best effort */ }
-      return { ok: true, session, expires: now() + SESSION_TTL_MS, salt: rec.salt, kdf: { ...LOGIN_KDF }, bundle: rec.bundle };
+      const more = o.describe ? await Promise.resolve(o.describe(String(username), rec)).catch(() => ({})) : {};
+      return { ok: true, session, expires: now() + SESSION_TTL_MS, salt: rec.salt, kdf: { ...LOGIN_KDF }, bundle: rec.bundle, ...more };
     },
     /**
      * Link a GitHub account to a username here. Both proofs are needed: the relay's assertion that GitHub confirmed the id at a real OAuth callback, and the identity's signature that the person wants it.
