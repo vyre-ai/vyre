@@ -472,6 +472,15 @@ export function createRunner(o) {
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
     async fence(session) { const h = live.get(session); if (!h || h.released) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    /** The lease is not open and the workspace key is off the filesystem (including after lock-pending retries). */
+    async whenSecured(timeoutMs = 120_000) {
+      const t0 = now();
+      while (now() - t0 < timeoutMs) {
+        if (lease.state !== "open" && !driver.isMounted(dir)) return;
+        await sleep(50);
+      }
+      throw Object.assign(new Error("the workspace did not finish locking"), { code: "timeout" });
+    },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },
