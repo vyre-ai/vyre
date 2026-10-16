@@ -112,7 +112,7 @@ export function createLentHome(o) {
       return st;
     } catch { computeActive.set(person, false); return null; }
   };
-  const sessionCap = (/** @type {string} */ person) => maxSessionsPerPerson.get(person) ?? COMPUTE_TERMS_DEFAULT.maxSessions;
+  const sessionCap = (/** @type {string} */ person) => (o.compute ? (maxSessionsPerPerson.get(person) ?? COMPUTE_TERMS_DEFAULT.maxSessions) : Number.POSITIVE_INFINITY);
   const underSessionCap = (/** @type {string} */ person, /** @type {string} */ device, /** @type {string} */ session) =>
     countMacSessions(book.all(), person, device, session) < sessionCap(person);
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
@@ -251,7 +251,7 @@ export function createLentHome(o) {
       if (i && typeof i.device_key === "string" && i.device_key.length <= 200 && a && a.memberAccepts) keys.set(w.device, i.device_key);
       await refreshComputeFor(w.person);
       const computeOn = o.compute ? computeActive.get(w.person) !== false : true;
-      return { spaceAllows: Boolean(a && a.spaceAllows) && computeOn, memberAccepts: Boolean(a && a.memberAccepts) && computeOn, lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null, maxSessions: sessionCap(w.person) };
+      return { spaceAllows: Boolean(a && a.spaceAllows) && computeOn, memberAccepts: Boolean(a && a.memberAccepts) && computeOn, lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null, ...(o.compute ? { maxSessions: sessionCap(w.person) } : {}) };
     },
     /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string, cap?: "provider" | "internet" | null, chat?: string }} i */
     async start(chain, i) {
@@ -269,7 +269,7 @@ export function createLentHome(o) {
       const asked = pipes.pending(String(i.session), w.device);
       if (asked) {
         const prov = lentProcessProvider(asked.command);
-        spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(prov ? { provider: prov } : {}), ...(asked.folder ? { folder: asked.folder } : {}) };
+        spec = { ...spec, ...(prov ? { command: asked.command, provider: prov } : {}), args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(asked.folder ? { folder: asked.folder } : {}) };
       }
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
