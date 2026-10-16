@@ -28,7 +28,8 @@ if (!process.env.VYRE_HOME || !process.env.VYRE_HOME.startsWith(String(process.e
   process.exit(2);
 }
 
-const START_TIMEOUT_MS = 5000;
+// CI runners are often loaded; a module that barely finishes on a laptop can time out there and the reference pages drift (docs-check).
+const START_TIMEOUT_MS = 20_000;
 const blocked = [];
 const refuse = what => (...args) => { blocked.push(`${what} ${String(args[0]).slice(0, 60)}`); throw new Error(`docs harvest: ${what} is not allowed`); };
 for (const fn of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) {
