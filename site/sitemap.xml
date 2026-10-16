@@ -462,6 +462,16 @@
   </url>
   <url>
     <loc>https://vyre.run/docs/using/vault</loc>
+    <lastmod>2026-10-15</lastmod>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/docs/using/master-password</loc>
+    <lastmod>2026-10-15</lastmod>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://vyre.run/docs/adr/0054-master-password-and-space-vault</loc>
     <lastmod>2026-10-14</lastmod>
     <priority>0.4</priority>
   </url>

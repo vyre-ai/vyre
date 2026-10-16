@@ -21,6 +21,7 @@ import {
   passwordKdf, clampKdf, ARGON2, AUK_SCRYPT, MIN_PASSWORD,
 } from "./crypto.js";
 import { keystore, defaultKind, secretKeyStore } from "./keys.js";
+import { deviceKey, AGENT_VK, vkAad } from "./master-root.js";
 import { isRealHome } from "../config/dialogs.js";
 import {
   ensureDir, writeSealed, readSealed, removeSealed, promoteSealed, stagedIds, STAGED, writeJsonFile, readJsonFile,
@@ -208,9 +209,7 @@ const TOUCHID = "touchid.json";
 const THROTTLE = "unlock-throttle.json";
 /** The same count for the recovery secret: a stolen or guessed kit gets the same few tries a password does. */
 const RESET_THROTTLE = "reset-throttle.json";
-const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
-const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
 /** The label the recovery wrap of the personal vault key carries, so it opens only as the recovery wrap. */
 const recoveryAad = (kv, acct) => `${vkAad(PERSONAL, kv, acct)}:recovery`;
 const locked = message => Object.assign(new Error(message), { code: "locked" });
@@ -432,15 +431,7 @@ export class Vault {
       if (process.env.NODE_TEST_CONTEXT) throw new Error("under tests the keychain keystore needs vault.keychain (a temporary keychain file)");
       throw new Error("the login keychain is only for ~/.vyre: set vault.keystore to file, or vault.keychain to true to use it for this home");
     }
-    let raw;
-    if (await this.keys.exists()) {
-      raw = await this.keys.load();
-      if (!raw) throw locked("the vault is locked · vyre vault unlock");
-    } else {
-      if (this.kind === "passphrase") throw locked("the vault has no passphrase yet · vyre vault unlock sets one");
-      raw = await this.keys.create();
-      this.log(`vault key created in the ${this.kind} keystore`);
-    }
+    const raw = await deviceKey(this);
     const vk = this.adopt(raw);
     await this.sealRelayRules();
     return vk;

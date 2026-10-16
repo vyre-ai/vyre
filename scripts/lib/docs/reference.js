@@ -265,6 +265,7 @@ const ENV_MEANING = {
   WRAPPER: "Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`.",
   TEST_DIALOGS: "`1`: allow dialogs under tests, for a person at the machine running one test on purpose.",
   TEST_HOSTED: "`1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`.",
+  TEST_MASTER_KDF: "`cheap`: the identity tools use a tiny Argon2id for tests. Production always uses the master-password parameters. A tool never accepts this from its input.",
   TEST_REAL_TAILSCALE: "`1`: let a test use the real tailscale binary.",
 };
 

@@ -22,6 +22,9 @@
 import crypto from "node:crypto";
 import { checkFixedHeaders } from "../../records/connectors/format.js";
 import { isPublicAddress } from "../../lib/netguard.js";
+import { hostAllowed } from "../../lib/vault-hosts.js";
+
+export { hostAllowed };
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
@@ -389,24 +392,6 @@ export function classify(method, pathAndQuery, endpoints) {
 
 /** Whether a resolved address may never be an api-credential's target, whichever family it is. */
 export function addressBlocked(ip) { return !isPublicAddress(ip); }
-
-/**
- * Whether a host name matches one entry in an allowlist: exact, or one leading "*." wildcard
- * matching exactly one label ("*.googleapis.com" matches "gmail.googleapis.com", never
- * "a.gmail.googleapis.com" and never a bare suffix a longer, unrelated name could satisfy).
- * @param {string} host @param {string[]} hosts
- */
-export function hostAllowed(host, hosts) {
-  const h = host.toLowerCase();
-  return hosts.some(entry => {
-    if (!entry.startsWith("*.")) return entry === h;
-    const suffix = entry.slice(1); // ".googleapis.com"
-    if (!h.endsWith(suffix)) return false;
-    const label = h.slice(0, h.length - suffix.length);
-    // Exactly one label, and a real hostname label: no "*", "_", space or other character a name server would treat specially.
-    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label);
-  });
-}
 
 /**
  * The full check before `vault.request` ever connects: a valid https url, on an allowed host,

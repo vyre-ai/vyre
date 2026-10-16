@@ -1929,6 +1929,14 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
   },
+  "vault.space.attention": {
+   "module": "vault",
+   "reason": "read-only: titles of space vault rotations that failed and will be retried, never a key; callers list in code (local, deck, capsule, module)"
+  },
+  "vault.space.use": {
+   "module": "vault",
+   "reason": "scope check: the server-held wrap puts the value into the outbound request and scrubs it from the response, so the caller gets the result and never the value; callers list in code (cli, local, deck, capsule, module, mcp, harness)"
+  },
   "vault.ssh.add": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"

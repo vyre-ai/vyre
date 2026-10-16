@@ -22,6 +22,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { keyId } from "../../lib/identity/directory.js";
 import * as C from "../../kernel/identity/chain.js";
+import { signingDer, agreeScalar, keyObjectFromDer } from "../../kernel/identity/holder.js";
+
+const locked = () => Object.assign(new Error("This identity is locked. Enter your master password on this device to unlock it."), { code: "locked" });
 
 const b64u = (/** @type {Uint8Array|Buffer} */ b) => Buffer.from(b).toString("base64url");
 export const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
@@ -106,15 +109,26 @@ export function fileIdentityStore(dir) {
     async sign(/** @type {Buffer} */ message) {
       const r = read();
       if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
-      return crypto.sign(null, message, privateKeyOf(r.privateKey));
+      const key = r.privateKey ? privateKeyOf(r.privateKey) : (() => { const der = signingDer(file); return der ? keyObjectFromDer(der) : null; })();
+      if (!key) throw locked();
+      return crypto.sign(null, message, key);
     },
     /** The key-agreement point this device keeps (its own `agree`), or null for an identity made before the key existed. */
-    agree() { const r = read(); return r && r.agreePrivate ? agreePoint(r.agreePrivate) : null; },
+    agree() {
+      const r = read();
+      if (!r) return null;
+      if (r.agreePrivate) return agreePoint(r.agreePrivate);
+      const held = agreeScalar(file);
+      return held ? agreePoint(b64u(held)) : null;
+    },
     /** Make this device's key-agreement key if it has none (the migration of an identity made before it); returns the point. The private scalar never leaves the store. */
     ensureAgree() {
       const r = read();
       if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
       if (r.agreePrivate) return agreePoint(r.agreePrivate);
+      const held = agreeScalar(file);
+      if (held) return agreePoint(b64u(held));
+      if (r.sealed) throw locked();
       const k = newAgreeKey();
       write({ ...r, agreePrivate: k.agreePrivate });
       return k.agree;
@@ -122,9 +136,11 @@ export function fileIdentityStore(dir) {
     /** ECDH with this device's agreement key: the raw 32-byte shared secret for a peer's ephemeral public point (65-byte uncompressed P-256). Only the secret leaves, never the private scalar. */
     ecdh(/** @type {Buffer|Uint8Array} */ epk) {
       const r = read();
-      if (!r || !r.agreePrivate) throw Object.assign(new Error("this device has no agreement key yet: ask the person to finish setting this device up"), { code: "no_agree_key" });
+      const scalar = r && r.agreePrivate ? Buffer.from(r.agreePrivate, "base64url") : r ? agreeScalar(file) : null;
+      if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
+      if (!scalar) throw (r.sealed ? locked() : Object.assign(new Error("this device has no agreement key yet: ask the person to finish setting this device up"), { code: "no_agree_key" }));
       const e = crypto.createECDH("prime256v1");
-      e.setPrivateKey(Buffer.from(r.agreePrivate, "base64url"));
+      e.setPrivateKey(scalar);
       try { return e.computeSecret(Buffer.from(epk)); } catch { throw Object.assign(new Error("not a P-256 point"), { code: "bad_point" }); }
     },
     ops() { const r = read(); return r && Array.isArray(r.ops) ? r.ops : []; },

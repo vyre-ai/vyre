@@ -37,11 +37,11 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
+import { scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
 
-/** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 // wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
@@ -661,7 +661,7 @@ const RELAY_ALLOWED = Object.freeze({
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
-  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"], identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; identity.vault.install installs the held key
 });
 
 export class Registry {
@@ -1147,11 +1147,11 @@ export class Registry {
       // that module's tools.
       store: this.routedStore(m, db, () => homeKernel),
       // A function for built in callers, with the levels module API 1 names (ADR 0047 section 3).
-      log: Object.assign((msg, extra) => log(`[${m.name}] ${msg}`, extra), {
-        info: (msg, extra) => log(`[${m.name}] ${msg}`, extra),
-        warn: (msg, extra) => log(`warn: [${m.name}] ${msg}`, extra),
-        error: (msg, extra) => log(`error: [${m.name}] ${msg}`, extra),
-        debug: (msg, extra) => log(`debug: [${m.name}] ${msg}`, extra),
+      log: Object.assign((msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)), {
+        info: (msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)),
+        warn: (msg, extra) => log(redactLog(`warn: [${m.name}] ${msg}`), redactExtra(extra)),
+        error: (msg, extra) => log(redactLog(`error: [${m.name}] ${msg}`), redactExtra(extra)),
+        debug: (msg, extra) => log(redactLog(`debug: [${m.name}] ${msg}`), redactExtra(extra)),
       }),
       events: {
         emit: (type, payload, where) => {
@@ -1403,7 +1403,7 @@ export class Registry {
         const effect = effectOf(name, declaredEffect, reach);
         // the once-only default: a state-changing tool open to anyone that declares no callers list is the person's surfaces and modules, with the original caller checked on a module hop
         const defaulted = reach === "anyone" && !Array.isArray(def.callers) && effect === "write" && !def.hook && !def.internal;
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
+        this.tools.set(name, { name, module: m.name, description: def.description || "", input: def.input || { type: "object" }, output: def.output || null, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
           internal: Boolean(def.internal) || reach === "modules",
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
@@ -1895,15 +1895,15 @@ export class Registry {
 
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
-    // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await runInTurn(meta, () => def.run(input, meta), Boolean(def.crossSpace)) }; }
-    catch (e) {
-      // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
-      // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".
-      const err = /** @type {any} */ (e);
-      const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
-      return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
-    }
+    const armed = armSecrets(meta && meta.caller, input, def, meta);
+    try {
+      try { return scrubVaultResult(meta && meta.caller, def && def.name, { data: await runInTurn(meta, () => def.run(input, meta), Boolean(def.crossSpace)) }, input, def); }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
+        return scrubVaultResult(meta && meta.caller, def && def.name, { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } }, input, def);
+      }
+    } finally { disarmSecrets(armed); }
   }
 
   /**

@@ -186,6 +186,7 @@ export function acpProvider(entry) {
   return {
     id: entry.id,
     driver: "acp",
+    command: path.basename(String(entry.bin || entry.id)),
     capabilities: { streaming: true, resume: true, interrupt: true, modes: true, steering: false, usage: "coarse", ...(entry.capabilities || {}) },
     /** @param {any} o */
     run(o) { return runAcp(entry, known, o); },

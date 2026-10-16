@@ -641,6 +641,10 @@
    "class": "own",
    "why": "locking is always allowed"
   },
+  "vault.space.use": {
+   "class": "own",
+   "why": "the session's own outbound request: the server wrap places the item on it, and the response is redacted so the session never receives the value"
+  },
   "vault.ssh.generate": {
    "class": "review",
    "why": "a plain session stores a new SSH key in the vault with no presence: vault owner to hold it or list why"

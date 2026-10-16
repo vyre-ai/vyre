@@ -74,7 +74,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.create", "effect": "write",
+    "name": "spaces.create", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -294,7 +294,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.devices.enrol", "effect": "write",
+    "name": "spaces.devices.enrol", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -350,11 +350,11 @@
     "reach": "person"
    },
    {
-    "name": "spaces.members.set-role", "effect": "write",
+    "name": "spaces.members.set-role", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.remove", "effect": "write",
+    "name": "spaces.members.remove", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -363,6 +363,10 @@
    },
    {
     "name": "spaces.members.transfer", "outward": true, "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.owner.transfer", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -455,6 +459,10 @@
    },
    {
     "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.published-key",
     "reach": "modules"
    },
    {

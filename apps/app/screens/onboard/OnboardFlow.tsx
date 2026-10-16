@@ -5,6 +5,7 @@ import { MOCK } from "../../src/real/box";
 import { shellKind } from "../../src/shell/shell";
 import { SCREENS, resumeAt, route, stepLabels } from "./flow-model.js";
 import { hasServer, keptName } from "./has-server";
+import { CreateIdentity, MigrateIdentity, UnlockIdentity } from "../identity/IdentityMaster";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
 import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
@@ -32,6 +33,7 @@ function Start({ ctx, set, go }: ScreenProps) {
 const VIEWS: Record<string, (p: ScreenProps) => React.JSX.Element> = {
   start: Start,
   "id.choice": IdChoice, "id.signin": IdSignin, "id.approve": IdApprove, "id.recover": IdRecover, "id.new": IdNew, "id.kit": IdKit,
+  "id.master": CreateIdentity, "id.unlock": UnlockIdentity, "id.migrate": MigrateIdentity,
   "vault.intro": VaultIntro, "master.set": MasterSet, "master.confirm": MasterConfirm, "master.enter": MasterEnter,
   "inf.pick": InfPick, "inf.key": InfKey,
   "space.choice": SpaceChoice, "create.name": CreateName, "create.members": CreateMembers, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.setup": CreateSetup,
@@ -47,7 +49,7 @@ export function OnboardFlow() {
   const entry = Array.isArray(path) ? path[0] : path;
   // The first-run flow. A join link or "Add a space" opens at the Space step; the mock build opens on its setup screen; a real first run opens on Identity.
   // On a Mac or Windows shell this is a computer (it asks Compute); a phone or a browser is not.
-  const [stack, setStack] = useState<string[]>(entry === "join" ? ["space.choice", "join.code"] : entry === "create" ? ["space.choice", "create.name"] : MOCK ? ["start"] : ["id.choice"]);
+  const [stack, setStack] = useState<string[]>(entry === "join" ? ["space.choice", "join.code"] : entry === "create" ? ["space.choice", "create.name"] : entry === "unlock" ? ["id.unlock"] : entry === "migrate" ? ["id.migrate"] : entry === "identity" ? ["id.master"] : MOCK ? ["start"] : ["id.choice"]);
   const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: MOCK || shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
   // A new device with no server goes Identity, Space, Vault (the personal vault lives on a server): read once whether it has one, and flow-model.js route() orders the steps from that.

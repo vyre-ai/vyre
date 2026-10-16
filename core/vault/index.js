@@ -61,6 +61,9 @@ import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 import * as autobackup from "./autobackup.js";
+import { registerSpaceTools } from "./space-tools.js";
+import { installHeldKey } from "./master-root.js";
+import { pumpRetries } from "../../kernel/identity/space-vault.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -92,7 +95,11 @@ export default {
     // The vault is the owner's: every tool it registers is refused for a call made for any other person (core/vault/member-gate.js).
     const ctx = gateTools(ctx0);
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
-    if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+    if (coreHolder.link && typeof coreHolder.link.call === "function") {
+      const fwd = await startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+      registerSpaceTools(ctx);
+      return fwd;
+    }
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
@@ -108,6 +115,8 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    try { pumpRetries(path.join(ctx.paths.root, "identity", "space-vaults")); }
+    catch (e) { ctx.log(`vault: a space vault rotation is still waiting to retry: ${/** @type {Error} */ (e).message}`); }
     // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
     // The older credential scopes become grants once (agents start after the vault: until they answer it is tried again at the first model call).
     if (vault.access) vault.access.convertScopes(true).catch(e => ctx.log(`vault: credential scopes were not converted yet: ${/** @type {Error} */ (e).message}`));
@@ -535,6 +544,7 @@ export default {
     // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
+    internal("vault.master.install", "Install the held master key into this running vault. Drops any plaintext key file.", obj({}), () => installHeldKey(vault));
     const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
     // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
     agentFillTools.register({ ctx, vault, said, tool });
@@ -576,6 +586,8 @@ export default {
         // ask, so config is the person's standing answer (ADR 0028).
         breach: { enabled: opts.breach === "ask", fetch: httpFetch },
         connections: conns.connections });
+
+    registerSpaceTools(ctx);
 
     return {
       ssh: cli.ssh,

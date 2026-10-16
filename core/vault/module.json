@@ -188,7 +188,16 @@
       { "name": "vault.service.catalog", "reach": "modules" },
       { "name": "vault.provider.set", "effect": "write", "reach": "person" },
       { "name": "vault.provider.remove", "effect": "write", "reach": "person" },
-      { "name": "vault.provider.status", "effect": "read", "reach": "person" }
+      { "name": "vault.provider.status", "effect": "read", "reach": "person" },
+      { "name": "vault.master.install", "effect": "write", "reach": "modules" },
+      { "name": "vault.space.create", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.status", "effect": "read", "reach": "person" },
+      { "name": "vault.space.attention", "effect": "read", "reach": "anyone" },
+      { "name": "vault.space.grant", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.put", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.list", "effect": "read", "reach": "person" },
+      { "name": "vault.space.rotate", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.use", "effect": "write", "reach": "anyone" }
     ]
   },
   "mentions": [

@@ -34,7 +34,7 @@ import { acquire } from "./lock.js";
 import { canonical } from "../../lib/tool-names.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf, agentNames } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { registryRules } from "../harness/rules.js";
 // lib/, not core/relay/index.js: importing the module itself would be a new kernel -> feature
@@ -1039,7 +1039,7 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
 
 /**
  * Why a socket call for a person is refused, or null. The label is only a claim, so vyred asks the
- * kernel which process connected (core/daemon/peer.js). From under a `claude`, or under a process
+ * kernel which process connected (core/daemon/peer.js). From under an agent adapter, or under a process
  * vyred runs a thread in, it is a model's shell however it names itself: it is an agent caller,
  * refused silently, and no presence proof or session counts for it. So is a caller whose ancestry
  * vyred cannot read to the top -- unless it claims to be the Capsule and proves it another way
@@ -1056,7 +1056,7 @@ async function fromClaude(socket, registry, caller) {
 }
 
 /**
- * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
+ * What runs above the process on this socket: an agent adapter or one of vyred's threads (inside), an
  * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid). A caller claiming to
  * be the Capsule gets one more chance before "unknown": its own pinned code identity, checked and
  * cached once per connection (core/daemon/peer.js's verifiedCapsule).
@@ -1111,7 +1111,7 @@ export async function above(socket, registry, caller, deps = {}) {
   let looks = 0;
   const table = deps.processTable || processTable;
   const check = deps.insideClaude || insideClaude;
-  let result = await retryUnknown(() => check(pid, { threads, look: table({ fresh: looks++ > 0 }) }), 2, deps.delayMs);
+  let result = await retryUnknown(() => check(pid, { threads, look: table({ fresh: looks++ > 0 }), adapters: agentNames(registry.providers) }), 2, deps.delayMs);
   // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
   // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
   // the terminal list) is the one positive proof besides the walk's own.
@@ -1455,11 +1455,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   // RC-1: a model's label is built here from what was verified above, never passed through as the client sent it.
   if (!policy.caller && MODEL_LABEL.test(caller)) caller = /** @type {string} */ (modelLabel(caller, via));
-  // A plain model caller (Claude Code through Vyre's MCP, no verified thread or agent): who it is, from the kernel, for the threads tools that
-  // narrow it. Set here only, over anything a client could send: meta.peerSession "<claude pid>:<start>" and meta.peerCwd, null where unreadable.
+  // A plain model caller (an agent adapter through Vyre's MCP, no verified thread or agent): who it is, from the kernel, for the threads tools that
+  // narrow it. Set here only, over anything a client could send: meta.peerSession "<pid>:<start>" and meta.peerCwd, null where unreadable.
   if (socket && !via.thread && !via.agent && MODEL_LABEL.test(caller)) {
     const pid = await peerPid(req.socket).catch(() => null);
-    const who = pid ? peerIdentity(pid, processTable()) : { session: null, cwd: null };
+    const who = pid ? peerIdentity(pid, processTable(), process.platform, agentNames(registry.providers)) : { session: null, cwd: null };
     Object.assign(via, { peerSession: who.session, peerCwd: who.cwd });
   }
   // What a verified agent is really granted, from its stored row (agents.scope), never from

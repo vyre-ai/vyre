@@ -2,6 +2,38 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(identity): `identity.vault.install` puts the unlocked master key into the running vault at first run and returns the device's public key and, when a space is named, that space's published public key. The plaintext `vault/key` file is removed. A held key that does not open the vault is refused, and the open vault is left as it is. An agent cannot supply the key. See ADR 0054.
+- fix(identity): vault lending and session identity use one adapter set. Built-in Claude and every process-backed provider the registry registered, including Grok and Codex (`codex` and `codex-acp`), get the same peer session, the same inside-session check, and the same secret strip. A provider with no process stays off that set. Tests and CI rule 16 records the owner's ruling.
+- fix(identity): secret field names are one list in lib/secret-keys.js. A Flow timeline, the phone Flow screen, the browser redactor, site learning and the event bus read that list. The egress test walks every tool the registry registered. Tests and CI rule 15 records the owner's ruling: fix the class everywhere, through one shared implementation, and let the test read the set from its owner.
+- fix(identity): a recovery key, a master wrap, a space-vault value and a GitHub link token are tagged on the shared secret list, and the kernel strips them from any result an agent, model or MCP caller would see. identity.create, identity.migrate, identity.unlock, identity.status, identity.card and identity.github.link return none of them to a non-person. A record read does the same for a sealed field. The person still sees a recovery key once.
+- test(identity): one identity can be owner of one space and admin of another, on two servers. The identity and personal vault stay with the person. Each server holds that space's membership and space vault. Signing in and unlocking work on either server. Transfer and rotation stay on the space they name. See ADR 0054.
+- feat(app): screens to create, unlock and migrate an identity. They call identity.create, identity.unlock and identity.migrate, the same tools the first-run flow uses. A recovery key asks for a confirmation on the device and does not open the vault.
+- fix(identity): a recovery key unlocks the identity only after a confirmation on the device. It does not unwrap the personal vault. The master password does. See ADR 0054.
+- fix(vault): the master password protects the personal vault key. After it is set, the plaintext vault/key file is removed. This box lends from the unlocked session or from a sealed server wrap. A home with no master password keeps its file or keychain keystore.
+- fix(spaces): removing a member drops that member's space vault wrap first. If the key does not finish rotating, the removal fails loudly, Vyre retries, and the member who left cannot open the vault meanwhile.
+- fix(vault): the server's space vault private key is sealed at rest. On a Mac the seal key is in the OS keystore. Otherwise it is a 0600 file outside the space directory, so a member's copy of the vault does not have it.
+- fix(vault): a space vault item is saved with the hosts it may be sent to. Lending anywhere else is refused, including a redirect. The caller still receives the response and never the value.
+- docs: the sitemap lists the master password guide and ADR 0054, and the app lists the space vault tools that take a space.
+- test(tools): vault.space.use has three ordinary asks, so an agent can find it from what a person would say.
+- test(vault): a plain session's use of a space vault item is the session's own request. The server wrap places the value, and the response is redacted.
+- fix(vault): a space vault response is redacted by the shared scrub, so a lent value never comes back in the answer.
+- fix(identity): creating a username claims the name as the person who asked, so the person-only name claim runs for them.
+- fix(vault): the master password is the root of the personal vault. When it is unlocked, that key is the device key the vault adopts, and `vault/key` is rewritten from it so the two cannot diverge. With nobody unlocked, that server copy still opens the agent vault, so lending does not wait. A master record with no held key and no server copy does not invent a second key. A held key that does not open the agent vault fails closed. See ADR 0054.
+- fix(approvals): a password, passphrase, secret or recovery key is stripped before an approval card is built, stored or hashed, including when the field is nested. The card is built from a copy, so the call that runs still has its fields.
+- fix(spaces): a limited device cannot transfer ownership of a space.
+- fix(sessions): the identity tools are named in the agent brief, with the other person tools.
+- fix(vault): creating, granting, storing and rotating a space vault asks for the person's presence. A read does not. Using an item stays open, so lending does not wait.
+- fix(devices): a sign-in that names a GitHub account which is not linked says to link it with identity.github.link.
+- docs: the architecture map names the identity and devices modules, and the agent tool list counts them.
+- fix(vault): using a space vault item leaves through the shared HTTP client, for an address the call names.
+- fix(vault): the person named on a space vault grant or rotation is the member the act is about. The caller's own chain is what authorizes it.
+- fix(vault): a plain model session may use a space vault item. The server wrap opens it, and the response redacts the value.
+- fix(vault): if the space vault key fails to rotate when a member leaves, Vyre queues an automatic retry and shows the row in Needs you. Removal still finishes.
+- fix(mcp): the hosted gate is the `gate` list in `core/modules/hosted-allow.json` and nothing else. `identity.unlock` and `vault.space.use` stay off it.
+- feat(identity): one username at https://vyre.run/u/<name> (private by default; <name>.vyre.run redirects, infrastructure hosts excluded), one master password (Argon2id) that unlocks the identity and the personal vault, and a one-screen recovery key. Login with GitHub links the username and still asks for the master password. Another computer signs in with the space server, the username and the master password, or with GitHub and the master password. A space vault key is wrapped to each member and to the server, so agents and Flows use items while nobody is online, and the key rotates when a member leaves. Ownership transfer is the existing kernel grant, under spaces.owner.transfer, and is audited. An agent proposes people, devices, ownership and vault access through MCP; the person's one tap applies it. The agent never receives a vault value, the master password or the recovery key. See ADR 0054.
+
 ## 0.5.2
 
 - fix(pairing): a server's typed code now finishes from the Mac app. The relay client keeps one device key per key store for the run (relay/client/client.js deviceKey): the Mac app's WKWebView answers its IndexedDB read with nothing, so every dial made a new key, the key the pairing enrolled was not the one the last step (wink.server.adopt) dialed with, the server refused it as "not a paired device", and the server never became owned. Two dials at once on an empty store now share one key too. A store that does hold a key is still the one used.

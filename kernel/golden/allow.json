@@ -412,6 +412,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; design.validate opened to a model or a module in da28446d5 (9 Oct 2026); the body decides: read-only: checks a screen the caller passes in against the design language and returns problems; stores nothing"
  },
  {
+  "tool": "devices.signin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (signs a computer in to a space server; held so the person enters the master password on their device)"
+ },
+ {
   "tool": "docs.find",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; docs.find opened to a model or a module in 92291f02c (4 Oct 2026); the body decides: read-only: ranks pages of the docs tree for an intent; a person's own surface gets the human docs, any other caller gets the human and the agent docs (the agent docs are not secret, the code is open source); nothing here writes, sends or reaches the network (core/docs/index.js)"
  },
@@ -878,6 +882,38 @@
  {
   "tool": "hooks.open",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (opens the Space to the outside)"
+ },
+ {
+  "tool": "identity.card",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the public card for the username; private unless the person opted in, and no key"
+ },
+ {
+  "tool": "identity.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (makes the username and wraps the keys; held so the person enters the master password on their device)"
+ },
+ {
+  "tool": "identity.discover",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (opts the username into the public directory; held for the person's one tap)"
+ },
+ {
+  "tool": "identity.github.link",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (links a GitHub login to the username; held for the person's one tap, and it does not unlock the vault)"
+ },
+ {
+  "tool": "identity.migrate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (wraps an existing identity under a master password; held so the person enters it on their device)"
+ },
+ {
+  "tool": "identity.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether a username exists and whether the directory may show it; no key and no password"
+ },
+ {
+  "tool": "identity.unlock",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (unlocks the identity; held so the person enters the master password on their device)"
+ },
+ {
+  "tool": "identity.vault.install",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (installs the held master key into the running vault and returns the space's published key; held so the person who unlocked on this device is the one who installs it)"
  },
  {
   "tool": "learn.add",
@@ -1356,6 +1392,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what the Space and the person each said about running work on their computer"
  },
  {
+  "tool": "spaces.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (makes a space; an agent's proposal is held for the person's one tap)"
+ },
+ {
+  "tool": "spaces.devices.enrol",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (adds a computer or phone to a space; an agent's proposal is held for the person's one tap)"
+ },
+ {
   "tool": "spaces.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one Space: name, home, owners and warnings"
  },
@@ -1384,6 +1428,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): checks the directory for changes to the person's list and raises alerts, a read"
  },
  {
+  "tool": "spaces.invites.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (invites a person to a space; an agent's proposal is held for the person's one tap)"
+ },
+ {
   "tool": "spaces.invites.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the invites the person made or may manage, never the link"
  },
@@ -1396,12 +1444,32 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the Spaces on this device and the person's role in each"
  },
  {
+  "tool": "spaces.members.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (adds a member; an agent's proposal is held for the person's one tap)"
+ },
+ {
   "tool": "spaces.members.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads everyone in a Space with role, scope, end date and warnings"
  },
  {
+  "tool": "spaces.members.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (removes a member and rotates the space vault; an agent's proposal is held for the person's one tap)"
+ },
+ {
+  "tool": "spaces.members.set-role",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (changes a member's role; an agent's proposal is held for the person's one tap)"
+ },
+ {
+  "tool": "spaces.members.transfer",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (hands a space to another member; an agent's proposal is held for the person's one tap)"
+ },
+ {
   "tool": "spaces.move.plan",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): plans moving a Space to another home, ordered steps and checks, nothing moves"
+ },
+ {
+  "tool": "spaces.owner.transfer",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (hands a space to another member; held for the person's one tap and audited by the kernel)"
  },
  {
   "tool": "spaces.records.status",
@@ -1770,6 +1838,34 @@
  {
   "tool": "vault.session.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.session.status opened to a model or a module in c8d66bc29 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.space.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (makes a space vault; an agent's proposal is held for the person's one tap and the key stays wrapped)"
+ },
+ {
+  "tool": "vault.space.grant",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (wraps the space vault key to a member; an agent's proposal is held for the person's one tap)"
+ },
+ {
+  "tool": "vault.space.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists space vault item names only; values stay sealed"
+ },
+ {
+  "tool": "vault.space.put",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (stores a space vault item; an agent's proposal is held and the value is entered on the device)"
+ },
+ {
+  "tool": "vault.space.rotate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (rotates the space vault key; an agent's proposal is held for the person's one tap)"
+ },
+ {
+  "tool": "vault.space.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether a space vault exists and its generation; no key and no item value"
+ },
+ {
+  "tool": "vault.space.use",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.space.use opened to a model or a module in 0.5.3 (15 Oct 2026); the body decides: scope check: the server-held wrap puts the value into the outbound request and scrubs it from the response, so the caller gets the result and never the value; callers list in code (cli, local, deck, capsule, module, mcp, harness)"
  },
  {
   "tool": "vault.ssh.generate",
