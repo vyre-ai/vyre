@@ -46,7 +46,7 @@ import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/mod
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { memberThreadAllowSet, chainPerson, isStaffPerson } from "../../lib/member-scope.js";
-import { personCallOpts } from "../../lib/person-relay.js";
+import { ingressProviderCall, personCallOpts } from "../../lib/person-relay.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { normalizeCaps } from "../../lib/caps-flags/index.js";
@@ -2588,8 +2588,7 @@ export class Switchboard {
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
-    const relay = personCallOpts(asCaller, relayMeta);
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input, relay || undefined) }) : [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
     const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;

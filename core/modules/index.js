@@ -92,6 +92,7 @@ export function checkRelayTool(module, tool, input, as) {
     // and runs one operation of a Connection as the person who asked (a view over a wrapped app): vault.request of that Connection's own credential, by operation. The send/change/delete gate judges the operation there.
     && !(tool === "vault.request" && obj && /^conn-[a-z0-9-]+$/.test(String(input.credential)) && typeof input.operation === "string" && input.operation !== "request" && input.url === undefined && input.method === undefined)) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, to vault.delete for a connection's own conn-<id> credential, and to vault.request of a connection's own credential by operation, only`);
   if (module === "appmods" && !["connectors.connection.create", "connectors.connection.delete"].includes(tool)) throw new Error(`appmods may not call ${tool} as ${as}: it relays an installing person to the app's own Connection (create and delete) only`);
+  if ((module === "threads" || module === "switchboard") && (as === "module:sessions" || as === "module:assistant") && !["mentions.search", "mentions.resolve"].includes(tool)) throw new Error(`${module} may not call ${tool} as ${as}: ingress reaches mentions only`);
 }
 
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
@@ -104,14 +105,14 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
   stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
-  // threads.slash relays /later and /find as the composer's own surface (lib/person-relay.js).
-  switchboard: (/** @type {string} */ as) => isPerson(as),
+  // threads.slash and ingress tags relay the person, or reach mentions.resolve as module:sessions (lib/person-relay.js).
+  switchboard: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
   term: (/** @type {string} */ as) => isPerson(as),
   // threads replays the asking person to planner, recall and mentions on a composer's / line and on ingress tags, never the module's own chain.
-  threads: (/** @type {string} */ as) => isPerson(as) || /^link:[^\s:]+$/.test(String(as)) };
+  threads: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant" || /^link:[^\s:]+$/.test(String(as)) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -1280,7 +1281,8 @@ export class Registry {
         // relay without them would be refused for every person who asks an agent from a device.
         const personAs = as && isPerson(String(as));
         const mentionsRelay = m.name === "mentions" && (String(as) === "module:sessions" || String(as) === "module:assistant");
-        const cur = (personAs || mentionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
+        const sessionsRelay = (m.name === "threads" || m.name === "switchboard") && (String(as) === "module:sessions" || String(as) === "module:assistant");
+        const cur = (personAs || mentionsRelay || sessionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.

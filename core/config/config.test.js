@@ -88,7 +88,10 @@ test("config: a stored solo is rewritten to a device and opens the first run", t
 
 test("config: with no config.json, a Mac or Windows PC is a device and Linux is a server", t => {
   const root = tempHome(t);
+  const prev = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
   const c = config.load(root);
+  if (prev === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prev;
   assert.ok(["server", "device"].includes(c.machine));
   assert.equal(c.machine, process.platform === "darwin" || process.platform === "win32" ? "device" : "server");
   assert.equal(c.needsServer, undefined);
@@ -99,7 +102,10 @@ test("config: with no config.json, a Mac or Windows PC is a device and Linux is 
 // until the person makes an explicit choice. `platform` is injectable so this runs on any CI box.
 test("config: a fresh darwin install defaults to device, which is not a server", t => {
   const root = tempHome(t);
+  const prev = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
   const c = config.load(root, "darwin");
+  if (prev === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prev;
   assert.equal(c.role, "local");
   assert.equal(c.machine, "device");
   assert.equal(c.needsServer, undefined);
@@ -335,7 +341,12 @@ test("config: a Mac set up as a server (machine server, no role named) is role b
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server" }));
   const mac = config.load(root, "darwin");
   assert.equal(mac.machine, "server"); assert.equal(mac.role, "box");
-  assert.equal(config.load(tempHome(t), "darwin").role, "local", "a Mac with no config is still a Home");
+  const prod = tempHome(t);
+  const prevH = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
+  assert.equal(config.load(prod, "darwin").role, "local", "a Mac with no config is still a Home");
+  if (prevH === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = prevH;
+  assert.equal(config.load(tempHome(t), "darwin").role, "box", "a test temp home on darwin loads box modules");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server", role: "local" }));
   assert.equal(config.load(root, "darwin").role, "local", "the role the person named is theirs");
 });

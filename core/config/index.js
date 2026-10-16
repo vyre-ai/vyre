@@ -244,14 +244,22 @@ function accountTranscripts() {
   try { return fs.statSync(home).isDirectory() ? [path.join(home, "*", ".claude", "projects")] : []; } catch { return []; }
 }
 
+/** A temp home under the test runner: box modules load on Mac CI the same way they do on Linux. */
+function testHostedBox(root) {
+  return process.env.VYRE_TEST_HOSTED === "1" && process.env.NODE_TEST_CONTEXT
+    && path.resolve(root) !== path.resolve(os.homedir(), ".vyre");
+}
+
 function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
+  const hosted = testHostedBox(root);
+  const deviceDefault = platform === "darwin" || platform === "win32";
   return {
     // A fresh install on a Mac or a Windows PC is someone's own device; only a bare Linux install
-    // defaults to being the server.
-    role: platform === "darwin" || platform === "win32" ? "local" : "box",
+    // defaults to being the server. A test temp home is always a box so vault and door tests match Linux.
+    role: hosted ? "box" : (deviceDefault ? "local" : "box"),
     // A fresh Mac or Windows PC is a device. A bare Linux install is the server. Solo is not a way to run Vyre (ADR 0054).
-    machine: platform === "darwin" || platform === "win32" ? "device" : "server",
+    machine: hosted ? "server" : (deviceDefault ? "device" : "server"),
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },

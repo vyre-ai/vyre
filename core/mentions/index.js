@@ -141,8 +141,9 @@ export default {
         }
         if (context !== undefined && typeof context !== "string") { try { context = JSON.stringify(context); } catch { context = undefined; } }
         const hosts = Array.isArray(d.hosts) ? d.hosts.filter((/** @type {any} */ h) => typeof h === "string").slice(0, 20) : undefined;
-        return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), ...(text(d.hint, 120) ? { hint: text(d.hint, 120) } : {}), ...(hosts && hosts.length ? { hosts } : {}),
-          ...(text(d.note, 6000) ? { note: text(d.note, 6000) } : {}), ...(context ? { context: String(context).slice(0, CONTEXT_MAX), outside: d.outside !== undefined ? Boolean(d.outside) : !INSIDE.has(p.kind) } : {}), ...(cleanGrant(d.grant) ? { grant: cleanGrant(d.grant) } : {}) };
+        const outside = d.outside !== undefined ? Boolean(d.outside) : !INSIDE.has(p.kind);
+        return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), outside, ...(text(d.hint, 120) ? { hint: text(d.hint, 120) } : {}), ...(hosts && hosts.length ? { hosts } : {}),
+          ...(text(d.note, 6000) ? { note: text(d.note, 6000) } : {}), ...(context ? { context: String(context).slice(0, CONTEXT_MAX) } : {}), ...(cleanGrant(d.grant) ? { grant: cleanGrant(d.grant) } : {}) };
       },
     });
     return { async stop() {} };
