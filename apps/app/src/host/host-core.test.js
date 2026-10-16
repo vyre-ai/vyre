@@ -103,9 +103,10 @@ function spaceWorld(t) {
       assert.equal(init.headers["content-type"], "text/plain", "text/plain keeps the browser from sending a preflight");
       const body = JSON.parse(init.body);
       posts.push(body);
-      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? svc.finish(body, "203.0.113.5")
+      const withSpace = (r) => (r && r.ok ? { ...r, spaces: [{ id: "spc_juniperaaaaaaaa", name: "juniper", role: r.role || "member", server: "https://juniper.vyre.run" }] } : r);
+      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? withSpace(svc.finish(body, "203.0.113.5"))
         // GitHub (the relay's assertion for this space, stood in by a fixed string here): the record comes back with its salt and cost, to be opened with the password on the device.
-        : body.op === "github" ? (body.assertion === "assert:juniper" ? { ok: true, session: "s", salt: rec.get("login:alex").salt, kdf: rec.get("login:alex").kdf, bundle: rec.get("login:alex").bundle, role: "admin" } : { error: { code: "bad_login", message: "That username and password do not match." } })
+        : body.op === "github" ? (body.assertion === "assert:juniper" ? withSpace({ ok: true, session: "s", salt: rec.get("login:alex").salt, kdf: rec.get("login:alex").kdf, bundle: rec.get("login:alex").bundle, role: "admin" }) : { error: { code: "bad_login", message: "That username and password do not match." } })
         : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
       return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
     }
@@ -134,6 +135,9 @@ test("sign in from another device: register the record at a space, then a new pa
   const signed = await two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD });
   assert.deepEqual([signed.username, signed.id], ["alex", made.id]);
   assert.equal(signed.spaces[0].name, "juniper");
+  assert.deepEqual(Object.keys(signed.spaces[0]).sort(), ["id", "name", "role", "server"], "a signed-in space is the same row as a created one: id, name, role, server");
+  assert.equal(signed.spaces[0].id, "spc_juniperaaaaaaaa", "the id is the space's own (spc_), not its name");
+  assert.equal(signed.spaces[0].server, "https://juniper.vyre.run");
   assert.equal((await two.call("identity.status")).unlocked, true);
   const kept = await store2.load();
   assert.equal(kept.id, made.id);
@@ -252,4 +256,16 @@ test("publishing a space to the directory is an act the identity key signs, and 
   const two = createHost({ store: memoryStore(), directory: w.base, fetch: peek, now: w.now, signin: { deviceId: () => "abcdef0123456789" } });
   await two.call("onboard.signin", { space: "juniper.vyre.run", username: "blair", password: PASSWORD });
   assert.deepEqual(seen, [{ id: "abcdef0123456789", label: "This browser" }]);
+});
+
+test("a space that does not say which space it is gets no row, and nothing is kept", { timeout: 240000 }, async (t) => {
+  const w = spaceWorld(t);
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const noSpace = async (url, init = {}) => (new URL(url).pathname === "/login" ? new Response(JSON.stringify(w.svc.finish ? await (async () => { const b = JSON.parse(init.body); return b.op === "begin" ? w.svc.begin(b, "203.0.113.5") : w.svc.finish(b, "203.0.113.5"); })() : {}), { status: 200 }) : w.fetch(url, init));
+  const store = memoryStore();
+  const two = createHost({ store, directory: w.base, fetch: noSpace, now: w.now });
+  await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_space");
+  assert.equal(await store.load(), null);
 });
