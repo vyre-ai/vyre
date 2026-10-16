@@ -45,7 +45,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 50 | 0 | none |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 16 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
@@ -78,7 +78,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 27 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 26 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
@@ -451,9 +451,10 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [13](tools.md#gate), 2 of them only for other modules
+- Tools: [16](tools.md#gate), 2 of them only for other modules
 - Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":[],"mints":[{"prefix":"outbox","actions":["gate.act-standing"]}]}`
 - Needs vault: `per-sender`
 - Teaches memory: `draft.edited`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -809,7 +810,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#recall)
+- Tools: [18](tools.md#recall), 1 of them only for other modules
 - Emits: [5 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -821,7 +822,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [26](tools.md#records), 3 of them only for other modules
+- Tools: [27](tools.md#records), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`
