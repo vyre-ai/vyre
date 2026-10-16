@@ -3,6 +3,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHost } from "./host-core.js";
+import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
 
@@ -85,4 +86,66 @@ test("first-run progress and done are kept with the identity, and a step this st
   assert.equal((await host.call("onboard.status")).firstRun, "done");
   assert.equal(host.has("onboard.space.open"), false);
   await assert.rejects(() => host.call("onboard.space.open", { kind: "linux" }), (e) => e.code === "host_unsupported");
+});
+
+/** A space's sign-in door over the names Worker: POST /login is the server module itself (createLoginService), everything else is the directory. */
+function spaceWorld(t) {
+  const d = directory(t);
+  const rec = new Map();
+  const svc = createLoginService({ space: "juniper", store: { get: (k) => rec.get(k), set: (k, v) => rec.set(k, v) }, now: d.now, verifyIdentity: async () => true, isMember: async () => true });
+  const posts = [];
+  const fetchAll = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.host === "juniper.vyre.run" && u.pathname === "/login") {
+      assert.equal(init.headers["content-type"], "text/plain", "text/plain keeps the browser from sending a preflight");
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5") : body.op === "finish" ? svc.finish(body, "203.0.113.5") : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
+      return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return d.fetch(url, init);
+  };
+  return { ...d, fetch: fetchAll, svc, posts };
+}
+
+test("sign in from another device: register the record at a space, then a new page with nothing on it signs in with the address, the username and the master password", { timeout: 240000 }, async (t) => {
+  const w = spaceWorld(t);
+  // Device one makes the identity at the production cost (the record's password key and the login key are one Argon2id of the password).
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  const made = await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  const body = await one.registerLogin("juniper", PASSWORD);
+  assert.equal(JSON.stringify(body).includes(PASSWORD), false, "the password is not in the registration");
+  assert.deepEqual((await w.svc.register(body)), { ok: true, username: "alex" });
+
+  // Device two: nothing on it.
+  const store2 = memoryStore();
+  const two = createHost({ store: store2, directory: w.base, fetch: w.fetch, now: w.now });
+  await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: "zebra quartz mango pillow staple" }), (e) => e.code === "bad_login" && e.message === "That username and password do not match.");
+  await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "nobody", password: PASSWORD }), (e) => e.code === "bad_login" && e.message === "That username and password do not match.", "an unknown name gets the same answer");
+  assert.equal(await store2.load(), null, "a refused sign-in leaves nothing on the device");
+  const signed = await two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD });
+  assert.deepEqual([signed.username, signed.id], ["alex", made.id]);
+  assert.equal(signed.spaces[0].name, "juniper");
+  assert.equal((await two.call("identity.status")).unlocked, true);
+  const kept = await store2.load();
+  assert.equal(kept.id, made.id);
+  assert.ok(kept.device && kept.ops.length >= 1 && kept.pin, "a device key, and the identity's checked chain");
+  assert.ok(!JSON.stringify(kept).includes(PASSWORD));
+  // The same identity key opens: the identity seeds of both devices sign the same public key.
+  await two.call("identity.lock");
+  await two.call("identity.unlock", { password: PASSWORD });
+  assert.ok(two.signer());
+  assert.equal(w.posts.filter((p) => p.op === "finish").every((p) => !JSON.stringify(p).includes(PASSWORD)), true, "the password never went to the space");
+  // A device that already has an identity does not take a second one.
+  await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "exists");
+});
+
+test("a hostile space that asks for cheap password settings is refused before any password work", async (t) => {
+  const d = directory(t);
+  const fetchCheap = async (url, init = {}) => {
+    if (new URL(url).host === "juniper.vyre.run") return new Response(JSON.stringify({ salt: "AAAAAAAAAAAAAAAAAAAAAA", kdf: { memoryKiB: 8, passes: 1, lanes: 1, tagLength: 32 }, challenge: "c", expires: 1 }), { status: 200 });
+    return d.fetch(url, init);
+  };
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: fetchCheap, now: d.now });
+  await assert.rejects(() => host.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_kdf");
 });
