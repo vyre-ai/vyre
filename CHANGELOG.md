@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(security): secret field names live in one list, `lib/secret-keys.js`. A Flow timeline, the phone Flow screen, the browser redactor, site learning and an event payload all read that list, so a recovery wrap or a client secret is hidden wherever that name already means secret. The owner's ruling of 16 Oct 2026: fix the class everywhere, through one shared implementation, and test the set from its owner (the registry or the table), not from a hand-written list.
 - fix(vault): an assistant never receives a vault value, including after Approve. The result is scrubbed on the way out. Lending stays `vault.request` and `vault.space.use`, where the value is injected and scrubbed. `test/mcp-vault-result.test.js` fails if an MCP result contains one.
 - fix(devices): the approval card for adding a device names that device, its type, its key fingerprint, and who asked. An assistant cannot add one without those.
 - fix(mcp): the onboarding, device and invite tools an agent can reach are a fixed list. The coverage test keeps its own copy and checks that list, not a scan of the source.
