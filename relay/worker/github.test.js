@@ -303,7 +303,7 @@ test("assert: the relay vouches for the numeric GitHub id, for one space and two
   assert.equal(ok.status, 200);
   const { assertion } = /** @type {any} */ (await ok.json());
   const { verifyGithubAssertion } = await import("../../kernel/identity/space-login.js");
-  assert.deepEqual(verifyGithubAssertion(assertion, pub, "juniper", () => w.clock.t), { id: "4242", login: "alex-gh" });
+  assert.deepEqual(verifyGithubAssertion(assertion, pub, "juniper", () => w.clock.t), { id: "4242", login: "alex-gh", name: "" });
   assert.equal(verifyGithubAssertion(assertion, pub, "other", () => w.clock.t), null, "another space does not take it");
   assert.equal(verifyGithubAssertion(assertion, pub, "juniper", () => w.clock.t + G.ASSERT_MS + 1), null, "it runs out");
   const other = crypto.generateKeyPairSync("ed25519");

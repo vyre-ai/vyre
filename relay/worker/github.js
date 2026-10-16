@@ -187,7 +187,7 @@ async function me(request, _url, env) {
   return json(200, { github: { id: rec.ghid, login: rec.login, name: rec.name, avatarUrl: rec.avatarUrl, twofa: rec.twofa }, linked: l ? { name: l.name, since: l.since } : null });
 }
 
-const SPACE_RE = /^[a-z][a-z0-9-]{1,30}$/;
+const SPACE_RE = /^(?:names|[a-z][a-z0-9-]{1,30})$/;
 /** An Ed25519 seed (base64url) to a signing key. @param {string} seed */
 async function signingKey(seed) {
   const raw = Uint8Array.from(atob(seed.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
@@ -210,7 +210,8 @@ async function assertion(request, _url, env) {
   const h = await holding(env, b, who(request));
   if (h.res) return h.res;
   const t = now(env);
-  const payload = C.b64u(enc.encode(JSON.stringify({ v: 1, id: String(h.rec.ghid), login: String(h.rec.login || ""), space, iat: t, exp: t + ASSERT_MS })));
+  const linked = (await ask(env, { op: "link.get", ghid: h.rec.ghid })).link;
+  const payload = C.b64u(enc.encode(JSON.stringify({ v: 1, id: String(h.rec.ghid), login: String(h.rec.login || ""), name: linked ? String(linked.name) : "", space, iat: t, exp: t + ASSERT_MS })));
   const sig = C.b64u(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, await signingKey(String(env.GITHUB_ASSERT_KEY)), enc.encode(`${GH_TAG_ASSERT}\n${payload}`))));
   return json(200, { assertion: `${payload}.${sig}` });
 }

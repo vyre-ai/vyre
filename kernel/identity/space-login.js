@@ -107,7 +107,7 @@ export const GH_LINK_TAG = "vyre-login-github-link-v1";
  * What the relay's GitHub app signs once GitHub itself has confirmed a person at the OAuth callback: the numeric GitHub id for one space, for two minutes. A space accepts it only against the relay
  * public key it was told, and only for its own name.
  * @param {string} token "<payload b64url>.<signature b64url>" @param {string} relayPub the relay's Ed25519 public key (base64url) @param {string} space @param {() => number} [now]
- * @returns {{ id: string, login: string } | null}
+ * @returns {{ id: string, login: string, name: string } | null}
  */
 export function verifyGithubAssertion(token, relayPub, space, now = Date.now) {
   const [payload, sig] = String(token || "").split(".");
@@ -116,7 +116,7 @@ export function verifyGithubAssertion(token, relayPub, space, now = Date.now) {
   let p;
   try { p = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { return null; }
   if (!p || p.v !== 1 || p.space !== space || !/^[0-9]{1,18}$/.test(String(p.id)) || !Number.isFinite(p.exp) || p.exp <= now() || !Number.isFinite(p.iat) || p.iat > now() + 60_000) return null;
-  return { id: String(p.id), login: String(p.login || "") };
+  return { id: String(p.id), login: String(p.login || ""), name: typeof p.name === "string" ? p.name : "" };
 }
 
 /** What the identity key signs to link a GitHub account to a username in a space. @param {string} space @param {string} username @param {string} ghid @param {number} ts */
