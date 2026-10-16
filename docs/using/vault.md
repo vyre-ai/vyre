@@ -40,7 +40,7 @@ a delete. Reading a list of names asks for nothing. Unlocking your personal vaul
 asks for the password itself and nothing else, and Touch ID unlock asks for Touch ID; either one
 only opens the vault, and a secret still needs its own proof to be released.
 
-Your master password unlocks your identity and wraps a copy of this vault's key. Lending does not wait for that unlock: an agent still uses an item by name, the value goes into the request, and the agent gets the response. A space has its own vault on the same rule, including while you are away. See [Master password](master-password.md).
+Your master password is the root of this vault. A server copy of that key lets an agent use an item by name while you are away: the value goes into the request, and the agent gets the response. A space has its own vault on the same rule. If rotating that key fails when a member leaves, Vyre retries it and the row shows in Needs you. See [Master password](master-password.md).
 
 ## Store an item
 

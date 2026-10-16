@@ -32,6 +32,12 @@ test("hosted door: the allowed set equals the reviewed allowlist exactly, and a 
   assert.deepEqual([...HOSTED_ALLOW].filter(n => !all.includes(n)), [], "no allowlisted name is stale");
   assert.deepEqual([...HOSTED_GATE].filter(n => !all.includes(n)), [], "no Gate name is stale");
   assert.deepEqual(allowed.filter(n => RISKY.test(n) && !HOSTED_GATE.has(n)), [], "nothing that runs code, drives a screen, installs, or touches credentials or devices is allowed outside the Gate list");
+  const declaredGate = Object.keys(JSON.parse(fs.readFileSync(ALLOW, "utf8")).gate).sort();
+  assert.deepEqual([...HOSTED_GATE].sort(), declaredGate, "the gate is the declared allowlist and nothing else");
+  assert.equal(HOSTED_GATE.has("identity.unlock"), false, "unlocking stays off the hosted gate");
+  assert.equal(hostedKeyMay("vault.space.use"), false, "lending is not a hosted proposal");
+  assert.equal(hostedKeyMay("vault.put"), false);
+  assert.equal(hostedKeyMay("spaces.identity.create"), false);
   for (const n of HOSTED_GATE) assert.equal(d.registry.tools.get(n).outward, true, `${n} is held: its manifest marks it outward`);
   for (const list of Object.values(HOSTED_NEVER)) for (const p of list) assert.ok(!allowed.some(n => n.startsWith(p) && !HOSTED_GATE.has(n)), `the second wall holds: ${p}`);
   const unclassified = all.filter(n => FAMILIES.test(n) && !reviewed.allow.includes(n) && !reviewed.refused.includes(n));

@@ -715,19 +715,17 @@ export function mcpPersonMay(tool) {
  * keeps missing tools). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the person's own computer) keeps mcpPersonMay's reach. Outward acts stay held at the Gate.
  * A tool is usable when it is on the allowlist BY NAME (the work surface: records read/write without define or forget, projects read, chats and threads send/read without a shell, files read and versions write, flows run and read without define or kits, tasks and approvals listing, memory read/file, recall, mentions, held sends) and is on no never-list; a tool nobody has placed is refused. core/modules/hosted-allow.json holds the list with one reason each, and test/hosted-keys.test.js pins it.
  */
-export const HOSTED_ALLOW_REASONS = Object.freeze(/** @type {Record<string, string>} */ (JSON.parse(readFileSync(new URL("./hosted-allow.json", import.meta.url), "utf8")).allow));
+const HOSTED_FILE = JSON.parse(readFileSync(new URL("./hosted-allow.json", import.meta.url), "utf8"));
+export const HOSTED_ALLOW_REASONS = Object.freeze(/** @type {Record<string, string>} */ (HOSTED_FILE.allow));
 export const HOSTED_ALLOW = Object.freeze(new Set(Object.keys(HOSTED_ALLOW_REASONS)));
 /**
- * 0.5.3: an agent's hosted key may propose these exact outward tools. The registry holds each one for the person's one tap.
- * The tool never returns a secret, the master password or the recovery key. Every other name on HOSTED_NEVER stays refused.
+ * The outward setup tools a hosted key may propose, declared once in hosted-allow.json under gate.
+ * The registry holds each one for the person's one tap. identity.unlock is not on it: unlocking is the person entering the master password.
+ * vault.space.use is not on it: it lends, and holding it would stop lending. Every other name on HOSTED_NEVER stays refused.
  * @type {ReadonlySet<string>}
  */
-export const HOSTED_GATE = Object.freeze(new Set([
-  "identity.create", "identity.unlock", "identity.migrate", "identity.github.link", "identity.discover",
-  "devices.signin",
-  "spaces.owner.transfer", "spaces.create", "spaces.invites.create", "spaces.members.add", "spaces.members.transfer", "spaces.members.set-role", "spaces.members.remove", "spaces.devices.enrol",
-  "vault.space.create", "vault.space.grant", "vault.space.rotate", "vault.space.put",
-]));
+export const HOSTED_GATE_REASONS = Object.freeze(/** @type {Record<string, string>} */ (HOSTED_FILE.gate));
+export const HOSTED_GATE = Object.freeze(new Set(Object.keys(HOSTED_GATE_REASONS)));
 export const HOSTED_NEVER = Object.freeze({
   code: ["appmods.", "term.", "hooks.", "runner.", "code.", "threads.shell", "agents.spawn", "team.duties.run-now", "learn.skill-", "work.template.install", "flows.kit.", "bridges.kit.install", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute.", "mcp.add", "mcp.update", "mcp.call"],
   desktop: ["hands-", "hands.", "computer.", "chrome.", "glass.", "screen."],
