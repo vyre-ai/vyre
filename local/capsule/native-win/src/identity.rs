@@ -199,6 +199,22 @@ pub fn proof_summary(message: &[u8], fields: Option<&serde_json::Value>, space: 
     Some(lines.join("\n"))
 }
 
+/// Which store may hold a new identity key. Hello, then the TPM. Software only when the person was asked and said yes.
+/// `software_yes` is None when nobody could answer, and that refuses a software key.
+/// [reviewed: trust]
+pub fn identity_key_store(hello: bool, tpm: bool, software_yes: Option<bool>) -> Result<&'static str, &'static str> {
+    if hello {
+        return Ok("windows_hello");
+    }
+    if tpm {
+        return Ok("tpm");
+    }
+    if software_yes == Some(true) {
+        return Ok("software");
+    }
+    Err("This computer has no TPM that Vyre can use.")
+}
+
 /// What the shell signs with the computer's key, in its own words: an identity-list change, a server ownership proof, or a yes-moment proof whose card matches. None is not signed. The page's caption is never read.
 pub fn sign_summary(message: &[u8], fields: Option<&serde_json::Value>, space: Option<&str>) -> Option<String> {
     chain_summary(message).or_else(|| pair_to_summary(message)).or_else(|| proof_summary(message, fields, space))
@@ -334,6 +350,16 @@ mod tests {
         assert_eq!(be[0], 31);
         assert_eq!(be[31], 0);
         assert!(secret_big_endian(&le[..31]).is_none());
+    }
+
+    #[test]
+    fn a_software_key_is_made_only_after_the_person_says_yes() {
+        assert_eq!(identity_key_store(true, false, None).unwrap(), "windows_hello");
+        assert_eq!(identity_key_store(false, true, None).unwrap(), "tpm");
+        assert_eq!(identity_key_store(false, false, Some(true)).unwrap(), "software");
+        let refused = "This computer has no TPM that Vyre can use.";
+        assert_eq!(identity_key_store(false, false, Some(false)), Err(refused));
+        assert_eq!(identity_key_store(false, false, None), Err(refused));
     }
 
     #[test]

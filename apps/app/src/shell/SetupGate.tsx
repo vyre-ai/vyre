@@ -7,6 +7,7 @@ import { isBoxless } from "./shell";
 import { loadPairing } from "../api/relay";
 import { useTheme } from "../theme/theme";
 import { readSkipped } from "../state/setup-progress";
+import { tool } from "../real/box";
 import { gateTarget } from "./setup-gate.js";
 
 /**
@@ -25,10 +26,11 @@ export function SetupGate({ children }: { children: ReactNode }) {
     let live = true;
     // The check can fail or stall (a locked store, a shell that never answers). It must never leave the cover up for ever: after 4 s, or on an error, the person goes to setup, which can always draw.
     const giveUp = setTimeout(() => { if (!live) return; live = false; setChecked(true); const to = gateTarget({ path, paired: false, direct: false, skipped: false }); if (to) router.replace(to as never); }, 4000);
-    void Promise.all([loadPairing(), readSkipped()]).then(([p, skipped]) => {
+    void Promise.all([loadPairing(), readSkipped(), tool("onboard.status").catch(() => null)]).then(([p, skipped, st]) => {
       if (!live) return;
       clearTimeout(giveUp);
-      const to = gateTarget({ path, paired: !!p, direct: Platform.OS !== "web" && !!boxOrigin(), skipped });
+      const firstRun = Boolean(st && typeof st === "object" && (st as { firstRun?: string }).firstRun === "open");
+      const to = gateTarget({ path, paired: !!p, direct: Platform.OS !== "web" && !!boxOrigin(), skipped, firstRun });
       setChecked(true);
       if (to) router.replace(to as never);
     }, () => {

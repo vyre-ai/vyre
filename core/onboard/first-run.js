@@ -211,7 +211,7 @@ export function registerFirstRun(ctx, io) {
   ctx.tool("onboard.computer.add", {
     effect: "write",
     description: "Add this person's computer to a space with its address, name and master password, or GitHub.",
-    input: obj({ url: str, username: str, password: str, github: { type: "boolean" } }, ["url", "password"]),
+    input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, name: str, type: str, fingerprint: str }, ["url", "password"]),
     callers: [...OPEN],
     run: async ({ url, username, password, github }) => {
       const address = serverUrl(url);
@@ -235,7 +235,7 @@ export function registerFirstRun(ctx, io) {
   ctx.tool("onboard.phone.add", {
     effect: "write",
     description: "Add this person's phone. Returns a link the phone opens. Changes which devices can reach the space.",
-    input: obj({ space: str }),
+    input: obj({ space: str, name: str, type: str, fingerprint: str }),
     callers: [...OPEN],
     run: async ({ space }) => {
       const spaceName = String(space || "").trim().slice(0, 80);
@@ -244,6 +244,17 @@ export function registerFirstRun(ctx, io) {
       links.set(token, { role: "member", ttlDays: 1, space: spaceName, link });
       // The phone opens this link. The old typed code and word check are not part of this step.
       return { link, space: spaceName || null, pending: ["phone.add"] };
+    },
+  });
+
+  ctx.tool("onboard.first.done", {
+    effect: "write",
+    description: "Mark the first run finished so this computer opens the app.",
+    input: obj({}),
+    callers: ["cli", "local", "deck", "capsule", "device"],
+    run: async () => {
+      save({ onboard: { firstRun: null } });
+      return { done: true };
     },
   });
 }

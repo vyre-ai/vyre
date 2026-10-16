@@ -69,15 +69,21 @@ test("config: a real Mac local config.json (role local, no machine) is a device,
   assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8").includes("solo"), false);
 });
 
-test("config: a stored solo loads as a device, with no notice, and the file is left as it was", t => {
+test("config: a stored solo is rewritten to a device and opens the first run", t => {
   const root = tempHome(t);
-  const raw = JSON.stringify({ role: "box", machine: "solo" });
-  fs.writeFileSync(path.join(root, "config.json"), raw);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", machine: "solo" }));
   const c = config.load(root);
   assert.equal(c.machine, "device");
+  assert.equal(c.onboard.firstRun, "open");
   assert.equal(c.needsServer, undefined);
   assert.deepEqual(c.problems, []);
-  assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8"), raw);
+  const disk = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+  assert.equal(disk.machine, "device");
+  assert.equal(disk.onboard.firstRun, "open");
+  assert.equal(JSON.stringify(disk).includes("solo"), false);
+  const again = config.load(root);
+  assert.equal(again.onboard.firstRun, "open");
+  assert.equal(again.machine, "device");
 });
 
 test("config: with no config.json, a Mac or Windows PC is a device and Linux is a server", t => {

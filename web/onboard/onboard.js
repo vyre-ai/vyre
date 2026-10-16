@@ -352,17 +352,17 @@ const SCREENS = {
   // New (28 Sep, user decision "Vyre anywhere"): a role choice ahead of the pairing screens.
   // Copy and the three choices are anywhere's (docs/design/anywhere.md, work/anywhere 11328815,
   // ADR 0039), which owns them; this screen is launch's build of that spec. The field is
-  // config.machine ("solo"|"server"|"device", additive, ADR 0039) — NOT config.role, which
+  // config.machine ("server"|"device", ADR 0054). solo is not a value. NOT config.role, which
   // stays "box"|"local" and is untouched by this screen.
   //
   // Unified per the lead (the user was explicit: Move to server is the SAME flow in onboarding
   // and later): "name" (reserving this machine's own address) never runs for Device — a device
   // never reserves an address, only a server does. "tailscale" DOES still run for Device (a
   // device joining IS "a second device joining", the case the lead said triggers it), just not
-  // for Solo or Server, which both skip both screens and defer to Settings > Your devices > Add
+  // for a server, which skips both screens and defers to Settings > Your devices > Add
   // a device later.
-  //   - Solo: onboard.machine{machine:"solo"} (a safe no-op per anywhere, called anyway so the
-  //     server has it on record), then straight to Claude sign-in. Real tool, sha 73d03d39 —
+  //   - There is no solo choice. onboard.machine does not accept it.
+  //     Real tool, sha 73d03d39.
   //     `service` always comes back null for now (anywhere's own launchd installer isn't built
   //     yet), so nothing here reads it.
   //   - Server: onboard.machine{machine:"server"}, same real tool. `service.warning` is not

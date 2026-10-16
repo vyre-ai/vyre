@@ -126,6 +126,12 @@ export async function addComputer(input) {
   } catch (e) { return fail(e); }
 }
 
+export async function finishFirstRun() {
+  if (MOCK) return { ok: true, done: true };
+  try { return done(await tool("onboard.first.done", {})); }
+  catch (e) { return fail(e); }
+}
+
 /** @param {string} [space] */
 export async function addPhone(space) {
   if (MOCK) return { ok: true, link: "https://vyre.run/i/samplephone", space: space || null };

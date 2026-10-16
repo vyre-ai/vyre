@@ -276,7 +276,7 @@ export default {
         host: os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
-        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
+        current, finished: ob().firstRun === "open" ? false : Boolean(ob().finished), ...(ob().firstRun === "open" ? { firstRun: "open" } : {}), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: a vyre.run claim, or the person's own domain. */
@@ -368,7 +368,7 @@ export default {
       effect: "write",
       needsYou: true,
       description: "Ask to enrol this Windows computer. An assistant's call waits for your one tap and changes nothing until you approve.",
-      input: obj({ label: { type: "string", maxLength: 60 } }, ["label"]),
+      input: obj({ label: { type: "string", maxLength: 60 }, name: { type: "string" }, type: { type: "string" }, fingerprint: { type: "string" } }, ["label"]),
       callers: ["cli", "local", "deck", "capsule", "onboard", "mcp", "harness"],
       run: async ({ label }) => {
         const l = String(label ?? "").trim();

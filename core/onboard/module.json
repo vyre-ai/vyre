@@ -37,7 +37,8 @@
       { "name": "onboard.space.current", "effect": "write", "reach": "anyone", "outward": true },
       { "name": "onboard.member.link", "effect": "write", "reach": "anyone", "outward": true },
       { "name": "onboard.computer.add", "effect": "write", "reach": "anyone", "outward": true },
-      { "name": "onboard.phone.add", "effect": "write", "reach": "anyone", "outward": true }
+      { "name": "onboard.phone.add", "effect": "write", "reach": "anyone", "outward": true },
+      { "name": "onboard.first.done", "effect": "write", "reach": "person" }
     ]
   },
   "watches": {

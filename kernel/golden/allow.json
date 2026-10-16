@@ -1080,8 +1080,24 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; names.domain.check opened to a model or a module in 08773e0e4 (10 Oct 2026); the body decides: read-only: a live DNS check of the two records for an own domain, answered to the caller that asks; the directory call is the box's own signed read and nothing is changed"
  },
  {
+  "tool": "onboard.github.start",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.github.start opened to a model or a module in d14c56ec8 (16 Oct 2026); the body decides: returns the address for Continue with GitHub, or says that step is not on this server, and reads nothing secret"
+ },
+ {
+  "tool": "onboard.join.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.join.read opened to a model or a module in d14c56ec8 (16 Oct 2026); the body decides: reads an invite link and says which space and role it opens, and names no secret"
+ },
+ {
   "tool": "onboard.pair",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.pair opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: pairs a device while the box is being set up: the onboarding listener's own token and the person's surfaces; a cli label such as cli:agent:kit is the person's terminal, never a model (core/onboard/index.js)"
+ },
+ {
+  "tool": "onboard.person.lookup",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.person.lookup opened to a model or a module in d14c56ec8 (16 Oct 2026); the body decides: checks that a username has a valid form and returns the public page address, and reads nothing secret"
+ },
+ {
+  "tool": "onboard.space.poll",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; onboard.space.poll opened to a model or a module in d14c56ec8 (16 Oct 2026); the body decides: says whether the new space's computer is online yet, and reads nothing secret"
  },
  {
   "tool": "planner.bin",

@@ -303,8 +303,13 @@ export function load(root = home(), platform = process.platform) {
   // gets one inferred from that explicit choice, which says more than the OS guess in
   // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
   if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "device" : c.machine;
-  // Solo is not a mode. A stored "solo" is a device. The file is not rewritten, and nothing asks for a move.
-  if (user.machine === "solo") c.machine = "device";
+  // Solo is not a mode. A stored "solo" is rewritten to a device and the new first run opens. Nothing asks for a move.
+  if (user.machine === "solo") {
+    c.machine = "device";
+    c.onboard = { ...(c.onboard && typeof c.onboard === "object" ? c.onboard : {}), firstRun: "open" };
+    try { save({ machine: "device", onboard: { firstRun: "open" } }, root); }
+    catch (e) { problems.push("could not finish opening the first run: " + /** @type {Error} */ (e).message); }
+  }
   if (!["server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not server or device; using ${d.machine}`); c.machine = d.machine; }
   // A machine chosen as a server does the box's work whatever the OS guess said: the box-only modules (wink, the relay's server side) read `role`, so a Mac set up as a server (machine "server",
   // no role named) is role box too. A role named in the file is the person's and stays.
