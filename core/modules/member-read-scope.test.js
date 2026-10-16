@@ -1,114 +1,191 @@
 // @ts-check
-// Registry-driven: every MEMBER_MAY read tool called as a member must not return owner or other-member private rows.
+// Registry-driven: every MEMBER_MAY read tool is called as a member against seeded owner/other-member
+// data; responses must not leak. New read tools fail unless wired through lib/member-scope.js (audit).
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { MEMBER_MAY } from "./door-lists.js";
 import { refusal } from "./door-gate.js";
-import { start } from "../daemon/index.js";
-import { tempHome } from "../../test/helpers.js";
+import {
+  assertMemberReadScopeWiring,
+  memberReadTools,
+} from "../../lib/member-read-scope-audit.js";
+import {
+  relayDaemon,
+  twoMembers,
+  scratchWork,
+  tokenMeta,
+} from "../person-scope/member-relay-harness.js";
+import {
+  ensureFakeSessionProvider,
+  threadStartProviderFields,
+} from "../sessions/testing/fake-agent-harness.js";
 
 process.env.VYRE_KERNEL ??= "1";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
-
-const MEMBER = "per_" + "bcdefghijklmnopqrstuvwxyza";
-const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
-
-/** @param {any} t @param {boolean} team */
-async function rig(t, team = true) {
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
-  t.after(() => d.stop());
-  const OWNER = d.kernel.id.owner;
-  const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
-  if (team) await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: proof() });
-  const tok = async (/** @type {string} */ p) => (await d.kernel.surfaces.open(chain(p), { agent: "assistant" })).token;
-  const tokens = { owner: await tok(OWNER), ...(team ? { member: await tok(MEMBER) } : {}) };
-  /** @type {(who: "owner"|"member", tool: string, input?: any, caller?: string) => Promise<any>} */
-  const as = (who, tool, input = {}, caller = "cli") => d.registry.call(tool, input, caller, { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens[who] });
-  return { d, as, tokens, OWNER, MEMBER };
-}
+process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
 /**
- * Entry points fixed for the class rule: caller `cli` (or owner shortcuts) must not imply `{ all: true }`
- * when meta carries a member's kernel session — use lib/member-scope.js instead.
+ * Entry points fixed for the class rule: caller `cli` must not imply owner-wide reads for members.
  */
 export const MEMBER_OWNER_WIDE_READ_FIXES = Object.freeze([
-  "projects.reach — person_id + ownerWideRead (not cli → all:true for members)",
-  "core/memory reach — chainPerson → projects.reach person_id",
-  "core/files/access reach — chainPerson → projects.reach person_id",
-  "core/skills scopeOf — chainPerson → projects.reach person_id",
-  "core/recall reach — recallMemberReach + ownerWideRead",
-  "core/spaces listCaller — ownerWideRead for unsigned owner terminal only",
-  "threads.list — memberThreadAllowSet (threads.recall-sessions)",
+  "projects.reach — person_id + ownerWideRead",
+  "core/memory reach — chainPerson → projects.reach",
+  "core/files/access — person_id → projects.reach",
+  "core/skills scopeOf — person_id → projects.reach",
+  "core/recall — recallMemberReach + ownerWideRead",
+  "core/spaces listCaller — ownerWideRead",
+  "threads.list — memberThreadAllowSet",
 ]);
 
-/** @param {import("../modules/index.js").Registry} registry */
-function memberReadTools(registry) {
-  return [...MEMBER_MAY].filter((name) => {
-    const def = registry.tools.get(name);
-    return def && def.effect === "read" && !def.internal && !def.hook;
-  }).sort();
-}
-
-const SKIP_LEAK_SWEEP = new Set([
-  // Roster / catalog tools: intentionally list shared agents, types, models, etc.
-  "agents.list", "agents.versions", "models.list", "models.status", "providers.list",
-  "records.types", "records.kits.library", "roles.catalogue", "roles.list", "rules.list",
-  "mentions.kinds", "sessions.accounts.list", "spaces.list", "spaces.members.list",
-  "work.template.library", "flows.kit.library", "documents.template.list",
-]);
-
-/** @param {string} tool @param {{ carolThread?: string }} ctx */
-function probeInput(tool, ctx) {
-  const t = ctx.carolThread;
-  const map = {
-    "recall.search": { q: "probe", limit: 3 },
-    "threads.get": t ? { thread: t, limit: 1 } : {},
-    "threads.list": { all: true },
-    "threads.items": t ? { thread: t } : {},
-    "threads.asks": t ? { thread: t } : {},
-    "planner.list": {},
-    "projects.list": {},
-    "records.list": { type: "contact" },
-    "records.me": {},
-    "memory.stats": {},
-    "skills.list": {},
-    "goals.list": {},
-    "tasks.list": {},
-    "views.list": {},
-    "stream.read": {},
-    "stream.catchup": {},
-  };
-  return map[tool] ?? {};
-}
-
-function blobHas(/** @type {any} */ data, /** @type {string} */ needle) {
-  if (needle === "") return false;
+/** @param {any} data @param {string} needle */
+function blobHas(data, needle) {
+  if (!needle) return false;
   try { return JSON.stringify(data).includes(needle); } catch { return false; }
 }
 
-test("member read registry lists every MEMBER_MAY read tool", () => {
-  assert.ok(MEMBER_OWNER_WIDE_READ_FIXES.length >= 7);
+/**
+ * @param {string} tool
+ * @param {{
+ *   carolThread?: string, ownerThread?: string, chat?: string, carolPlannerTitle?: string,
+ * }} seed
+ */
+function probeFor(tool, seed) {
+  const t = seed.carolThread;
+  const fixed = /** @type {Record<string, any>} */ ({
+    "recall.search": { q: seed.carolPlannerTitle || "probe", limit: 5 },
+    "threads.list": { all: true },
+    "threads.get": t ? { thread: t, limit: 5 } : {},
+    "threads.items": t ? { thread: t } : {},
+    "threads.asks": t ? { thread: t } : {},
+    "threads.tasks": t ? { thread: t } : {},
+    "threads.queue": t ? { thread: t } : {},
+    "threads.commands": {},
+    "threads.slash": seed.chat ? { chat: seed.chat, line: "/help" } : {},
+    "planner.list": {},
+    "planner.upcoming": {},
+    "planner.bin": {},
+    "planner.ringing": {},
+    "planner.parse": { text: "tomorrow 9am" },
+    "projects.list": {},
+    "records.list": { type: "contact" },
+    "records.me": {},
+    "records.types": {},
+    "records.holders": { role: "client" },
+    "records.kits.library": {},
+    "memory.stats": {},
+    "memory.graph": { room: "unfiled" },
+    "memory.facts": { limit: 3 },
+    "skills.list": {},
+    "skills.find": { q: "test" },
+    "agents.list": {},
+    "agents.history": { agent: "assistant" },
+    "agents.context.list": { agent: "assistant" },
+    "agents.docs.get": { agent: "assistant" },
+    "agents.vault.list": { agent: "assistant" },
+    "agents.used": { agent: "assistant" },
+    "stream.read": {},
+    "stream.catchup": {},
+    "spaces.list": {},
+    "spaces.members.list": {},
+    "work.chat.list": {},
+    "work.situation": {},
+    "flows.list": {},
+    "goals.list": {},
+    "tasks.list": {},
+    "views.list": {},
+    "vault.me.list": {},
+    "vault.me.get": {},
+    "sessions.accounts.list": {},
+    "mcp.mine.list": {},
+  });
+  if (fixed[tool] !== undefined) return fixed[tool];
+  if (t && tool.startsWith("threads.") && !["threads.list", "threads.commands", "threads.slash"].includes(tool)) return { thread: t };
+  if (tool.startsWith("records.") && !["records.me", "records.types", "records.kits.library", "records.kits.get"].includes(tool)) {
+    return { type: "contact" };
+  }
+  if (tool.startsWith("agents.") && tool !== "agents.list" && tool !== "agents.versions" && tool !== "agents.create") return { agent: "assistant" };
+  if (tool.startsWith("work.chat.") && tool !== "work.chat.list" && tool !== "work.chat.create") return seed.chat ? { chat: seed.chat } : {};
+  if (tool.startsWith("flows.") && tool.includes(".")) return { id: "probe-flow-id" };
+  if (tool.startsWith("files.linked.")) return { link: "probe" };
+  return {};
+}
+
+test("MEMBER_MAY read tools: modules wire lib/member-scope.js or native kernel scoping", { timeout: 120_000 }, async (t) => {
+  const { d } = await relayDaemon(t, "claude");
+  const missing = assertMemberReadScopeWiring(d.registry, MEMBER_MAY);
+  assert.deepEqual(missing, [], `MEMBER_MAY read tools missing member-scope wiring:\n${missing.join("\n")}`);
 });
 
-test("MEMBER_MAY read tools: member sees no owner or other-member thread markers", { timeout: 180_000 }, async (t) => {
-  const { d, as } = await rig(t);
-  if (!d.registry.tools.has("threads.list")) {
-    t.skip("threads module not loaded in this environment");
-    return;
-  }
+test("MEMBER_MAY read tools: live calls as member leak no owner or other-member seeded data", { timeout: 300_000 }, async (t) => {
+  const { d } = await relayDaemon(t, "claude");
+  const readTools = memberReadTools(d.registry, MEMBER_MAY);
+  assert.ok(readTools.length >= 100, `expected many read tools, got ${readTools.length}`);
+  assert.ok(d.registry.tools.has("threads.start"), "threads module must load (manifest declares threads.recall-sessions)");
 
-  const readTools = memberReadTools(d.registry);
-  assert.ok(readTools.length > 10, `expected many read tools, got ${readTools.length}`);
+  const K = d.kernel, OWNER = K.id.owner;
+  const { ownerChain, carolMeta, bobMeta } = await twoMembers(d, K, OWNER);
+  const ownerMeta = await tokenMeta(K, ownerChain);
+  await ensureFakeSessionProvider(d, "claude");
+  const work = scratchWork(t, "vyre-member-read-scope-");
+  const stamp = Date.now();
+  const MARK_O = `vyre-read-leak-owner-${stamp}`;
+  const MARK_C = `vyre-read-leak-carol-${stamp}`;
+  const MARK_B = `vyre-read-leak-bob-${stamp}`;
 
-  const memberList = await as("member", "threads.list", { all: true });
-  assert.ok(!memberList.error, JSON.stringify(memberList.error));
+  const ownerTh = await d.registry.call("threads.start", {
+    cwd: work, prompt: MARK_O, surface: "cli", ...threadStartProviderFields("claude"),
+  }, "cli", ownerMeta);
+  assert.ok(ownerTh.data?.id, JSON.stringify(ownerTh.error));
 
+  const plannerAdd = (meta, title) => d.registry.call("planner.add", {
+    kind: "reminder", title, body: "seed", at: "at 10am",
+  }, "cli", meta);
+  const ownerPlan = await plannerAdd(ownerMeta, MARK_O);
+  assert.ok(ownerPlan.data, JSON.stringify(ownerPlan.error));
+  assert.ok((await plannerAdd(carolMeta, MARK_C)).data);
+  assert.ok((await plannerAdd(bobMeta, MARK_B)).data);
+
+  const seed = {
+    carolThread: undefined,
+    ownerThread: ownerTh.data.id,
+    chat: undefined,
+    carolPlannerTitle: MARK_C,
+  };
+
+  const carolPlanner = await d.registry.call("planner.list", {}, "cli", carolMeta);
+  assert.ok(!carolPlanner.error, JSON.stringify(carolPlanner.error));
+  const carolTitles = JSON.stringify(carolPlanner.data);
+  assert.ok(carolTitles.includes(MARK_C), "sanity: member sees her planner seed");
+  assert.ok(!carolTitles.includes(MARK_O), "planner.list must not show owner seed before sweep");
+  assert.ok(!carolTitles.includes(MARK_B), "planner.list must not show other member seed before sweep");
+
+  const carolThreads = await d.registry.call("threads.list", { all: true }, "cli", carolMeta);
+  assert.ok(!carolThreads.error, JSON.stringify(carolThreads.error));
+  const listed = (carolThreads.data || []).map((/** @type {any} */ r) => String(r.id));
+  assert.ok(!listed.includes(String(ownerTh.data.id)), "threads.list must not list owner private thread");
+
+  const called = new Set();
+  const leaks = [];
   for (const tool of readTools) {
-    if (SKIP_LEAK_SWEEP.has(tool)) continue;
-    const r = await as("member", tool, probeInput(tool, {}));
-    if (r.error && r.error.message === refusal(tool)) assert.fail(`${tool}: member must not meet the owner door gate`);
+    called.add(tool);
+    const r = await d.registry.call(tool, probeFor(tool, seed), "cli", carolMeta);
+    if (r.error) {
+      if (r.error.message === refusal(tool)) leaks.push(`${tool}: hit owner door gate`);
+      continue;
+    }
+    if (blobHas(r.data, MARK_O)) leaks.push(`${tool}: leaked owner marker ${MARK_O}`);
+    if (blobHas(r.data, MARK_B)) leaks.push(`${tool}: leaked other-member marker ${MARK_B}`);
+    if (tool === "threads.list" && Array.isArray(r.data)) {
+      const ids = r.data.map((/** @type {any} */ x) => String(x.id));
+      if (ids.includes(String(ownerTh.data.id))) leaks.push(`${tool}: listed owner thread id`);
+    }
+    if (tool === "threads.get" && r.data && blobHas(r.data, MARK_O)) leaks.push(`${tool}: leaked owner thread prompt`);
   }
+
+  assert.equal(called.size, readTools.length, "must call every MEMBER_MAY read tool");
+  assert.deepEqual(leaks, [], leaks.join("\n"));
 });
