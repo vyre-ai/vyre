@@ -157,6 +157,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />
                   <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
+                  <Rows rows={s.more ?? []} onChange={(more) => setStep(s.id, { more })} draft={draft} stepId={s.id} options={options} title="Also set" help="More fields changed on the same record in the same step." />
                 </>
               ) : null}
 
