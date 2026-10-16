@@ -148,7 +148,6 @@ Composer behaviour (Vyre-owned, account level with a session override):
 | Presence | Passkeys | per device | | presence table | Security | `vyre presence code` |
 | Vault | Lock idle, max, on sleep, on screen lock | A | 10m, 12h, on, on | config.json | none | none |
 | Vault | Relay, fill, ssh agent | A | off | config.json | none | none |
-| VyreDrive | Default access, shares | A | ro | config.json | Network (read-only) | call |
 | Files | Roots, max fetch, dotfiles | A | | config.json | none | none |
 | Terminal | Keep hours, max, shell, login, scrollback | A | 12, 8 | config.json | none | none |
 | Glass | Hand-back minutes, roots, upload size, egress | A | 5 | config.json | hand-back only | call |
