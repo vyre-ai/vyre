@@ -45,6 +45,7 @@ import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOf
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
+import { memberThreadAllowSet } from "../../lib/member-scope.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -4557,10 +4558,17 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        const filterMember = async (/** @type {any[]} */ rows) => {
+          if (!Array.isArray(rows)) return rows;
+          const allow = await memberThreadAllowSet(ctx, ctx.kernel, meta);
+          const scoped = allow ? rows.filter(r => r && allow.has(String(r.id))) : rows;
+          const ok = await Promise.all(scoped.map(r => sessionMay(meta, r && r.id, false)));
+          return scoped.filter((_, k) => ok[k]);
+        };
+        if (!(await wantsMacs(ctx, i, caller, meta))) return filterMember(sb.list(q));
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
-        return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
+        return filterMember(mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) }));
       });
 
     // Every ask says what answering it takes: `presence: {required, covered, since}`. Answering is the
