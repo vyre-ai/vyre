@@ -66,49 +66,56 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
 
 test("a standing permission over a real mail connection: the owner's agent goes out, a member's chat and another agent are held, an expiry ends it, and a followed list ignores an address added by someone without the connection", { timeout: 300_000 }, async t => {
   const w = await world(t);
-  const { K, OWNER, ok, as, throughRegistryHold } = w;
+  const { K, OWNER, ok, as } = w;
   const mail = await mailFixture(t, (tool, input) => as(OWNER, tool, input));
   const via = `mail:${mail.id}`;
   await ok("agents.create", { name: "juno", kind: "agent" });
   await ok("agents.create", { name: "kit", kind: "agent" });
   await K.gateway.grants.setRole(w.dev(OWNER), { person: BEN, role: "member" }, { presence: { op: "stand-in", fields: {}, n: 1 } }).catch(() => {});
-  const send = async (/** @type {string} */ agent, /** @type {string} */ person, /** @type {string} */ to) => {
-    const r = await throughRegistryHold(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+  const sendOut = async (/** @type {string} */ agent, /** @type {string} */ person, /** @type {string} */ to) => {
+    const r = await w.agentCall(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
+    assert.notEqual(r.error?.code, "held_for_approval", `${agent} as ${person.slice(4, 8)}: standing must skip the registry hold, got ${JSON.stringify(r.error)}`);
+    assert.ok(!r.error, `${agent} as ${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
+    const id = r.data.held || r.data.id;
+    return (await ok("gate.get", { id })).state;
+  };
+  const sendHeld = async (/** @type {string} */ agent, /** @type {string} */ person, /** @type {string} */ to) => {
+    const r = await w.throughRegistryHold(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
     assert.ok(!r.error, `${agent} as ${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
     const id = r.data.held || r.data.id;
     return (await ok("gate.get", { id })).state;
   };
   const made = await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
   // the owner's agent (an approverless run: the person hop is the owner, who holds the connection)
-  assert.equal(await send("juno", OWNER, "dana@harlowlegal.com"), "sent", "inside the scope, no question");
+  assert.equal(await sendOut("juno", OWNER, "dana@harlowlegal.com"), "sent", "inside the scope, no question");
   await until(() => mail.mailbox.sent.length === 1, "the mail reached the mail server");
   // a member's chat with the same agent: she does not hold the connection, so the agent may not use it for her
-  assert.equal(await send("juno", BEN, "dana@harlowlegal.com"), "held", "a member's chat is held when she could not use the connection herself");
+  assert.equal(await sendHeld("juno", BEN, "dana@harlowlegal.com"), "held", "a member's chat is held when she could not use the connection herself");
   // another agent that merely names juno is not covered
-  assert.equal(await send("kit", OWNER, "dana@harlowlegal.com"), "held", "another agent is not covered");
+  assert.equal(await sendHeld("kit", OWNER, "dana@harlowlegal.com"), "held", "another agent is not covered");
   assert.equal(mail.mailbox.sent.length, 1);
 
   // an expiry ends it
   await ok("gate.standing.revoke", { id: made.id });
   const soon = await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20, expires: Date.now() + 4000 });
   assert.ok(soon.id);
-  assert.equal(await send("juno", OWNER, "dana@harlowlegal.com"), "sent", "before the expiry");
+  assert.equal(await sendOut("juno", OWNER, "dana@harlowlegal.com"), "sent", "before the expiry");
   await new Promise(r => setTimeout(r, 4500));
-  assert.equal(await send("juno", OWNER, "dana@harlowlegal.com"), "held", "after the expiry it asks");
+  assert.equal(await sendHeld("juno", OWNER, "dana@harlowlegal.com"), "held", "after the expiry it asks");
 
   // a followed list counts only what someone who holds the connection wrote
   await K.gateway.records.define(w.dev(OWNER), { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "email", kind: "text", label: "Email" }, { name: "other_emails", kind: "emails", label: "Other emails" }] }] });
   const lee = await K.gateway.records.create(w.dev(OWNER), "contact", { name: "Lee", email: "lee@harlowlegal.com" });
   const follow = await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { lists: [`contact:${lee.id}`] }, follow_lists: true, daily_cap: 20 });
-  assert.equal(await send("juno", OWNER, "lee@harlowlegal.com"), "sent");
+  assert.equal(await sendOut("juno", OWNER, "lee@harlowlegal.com"), "sent");
   // Ben (a member, no use of the connection) adds an address: it does not count
   const v1 = (await K.gateway.records.get(w.dev(OWNER), "contact", lee.id)).version;
   await K.gateway.records.update(w.dev(BEN), "contact", lee.id, { other_emails: ["planted@harlowlegal.com"] }, v1).catch(() => {});
-  assert.equal(await send("juno", OWNER, "planted@harlowlegal.com"), "held", "an address added by someone without the connection does not count");
+  assert.equal(await sendHeld("juno", OWNER, "planted@harlowlegal.com"), "held", "an address added by someone without the connection does not count");
   // the owner writes it: it counts
   const v2 = (await K.gateway.records.get(w.dev(OWNER), "contact", lee.id)).version;
   await K.gateway.records.update(w.dev(OWNER), "contact", lee.id, { other_emails: ["planted@harlowlegal.com"] }, v2);
-  assert.equal(await send("juno", OWNER, "planted@harlowlegal.com"), "sent", "written by someone who holds it: it counts");
+  assert.equal(await sendOut("juno", OWNER, "planted@harlowlegal.com"), "sent", "written by someone who holds it: it counts");
   await ok("gate.standing.revoke", { id: follow.id });
 });
 
@@ -148,13 +155,19 @@ test("over MCP, an agent is covered by its own permission only: naming another a
   await ok("agents.create", { name: "juno", kind: "agent" });
   await ok("agents.create", { name: "kit", kind: "agent" });
   await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
-  const send = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
+  const sendOut = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
+    const r = await w.agentCall(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
+    assert.notEqual(r.error?.code, "held_for_approval", `${agent}: standing must skip the registry hold, got ${JSON.stringify(r.error)}`);
+    assert.ok(!r.error, `${agent}: ${JSON.stringify(r.error)}`);
+    return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
+  };
+  const sendHeld = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => {
     const r = await throughRegistryHold(agent, OWNER, "mail.send", { account: mail.id, to: "dana@harlowlegal.com", subject: "Re: intake", body: "Hi, the form is on staging.", ...extra });
     assert.ok(!r.error, `${agent}: ${JSON.stringify(r.error)}`);
     return (await ok("gate.get", { id: r.data.held || r.data.id })).state;
   };
-  assert.equal(await send("juno"), "sent", "juno, over MCP with its inherited token, goes out inside its permission");
-  assert.equal(await send("kit", { agent: "juno" }), "held", "kit naming juno in the input is still kit: held");
-  assert.equal(await send("kit", { by: "juno", agent_name: "juno" }), "held", "other naming fields change nothing");
+  assert.equal(await sendOut("juno"), "sent", "juno, over MCP with its inherited token, goes out inside its permission");
+  assert.equal(await sendHeld("kit", { agent: "juno" }), "held", "kit naming juno in the input is still kit: held");
+  assert.equal(await sendHeld("kit", { by: "juno", agent_name: "juno" }), "held", "other naming fields change nothing");
   assert.equal(mail.mailbox.sent.length, 1, "only juno's mail went out");
 });
