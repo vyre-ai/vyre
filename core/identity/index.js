@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { claim as claimGithub } from "../../lib/github-verified.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import * as M from "../../kernel/identity/master.js";
@@ -152,7 +153,11 @@ export default {
 
     tool("identity.github.link", "Link a GitHub login to your username. The vault still needs your master password.",
       obj({ login: str, subject: str }, ["login", "subject"]),
-      async (input) => M.linkGithub(root, { login: input.login, subject: input.subject }, idFile));
+      async (input) => {
+        // Only an account GitHub confirmed (onboard.github.finish vouches after the token exchange) is linked. A login and an id typed here, or sent by an agent, are not.
+        if (!claimGithub(String(input.login || "").trim().toLowerCase(), String(input.subject || "").trim())) throw refuse("Sign in with GitHub first. A GitHub login typed here is not linked.", "github_unverified");
+        return M.linkGithub(root, { login: input.login, subject: input.subject }, idFile);
+      });
 
     tool("identity.discover", "Choose whether the public directory shows your username.",
       obj({ on: { type: "boolean" } }, ["on"]),
