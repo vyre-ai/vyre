@@ -153,7 +153,7 @@ test("route: one server paired never refuses (nothing to choose between)", () =>
 
 test("needsSpace: the actions that belong to a Space, and not the reads or the tools that are the device's own", () => {
   for (const t of ["records.create", "records.update", "tasks.decide", "rules.define", "flows.run", "work.project.rename", "work.start-project", "files.drive.upload"]) assert.equal(needsSpace(t), true, t);
-  for (const t of ["records.list", "tasks.list", "flows.list", "spaces.list", "projects.list", "work.chat.list", "records.me", "settings.get", "files.drive.list"]) assert.equal(needsSpace(t), false, t);
+  for (const t of ["records.list", "tasks.list", "flows.list", "spaces.list", "projects.list", "work.chat.list", "records.me", "settings.get", "files.linked.list"]) assert.equal(needsSpace(t), false, t);
 });
 
 // The vault holds secrets: a team's credential must never be written to, or read from, the other server's vault. Every vault tool, reads included, needs the Space; the same goes for what else holds a Space's private data.

@@ -9,8 +9,6 @@
     "core:default",
     "allow-get-state",
     "allow-set-autostart",
-    "allow-notify",
-    "allow-mount-drive",
-    "allow-unmount-drive"
+    "allow-notify"
   ]
 }

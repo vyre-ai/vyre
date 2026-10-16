@@ -1,4 +1,4 @@
-// Files' own tree as the sidebar's panel (the same drill-in as Chat, Settings and Build): Space, Shared, Linked, On your server and On your computer, each folder opening beneath it. Picking one
+// Files' own tree as the sidebar's panel (the same drill-in as Chat, Settings and Build): Space, Shared and Linked, each folder opening beneath it. Picking one
 // opens it in the page (files-nav.ts); a linked folder's files can be dragged to another folder in the same linked folder.
 import { useEffect, useMemo } from "react";
 import { useWindowDimensions } from "react-native";
@@ -12,22 +12,22 @@ import { spaceDriveRefusal } from "./space-model";
 import { driveRefusal } from "./real-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
-const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", box: "server", computer: "laptop" };
+const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link" };
 
 export function FilesTreePanel() {
   const { height } = useWindowDimensions();
-  const { place, folders, status, kids, go, loadRoots, openNode, invalidate } = useFilesNav();
+  const { place, folders, kids, go, loadRoots, openNode, invalidate } = useFilesNav();
   useEffect(() => { loadRoots(); }, [loadRoots]);
   useEffect(() => { if (!kids.space) openNode("space"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const data = useMemo(() => {
-    const roots = rootsOf({ linked: folders, shares: status?.shares ?? [] });
+    const roots = rootsOf({ linked: folders });
     const withKids = (n: TreeNode): TreeNode => {
       const list = kids[n.id] ?? n.kids ?? (n.root === "space" || n.id.includes(":") ? [] : undefined);
       return list ? { ...n, kids: list.map(withKids) } : n;
     };
     return roots.map((r) => (r.id === "space" ? { ...r, kids: (kids.space ?? []).map(withKids) } : withKids(r)));
-  }, [folders, status, kids]);
+  }, [folders, kids]);
 
   const onMove = ({ dragIds, parentId }: { dragIds: string[]; parentId: string | null }) => {
     const to = parentId ? parsePlace(parentId) : null;

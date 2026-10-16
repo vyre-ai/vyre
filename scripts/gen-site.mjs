@@ -556,7 +556,7 @@ devicePage({
 devicePage({
   slug: 'windows', os: 'Windows', name: 'Vyre on Windows', crumb: 'Windows',
   title: 'Vyre for Windows: the Vyre app in your tray',
-  desc: 'Vyre for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server, ask your agents, and map your shared folder as a drive.',
+  desc: 'Vyre for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server and ask your agents from the tray.',
   h1: 'Vyre, <b>in your Windows tray.</b>',
   lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Pair a PC with 13 words or a QR code from your other device.',
   ogSub: 'A tray icon and an Alt+Space panel, connected to your own Vyre server.',
@@ -564,7 +564,6 @@ devicePage({
   what: { h: 'The same window, <b>on your PC.</b>', items: [
     ['A tray app', 'A Vyre icon in your tray, and an Alt+Space panel to ask from.'],
     ['Pair with 13 words or a QR code', 'Type the words or scan the code from your other device, then confirm the server’s address and key fingerprint.'],
-    ['Your shared folder as a drive', 'The tray’s “Open Vyre Drive” maps a folder your server shares as a drive letter.'],
     ['Signed updates', 'The app updates itself, only from releases the Vyre key signed, and never to an older version.'],
   ] },
   steps: { h: 'Install the app, <b>then pair your PC.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>).', items: [

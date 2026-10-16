@@ -126,26 +126,17 @@ test("system: the Wink network card says what is connected and what is wrong", {
   assert.ok(!JSON.stringify([w, bad]).toLowerCase().match(/tailscale|tailnet/), "no Tailscale wording");
 });
 
-test("system: hand-back keeps its choices; shares flip between read only and read and write; the audit names what it found", { skip: !strip }, async () => {
+test("system: hand-back keeps its choices, and the box can be renamed", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
   const { systemSource } = await import("./system-source.ts");
   assert.deepEqual(m.handbackOf({ minutes: 5, warn_s: 8, choices: [0, 2, 5] }), { minutes: 5, choices: [0, 2, 5], warn: 8 });
   assert.deepEqual(m.handbackOf({}).choices, [0, 2, 5, 15]);
   assert.equal(m.handbackLabel(0), "Off");
   assert.equal(m.handbackLabel(2), "After 2 min idle");
-  assert.equal(m.flipAccess("ro"), "rw");
-  assert.equal(m.flipAccess("rw"), "ro");
-  assert.equal(m.accessWord("rw"), "Read and write");
-  assert.deepEqual(m.auditLines({ checked: 3 }), { ok: true, lines: ["Only your paired Macs can reach them. Checked 3 online devices."] });
-  const bad = m.auditLines({ unsafe: [{ share: "docs", found: [".env"] }, { share: "x", why: "unreadable" }], findings: [{ node: "phone" }] });
-  assert.equal(bad.ok, false);
-  assert.deepEqual(bad.lines.slice(0, 2), ["docs has secrets inside: .env", "x could not be checked for secrets: unreadable."]);
-  assert.match(bad.lines[2], /^1 device outside your paired Macs can reach these shares: phone\./);
   const b = box({ "recall.status": { error: { code: "no_such_tool", message: "no" } } });
   const s = systemSource(b.call);
   assert.equal(await s.recall(), null, "a tool the box lacks leaves its card out");
   await s.setHandback(5);
-  await s.setAccess("docs", "rw");
   await s.rename("  Atlas ");
-  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["computers.handback.set", { minutes: 5 }], ["files.drive.access", { name: "docs", mode: "rw" }], ["system.rename", { name: "Atlas" }]]);
+  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["computers.handback.set", { minutes: 5 }], ["system.rename", { name: "Atlas" }]]);
 });

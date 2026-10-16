@@ -1,16 +1,9 @@
 import { allowsMock } from "@vyre/ui";
-import { call as boxCall } from "../../src/api/box";
 import { tool } from "../../src/real/box";
-import { driveSource } from "./source";
 import { spaceDriveSource } from "./space-source";
 import { linkedSource } from "./linked-source";
 import { sampleCall } from "./mock-box";
 import type { Call } from "./source";
-
-/** In a mock build the one Drive screen is fed by the sample world through the same tools; everywhere else the box answers. */
-const call: Call = (name, input) => (allowsMock() ? sampleCall(name, input) : boxCall(name, input));
-
-export const { statusReal, listReal, readReal } = driveSource(call);
 
 /** The Space Drive's calls go through `tool`, which answers a presence request (restore) with the person's own proof. */
 const callWithPresence: Call = async (name, input) => {

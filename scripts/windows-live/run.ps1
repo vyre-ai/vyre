@@ -160,20 +160,9 @@ if ($first) {
     Say ("after pair: Vyre running={0}; pages: {1}" -f [bool](Get-Process Vyre -ErrorAction SilentlyContinue), ((Pages | ForEach-Object { $_.url }) -join ", "))
     try { Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = (Get-Date).AddMinutes(-15) } -MaxEvents 40 -ErrorAction Stop | Where-Object { $_.Message -match "Vyre" } | Select-Object -First 4 | ForEach-Object { Say ("eventlog: {0} {1}" -f $_.ProviderName, ($_.Message -replace "\s+", " ").Substring(0, [Math]::Min(300, $_.Message.Length))) } } catch { Say "no event log entries for Vyre" }
 
-    # ---- 6. the link window: tray's "Open Vyre Drive" is the same event --------------------------------------
+    # ---- 6. the link window: the hidden bundled page that holds the channel to the box ----------------------------
     $link = WaitPage "*link.html*" 60
     Result "link-window" ($null -ne $link) $(if ($link) { "hidden bundled page is running" } else { "no link window" })
-    if ($link) {
-      Start-Sleep 20   # give it time to dial the box through the relay
-      Cdp $link "window.__TAURI_INTERNALS__.invoke('plugin:event|emit_to', { target: { kind: 'Window', label: 'link' }, event: 'vyre-drive', payload: null }).then(() => 'emitted')" | Out-Null
-      Start-Sleep 45
-      $nu = net use 2>&1 | Out-String
-      Say "net use:`n$nu"
-      $wc = Get-Service WebClient -ErrorAction SilentlyContinue
-      Say "WebClient service: $(if ($wc) { $wc.Status } else { 'not installed' })"
-      Result "drive-letter" ($nu -match "100\.100\.100\.100@8080") $(if ($nu -match "100\.100\.100\.100@8080") { "mapped" } else { "not mapped (a hosted runner has no WebDAV client; the box call is checked on the box side)" })
-      Shot "05-after-drive"
-    }
   }
 
   # ---- 7. the global hotkey -----------------------------------------------------------------------------------

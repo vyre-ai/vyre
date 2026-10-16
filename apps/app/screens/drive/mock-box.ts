@@ -1,4 +1,4 @@
-// A fake box for a mock build: the same tools the real Drive calls (files.drive.*, artifacts.*), answered from the sample world in data.ts, so the one Drive screen
+// A fake box for a mock build: the same tools the real Drive calls (files.drive.space.*, files.linked.*, artifacts.*), answered from the sample world in data.ts, so the one Drive screen
 // runs unchanged. State lives in the module, per `mockBox()` instance, so a test starts clean.
 import type { Call } from "./source";
 import { SAMPLE_ARTIFACTS, SAMPLE_FILES, SAMPLE_NOW, type SampleFile } from "./data.ts";
@@ -27,9 +27,6 @@ export function mockBox(now: () => number = () => SAMPLE_NOW) {
   const call = (async (tool: string, input: Record<string, unknown> = {}): Promise<Out> => {
     const i = input as Record<string, any>;
     switch (tool) {
-      case "files.drive.status": return { data: { enabled: true, access: "ro", shares: [{ name: "Documents", access: "ro", shared: true }] } };
-      case "files.drive.list": return { data: { share: "Documents", path: String(i.path ?? ""), entries: [{ name: "Notes.txt", dir: false, kind: "text", mime: "text/plain", size: 29, mtime: new Date(SAMPLE_NOW - DAY).toISOString() }], total: 1 } };
-      case "files.drive.read": return { data: { share: "Documents", path: String(i.path ?? ""), kind: "text", mime: "text/plain", size: 29, mtime: new Date(SAMPLE_NOW).toISOString(), offset: 0, length: 29, base64: b64("Call Dana Wine about the trust."), done: true } };
       case "files.drive.space.list": return { data: { entries: files.map((f) => ({ path: f.path, size: f.size, ver: f.ver, at: f.at, by: f.by })), next: null } };
       case "files.drive.space.read": { const f = at(String(i.path)); return f ? { data: { path: f.path, version: f.ver, size: f.size, base64: b64(f.text ?? `Sample file ${f.path}`) } } : err("not_found"); }
       case "files.drive.versions": {
