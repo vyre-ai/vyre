@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(identity): the relay's GitHub sign-in public key is pinned in lib/relay-keys.js (RELAY_ASSERT_KEY). Its private half is the deploy environment secret GH_ASSERT_KEY, set on the relay as GITHUB_ASSERT_KEY by relay-deploy.yml. `github.assertKey` in a box's config still replaces it for development and tests.
 - test: the golden decisions are re-recorded for the merged 0.5.3 work; the removed Mac egress and tailnet tools are gone from them.
 - ci: the node tests run in ten shards on the self-hosted runners and five on GitHub's hosted ones.
 - feat(runner): a session started on the computer with no chat (runner.start) comes back to it by the same standing choice as a chat's, with no tap: the placement row says `own`, and the home's heartbeat answer tells the computer to start it again once `mayReturn` holds (Always allow, steadily ready, past the cooldown, a reason that clears, the person's own). A chat's own session still goes through the person's next message. Tests at the lent home: back after the stretch and the cooldown, not under Ask, not after a person's move, never a chat's session.
