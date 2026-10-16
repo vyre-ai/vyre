@@ -56,6 +56,8 @@ if (role === "home") {
   const resumeLent = createResumeLent({ target: async thread => placeOf(thread), port: () => own });
   const chats = new Map();
   const home = createLentHome({ space: SPACE, root: path.join(root, "lent"), offers: g.offers, leases: k.gateway.leases, lapseMs: LAPSE_MS,
+    // the steady stretch and the cooldown before a session comes back by the person's standing choice, short enough to wait for
+    steadyMs: 3000, returnCooldownMs: 3000,
     // a chat's session reaches Vyre's tools through the home (lent.http): here the home answers with what it was asked
     http: async (thread, method, p) => ({ status: 200, body: JSON.stringify({ data: { thread, method, path: p } }) }), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } },
     emit: (type, payload) => console.log(JSON.stringify({ ev: type, ...payload })),
@@ -91,8 +93,11 @@ if (role === "home") {
           else if (c.cmd === "resumes") out = fs.existsSync(resumes) ? fs.readFileSync(resumes, "utf8").split("\n").filter(Boolean).map(x => JSON.parse(x)) : [];
           else if (c.cmd === "forget") { home.book.forget(c.session); out = true; }
           // a chat's process on the lender (lent spawn): spawn it, write its stdin, read what it said, kill it
+          else if (c.cmd === "may") out = home.mayReturn(c.session, BOB);
+          // the person's next message puts the chat back on the computer it left (policy), then the chat's process starts there
+          else if (c.cmd === "adopt") { const p = await home.adopt({ session: c.session, thread: c.session, person: BOB, native: c.native, lines: [c.line], provider: c.provider, policy: true }); out = p; }
           else if (c.cmd === "spawn") {
-            const proc = home.spawn({ session: c.session, person: BOB, args: ["--output-format", "stream-json"] });
+            const proc = home.spawn({ session: c.session, person: BOB, ...(c.command ? { command: c.command } : {}), args: ["--output-format", "stream-json"] });
             const rec = { proc, lines: [], buf: "", closed: null, error: null };
             proc.stdout.on("data", d => { rec.buf += d; let i; while ((i = rec.buf.indexOf("\n")) >= 0) { rec.lines.push(rec.buf.slice(0, i)); rec.buf = rec.buf.slice(i + 1); } });
             proc.on("close", (code, sig) => { rec.closed = [code, sig]; }); proc.on("error", e => { rec.error = e.code; });
@@ -178,6 +183,9 @@ else {
   const homeRoot = path.join(work, "home"), agentHome = path.join(work, "agent-home");
   fs.mkdirSync(agentHome, { recursive: true });
   fs.copyFileSync(path.join(HERE, "..", "core", "runner", "testing", "fake-agent.js"), path.join(agentHome, "agent.js"));
+  // a second agent kind: a program named codex that is the same fake agent, found on the PATH the lenders inherit
+  fs.writeFileSync(path.join(agentHome, "codex"), `#!/bin/sh\nexec "${process.execPath}" "${path.join(agentHome, "agent.js")}" "$@"\n`, { mode: 0o755 });
+  process.env.PATH = `${agentHome}${path.delimiter}${process.env.PATH}`;
   const free = () => new Promise(res => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); }); });
   const [homePort, ctlPort, proxyPort] = [await free(), await free(), await free()];
   const children = new Set();
@@ -278,6 +286,36 @@ else {
       check(r && r.status === 200 && JSON.parse(r.body).data.path === "/v1/tools/system.echo" && JSON.parse(r.body).data.thread === sess, "a tool call through the door reached the home as that session: " + JSON.stringify(r).slice(0, 160));
       await ctl({ cmd: "kill", session: sess });
       l.send({ cmd: "exit" });
+    },
+    // The computer drops off the network, the home takes the chat, the computer comes back and stays ready, and at the person's next message the chat goes out to it again: for two agent kinds. No turn answered twice or lost.
+    async comeBack() {
+      for (const kind of ["claude", "codex"]) {
+        const l = await lend("back" + kind);
+        const sess = `chatback_${kind}`;
+        await ctl({ cmd: "spawn", session: sess, ...(kind === "claude" ? {} : { command: kind }) });
+        await until(`${kind}: the chat's process to start on the lender`, async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+        const said = async (text, s = sess) => (await ctl({ cmd: "read", session: s })).lines.filter(x => x.includes(text)).length;
+        await ctl({ cmd: "write", session: sess, text: "turn alpha\n" });
+        await until(`${kind}: the first answer`, async () => (await said("did alpha")) >= 1, 30_000);
+        proxy.cut(); log(kind, "link cut");
+        await until(`${kind}: the server to take the chat`, async () => (await ctl({ cmd: "book", session: sess }))?.where === "server", 40_000);
+        const taken = await ctl({ cmd: "book", session: sess });
+        check(taken.reason === "offline", `${kind}: the server took the chat by itself (reason ${taken.reason})`);
+        check(!(await ctl({ cmd: "may", session: sess })), `${kind}: while the computer is away nothing comes back`);
+        proxy.heal(); log(kind, "link healed");
+        await until(`${kind}: the computer to be offered the chat back`, async () => (await ctl({ cmd: "book", session: sess }))?.offer === "mac", 40_000);
+        await until(`${kind}: the computer to stay ready long enough`, async () => ctl({ cmd: "may", session: sess }), 40_000);
+        const placed = await ctl({ cmd: "adopt", session: sess, line: JSON.stringify({ type: "user", text: "carried back" }), provider: kind, native: kind === "claude" ? "00000000-0000-4000-8000-000000000001" : "00000000-0000-4000-8000-000000000002" });
+        check(placed && placed.where === "mac" && placed.epoch >= 3, `${kind}: the chat goes out to the computer again (${JSON.stringify(placed)})`);
+        await ctl({ cmd: "spawn", session: sess, ...(kind === "claude" ? {} : { command: kind }) });
+        await until(`${kind}: the chat's process to start again on the computer`, async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+        await ctl({ cmd: "write", session: sess, text: "turn beta\n" });
+        await until(`${kind}: the next turn is answered on the computer`, async () => (await said("did beta")) >= 1, 30_000);
+        await sleep(1500);
+        check((await said("did beta")) === 1, `${kind}: the next turn was answered once`);
+        await ctl({ cmd: "kill", session: sess });
+        l.send({ cmd: "exit" });
+      }
     },
     async sleep() {
       const l = await lend("sleep");
