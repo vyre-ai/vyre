@@ -100,6 +100,28 @@ function limiter(now) {
   };
 }
 
+export const GH_ASSERT_TAG = "vyre-gh-assert-v1";
+export const GH_LINK_TAG = "vyre-login-github-link-v1";
+
+/**
+ * What the relay's GitHub app signs once GitHub itself has confirmed a person at the OAuth callback: the numeric GitHub id for one space, for two minutes. A space accepts it only against the relay
+ * public key it was told, and only for its own name.
+ * @param {string} token "<payload b64url>.<signature b64url>" @param {string} relayPub the relay's Ed25519 public key (base64url) @param {string} space @param {() => number} [now]
+ * @returns {{ id: string, login: string } | null}
+ */
+export function verifyGithubAssertion(token, relayPub, space, now = Date.now) {
+  const [payload, sig] = String(token || "").split(".");
+  if (!payload || !sig || !relayPub) return null;
+  if (!verifies(relayPub, Buffer.from(`${GH_ASSERT_TAG}\n${payload}`), sig)) return null;
+  let p;
+  try { p = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { return null; }
+  if (!p || p.v !== 1 || p.space !== space || !/^[0-9]{1,18}$/.test(String(p.id)) || !Number.isFinite(p.exp) || p.exp <= now() || !Number.isFinite(p.iat) || p.iat > now() + 60_000) return null;
+  return { id: String(p.id), login: String(p.login || "") };
+}
+
+/** What the identity key signs to link a GitHub account to a username in a space. @param {string} space @param {string} username @param {string} ghid @param {number} ts */
+export const githubLinkMessage = (space, username, ghid, ts) => Buffer.from(`${GH_LINK_TAG}\n${space}\n${username}\n${ghid}\n${ts}`);
+
 /**
  * The body of a `register` request, for a new username and for a password change alike (a change makes a new salt, so the login key rotates). `makeBundle(K)` wraps the master record under
  * the new K and returns it. The identity key signs the whole thing, so only the identity can set or replace a record. The caller zeroes the returned `K` when it is done with it.
@@ -117,7 +139,7 @@ export async function buildRegistration(o) {
 /**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
  * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
- *   isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
+ *   relayPub?: string, isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
  */
 export function createLoginService(o) {
   const now = o.now || Date.now;
@@ -191,6 +213,48 @@ export function createLoginService(o) {
       if (held && held.person !== input.person) throw fail("denied", "That username belongs to someone else.");
       o.store.set(`login:${username}`, { person: String(input.person), salt: input.salt, kdf: { ...LOGIN_KDF }, loginPub: input.loginPub, bundle: input.bundle, at: now() });
       return { ok: true, username };
+    },
+    /**
+     * Sign in with GitHub: the relay's signed assertion names the GitHub id, and this space maps that id to the username it was linked to. The device then opens the record with the master password.
+     * Every failure is the same answer as a wrong password.
+     * @param {{ assertion?: string, device?: { label?: string } }} input @param {string} address
+     */
+    githubFinish(input, address) {
+      const wait = Math.max(lim.wait(`a:${address}`, PER_ADDR, WINDOW), 0);
+      if (wait) return tooMany(wait);
+      sweep();
+      lim.hit(`a:${address}`, PER_ADDR, WINDOW);
+      const who = verifyGithubAssertion(String(input && input.assertion || ""), String(o.relayPub || ""), o.space, now);
+      const username = who ? o.store.get(`gh:${who.id}`) : null;
+      const rec = typeof username === "string" ? record(username) : null;
+      if (!who || !rec) return { error: { code: "bad_login", message: BAD_LOGIN } };
+      const session = b64(rnd(32));
+      sessions.set(session, { username: String(username), exp: now() + SESSION_TTL_MS });
+      const label = String(input && input.device && input.device.label || "A new device").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
+      try { o.onNewDevice && o.onNewDevice({ username: String(username), label, address, at: now() }); } catch { /* best effort */ }
+      return { ok: true, session, expires: now() + SESSION_TTL_MS, salt: rec.salt, kdf: { ...LOGIN_KDF }, bundle: rec.bundle };
+    },
+    /**
+     * Link a GitHub account to a username here. Both proofs are needed: the relay's assertion that GitHub confirmed the id at a real OAuth callback, and the identity's signature that the person wants it.
+     * One GitHub account links one username in a space, and one username one GitHub account.
+     * @param {{ username: string, person: string, pub: string, ts: number, sig: string, assertion: string }} input
+     */
+    async linkGithub(input) {
+      const username = String(input && input.username || "").trim().toLowerCase();
+      if (!NAME.test(username)) throw fail("bad_input", "Type the username.");
+      const who = verifyGithubAssertion(String(input.assertion || ""), String(o.relayPub || ""), o.space, now);
+      if (!who) throw fail("denied", "GitHub has not confirmed that account. Sign in with GitHub again.");
+      if (Math.abs(now() - Number(input.ts)) > 5 * 60_000) throw fail("expired", "That request is too old. Try again.");
+      if (!verifies(String(input.pub), githubLinkMessage(o.space, username, who.id, Number(input.ts)), String(input.sig))) throw fail("denied", "That request is not signed by the identity.");
+      if (!o.verifyIdentity || !(await o.verifyIdentity(String(input.person), String(input.pub)))) throw fail("denied", "That key is not one this person has published.");
+      const rec = record(username);
+      if (!rec || rec.person !== input.person) throw fail("denied", "That username belongs to someone else, or has no sign-in record here.");
+      const held = o.store.get(`gh:${who.id}`);
+      if (typeof held === "string" && held !== username) throw fail("denied", "That GitHub account is linked to another username here.");
+      if (typeof rec.github === "string" && rec.github !== who.id) throw fail("denied", "This username already has a different GitHub account linked.");
+      o.store.set(`gh:${who.id}`, username);
+      o.store.set(`login:${username}`, { ...rec, github: who.id });
+      return { ok: true, username, login: who.login };
     },
     /** The username a session belongs to, or null. @param {string} session */
     sessionUser(session) { sweep(); const s = sessions.get(String(session)); return s ? s.username : null; },

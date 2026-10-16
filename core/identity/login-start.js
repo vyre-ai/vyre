@@ -20,6 +20,11 @@ export async function loginHandle(q, svc, source) {
     try { return { status: 200, body: await svc.register(/** @type {any} */ (q)) }; }
     catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
   }
+  if (op === "github") { const r = svc.githubFinish(/** @type {any} */ (q), source); return { status: r.error ? (r.error.code === "rate_limited" ? 429 : 401) : 200, body: r }; }
+  if (op === "link-github") {
+    try { return { status: 200, body: await svc.linkGithub(/** @type {any} */ (q)) }; }
+    catch (e) { const err = /** @type {any} */ (e); return { status: err.code === "denied" ? 403 : 400, body: { error: { code: String(err.code || "bad_input"), message: String(err.message || "That did not work.") } } }; }
+  }
   return { status: 400, body: { error: { code: "bad_input", message: "That request was not understood." } } };
 }
 
@@ -35,7 +40,7 @@ export async function startLogin(ctx, seam = {}) {
   const rawDir = cfg.names && cfg.names.directory;
   const dir = seam.directory || idDirectory({ ...(typeof rawDir === "string" && /^https?:\/\//.test(rawDir) ? { base: rawDir } : {}), seen: memorySeen() });
   const svc = createLoginService({
-    space: String(cfg.name), store,
+    space: String(cfg.name), store, relayPub: cfg.github && typeof cfg.github.assertKey === "string" ? cfg.github.assertKey : "",
     verifyIdentity: async (person, pub) => { try { await assertPublishedKey(dir, person, pub, { fullDevice: true }); return true; } catch { return false; } },
     isMember: async (_username, person) => {
       const k = ctx.kernel;

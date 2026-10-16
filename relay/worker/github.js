@@ -20,6 +20,8 @@ import { mac } from "../../escrow/worker/mac.js";
 
 export const GH_TAG_LINK = "vyre-gh-link-v1";
 export const GH_TAG_ACCOUNT = "vyre-gh-account-v1";
+export const GH_TAG_ASSERT = "vyre-gh-assert-v1";
+export const ASSERT_MS = 120_000;
 export const GH_LIMITS = Object.freeze({
   /** a start (state, cookie) lives this long */
   stateMs: 10 * 60_000,
@@ -101,7 +103,7 @@ export async function onGithub(request, url, env) {
   if (request.method !== "POST") return json(405, { error: "not a way in" });
   const origin = request.headers.get("origin");
   if (origin && !appOrigins(env).includes(origin)) return json(403, { error: "not from here" });
-  const run = path === "/me" ? me : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : path === "/enter" ? enter : null;
+  const run = path === "/me" ? me : path === "/assert" ? assertion : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : path === "/enter" ? enter : null;
   if (!run) return json(404, { error: "no such call" });
   return withCors(request, env, await run(request, url, env));
 }
@@ -183,6 +185,34 @@ async function me(request, _url, env) {
   const rec = h.rec;
   const l = (await ask(env, { op: "link.get", ghid: rec.ghid })).link;
   return json(200, { github: { id: rec.ghid, login: rec.login, name: rec.name, avatarUrl: rec.avatarUrl, twofa: rec.twofa }, linked: l ? { name: l.name, since: l.since } : null });
+}
+
+const SPACE_RE = /^[a-z][a-z0-9-]{1,30}$/;
+/** An Ed25519 seed (base64url) to a signing key. @param {string} seed */
+async function signingKey(seed) {
+  const raw = Uint8Array.from(atob(seed.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+  if (raw.length !== 32) throw new Error("the assertion key is not a 32-byte seed");
+  const der = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20, ...raw]);
+  return crypto.subtle.importKey("pkcs8", der, { name: "Ed25519" }, false, ["sign"]);
+}
+
+/**
+ * POST /v1/github/assert {ticket, cv, space}: the relay's signed word, for two minutes and for one space, that GitHub confirmed this numeric id at a real OAuth callback. A space accepts it only against
+ * the relay's public key it was told. Nothing is stored. It is what lets a space link a GitHub id to a username without trusting a typed login.
+ * @param {Request} request @param {URL} _url @param {any} env
+ */
+async function assertion(request, _url, env) {
+  const b = await readBody(request);
+  if (!b) return json(400, { error: "bad request" });
+  const space = String(b.space || "");
+  if (!SPACE_RE.test(space)) return json(400, { error: "bad request" });
+  if (!env.GITHUB_ASSERT_KEY) return json(503, { error: "this relay has no key to vouch for a GitHub sign-in yet" });
+  const h = await holding(env, b, who(request));
+  if (h.res) return h.res;
+  const t = now(env);
+  const payload = C.b64u(enc.encode(JSON.stringify({ v: 1, id: String(h.rec.ghid), login: String(h.rec.login || ""), space, iat: t, exp: t + ASSERT_MS })));
+  const sig = C.b64u(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, await signingKey(String(env.GITHUB_ASSERT_KEY)), enc.encode(`${GH_TAG_ASSERT}\n${payload}`))));
+  return json(200, { assertion: `${payload}.${sig}` });
 }
 
 /** Does the names directory run the chain rules that know the relay's key? Linking waits until it does: an older directory would refuse the relay's entry. @param {any} env */

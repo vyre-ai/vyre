@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { TEST_KDF } from "./master.js";
 import { aesWrap, aesUnwrap } from "./wrap.js";
-import { acceptKdf, buildRegistration, bundleHash, createLoginService, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
+import { acceptKdf, buildRegistration, bundleHash, createLoginService, githubLinkMessage, GH_ASSERT_TAG, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
 
 const SPACE = "juniper";
 const PERSON = "per_" + "a".repeat(26);
@@ -19,13 +19,20 @@ function identityKey() {
 }
 
 /** A service, a clock the test moves, and one registered person. */
+const relayKey = identityKey();
+/** A relay assertion for one space, as the relay's GitHub app signs it. @param {{ id?: string, space?: string, iat?: number, exp?: number, key?: any }} [o] @param {number} now */
+function assertion(o = {}, now = 1_800_000_000_000) {
+  const payload = Buffer.from(JSON.stringify({ v: 1, id: o.id ?? "4242", login: "alex-gh", space: o.space ?? SPACE, iat: o.iat ?? now, exp: o.exp ?? now + 120_000 })).toString("base64url");
+  return `${payload}.${(o.key || relayKey).sign(Buffer.from(`${GH_ASSERT_TAG}\n${payload}`))}`;
+}
+
 async function rig(o = {}) {
   const clock = { t: 1_800_000_000_000 };
   const store = new Map();
   const events = /** @type {any[]} */ ([]);
   const idKey = identityKey();
   const svc = createLoginService({
-    space: SPACE, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
     verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex" || u === "blair",
     onNewDevice: e => events.push(e), ...o,
   });
@@ -145,4 +152,34 @@ test("a password change makes a new salt and a new login key, and the old passwo
   const next = await signIn(r, "alex", "a brand new master password", "203.0.113.21");
   assert.equal(next.ok, true);
   assert.deepEqual(aesUnwrap(next.K, next.bundle.passwordWrap, "vyre:master:password:v1"), r.rk);
+});
+
+test("GitHub sign-in: linked only by the relay's assertion plus the identity's signature, one account per username, and every miss is the plain bad login", async () => {
+  const r = await rig();
+  const link = (/** @type {any} */ o = {}) => {
+    const ts = r.clock.t, a = o.assertion ?? assertion({}, r.clock.t);
+    return r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "4242", ts)), assertion: a, ...o });
+  };
+  // not linked yet: a good assertion signs in as nobody
+  assert.deepEqual(r.svc.githubFinish({ assertion: assertion({}, r.clock.t) }, "203.0.113.30").error.code, "bad_login");
+  // the assertion alone does not link, the signature alone does not link, and neither does a forged or foreign one
+  await assert.rejects(() => link({ sig: r.idKey.sign(Buffer.from("no")) }), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(() => link({ assertion: assertion({ key: identityKey() }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "not the relay's key");
+  await assert.rejects(() => link({ assertion: assertion({ space: "other" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "another space's");
+  await assert.rejects(() => link({ assertion: assertion({ iat: r.clock.t - 300_000, exp: r.clock.t - 1000 }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied", "expired");
+  await assert.rejects(() => link({ assertion: "typed-login" }), (/** @type {any} */ e) => e.code === "denied", "a typed login is no assertion");
+  await assert.rejects(() => link({ person: "per_" + "b".repeat(26) }), (/** @type {any} */ e) => e.code === "denied", "someone else's username");
+  assert.equal((await link()).ok, true);
+  // now the same GitHub account signs in, and gets the record and the salt to open it with the password
+  const got = r.svc.githubFinish({ assertion: assertion({}, r.clock.t), device: { label: "Aina's phone" } }, "203.0.113.31");
+  assert.equal(got.ok, true);
+  assert.equal(got.salt, r.salt);
+  assert.ok(got.bundle && got.session);
+  assert.equal(r.events.length, 1);
+  // another GitHub account, a forged assertion and another space's all get the same answer
+  const none = r.svc.githubFinish({ assertion: assertion({ id: "999" }, r.clock.t) }, "203.0.113.32");
+  assert.deepEqual(none.error, r.svc.githubFinish({ assertion: assertion({ key: identityKey() }, r.clock.t) }, "203.0.113.33").error);
+  assert.deepEqual(none.error, r.svc.githubFinish({ assertion: assertion({ space: "other" }, r.clock.t) }, "203.0.113.34").error);
+  // one username, one GitHub account; one GitHub account, one username
+  await assert.rejects(() => r.svc.linkGithub({ username: "alex", person: PERSON, pub: r.idKey.pub, ts: r.clock.t, sig: r.idKey.sign(githubLinkMessage(SPACE, "alex", "5555", r.clock.t)), assertion: assertion({ id: "5555" }, r.clock.t) }), (/** @type {any} */ e) => e.code === "denied" && /different GitHub/.test(e.message));
 });
