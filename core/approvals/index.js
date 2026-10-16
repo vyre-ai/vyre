@@ -9,6 +9,7 @@ import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp, REUSE_OPS } from "../../lib/one-yes.js";
 import { yesDeviceOf } from "../../lib/caller.js";
 import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
+import { stripSecrets } from "../../lib/master-secret.js";
 import { createItems } from "./items.js";
 import { clean } from "../../lib/waiting-text.js";
 
@@ -164,7 +165,8 @@ export default {
         const id = `ap_${newId()}`;
         const line = lineOfOp(request.op, request.fields, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`);
         // The call's own input (the registry's, the asker's words never reach it any other way) lets the person read every word and change some of them. It is held only if it is what the card's digest covers.
-        const held = input.input && typeof input.input === "object" && !Array.isArray(input.input) && holdFields(input.input).input_sha256 === request.fields.input_sha256 ? input.input : null;
+        const shown = input.input && typeof input.input === "object" && !Array.isArray(input.input) ? stripSecrets(input.input) : null;
+        const held = shown && holdFields(shown).input_sha256 === request.fields.input_sha256 ? shown : null;
         const group = groupFor(from);
         open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
         return { id, line, group };
