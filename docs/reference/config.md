@@ -35,8 +35,8 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `onboard` | `any` | unset | Onboarding's own settings. |
 | `owner` | `{ id: string }` | unset | The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input. |
 | `github` | `{ start?: string }` | unset | Not described yet. |
-| `glass` | `{ roots?: string[] }` | none | Not described yet. |
-| `computers` | `{ [k: string]: any }` | none | Not described yet. |
+| `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
+| `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
 | `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
 | `app` | `{ root: boolean }` | none | Not described yet. |
@@ -105,6 +105,13 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DOCUMENTS_PDF` | Not described yet. | `core/documents/index.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
+| `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_GATE_STATUS` | Not described yet. | `core/computers/egress.js` |
+| `VYRE_EGRESS_GATE_STATUS_PORT` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
+| `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_FINISH_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
@@ -159,7 +166,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
-| `VYRE_SETUP_HTTP` | `1`: vyred serves the setup page, where the person pastes the install code. Inside Docker the page is served without this. | `core/wink/install-pair.js` |
+| `VYRE_SETUP_HTTP` | `1`, or inside Docker: vyred may serve the setup page. It opens only after the install line's own pairing at boot failed, takes only the code that carries the install line's setup code, and stops listening once the server is paired. | `core/wink/install-pair.js` |
 | `VYRE_SETUP_PORT` | The port the setup page listens on. Default 8080. | `core/wink/install-pair.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
@@ -212,13 +219,13 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
-| `VYRE_INSTALL_FROM_LINE` | Not described yet. | `core/wink/install-pair.js` |
 | `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_PROVIDER` | Not described yet. | `harness/mcp/server.js` |
+| `VYRE_PROXY_PAC` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js`, `core/team/team-fixture.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |

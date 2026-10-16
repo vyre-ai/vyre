@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { moveBeforeJoin } from "../../lib/group-join.js";
 import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { readers, personOf as personOfChain, shareFile, unshareFile } from "./shares.js";
 import { createTimeline } from "./timeline.js";
@@ -768,6 +769,8 @@ export default {
         ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
+        // A chat with more than one person always runs on the server: a chat running on a computer moves there first (one line in the chat, no question); nothing is added if it cannot move.
+        await moveBeforeJoin({ kernel: kernelOf(), chain, call: (tool, i) => ctx.call(tool, i), chat: String(input.chat), add: input.add_people });
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },

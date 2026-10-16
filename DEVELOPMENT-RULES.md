@@ -142,7 +142,7 @@ Groups: [Architecture](#architecture), [Security](#security), [UI and design](#u
 5. **Ship with zero failing tests** and list no known failures in the notes. See Tests and CI rule 7. Check: preflight T2 and T3.
 6. **File every bug as a GitHub issue** in `vyre-ai/vyre`, with the `bug` label and a milestone. Send a security bug to a private advisory, not a public issue. One list shows what is broken, and nothing sensitive goes public. Check: review only.
 7. **Write down what the release does not do** in `docs/known-gaps.md`, and keep the roadmap true. The README and docs must tell the truth. Check: `scripts/docs-check` for links and stale mentions, review only for the content.
-8. **Prove the install on a real machine before calling a release ready:** a fresh machine, the real installer, the real onboarding. Green unit tests missed a failed first install. Check: `.github/workflows/install-proof.yml`, `packaged-boot.yml`, `matrix.yml`, `journeys.yml`.
+8. **Prove the install on a real machine before calling a release ready:** a fresh machine, the real installer, the real onboarding. Green unit tests missed a failed first install. Check: `.github/workflows/first-run-e2e.yml` (the new first run, a required job of `release.yml`), `install-proof.yml` (the update), `packaged-boot.yml`, `matrix.yml`, `journeys.yml`.
 
 ## Git and commits
 

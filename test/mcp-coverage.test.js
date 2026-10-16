@@ -15,13 +15,11 @@ const EXPECTED = Object.freeze([
   "flows.kit.library",
   "flows.kit.library.get",
   "flows.kit.propose",
-  "onboard.computer.add",
   "onboard.github.finish",
   "onboard.github.start",
   "onboard.join.read",
   "onboard.machine",
   "onboard.member.link",
-  "onboard.person.create",
   "onboard.person.lookup",
   "onboard.phone.add",
   "onboard.space.join",
@@ -55,12 +53,10 @@ const EXPECTED = Object.freeze([
   "spaces.setup.claim",
   "spaces.setup.save",
   "wink.access",
-  "wink.code.ack",
   "wink.pair.server",
   "wink.pair.status",
   "wink.pair.targets",
   "wink.phone.open",
-  "wink.phone.pair.answer",
   "wink.phone.pairing",
 ]);
 
@@ -82,4 +78,20 @@ test("every declared onboarding, device and invite tool is offered through MCP",
     if (!offered.has(name)) missing.push(name);
   }
   assert.deepEqual(missing, [], `not offered via MCP: ${missing.join(", ")}`);
+});
+
+test("an agent cannot answer a pairing question: the pick and the typed code are the person's own", async (t) => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const offered = new Set(d.registry.listTools("mcp").filter((x) => offeredTool(x)).map((x) => x.name));
+  for (const name of ["wink.phone.pair.answer", "wink.code.ack"]) {
+    assert.equal(MCP_ALLOW.includes(name), false, `${name} is not on the MCP list`);
+    assert.equal(offered.has(name), false, `${name} is not offered to a model`);
+    for (const caller of ["mcp", "harness", "mcp:agent:kit"]) {
+      const r = /** @type {any} */ (await d.registry.call(name, name === "wink.code.ack" ? { offer: "wo_x", typed: "WINK-AAAA-AAAA" } : { yes: true, pick: 1 }, caller));
+      assert.ok(r.error, `${caller} ${name}`);
+      assert.notEqual(r.error.code, "held_for_approval", `${caller} ${name} is refused, not held for a tap on a card that names no device`);
+    }
+  }
 });

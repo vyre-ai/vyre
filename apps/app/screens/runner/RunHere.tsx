@@ -1,87 +1,71 @@
-// "Run on this computer" in Settings (R031-95 UX): one switch, plugged in only, a processor and a memory limit, and the sessions running here with Pause all. A box without the runner shows
-// nothing. The limits are whole numbers in a range, checked before they are sent; the box refuses what is outside again.
+// Settings, Computer: this computer's name, one choice (Always allow, Ask or Never) for running a space's sessions here, and one plain status line. No limits to manage: the box keeps its defaults.
+// The choice is offered only where a space allows members to run sessions on their own computers; Never is the existing switch, Always allow and Ask are `runner.mode`.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Divider, Field, Row, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, Field, Segmented, Text, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { runner } from "./runner";
+import { system } from "../settings/system";
+import { nameOf } from "../settings/system-model.ts";
 import { memberLine } from "../spaces/computers-model.js";
-import { DEFAULT_SETTINGS, hereLine, parseLimit, switchNote, type MacSettings } from "./runner-model.js";
+import { CHOICES, choiceOf, statusLine, type MacSettings } from "./runner-model.js";
 
-export type Here = { thread: string; title: string; state: "running" | "waiting" | "paused"; cpuPercent: number; memoryMb: number; line?: string; cpu?: string };
+type Choice = "always" | "ask" | "never";
 
 export function RunHere() {
   const [s, setS] = useState<MacSettings | null>(null);
-  const [here, setHere] = useState<Here[]>([]);
-  const [cpu, setCpu] = useState("");
-  const [mem, setMem] = useState("");
-  const [problem, setProblem] = useState("");
+  const [mode, setMode] = useState<"always" | "ask">("always");
+  const [running, setRunning] = useState(0);
   const [shared, setShared] = useState<string[]>([]);
   const [rules, setRules] = useState<{ title: string; allowed: boolean }[]>([]);
+  const [name, setName] = useState<string | null>(null);
+  const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
-    runner.settings().then((x: MacSettings | null) => { setS(x); if (x) { setCpu(String(x.cpuPercent)); setMem(String(x.memoryMb)); } }).catch(() => setS(null));
-    runner.here().then((h: Here[]) => setHere(h)).catch(() => setHere([]));
+    runner.settings().then((x: MacSettings | null) => setS(x)).catch(() => setS(null));
+    runner.mode().then(setMode).catch(() => {});
+    runner.here().then((h: unknown[]) => setRunning(h.length)).catch(() => setRunning(0));
     runner.sharedWith().then(setShared).catch(() => setShared([]));
     runner.spaceRules().then(setRules).catch(() => setRules([]));
+    system.info().then((i: unknown) => setName(nameOf(i))).catch(() => setName(null));
   }, []);
   useEffect(load, [load]);
   if (!s) return null;
-  const save = (next: MacSettings) => runner.setSettings(next).then((x) => { setS(x); setProblem(""); }).catch((e) => setProblem(e instanceof Error ? e.message : "That did not go through."));
-  // The switch is the one yes: on lends this computer to its spaces (the box asks the person once) and then lets sessions run here; off stops it, then ends the lending, and never asks.
-  const flip = (on: boolean) => {
+  // Never is the switch off (sessions here go back to the server, and the lending ends; it never asks). Always allow and Ask turn the switch on first, which is the one yes the box asks for once.
+  const choose = (c: Choice) => {
     if (busy) return;
     setBusy(true); setProblem("");
-    const done = on
-      ? runner.turnOn().then((r) => { setS(r.settings); setShared(r.lentTo); showToast("Sessions can run on this Mac."); })
-      : runner.turnOff().then((r) => { setS(r.settings); setShared([]); showToast(r.failed ? "Turned off. Sharing could not be ended for every space; try again from Devices." : "Turned off. Sessions here go back to the server."); });
+    const done = c === "never"
+      ? runner.turnOff().then((r) => { setS(r.settings); setShared([]); if (r.failed) showToast("Turned off. Sharing could not be ended for every space; try again from Devices."); })
+      : (s.enabled ? Promise.resolve() : runner.turnOn().then((r) => { setS(r.settings); setShared(r.lentTo); })).then(() => runner.setMode(c)).then(setMode);
     void done.catch((e) => setProblem(e instanceof Error ? e.message : "That did not go through.")).finally(() => { setBusy(false); load(); });
   };
-  const saveLimits = () => {
-    const c = parseLimit("cpuPercent", cpu), m = parseLimit("memoryMb", mem);
-    const bad = c.error ?? m.error;
-    if (bad) { setProblem(bad); return; }
-    void save({ ...s, cpuPercent: Number(c.value), memoryMb: Number(m.value) }).then(() => showToast("Saved."));
-  };
-  return <RunHereView s={s} here={here} shared={shared} rules={rules} busy={busy} onSwitch={flip} cpu={cpu} mem={mem} problem={problem} setCpu={setCpu} setMem={setMem} onSave={(n) => void save(n)} onSaveLimits={saveLimits}
-    onPause={() => runner.pauseAll().then(() => { showToast("Paused. They stay on this Mac until you resume."); load(); }).catch(() => showToast("That did not go through."))}
-    onResume={() => runner.resumeAll().then(() => { showToast("Resumed."); load(); }).catch(() => showToast("That did not go through."))} />;
+  const rename = (typed: string) => system.rename(typed).then(() => { showToast("Renamed."); load(); }).catch((e: unknown) => showToast(e instanceof Error && e.message ? e.message : "That did not go through."));
+  return <RunHereView name={name} onRename={rename} choice={choiceOf(s, mode)} onChoose={choose} running={running} shared={shared} rules={rules} busy={busy} problem={problem} />;
 }
 
 /** The section, from what it is given: the container above reads the box, the gallery gives it a sample. */
-export function RunHereView({ s, here, shared = [], rules = [], busy = false, onSwitch, cpu, mem, problem, setCpu, setMem, onSave, onSaveLimits, onPause, onResume }: { s: MacSettings; here: Here[]; shared?: string[]; rules?: { title: string; allowed: boolean }[]; busy?: boolean; onSwitch?: (on: boolean) => void; cpu: string; mem: string; problem: string; setCpu: (v: string) => void; setMem: (v: string) => void;
-  onSave: (n: MacSettings) => void; onSaveLimits: () => void; onPause: () => void; onResume: () => void }) {
-  const phone = useUiTheme().phone;
+export function RunHereView({ name, onRename, choice, onChoose, running = 0, shared = [], rules = [], busy = false, problem = "" }: { name: string | null; onRename?: (name: string) => void; choice: Choice; onChoose?: (c: Choice) => void; running?: number; shared?: string[];
+  rules?: { title: string; allowed: boolean }[]; busy?: boolean; problem?: string }) {
+  const [typed, setTyped] = useState(name || "");
+  useEffect(() => { setTyped(name || ""); }, [name]);
+  // Where no space allows it, and this computer is not already running sessions, there is nothing to choose: say so.
+  const offered = choice !== "never" || rules.length === 0 || rules.some((r) => r.allowed);
   return (
-    <Sec title="Run on this computer">
-      <Card>
-        <View className="gap-s3">
-          <View className="flex-row items-center gap-s3">
-            <View className="min-w-0 flex-1"><Text strong>Let sessions run on this Mac</Text><Text size="secondary" tone="label">{switchNote(s, shared)}</Text></View>
-            <Switch on={s.enabled} disabled={busy} onChange={(enabled: boolean) => (onSwitch ? onSwitch(enabled) : onSave({ ...s, enabled }))} label="Let sessions run on this Mac" />
-          </View>
-          {rules.map((r) => <Text key={r.title} size="secondary" tone="label">{memberLine(r.title, r.allowed)}</Text>)}
-          {s.enabled ? (
-            <>
-              <View className="flex-row items-center gap-s3">
-                <View className="min-w-0 flex-1"><Text>Only while plugged in</Text><Text size="secondary" tone="label">On battery, a session moves to the server.</Text></View>
-                <Switch on={s.pluggedInOnly} onChange={(pluggedInOnly: boolean) => onSave({ ...s, pluggedInOnly })} label="Only while plugged in" />
-              </View>
-              <Field label="Processor limit (percent)" value={cpu} onChangeText={setCpu} kind="number" />
-              <Field label="Memory limit (megabytes)" value={mem} onChangeText={setMem} kind="number" />
-              {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-              <View className="flex-row gap-s2"><Button kind="primary" label="Save limits" onPress={onSaveLimits} /><Button kind="ghost" label="Use the defaults" onPress={() => { setCpu(String(DEFAULT_SETTINGS.cpuPercent)); setMem(String(DEFAULT_SETTINGS.memoryMb)); }} /></View>
-            </>
-          ) : problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-        </View>
-      </Card>
-      {s.enabled ? (
-        <View className="gap-s2 pt-s3">
-          <Text strong size="secondary">Running here</Text>
-          {here.length ? <Card flush>{here.map((x, i) => { const l = hereLine(x); return <View key={x.thread}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>; })}</Card> : <Text size="secondary" tone="label">Nothing is running on this Mac right now.</Text>}
-          {here.length ? <View className="flex-row gap-s2 self-start"><Button size={phone ? "md" : "sm"} label="Pause all" onPress={onPause} /><Button kind="ghost" size={phone ? "md" : "sm"} label="Resume all" onPress={onResume} /></View> : null}
-        </View>
+    <Sec title="Computer">
+      {name !== null ? (
+        <Card className="gap-s2">
+          <Field label="Name" value={typed} onChangeText={setTyped} help="Leave it empty for the default name." />
+          <View className="flex-row"><Button size="sm" label="Save name" disabled={typed.trim() === name} onPress={() => onRename?.(typed)} /></View>
+        </Card>
       ) : null}
+      <Card className="gap-s3">
+        <Text strong>Run on this computer</Text>
+        {offered ? <Segmented label="Run on this computer" value={choice} options={CHOICES} onChange={(c) => { if (!busy) onChoose?.(c); }} /> : null}
+        <Text size="secondary" tone="label">{offered ? statusLine(choice, { running, spaces: shared }) : "None of your spaces lets members run sessions on their own computers. Ask an owner to allow it."}</Text>
+        {rules.map((r) => <Text key={r.title} size="secondary" tone="label">{memberLine(r.title, r.allowed)}</Text>)}
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+      </Card>
     </Sec>
   );
 }

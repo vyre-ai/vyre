@@ -208,6 +208,7 @@ done
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
 grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
 grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"
+grep -qx '/i/\* /invite/ 200' "$repo/site/_redirects" || fail "site/_redirects does not send an invite link (/i/<token>) to the invite page"
 # The Capsule zip is retired: the Mac installs from npm and builds the Capsule there.
 if grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" >/dev/null 2>&1 || tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Vyre-mac\.sha256$'; then
   fail "the retired Lumen zip is still referenced: $(grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" 2>/dev/null | tr '\n' ' ')"

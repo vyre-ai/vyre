@@ -23,7 +23,7 @@ export function takeJoin(now = Date.now()) {
 }
 
 /** The link with its token left off, for showing on screen and for any log line. @param {string} link */
-export function withoutToken(link) { return link.replace(/\/join\/.*$/, "/join/…"); }
+export function withoutToken(link) { return link.replace(/\/(join|i)\/.*$/, "/$1/…"); }
 
 /** The address a page shows after the token is taken out: the same path, no query, no fragment. @param {string} href */
 export function cleanAddress(href) { try { const u = new URL(href); return u.pathname; } catch { return "/"; } }

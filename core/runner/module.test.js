@@ -29,7 +29,7 @@ async function boot(t, ports) {
 test("runner module: loads with its tools and says plainly that it is not connected yet", async t => {
   const s = await boot(t);
   const tools = s.d.registry.modules.get("runner").manifest.does.tools.map(x => x.name);
-  assert.deepEqual(tools.sort(), ["runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.move", "runner.offer-back", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.recover", "runner.resume-all", "runner.resume-lent", "runner.revoke", "runner.seal-now", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"]);
+  assert.deepEqual(tools.sort(), ["runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.group-move", "runner.here", "runner.lock", "runner.move", "runner.offer-back", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.recover", "runner.resume-all", "runner.resume-lent", "runner.revoke", "runner.seal-now", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"]);
   const visible = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("runner."));
   assert.deepEqual(visible.sort(), ["runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.move", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"], "start and stop are the person's; revoke is no tool at all");
   const st = await s.call("runner.status");
@@ -92,4 +92,13 @@ test("runner module: the two internal tools that move a chat answer only the one
   }
   const sb = await as("runner.offer-back", { thread: "t1", person: "per_a" }, "module:threads");
   assert.ok(!sb.error && sb.data && sb.data.moved === false, "the chat engine may ask: " + JSON.stringify(sb));
+});
+
+test("runner module: moving a chat to the server so people can join answers only the work module", async t => {
+  const s = await boot(t);
+  const as = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller) => s.d.registry.call(tool, input, caller);
+  for (const caller of ["cli", "mcp", "module:agents", "module:stream", "module:threads"]) {
+    const x = await as("runner.group-move", { chat: "chat_x", person: "per_a", names: ["Dana"] }, caller);
+    assert.ok(x.error, `group-move as ${caller}: ${JSON.stringify(x)}`);
+  }
 });

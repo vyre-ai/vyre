@@ -27,6 +27,7 @@ import { createGrants, moveLocalGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdO
 import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
 import { registerInstallPair } from "./install-pair.js";
+import { loginPort } from "../../lib/login-door.js";
 import { createPairing, parseServerQr, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
@@ -804,6 +805,8 @@ export function createWink(inject = {}) {
         agentsmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("outside.mcp.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the person's connected AI over streamable HTTP (core/mcpconn): exactly POST /mcp; null while that module is not there
         personmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("mcpconn.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+        // sign in from any device (core/identity login door): exactly POST /login; null while the identity module is not listening
+        login: async () => loginPort(),
         share: async () => { try { const r = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); const d = r && r.data; return d && d.on && d.available && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the app modules' own hosts: the apps' front (a loopback listener the appmods module owns) and the hosts of the apps that are installed and running; null without either
         apps: async () => {

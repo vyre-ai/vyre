@@ -21,35 +21,25 @@ export function SystemScreen() {
       <ServerLine />
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!info && !err ? <LoadingState rows={4} /> : null}
-      {info ? <Machine info={info} onRenamed={load} /> : null}
       <RunHere />
+      {info ? <Machine info={info} /> : null}
       <History />
       <Tests />
       <Banner>The cards below are for people who run their own home computer. A command is shown to copy and run yourself. Vyre never runs one for you.</Banner>
       <Advanced />
-      <Drive />
+      {RC.vyreDrive ? <Drive /> : null}
     </Page>
   );
 }
 
-function Machine({ info, onRenamed }: { info: any; onRenamed: () => void }) {
-  const name = nameOf(info);
+function Machine({ info }: { info: any }) {
   const hosted = hostedLine(info);
-  const [typed, setTyped] = useState(name || "");
-  const [busy, setBusy] = useState(false);
-  const save = () => { setBusy(true); system.rename(typed).then(() => { showToast("Renamed."); onRenamed(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
     <Sec title="This computer">
       <Card flush>
         {machineRows(info).map(([k, v], i) => <View key={k}>{i ? <Divider /> : null}<Row title={k} end={<Text tone="muted">{v}</Text>} /></View>)}
         {hosted ? <View><Divider /><Row title="Hosted app" sub={hosted} /></View> : null}
       </Card>
-      {name !== null ? (
-        <Card className="gap-s2">
-          <Field label="Name" value={typed} onChangeText={setTyped} help="Leave it empty for the default name." />
-          <View className="flex-row"><Button size="sm" label="Save name" disabled={busy || typed.trim() === name} onPress={save} /></View>
-        </Card>
-      ) : null}
     </Sec>
   );
 }

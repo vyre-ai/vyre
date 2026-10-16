@@ -10,7 +10,7 @@ import { argon2id } from "./stretch.js";
 import { aesWrap, aesUnwrap, hkdf32, x25519Pair } from "./wrap.js";
 import { writePrivate, readJson } from "./files.js";
 import { holdIdentity, holdPersonal, forgetIdentity, clearPersonal, identityHeld } from "./holder.js";
-import { openVaultKey } from "./vault-at-rest.js";
+import { adoptVaultKey, openVaultKey } from "./vault-at-rest.js";
 import { checkUsername, personUrl } from "./username.js";
 
 /** RFC 9106's second recommendation, one lane: this file's Argon2id is one lane only. */
@@ -112,7 +112,7 @@ export function createMaster(o) {
     holdIdentity(o.identityFile, { privateKeyB64: o.privateKeyB64, agreePrivateB64: o.agreePrivateB64 || null });
     stripIdentityFile(o.identityFile);
   }
-  if (o.vaultKey) holdPersonal(o.vaultKey);
+  if (o.vaultKey) { holdPersonal(o.vaultKey); adoptVaultKey(o.root, o.vaultKey); }
   rk.fill(0);
   return { username, id: o.id, url: personUrl(username) };
 }
@@ -219,7 +219,7 @@ export function setDiscoverable(root, on, identityFile) {
 }
 
 /**
- * Wrap a 0.5.x identity file under a new master password. The vault key file is copied into the wrap and left in place, so lending keeps its key.
+ * Wrap a 0.5.x identity file under a new master password. The vault key file is copied into the wrap and sealed on this box, and the plaintext file is removed once the sealed copy opens, so lending keeps its key.
  * @param {{ root: string, identityFile: string, password: string, recoveryCode: string, vaultKey?: Buffer|null, kdf?: any }} o
  */
 export function migrateLegacy(o) {
@@ -256,18 +256,15 @@ export function readVaultKeyFile(hexFile) {
 }
 
 /**
- * The device key the master record wraps. An existing vault/key is that key.
- * A home with no key file and no agent vault yet receives one here, so the master password is the root and the file is its server copy.
+ * The device key the master record wraps. An existing vault/key (a home made before the master password) is that key, read here so createMaster can seal it and remove the file.
+ * A home with no key file and no agent vault yet gets a fresh key in memory. It is never written as a plaintext file: createMaster seals it.
  * A home that already has an agent vault and has lost the key file returns null: a new random key would not open it.
  * @param {string} root
  * @returns {Buffer|null}
  */
 export function serverVaultKey(root) {
-  const file = path.join(root, "vault", "key");
-  const existing = readVaultKeyFile(file);
+  const existing = readVaultKeyFile(path.join(root, "vault", "key"));
   if (existing) return existing;
   if (fs.existsSync(path.join(root, "vault", "vaults", "agents.json"))) return null;
-  const mk = crypto.randomBytes(32);
-  writePrivate(file, mk.toString("hex") + "\n");
-  return mk;
+  return crypto.randomBytes(32);
 }

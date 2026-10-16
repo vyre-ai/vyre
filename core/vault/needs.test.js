@@ -14,11 +14,22 @@ import { call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { PROVIDERS, CAPABILITIES, provider, checkProviderFields, checkServiceAccount } from "./providers.js";
 import { KINDS, SPEC, cleanDetails } from "../../lib/vault-kinds/kinds.js";
+import { redact } from "../../lib/sanitize.js";
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 
+test("providers: a key of a product Vyre does not add is not in the catalog, and the redactor still catches its shape", () => {
+  assert.equal(provider("tailscale"), null, "the other VPN product is not an addable provider");
+  assert.ok(!Object.hasOwn(PROVIDERS, "tailscale"));
+  // Built at run time from pieces: the file never holds anything shaped like a key.
+  const pasted = "tskey-" + "auth-" + "Gh5".repeat(10);
+  const r = redact(`here is the key ${pasted} from the admin page`);
+  assert.ok(!r.text.includes(pasted), "a pasted key of that product survived the redactor");
+  assert.ok(r.text.includes("here is the key"), "the sentence around it was eaten");
+});
+
 test("providers: every entry has the catalog's shape, and fits its kinds", () => {
-  const needed = ["deepgram", "openai", "elevenlabs", "anthropic", "claude-setup-token", "github", "cloudflare", "tailscale",
+  const needed = ["deepgram", "openai", "elevenlabs", "anthropic", "claude-setup-token", "github", "cloudflare",
     "telegram", "google-oauth", "google-dwd", "google-apps-script", "imap-smtp", "mcp-bearer"];
   for (const n of needed) assert.ok(provider(n), `${n} is missing from the catalog`);
   assert.equal(provider("constructor"), null);

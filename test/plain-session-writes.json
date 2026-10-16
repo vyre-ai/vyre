@@ -325,10 +325,6 @@
    "class": "own",
    "why": "it looks at the provider lists and OpenRouter's public data (reads, at most once a minute) and writes only the registry; it spends nothing and starts no eval"
   },
-  "onboard.computer.add": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes; it adds a computer"
-  },
   "onboard.github.finish": {
    "class": "held",
    "why": "outward: the registry holds it as a card for the person's yes; it links GitHub to the person"
@@ -336,10 +332,6 @@
   "onboard.member.link": {
    "class": "held",
    "why": "outward: the registry holds it as a card for the person's yes; it makes an invite link"
-  },
-  "onboard.person.create": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes; it creates the person and the vault"
   },
   "onboard.phone.add": {
    "class": "held",
@@ -789,10 +781,6 @@
    "class": "held",
    "why": "held_unavailable without a person session and approval"
   },
-  "wink.code.ack": {
-   "class": "held",
-   "why": "held_unavailable without a valid pairing code"
-  },
   "wink.pair.server": {
    "class": "held",
    "why": "bad_input until a real server pairing payload; held or refused once input is valid"
@@ -800,10 +788,6 @@
   "wink.phone.open": {
    "class": "held",
    "why": "bad_input until a real phone pairing payload; held or refused once input is valid"
-  },
-  "wink.phone.pair.answer": {
-   "class": "held",
-   "why": "held_unavailable without an active phone pairing"
   },
   "wink.access": {
    "class": "held",

@@ -4,16 +4,16 @@ import {
   ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
   RecoveryKeySheet, RolePicker, Segmented, ServerUrlField, SpaceSwitcherTitle, Text, passwordStrength,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, usernameOf } from "../../../../lib/first-run-shape.js";
+import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   addComputer, addPhone, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, startGithub,
+  loadProgress, makeInvite, openSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -26,11 +26,13 @@ export function FirstRun() {
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
   const path = one(params.path);
   const shot = shotOf(one(params.shot) || "");
-  const [stack, setStack] = useState<Screen[]>([shot?.screen || (path === "computer" || path === "phone" || path === "invite" ? entryScreen(path) : "id.create")]);
+  const [stack, setStack] = useState<Screen[]>([shot?.screen || entryScreen(path)]);
   const [username, setUsername] = useState(shot?.username || "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [saved, setSaved] = useState(false);
+  const [signSpace, setSignSpace] = useState("");
+  const [found, setFound] = useState<{ id?: string; name: string; role: string }[]>([]);
   const [recovery, setRecovery] = useState(shot?.recovery || "");
   const [paste, setPaste] = useState("");
   const [review, setReview] = useState<Review | null>(shot?.screen === "join.review" ? { link: shot.link || "", role: "member", space: shot.space || "juniper" } : null);
@@ -144,14 +146,84 @@ export function FirstRun() {
     setBusy(false);
   }, [busy]);
 
+  const continueWithGithub = async (suggestName: boolean) => {
+    const r = await startGithub();
+    if (!r.ok) { setFailure(r.message); return; }
+    const login = r.user && r.user.login ? String(r.user.login) : "";
+    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (!login && !r.exchange) return;
+    const done = await finishGithub(login);
+    if (!done.ok) { setFailure(done.message); return; }
+    if (!done.linked) { setFailure("Approve GitHub in the window, then press Continue with GitHub again."); return; }
+    const who = String(done.login || login);
+    if (suggestName) {
+      const suggested = nameFromLogin(who);
+      if (suggested && !username) setUsername(suggested);
+    }
+    setGithub(true);
+  };
+
   const strength = passwordStrength(password);
   const nameOk = Boolean(usernameOf(username));
   const passOk = strength.score >= 3 && passwordOk(password) && password === confirm;
 
+  if (screen === "id.choice") {
+    return (
+      <FlowStep steps={steps} hero title={SIGNIN_COPY.choiceTitle} lead={SIGNIN_COPY.choiceLead}>
+        <ChoiceHero title="How do you want to start?" options={[
+          { value: "create", title: "Create an identity", sub: "A username and a master password. About a minute.", icon: "plus" },
+          { value: "signin", title: "Sign in", sub: "You already have one. Use a space address, or GitHub.", icon: "link" },
+        ]} onChange={(v) => go(v === "signin" ? "id.signin" : "id.create")} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "id.signin") {
+    const addr = spaceAddressOf(signSpace);
+    return (
+      <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
+        primary={{ label: busy ? "Unlocking..." : "Sign in", disabled: !addr || !usernameOf(username) || !password || busy, loading: busy, onPress: () => void run(async () => {
+          const r = await signInPassword({ space: addr ? addr.space : "", username: usernameOf(username), password });
+          if (!r.ok) { setFailure(r.message); return; }
+          setPassword("");
+          setUsername(r.username || usernameOf(username));
+          go("ready");
+        }) }}>
+        <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="juniper.vyre.run" error={signSpace && !addr ? "Use the address of a space, like juniper.vyre.run." : undefined} />
+        <Field label="Username" value={username} onChangeText={setUsername} />
+        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
+          const r = await signInGithub(addr ? addr.space : undefined);
+          if (!r.ok) { setFailure(r.message); return; }
+          const list = Array.isArray(r.spaces) ? r.spaces : [];
+          if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
+          setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
+          setPassword("");
+          go("id.signin.spaces");
+        })} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "id.signin.spaces") {
+    return (
+      <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.spacesTitle} lead={SIGNIN_COPY.spacesLead} failure={failure}
+        primary={{ label: busy ? "Unlocking..." : "Unlock", disabled: !password || busy, loading: busy, onPress: () => void run(async () => {
+          const r = await unlockGithub(password);
+          if (!r.ok) { setFailure(r.message); return; }
+          setPassword("");
+          go("ready");
+        }) }}>
+        {found.map((x) => <Text key={x.id || x.name}>{`${x.name}, ${x.role}`}</Text>)}
+        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+      </FlowStep>
+    );
+  }
+
   if (screen === "id.create") {
     return (
       <FlowStep steps={steps} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
-        failure={failure} primary={{ label: "Create", disabled: !nameOk || !passOk, loading: busy, onPress: () => void run(async () => {
+        failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
           if (r.already) { setUsername(r.username || usernameOf(username)); go(afterRecovery({ path, heldInvite: review?.link })); return; }
@@ -162,19 +234,7 @@ export function FirstRun() {
         <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
         <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
         <PasswordField label="Confirm master password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same master password again." : undefined} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await startGithub();
-          if (!r.ok) { setFailure(r.message); return; }
-          if (typeof r.url === "string" && r.url && typeof window !== "undefined" && !(r.user && r.user.login)) window.open(r.url, "vyre-github", "width=520,height=720");
-          const login = r.user && r.user.login ? String(r.user.login) : "";
-          if (login) {
-            const done = await finishGithub(login);
-            if (!done.ok) { setFailure(done.message); return; }
-            const suggested = nameFromLogin(login);
-            if (suggested && !username) setUsername(suggested);
-            setGithub(true);
-          }
-        })} />
+        <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />
       </FlowStep>
     );
   }
@@ -325,16 +385,7 @@ export function FirstRun() {
         <ServerUrlField value={url} onChangeText={setUrl} error={url && !urlOk ? "Use a https address, with no password in it." : undefined} />
         {github ? <Text tone="muted">GitHub will sign you in. Type the master password to unlock the vault.</Text> : <Field label="Username" value={username} onChangeText={setUsername} />}
         <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await startGithub();
-          if (!r.ok) { setFailure(r.message); return; }
-          const login = r.user && r.user.login ? String(r.user.login) : "";
-          if (login) {
-            const done = await finishGithub(login);
-            if (!done.ok) { setFailure(done.message); return; }
-            setGithub(true);
-          }
-        })} />
+        <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(false))} />
       </FlowStep>
     );
   }

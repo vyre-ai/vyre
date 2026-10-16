@@ -137,12 +137,10 @@ function Sample({ name }: { name: string }) {
     return <View style={{ padding: 0 }}><EmergencyView list={list} problem="" onDeny={() => {}} onRemove={() => {}} onRefresh={() => {}} onAdd={() => {}} /></View>;
   }
   if (name === "runner-settings") {
-    const s = { enabled: true, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 };
-    const here = [{ thread: "t1", title: "Intake call notes", state: "running" as const, cpuPercent: 14, memoryMb: 900 }, { thread: "t2", title: "Smith engagement letter", state: "waiting" as const, cpuPercent: 0, memoryMb: 512 }];
-    return <RunHereView s={s} here={here} shared={["Juniper Studio", "Northwind Bakery"]} cpu="50" mem="4096" problem="" setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
+    return <RunHereView name="Office Mac" choice="always" running={2} shared={["Juniper Studio", "Northwind Bakery"]} />;
   }
   if (name === "runner-settings-off") {
-    return <RunHereView s={{ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 }} here={[]} cpu="50" mem="4096" problem="Not turned on: it needs your approval. Approve on this computer, then try again." setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
+    return <RunHereView name="Office Mac" choice="never" problem="Not turned on: it needs your approval. Approve on this computer, then try again." />;
   }
   if (name === "sites-list") {
     const dep = (id: string, version: number, stage: string, host?: string) => ({ id, name: "", version, stage, url: null, domains: host ? [{ host, status: "verified" }] : [] });
