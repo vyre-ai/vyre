@@ -24,12 +24,6 @@ const out = {};
 try {
   const dr = await cli("skills.draft", { name: "house-style", level: "space", body: skill("house-style") });
   await cli("skills.approve", { name: "house-style", level: "space", version: dr.data.version });
-  const pd = await cli("skills.draft", { name: "gallery-plugin", level: "space", kind: "plugin", body: JSON.stringify({
-    name: "gallery-plugin",
-    description: "A small plugin for design pictures: one skill and one MCP server.",
-    skills: [{ name: "gallery-hint", body: skill("gallery-hint", "Use when the UI gallery needs a plugin skill.") }],
-    mcp: [{ name: "helper", transport: "http", url: "https://mcp.example.com/tools" }],
-  }) });
   for (const t of ["skills.browse", "skills.versions", "skills.get", "connectors.connection.list"]) {
     const input = t === "skills.browse" ? { level: "space" }
       : t === "skills.versions" ? { name: "house-style", level: "space" }
@@ -38,7 +32,6 @@ try {
     const r = await cli(t, input);
     out[t] = r.error ? { error: r.error } : { data: r.data };
   }
-  out["skills.draft.plugin"] = pd.error ? { error: pd.error } : { data: pd.data };
 } finally { await d.stop(); }
 const file = path.join(REPO, "apps/app/screens/skills/real-box.fixture.json");
 fs.writeFileSync(file, JSON.stringify(out, null, 1) + "\n");

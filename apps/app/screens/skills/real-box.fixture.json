@@ -16,20 +16,7 @@
      ]
     }
    ],
-   "drafts": [
-    {
-     "id": "space/gallery-plugin",
-     "name": "gallery-plugin",
-     "level": "space",
-     "scope": "",
-     "version": 1,
-     "state": "draft",
-     "kind": "plugin",
-     "owner": null,
-     "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
-     "hash": "31c65c6f11f4b8b03c79f27f"
-    }
-   ],
+   "drafts": [],
    "role": "owner",
    "levels": {
     "personal": {
@@ -92,7 +79,7 @@
      "state": "approved",
      "kind": "skill",
      "owner": null,
-     "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
+     "proposer": "person:per_tcv6twf4a5qze4drir22cx7ajg",
      "hash": "4b29a7030ef6ce8e7931de3b"
     }
    ]
@@ -111,31 +98,6 @@
  "connectors.connection.list": {
   "data": {
    "connections": []
-  }
- },
- "skills.draft.plugin": {
-  "data": {
-   "id": "space/gallery-plugin",
-   "name": "gallery-plugin",
-   "level": "space",
-   "scope": "",
-   "version": 1,
-   "state": "draft",
-   "kind": "plugin",
-   "owner": null,
-   "proposer": "person:per_rocaocdnox7ml33k5wd3rzgaez",
-   "hash": "31c65c6f11f4b8b03c79f27f",
-   "declares": {
-    "hooks": [],
-    "mcp": [
-     {
-      "name": "helper",
-      "transport": "http",
-      "url": "https://mcp.example.com/tools"
-     }
-    ]
-   },
-   "ack": "e01bd434ecbc8e5d1e581f1f"
   }
  }
 }

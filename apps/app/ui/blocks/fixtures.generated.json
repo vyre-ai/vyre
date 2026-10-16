@@ -4192,12 +4192,6 @@
    "screens": {
     "full": {
      "component": "skills-real"
-    },
-    "compact": {
-     "component": "skills-real"
-    },
-    "glance": {
-     "component": "skills-real"
     }
    }
   },
