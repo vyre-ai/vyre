@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(security): a session that runs as an agent still calls as `mcp:agent:<name>` for every adapter. The Gate records that agent, and the agent's browser profile is the one that name selects. A provider name still does not appear in the caller. `test/agent-agnostic.test.js`.
 - fix(security): a Claude, Codex, Grok or any other registered session adapter gets the same MCP tool list and the same secret filter. The caller is `mcp` for all of them. `test/agent-agnostic.test.js` reads the adapters from the registry. The owner's ruling of 16 Oct 2026.
 - fix(security): secret field names live in one list, `lib/secret-keys.js`. A Flow timeline, the phone Flow screen, the browser redactor, site learning and an event payload all read that list, so a recovery wrap or a client secret is hidden wherever that name already means secret. The owner's ruling of 16 Oct 2026: fix the class everywhere, through one shared implementation, and test the set from its owner (the registry or the table), not from a hand-written list.
 - fix(vault): an assistant never receives a vault value, including after Approve. The result is scrubbed on the way out. Lending stays `vault.request` and `vault.space.use`, where the value is injected and scrubbed. `test/mcp-vault-result.test.js` fails if an MCP result contains one.
