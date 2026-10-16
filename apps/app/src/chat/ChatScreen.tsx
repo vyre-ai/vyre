@@ -119,6 +119,7 @@ const TURN_INTO_FLOW = "Turn what you just did into a Flow: use flows.from-chat 
 
 export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { store, rows: layoutRows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
   // steps in a row are one folded line (tool-runs.js); the items behind them stay as they are
@@ -218,7 +219,6 @@ export function ChatScreen(p: ChatScreenProps) {
   const actions = store.actions;
   const { onBranched } = p;
   const needs = useNeeds();
-  const router = useRouter();
   const chatId = here.thread ?? p.sessionId;
   const later = useLaterPlanner();
   const [modelNudge, setModelNudge] = useState<"model" | null>(null);

@@ -22,7 +22,7 @@ import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
 import { replyInput } from "./reply.js";
 import { viewerZone } from "../time/show.js";
-import { routeComposerLine } from "../../../lib/thread-composer-route.js";
+import { routeComposerLine } from "../../../../lib/thread-composer-route.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
