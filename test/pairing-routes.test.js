@@ -48,6 +48,7 @@ const EXCLUDE = {
   "spaces.server.install": "the space-creation code exchange; the adopting line is spaces.pair.install",
   "spaces.bundle.enrol": "a space bundle on this device, not an identity enrol",
   "onboard.pair": "a read of whether pairing is done; the adopt is wink.server.adopt",
+  "onboard.phone.add": "an invite link for the phone during first run; not a server owner adopt",
   "wink.storage.pair": "a storage offer, not an owner adopt",
   "link.pair": "a Tailscale box link; it does not adopt a space owner",
   "link.pair.approve": "a Tailscale box link; it does not adopt a space owner",
@@ -96,8 +97,8 @@ const ENTRIES = [
   ["scripts/install-mac-server.sh", "unset VYRE_CODE"],
   ["scripts/install-windows.ps1", "spaces.identity.confirm-key"],
   ["relay/client/pair-install.js", "export function installCommand"],
-  ["lib/pair-code.js", "codedInstallLine"],
-  ["apps/app/screens/install/first-run.js", "installCommand"],
+  ["lib/pair-code.js", "installCommandWithCode"],
+  ["apps/app/screens/install/first-run.js", "buildInstallLine"],
 ];
 
 function toolNames() {
