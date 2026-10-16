@@ -16094,7 +16094,7 @@ List space vault item names. Values stay sealed.
 Store a space vault item for the hosts it may be sent to. The value is sealed and never returned.
 
 - Input:
-  - `hosts` array of string, required
+  - `hosts` list of string, required
   - `id` string, required
   - `name` string, required
   - `space` string, required
