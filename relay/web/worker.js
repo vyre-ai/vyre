@@ -12,7 +12,10 @@ const BASE = "default-src 'none'; img-src 'self' data: blob:; font-src 'self'; m
 /** @param {{ scriptHashes?: string[], styleHashes?: string[] }} b */
 export function cspFor(b) {
   const h = (/** @type {string[] | undefined} */ l) => (l || []).map(x => ` '${x}'`).join("");
-  return `${BASE}; script-src 'self'${h(b.scriptHashes)}; style-src 'self'${h(b.styleHashes)}`;
+  // Scripts stay strict: only the app's own files and the hash of each inline script. Styles allow inline: the app's component library (react-native-web) writes its style sheet and element styles at run
+  // time, which a hash list cannot name (the rehearsal showed a blank page and "Refused to apply inline style"); the box's own /app/ policy allows the same. With default-src 'none', no image, font
+  // or connection can be reached from a style, so the cost is the look of the page and nothing else. A hash in style-src would switch 'unsafe-inline' off, so none is listed.
+  return `${BASE}; script-src 'self'${h(b.scriptHashes)}; style-src 'self' 'unsafe-inline'`;
 }
 
 export const SECURITY = Object.freeze({

@@ -57,6 +57,16 @@ test("a build signed by another key, or a file changed after signing, is refused
   await assert.rejects(buildWebOut({ appOut: s.appOut, out: path.join(s.tmp, "w2"), pub: s.pub }), /does not match the manifest/);
 });
 
+test("the policy: scripts only from the app and the page's own inline hashes, styles may be inline, nothing is reachable from a style", () => {
+  const csp = cspFor({ scriptHashes: ["sha256-AAA="], styleHashes: ["sha256-BBB="] });
+  const dir = (n) => csp.split("; ").find(d => d.startsWith(n)) || "";
+  assert.equal(dir("script-src"), "script-src 'self' 'sha256-AAA='");
+  assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*unsafe-inline/);
+  assert.equal(dir("style-src"), "style-src 'self' 'unsafe-inline'", "no style hash is listed: one would switch unsafe-inline off");
+  assert.match(csp, /default-src 'none'/);
+  assert.match(csp, /frame-ancestors 'none'/);
+});
+
 test("inline hashes cover inline scripts and styles only", () => {
   const h = inlineHashes('<style>a{}</style><script>1</script><script src="/x.js"></script><script src="/y.js"> </script>');
   assert.deepEqual(h, { scriptHashes: [cspHash("1")], styleHashes: [cspHash("a{}")] });

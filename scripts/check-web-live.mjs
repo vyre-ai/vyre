@@ -52,7 +52,8 @@ ok(mismatched === 0, `all ${Object.keys(manifest.files).length} files of the rel
 const page = await get("/");
 ok(page.r.ok && crypto.createHash("sha256").update(page.bytes).digest("hex") === info.index, "the page at / is the release's signed index.html");
 const csp = page.r.headers.get("content-security-policy") || "";
-ok(/default-src 'none'/.test(csp) && !/unsafe-inline|unsafe-eval/.test(csp) && /frame-ancestors 'none'/.test(csp) && /script-src 'self'/.test(csp), "the Content-Security-Policy is strict");
+const scriptSrc = (csp.split("; ").find(d => d.startsWith("script-src")) || "");
+ok(/default-src 'none'/.test(csp) && !/unsafe-eval/.test(csp) && !/unsafe-/.test(scriptSrc) && /frame-ancestors 'none'/.test(csp) && /script-src 'self'/.test(scriptSrc), "the Content-Security-Policy is strict for scripts (no unsafe-inline or unsafe-eval), with inline styles allowed");
 ok(/max-age=\d{8,}/.test(page.r.headers.get("strict-transport-security") || ""), "HSTS is set");
 ok(page.r.headers.get("x-content-type-options") === "nosniff" && !page.r.headers.get("set-cookie"), "nosniff, and no cookie");
 

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(web): web.vyre.run allows inline styles (scripts stay strict). Under a hash-only style policy the app rendered a blank page with "Refused to apply inline style", which the rehearsal found.
 - feat(web): app.vyre.run is retired and web.vyre.run is the Vyre app on the web. The old host's Worker now redirects every request to web.vyre.run (a phone's old join and pair links keep their meaning) and serves one service worker that clears the old loader's caches, unregisters itself and moves open windows to the new address; it has no assets and keeps nothing. A server's default hosted-app origins and the name directory's app origins now list web.vyre.run beside app.vyre.run (the old host leaves both lists once the redirect is live). `relay-deploy.yml`'s `app` input no longer needs a build. Passkeys made at app.vyre.run and phones paired through its loader do not carry over: the app asks them to sign in again at web.vyre.run.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
