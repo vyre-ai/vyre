@@ -3,16 +3,17 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  RecoveryKeySheet, RolePicker, Segmented, ServerUrlField, Text, passwordStrength,
+  RecoveryKeySheet, RolePicker, Segmented, ServerUrlField, SpaceSwitcherTitle, Text, passwordStrength,
 } from "@vyre/ui";
 import { JOIN_COPY, PHASES, afterIdentity, commandOk, entryScreen, passwordOk, phaseOf, usernameOf } from "../../../../lib/first-run-shape.js";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin } from "../onboard/flow-model.js";
-import { addComputer, addPhone, createPerson, finishGithub, joinSpace, makeInvite, openSpace, pollSpace, readInvite, startGithub } from "./real.js";
+import { addComputer, addPhone, chooseSpace, createPerson, finishGithub, joinSpace, listSpaces, makeInvite, openSpace, personStatus, pollSpace, readInvite, startGithub } from "./real.js";
 
 type Screen = "id.create" | "id.recovery" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
+type Membership = { id: string; name: string; role: string; server: string | null };
 
 const ROLES = [
   { id: "admin", name: "Admin", line: "Invites people and looks after the space." },
@@ -59,12 +60,36 @@ export function FirstRun() {
   const [github, setGithub] = useState(false);
   const [phoneLink, setPhoneLink] = useState(shot?.screen === "phone.add" ? shot.link || "" : "");
   const [space, setSpace] = useState(shot?.space || "");
+  const [spaces, setSpaces] = useState<Membership[]>([]);
+  const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
   const screen = stack[stack.length - 1];
   const go = (next: Screen) => { setFailure(""); setStack((s) => [...s, next]); };
   const back = stack.length > 1 ? () => { setFailure(""); setStack((s) => s.slice(0, -1)); } : undefined;
   const steps = { labels: [...PHASES], current: phaseOf(screen), kind: "phase" as const };
+
+  useEffect(() => {
+    if (shot || screen !== "id.create") return;
+    let live = true;
+    void personStatus().then((r) => {
+      if (!live || !r.ok || !r.exists) return;
+      setUsername(r.username || "");
+      setStack((s) => (s[s.length - 1] === "id.create" ? [afterIdentity({ path })] : s));
+    });
+    return () => { live = false; };
+  }, [shot, screen, path]);
+
+  useEffect(() => {
+    if (shot || (screen !== "ready" && screen !== "space.choice" && screen !== "computer.add")) return;
+    let live = true;
+    void listSpaces().then((r) => {
+      if (!live || !r.ok || !Array.isArray(r.spaces)) return;
+      setSpaces(r.spaces);
+      if (typeof r.current === "string") setCurrent(r.current);
+    });
+    return () => { live = false; };
+  }, [shot, screen]);
 
   useEffect(() => {
     if (shot) return;
@@ -102,6 +127,7 @@ export function FirstRun() {
         failure={failure} primary={{ label: "Create", disabled: !nameOk || !passOk, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
+          if (r.already) { setUsername(r.username || usernameOf(username)); go(afterIdentity({ path, heldInvite: review?.link })); return; }
           setRecovery(typeof r.recoveryKey === "string" ? r.recoveryKey : "");
           setUsername(r.username || usernameOf(username));
           go("id.recovery");
@@ -137,7 +163,7 @@ export function FirstRun() {
 
   if (screen === "space.choice") {
     return (
-      <FlowStep steps={steps} onBack={back} hero title="Your space" lead="Join one you were invited to, or create one.">
+      <FlowStep steps={steps} onBack={back} hero title="Your space" lead="Join one you were invited to, or create one. The same identity can be in more than one.">
         <ChoiceHero title="How do you want to start?" options={[
           { value: "join", title: "Join a space", sub: "Use the invite link you were sent.", icon: "link" },
           { value: "create", title: "Create a space", sub: "Set up a Linux server or an always-on Mac.", icon: "server" },
@@ -234,12 +260,13 @@ export function FirstRun() {
   if (screen === "computer.add") {
     const urlOk = /^https:\/\/[^\s]+$/.test(url.trim());
     return (
-      <FlowStep steps={steps} onBack={back} title="Add your computer" lead="The space address, and your master password. GitHub can sign you in. The password still unlocks the vault." failure={failure}
+      <FlowStep steps={steps} onBack={back} title="Add your computer" lead="This computer connects to every space you belong to. Each space has its own address. The master password unlocks the vault." failure={failure}
         primary={{ label: "Add this computer", disabled: !urlOk || !passwordOk(password) || (!github && !usernameOf(username)), loading: busy, onPress: () => void run(async () => {
           const r = await addComputer({ url: url.trim(), password, ...(github ? { github: true } : { username }) });
           if (!r.ok) { setFailure(r.message); return; }
           go("ready");
         }) }}>
+        {spaces.length ? spaces.map((s) => <Text key={s.id} tone="muted">{`${s.name}, ${s.role}${s.server ? `, ${s.server}` : ""}`}</Text>) : null}
         <ServerUrlField value={url} onChangeText={setUrl} error={url && !urlOk ? "Use a https address, with no password in it." : undefined} />
         {github ? <Text tone="muted">GitHub will sign you in. Type the master password to unlock the vault.</Text> : <Field label="Username" value={username} onChangeText={setUsername} />}
         <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
@@ -271,12 +298,24 @@ export function FirstRun() {
     );
   }
 
+  const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
-    <FlowStep steps={steps} hero mark="done" title="You're in" lead={space ? `${space} is ready.` : "Your identity is ready."}
+    <FlowStep steps={steps} hero mark="done" title="You're in" lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
       primary={{ label: "Open Vyre", onPress: () => router.replace("/u/now" as never) }}
       secondary={{ label: "Invite someone", onPress: () => go("invite.share") }}>
-      <ChoiceList label="Also" onChange={(v) => go(v)} options={[
-        { value: "computer.add", title: "Add a computer", sub: "A computer you already use.", icon: "laptop" },
+      {spaces.length > 1 ? (
+        <SpaceSwitcherTitle spaces={spaces.map((s) => ({ id: s.id, name: s.name }))} space={showing?.id || spaces[0].id} onSpace={(id) => void run(async () => {
+          const r = await chooseSpace(id);
+          if (!r.ok) { setFailure(r.message); return; }
+          setCurrent(String(r.current || id));
+          if (r.name) setSpace(String(r.name));
+        })} />
+      ) : null}
+      {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
+      <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
+        { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
+        { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },
+        { value: "computer.add", title: "Add a computer", sub: "It connects to every space you belong to.", icon: "laptop" },
         { value: "phone.add", title: "Add a phone", sub: "The phone opens a link.", icon: "link" },
       ]} />
     </FlowStep>

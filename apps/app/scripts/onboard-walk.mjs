@@ -110,6 +110,17 @@ await walk("new person joins a space", async (t) => {
   await t.sees("https://vyre.run/i/sampletoken");
   await t.press("Done");
   await t.at("You're in");
+  await t.sees("juniper");
+  await t.pick("Join another space");
+  await t.at("Join a space");
+  const again = await t.body();
+  if (/\bservers?\b/i.test(again)) throw new Error("the join path names a server");
+  await t.type("Invite link", "https://vyre.run/i/secondtok");
+  await t.press("Continue");
+  await t.press("Join");
+  await t.at("You're in");
+  await t.sees("juniper");
+  await t.sees("studio");
 });
 
 await walk("new person creates a space and waits", async (t) => {

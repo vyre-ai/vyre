@@ -2,8 +2,9 @@
 // First run, invites, and adding a computer or a phone. One tool each: the app calls these, and the MCP server
 // forwards the same registry tools (harness/mcp/server.js holds none of its own).
 //
-// Each write calls the kernel tool that owns the act. This file does not mint a second identity, a second install
-// code, or a second owner change. A phone is a link. It never signs a change of who owns a space.
+// One identity can be the owner, an admin or a member of many spaces. Each space has its own server. A later
+// join or create uses the identity already on this device. This file does not mint a second identity, a second
+// install code, or a second owner change. A phone is a link. It never signs a change of who owns a space.
 
 import { randomBytes } from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
@@ -13,6 +14,7 @@ const OPEN = Object.freeze(["cli", "local", "deck", "capsule", "device", "mcp", 
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
+const ROLES = new Set(["owner", "admin", "member", "guest", "temp"]);
 
 /** @type {Map<string, { command: string, expiresAt: string, kind: string, name: string }>} */
 const waits = new Map();
@@ -25,6 +27,55 @@ const links = new Map();
  */
 export function registerFirstRun(ctx, io) {
   const { call, save } = io;
+  const ob = () => (ctx.config && ctx.config.onboard) || {};
+  const seeded = ob();
+  /** @type {{ person: string | null, personId: string | null, current: string | null, spaces: { id: string, name: string, role: string, server: string | null }[] }} */
+  const held = {
+    person: typeof seeded.person === "string" ? seeded.person : null,
+    personId: typeof seeded.personId === "string" ? seeded.personId : null,
+    current: typeof seeded.current === "string" ? seeded.current : null,
+    spaces: Array.isArray(seeded.memberships) ? seeded.memberships.map(membershipOf).filter(Boolean) : [],
+  };
+  const persist = () => save({ onboard: { person: held.person, personId: held.personId, current: held.current, memberships: held.spaces } });
+
+  /** The spaces this identity belongs to: the ones recorded here, plus whatever spaces.list already knows. @returns {Promise<{ id: string, name: string, role: string, server: string | null }[]>} */
+  async function spacesNow() {
+    /** @type {any[]} */
+    let remote = [];
+    try { const got = await call("spaces.list", {}); if (Array.isArray(got)) remote = got; } catch { remote = []; }
+    const out = held.spaces.map((s) => ({ ...s }));
+    for (const row of remote) {
+      const name = labelOf(row);
+      const id = spaceKey(row && row.id, name);
+      if (!id) continue;
+      const server = serverFrom(row) || null;
+      const role = row && ROLES.has(row.role) ? String(row.role) : "";
+      const hit = out.find((s) => s.id === id || (name && s.name === name));
+      if (hit) {
+        const prev = hit.id;
+        if (String(row.id || "").startsWith("spc_")) hit.id = String(row.id);
+        if (held.current === prev) held.current = hit.id;
+        if (name) hit.name = name;
+        if (role) hit.role = role;
+        if (server) hit.server = server;
+      } else out.push({ id: String(row.id || id), name: name || id, role: role || "member", server });
+    }
+    held.spaces = out.map(membershipOf).filter(Boolean);
+    if (held.current && !held.spaces.some((s) => s.id === held.current)) held.current = held.spaces[0] ? held.spaces[0].id : null;
+    return held.spaces.map((s) => ({ ...s }));
+  }
+
+  /** @param {{ id: string, name: string, role: string, server: string | null }} row */
+  function rememberSpace(row) {
+    const next = membershipOf(row);
+    if (!next) return null;
+    const at = held.spaces.findIndex((s) => s.id === next.id || s.name === next.name);
+    if (at >= 0) held.spaces[at] = { ...held.spaces[at], ...next, server: next.server || held.spaces[at].server };
+    else held.spaces.push(next);
+    held.current = held.spaces[at >= 0 ? at : held.spaces.length - 1].id;
+    persist();
+    return held.spaces.find((s) => s.id === held.current) || next;
+  }
 
   ctx.tool("onboard.person.lookup", {
     effect: "read",
@@ -38,6 +89,18 @@ export function registerFirstRun(ctx, io) {
     },
   });
 
+  ctx.tool("onboard.person.status", {
+    effect: "read",
+    description: "Whether this device already has an identity, and that username. A later space uses the same one.",
+    input: obj({}),
+    callers: [...OPEN],
+    run: async () => {
+      const existing = await identityNow(call);
+      if (existing) { held.person = existing.username; held.personId = existing.id || held.personId; }
+      return { exists: Boolean(existing), username: held.person, id: held.personId, current: held.current, spaces: await spacesNow(), ...(held.person ? personRoutes(held.person) : {}) };
+    },
+  });
+
   ctx.tool("onboard.person.create", {
     effect: "write",
     description: "Create this person's identity and vault from a username and master password. Returns the recovery key once.",
@@ -48,11 +111,20 @@ export function registerFirstRun(ctx, io) {
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
       if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
       if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
+      const existing = await identityNow(call);
+      if (existing) {
+        held.person = existing.username;
+        held.personId = existing.id || held.personId;
+        persist();
+        return { username: existing.username, id: held.personId, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
+      }
       const made = await call("identity.create", { username: name, password });
       const recoveryKey = made && typeof made.recoveryKey === "string" ? made.recoveryKey : null;
-      save({ onboard: { person: name } });
+      held.person = name;
+      held.personId = made && typeof made.id === "string" ? made.id : held.personId;
+      persist();
       ctx.events.emit("onboard.stepped", { step: "identity", username: name });
-      return { username: name, ...personRoutes(name), recoveryKey, once: true };
+      return { username: name, id: held.personId, ...personRoutes(name), recoveryKey, once: true, already: false };
     },
   });
 
@@ -91,24 +163,27 @@ export function registerFirstRun(ctx, io) {
     run: async ({ link }) => {
       const parsed = parseInvite(link);
       if (!parsed) throw bad("That link does not open a space. Ask for a new invite.");
-      const held = links.get(parsed.token);
-      const space = held?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "");
-      return { link: parsed.link, role: held?.role || "member", space: space || null, ttlDays: held?.ttlDays || null };
+      const heldLink = links.get(parsed.token);
+      const space = heldLink?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "");
+      return { link: parsed.link, role: heldLink?.role || "member", space: space || null, ttlDays: heldLink?.ttlDays || null };
     },
   });
 
   ctx.tool("onboard.space.join", {
     effect: "write",
-    description: "Accept an invite link and join that space with the role on the link. Changes who is in the space.",
+    description: "Accept an invite link and join that space with the role on the link. The same identity can join another.",
     input: obj({ link: str }, ["link"]),
     callers: [...OPEN],
     run: async ({ link }) => {
       const parsed = parseInvite(link);
       if (!parsed) throw bad("That link does not open a space. Ask for a new invite.");
-      const held = links.get(parsed.token);
+      const heldLink = links.get(parsed.token);
       const joined = await call("spaces.invites.accept", { link: parsed.link });
-      if (held) links.delete(parsed.token);
-      return { joined: true, space: (joined && (joined.space || joined.name)) || held?.space || null, role: held?.role || (joined && joined.role) || "member" };
+      if (heldLink) links.delete(parsed.token);
+      const name = (joined && (joined.name || joined.label)) || heldLink?.space || (parsed.spaceHost ? parsed.spaceHost.replace(/\.vyre\.run$/, "") : "") || "";
+      const role = (heldLink && heldLink.role) || (joined && (joined.role || (joined.membership && joined.membership.role))) || "member";
+      const row = rememberSpace({ id: spaceKey(joined && (joined.space || joined.id), name), name: String(name || "space"), role: String(role), server: serverFrom(joined) || (parsed.spaceHost ? `https://${parsed.spaceHost}` : null) });
+      return { joined: true, space: row ? row.name : null, id: row ? row.id : null, role: row ? row.role : "member", server: row ? row.server : null };
     },
   });
 
@@ -127,7 +202,8 @@ export function registerFirstRun(ctx, io) {
       const id = `fr_${randomBytes(8).toString("hex")}`;
       const expiresAt = new Date(Number(issued.expires) * 1000).toISOString();
       waits.set(id, { command, expiresAt, kind: place, name: label });
-      return { id, command, expiresAt, kind: place, name: label };
+      const row = rememberSpace({ id: spaceKey("", label), name: label, role: "owner", server: null });
+      return { id, command, expiresAt, kind: place, name: label, spaceId: row ? row.id : null, role: "owner" };
     },
   });
 
@@ -155,6 +231,30 @@ export function registerFirstRun(ctx, io) {
     },
   });
 
+  ctx.tool("onboard.space.list", {
+    effect: "read",
+    description: "Spaces this one identity belongs to, each with its role and its own server.",
+    input: obj({}),
+    callers: [...OPEN],
+    run: async () => ({ person: held.person, id: held.personId, current: held.current, spaces: await spacesNow() }),
+  });
+
+  ctx.tool("onboard.space.current", {
+    effect: "write",
+    description: "Choose which of this identity's spaces is showing. The identity stays the same.",
+    input: obj({ space: str }, ["space"]),
+    callers: [...OPEN],
+    run: async ({ space }) => {
+      const rows = await spacesNow();
+      const want = String(space || "");
+      const hit = rows.find((s) => s.id === want || s.name === want);
+      if (!hit) throw bad("That space is not one this identity belongs to.");
+      held.current = hit.id;
+      persist();
+      return { current: hit.id, name: hit.name, role: hit.role, server: hit.server };
+    },
+  });
+
   ctx.tool("onboard.member.link", {
     effect: "write",
     description: "Make a link someone can use to join a space, for a role and a number of days.",
@@ -165,24 +265,49 @@ export function registerFirstRun(ctx, io) {
 
   ctx.tool("onboard.computer.add", {
     effect: "write",
-    description: "Add this person's computer to a space with its address, name and master password, or GitHub.",
-    input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str }, ["url", "password"]),
+    description: "Sign this computer into every space this identity belongs to. Each space uses its own server.",
+    input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str }, ["password"]),
     callers: [...OPEN],
     run: async ({ url, username, password, github, login, subject }) => {
-      const address = serverUrl(url);
-      if (!address) throw bad("The space address is a https URL.");
       if (!passwordOk(password)) throw bad("The master password is required, and it is at least 12 characters.");
       const name = usernameOf(username);
       const ghLogin = String(login ?? "").trim().toLowerCase();
       const ghSubject = String(subject ?? "").trim();
       if (!name && !(github === true && ghSubject)) throw bad("Give the username, or a GitHub account already linked on this device.");
-      const signed = await call("devices.signin", {
-        server: address,
-        password,
-        ...(name ? { username: name } : {}),
-        ...(github === true && ghSubject ? { github: { login: ghLogin, subject: ghSubject } } : {}),
-      });
-      return { url: address, username: (signed && signed.username) || name || null, github: github === true, added: true };
+      const rows = await spacesNow();
+      /** @type {{ server: string, space: string | null }[]} */
+      const targets = [];
+      /** @type {{ id: string, name: string }[]} */
+      const missing = [];
+      for (const s of rows) {
+        if (s.server) targets.push({ server: s.server, space: s.id });
+        else missing.push({ id: s.id, name: s.name });
+      }
+      const typed = url ? serverUrl(url) : "";
+      if (url && !typed) throw bad("The space address is a https URL.");
+      if (typed && missing.length === 1 && !targets.some((t) => t.server === typed)) {
+        const role = (rows.find((s) => s.id === missing[0].id) || { role: "owner" }).role;
+        rememberSpace({ id: missing[0].id, name: missing[0].name, role, server: typed });
+        targets.push({ server: typed, space: missing[0].id });
+        missing.length = 0;
+      } else if (typed && !targets.some((t) => t.server === typed)) targets.push({ server: typed, space: null });
+      const seen = new Set();
+      const unique = targets.filter((t) => (seen.has(t.server) ? false : seen.add(t.server)));
+      if (!unique.length) throw bad("Give the space address. A space with no server yet needs one.");
+      /** @type {string[]} */
+      const servers = [];
+      let who = name || null;
+      for (const t of unique) {
+        const signed = await call("devices.signin", {
+          server: t.server,
+          password,
+          ...(name ? { username: name } : {}),
+          ...(github === true && ghSubject ? { github: { login: ghLogin, subject: ghSubject } } : {}),
+        });
+        if (signed && signed.username) who = signed.username;
+        servers.push(t.server);
+      }
+      return { url: typed || servers[0] || null, username: who, github: github === true, added: missing.length === 0, servers, missing };
     },
   });
 
@@ -196,6 +321,46 @@ export function registerFirstRun(ctx, io) {
       return { link: made.link, space: made.space, role: "member" };
     },
   });
+}
+
+/** The identity already on this device, or null. A missing identity tool means there is nothing to reuse yet. @param {(tool: string, input?: any) => Promise<any>} call */
+async function identityNow(call) {
+  try {
+    const st = await call("identity.status", {});
+    const name = st && st.exists ? usernameOf(st.username) : "";
+    return name ? { username: name, id: typeof st.id === "string" ? st.id : null } : null;
+  } catch { return null; }
+}
+
+/** @param {any} raw @returns {{ id: string, name: string, role: string, server: string | null } | null} */
+function membershipOf(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const name = String(raw.name || "").trim().slice(0, 80);
+  const id = spaceKey(raw.id, name);
+  if (!id) return null;
+  const role = ROLES.has(raw.role) ? String(raw.role) : "member";
+  return { id, name: name || id, role, server: serverUrl(raw.server) || null };
+}
+
+/** @param {unknown} raw @param {unknown} name */
+function spaceKey(raw, name) {
+  const s = String(raw || "").trim();
+  if (/^spc_[a-z0-9_]{4,64}$/.test(s)) return s;
+  const n = String(name || "").toLowerCase().replace(/\.vyre\.run$/, "").replace(/[^a-z0-9-]/g, "").slice(0, 24);
+  return n ? `spc_${n}` : "";
+}
+
+/** @param {any} row */
+function labelOf(row) {
+  const raw = row && (row.label || row.displayName || row.name) || "";
+  return String(raw).replace(/\.vyre\.run$/i, "").trim().slice(0, 80);
+}
+
+/** A server address a tool already returned. https only. @param {any} row */
+function serverFrom(row) {
+  if (!row || typeof row !== "object") return "";
+  const home = row.home && typeof row.home === "object" ? row.home.url : "";
+  return serverUrl(row.server) || serverUrl(row.url) || serverUrl(home) || (typeof row.name === "string" && row.name.endsWith(".vyre.run") ? serverUrl(`https://${row.name}`) : "");
 }
 
 /** @param {{ link: string, role: string, ttlDays: number, space: string | null }} made */
