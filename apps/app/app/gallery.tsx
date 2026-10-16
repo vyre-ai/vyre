@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, Markdown, NeedsYouCard, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, MatchWords, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -221,6 +221,22 @@ function Sample({ name }: { name: string }) {
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }
+  if (name === "chat-capabilities") {
+    return (
+      <View style={{ gap: 16, maxWidth: 620 }}>
+        <SlashChips title="Slash commands (threads.slash on the kernel)" />
+        <ChatForkPanel><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></ChatForkPanel>
+        <Text strong>Chat panel: context roll, tasks, transcript</Text>
+        <PanelSample phone={false} page="context" />
+        <Text strong>Follow-up (/later → planner)</Text>
+        <LaterPlannerNote s={{ kind: "scheduled", title: "Check the filing status", when: "at 5pm" }} onClear={() => {}} />
+        <Text strong>Background task card</Text>
+        <BackgroundTasksCard tasks={[{ id: "a", title: "npm run e2e", status: "started", live: true }]} />
+        <Text strong>Design library: panel rows</Text>
+        <Card flush><PanelCapabilityRows first onMemory={() => {}} onExport={() => {}} onRoll={() => {}} onContext={() => {}} onTasks={() => {}} onTranscript={() => {}} runningCount={1} /></Card>
+      </View>
+    );
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
@@ -314,6 +330,7 @@ export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string; door?: string; tab?: string; grant?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "chat-capabilities") return <ThemeProvider><Page><View nativeID="fixture"><Sample name="chat-capabilities" /></View></Page></ThemeProvider>;
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
   if (q.f === "sites-real" || q.f === "sites-real-site") {
     // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.

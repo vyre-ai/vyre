@@ -87,12 +87,14 @@ export function createFolder() {
   /** @type {Map<string, { group: string, question: string, members: { who: string, message: string }[], keep: string|null }>} */ const groups = new Map();
   /** @type {Map<string, string>} answer message -> group */ const groupOf = new Map();
   const read = { upto: 0 };
-  /** Messages the person just sent that the box has not echoed yet: they show at once, dimmed, and go when the box's own row arrives (or the send fails). @type {{ key: string, text: string }[]} */
+  /** Messages the person just sent that the box has not echoed yet: they show at once, dimmed, and go when the box's own row arrives (or the send fails). @type {{ key: string, text: string, message?: string }[]} */
   let optimistic = [];
   let optimisticN = 0;
-  /** The echo of a send takes the placeholder's place. @param {string} text */
-  function settleOptimistic(text) {
-    const i = optimistic.findIndex((o) => o.text.trim() === text.trim());
+  /** The echo of a send takes the placeholder's place. @param {string} text @param {string} [message] client message id from stream.send */
+  function settleOptimistic(text, message) {
+    const i = message
+      ? optimistic.findIndex((o) => o.message === message)
+      : optimistic.findIndex((o) => o.text.trim() === text.trim());
     if (i < 0) return false;
     dropRow(optimistic[i].key);
     optimistic.splice(i, 1);
@@ -154,7 +156,7 @@ export function createFolder() {
     switch (kind) {
       case "user-message": {
         const key = "u:" + d.message;
-        if (d.state !== "cancelled") settleOptimistic(String(d.text ?? ""));
+        if (d.state !== "cancelled") settleOptimistic(String(d.text ?? ""), String(d.message ?? ""));
         if (d.state === "cancelled") {
           // Taken back before it was picked up: it leaves the queue and was never a message.
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
@@ -175,6 +177,13 @@ export function createFolder() {
       }
       case "text-delta": {
         const mid = f.message ?? d.message;
+        if (d.notice && typeof d.text === "string" && d.text) {
+          const key = "n:" + mid + ":" + f.cur;
+          put(key, "notice", { key, kind: "notice", text: d.text });
+          out.layout = true;
+          touch(key);
+          break;
+        }
         // Thinking is its own row, drawn folded under the reply it belongs to: never as the reply, and never dropped (the person may want to see how it got there).
         if (d.reasoning) {
           const rk = "r:" + mid + ":" + (d.index ?? 0);
@@ -443,10 +452,10 @@ export function createFolder() {
   return {
     apply,
     applyAll,
-    /** A message the person just sent, shown at once and dimmed until the box echoes it; returns its row key. @param {string} text */
-    addOptimistic(text) {
+    /** A message the person just sent, shown at once and dimmed until the box echoes it; returns its row key. @param {string} text @param {string} [message] client message id (stream.send's message) */
+    addOptimistic(text, message) {
       const key = "o:" + ++optimisticN;
-      optimistic.push({ key, text });
+      optimistic.push({ key, text, ...(message ? { message } : {}) });
       put(key, "user", { key, kind: "user", text, queued: false, pickedUp: false, pending: true });
       return key;
     },
@@ -456,6 +465,14 @@ export function createFolder() {
       if (i < 0) return false;
       optimistic.splice(i, 1);
       dropRow(key);
+      return true;
+    },
+    /** Replace a user row's words after a private message was decrypted on the device. @param {string} key @param {string} text */
+    setUserText(key, text) {
+      const it = items.get(key);
+      if (!it || it.kind !== "user") return false;
+      items.set(key, { ...it, text, privateDecrypted: true });
+      bump(key);
       return true;
     },
     /** The layout rows, oldest first; a new array only when a row was added or removed. */

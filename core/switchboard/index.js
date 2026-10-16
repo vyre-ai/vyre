@@ -53,6 +53,7 @@ import { Leases, ownSurface, sameKeyboard } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
+import { registerComposerSlashTools } from "./composer-slash.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere, registerTranscriptTools } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
@@ -513,6 +514,19 @@ export class Switchboard {
     job.timer = setTimeout(job.run, Number.isFinite(ms) && ms >= 0 ? ms : TEXT_PRUNE_MS);
     job.timer.unref?.();
     this.prunes.add(job);
+  }
+
+  /** Drop old delivered inbox rows (retention); safe to call often. */
+  pruneInbox(now = Date.now()) {
+    const cutoff = now - 30 * 86400_000;
+    const keep = 200;
+    try {
+      this.db.prepare("DELETE FROM threads_inbox WHERE delivered_at IS NOT NULL AND delivered_at < ?").run(cutoff);
+      for (const { thread } of /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NOT NULL").all())) {
+        const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC").all(thread));
+        for (const r of rows.slice(keep)) this.db.prepare("DELETE FROM threads_inbox WHERE id = ?").run(r.id);
+      }
+    } catch (e) { this.deps.log(`pruning threads_inbox failed: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
@@ -1042,7 +1056,7 @@ export class Switchboard {
       // A person's own first words are heard like any turn of theirs: before any provider sees them.
       const said = crypto.randomUUID();
       await slow();
-      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || [], personTurn(o.surface) ? o.surface : null) : [];
       const note = heard.length ? tagNote(heard) : "";
       await slow();
       at("first prompt send");
@@ -2558,9 +2572,9 @@ export class Switchboard {
    * for this thread (resolveTags) and said as thread.mentioned. `chips` are the composer's own
    * {kind, id} picks. A provider absent or refusing means plain text, never a blocked send. Only
    * for a caller personTurn admits.
-   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips] @param {string[]} [pasted] @param {string|null} [asCaller] the person's own surface label (cli, deck, …), so tags resolve under their access
    */
-  async ingress(id, text, surface, uuid, chips = [], pasted = []) {
+  async ingress(id, text, surface, uuid, chips = [], pasted = [], asCaller = null) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
@@ -2569,7 +2583,8 @@ export class Switchboard {
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const as = asCaller && personTurn(asCaller) ? asCaller : null;
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input, as ? { as } : undefined) }) : [];
     const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
@@ -3081,6 +3096,7 @@ export class Switchboard {
       mark.run(now, via, m.id);
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
+    this.pruneInbox(now);
     return { messages: rows.map(m => ({ id: m.id, text: m.note ? `${m.text}\n\n${m.note}` : m.text, surface: m.surface, at: m.at })) };
   }
 
@@ -3092,7 +3108,9 @@ export class Switchboard {
   replied(id, text) {
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { replied: 0 };
-    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(Date.now(), id);
+    const now = Date.now();
+    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(now, id);
+    this.pruneInbox(now);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (text) this.emit("thread.text", { message: `inbox-${rows.at(-1).id}`, text: String(text), done: true }, id, project);
@@ -3393,6 +3411,8 @@ export class Switchboard {
     if (!/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(String(model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
     const rec = this.must(id);
     const st = this.live.get(id);
+    const busy = st && st.proc && typeof st.proc.control === "function" && st.turn && ["working", "waiting"].includes(String(rec.status));
+    if (busy) throw Object.assign(new Error("a turn is running: wait for it to end, then switch the model"), { code: "busy" });
     if (st && st.proc.control) await st.proc.control("set_model", { model });
     // The next reply is labelled by the live model first (speaker), so it follows the switch, not the model the thread started with.
     if (st) st.model = String(model);
@@ -4514,7 +4534,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
+        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
@@ -4695,7 +4715,7 @@ export default {
         // recorded survives, and what they now type is heard afresh under the usual rules.
         if (sb.hasQueued(i.thread, i.queued)) await sb.revokeHeard(i.thread, sb.queuedUuids(i.thread, i.queued));
         if (personTurn(caller) && Array.isArray(i.pasted) && sb.hasQueued(i.thread, i.queued)) {
-          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
+          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), `${sb.queuedUuids(i.thread, i.queued)[0] || crypto.randomUUID()}:e${Date.now()}`, Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20), caller);
           if (heard.length) note = tagNote(heard);
         }
         return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });
@@ -4762,9 +4782,7 @@ export default {
         return sb.switchEffort(i.thread, i.effort ?? null);
       });
 
-    tool("threads.commands", "The slash commands a running thread offers, for a composer's / menu. Send one as a message, e.g. \"/compact\".",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
+    registerComposerSlashTools(tool, { sb, ctx, guard, queuesFor, personTurn, surfaceOf, str });
 
     tool("threads.tasks", "A running thread's background tasks (shell commands run in the background, subagents): id, kind, title, status (running, completed, failed, killed), summary.",
       { type: "object", required: ["thread"], properties: { thread: str } },
@@ -4785,20 +4803,6 @@ export default {
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches thinking"), { code: "denied" });
         return sb.thinking(i.thread, i.on);
       });
-
-    tool("threads.shell", "Claude Code's ! mode: run a shell line in the thread's folder, as you, under the security floor. Its output shows here and goes to Claude with your next message. Only a person can.",
-      { type: "object", required: ["thread", "command"], properties: { thread: str, command: str } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not run the person's shell lines"), { code: "denied" });
-        return sb.shell(i.thread, i.command);
-      }, ["cli", "local", "deck", "capsule"]);
-
-    tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
-      async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions: the person edits them, or another session does"), { code: "denied" });
-        return sb.remember(i.thread, i.text, i.scope || "project");
-      }, ["cli", "local", "deck", "capsule"]);
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation and folder that the original never sees. For terminal-busy sessions.",
       { type: "object", required: ["thread"], properties: { thread: str, at: { type: "string", description: "A message's uuid (thread.turn's): fork from just before that turn instead of from the live end." }, prompt: str, name: str, surface: str } },

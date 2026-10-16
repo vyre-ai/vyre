@@ -107,7 +107,9 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
   pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
-  term: (/** @type {string} */ as) => isPerson(as) };
+  term: (/** @type {string} */ as) => isPerson(as),
+  // threads replays the asking person to planner, recall and mentions on a composer's / line and on ingress tags, never the module's own chain.
+  threads: (/** @type {string} */ as) => isPerson(as) || /^link:[^\s:]+$/.test(String(as)) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -634,7 +636,7 @@ const inRepo = (dir, paths) => {
 };
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
-const IN_SPACE = Symbol("vyre.in_space");
+export const IN_SPACE = Symbol("vyre.in_space");
 /** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
 const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by the views and capsule modules, beside `asked`: the person's own confirmation of exactly these words (a fresh preview and its hash). A symbol key cannot come over the wire. */

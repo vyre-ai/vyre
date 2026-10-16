@@ -6,12 +6,12 @@ import { View } from "react-native";
 import { Banner, Button, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { LiveScreen } from "./LiveScreen";
-import { loginsFor, signinWords } from "./screen-model.js";
+import { loginsFor, signinWords, vaultItemLabel } from "./screen-model.js";
 
 type Sign = { block: "signin"; id: string; computer: string; site: string; why: string; state: "waiting" | "done" | "cancelled" | "expired" };
 
 /** `sample` stands in for the Vault's matching logins in the sample world (the shots); a real card asks the Vault. */
-export function SigninCard({ block, sample }: { block: Sign; sample?: { name: string; origin: string; exact: boolean }[] }) {
+export function SigninCard({ block, sample, hideVaultNames }: { block: Sign; sample?: { name: string; origin: string; exact: boolean }[] }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -45,7 +45,7 @@ export function SigninCard({ block, sample }: { block: Sign; sample?: { name: st
       {state === "waiting" && logins.length && !open ? (
         <View style={{ gap: 8 }}>
           <Text size="secondary" tone="muted">{`Your Vault has ${logins.length === 1 ? "a login" : "logins"} for ${block.site}. It is lent to ${block.computer} for one hour, for this site only, and the agent never sees it.`}</Text>
-          {logins.slice(0, 3).map((l, i) => <View key={l.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Fill from the Vault: ${l.name}`} disabled={busy} onPress={() => fill(l)} /></View>)}
+          {logins.slice(0, 3).map((l, i) => <View key={l.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Fill from the Vault: ${vaultItemLabel(l.name, { shared: hideVaultNames })}`} disabled={busy} onPress={() => fill(l)} /></View>)}
         </View>
       ) : <Text size="secondary" tone="muted">{w.detail}</Text>}
       {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
