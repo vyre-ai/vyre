@@ -9,7 +9,7 @@ import { writeTranscripts, SESSIONS, HOME } from "../../test/fixtures/corpus.js"
 import { listPersonRelayEntryPoints } from "../../lib/person-relay-entrypoints.js";
 import { CAROL, BOB, relayDaemon, twoMembers, scratchWork, tokenMeta } from "../../harness/member-relay-harness.js";
 import { threadStartProviderFields, ensureMemberLoginAccounts } from "../sessions/testing/fake-agent-harness.js";
-import { indexCorpusTranscripts, recallFts5Available } from "../sessions/testing/recall-live.js";
+import { indexCorpusTranscripts, recallFts5Available, waitForThreadsFirstTurn } from "../sessions/testing/recall-live.js";
 
 test("recall.search: members see only their own sessions on every person-relay entry point", { timeout: 180_000 }, async t => {
   if (!recallFts5Available()) { t.skip("Node 22.16+ with FTS5 required"); return; }
@@ -30,6 +30,7 @@ test("recall.search: members see only their own sessions on every person-relay e
   const thC = await d.registry.call("threads.start", { cwd: work, prompt: tagC, surface: "cli", ...threadStartProviderFields("claude") }, "cli", carolMeta);
   const thB = await d.registry.call("threads.start", { cwd: work, prompt: tagB, surface: "cli", ...threadStartProviderFields("claude") }, "cli", bobMeta);
   assert.ok(thC.data?.id && thB.data?.id, JSON.stringify({ thC: thC.error, thB: thB.error }));
+  await waitForThreadsFirstTurn(d, [thC.data.id, thB.data.id]);
   await indexCorpusTranscripts(d);
 
   assert.ok((await d.registry.call("recall.search", { q: "intake form", limit: 5 }, "cli", ownerMeta)).data.length > 0);

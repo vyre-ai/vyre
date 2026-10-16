@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { useEmbedder } from "../../recall/index.js";
 import { fakeEmbedder } from "../../recall/testing.js";
+import { until } from "./boot.js";
 
 /** Recall block for config.json on a temp box (background timer off, vectors off). */
 export const RECALL_LIVE_CONFIG = Object.freeze({ every: 0, vectors: false });
@@ -39,6 +40,26 @@ export function assertRecallLoaded(d, hint = "recall module") {
   );
   assert.ok(d.registry.tools.has("recall.search"), `${hint}: recall.search must be registered`);
   assert.ok(d.registry.tools.has("recall.index"), `${hint}: recall.index must be registered`);
+}
+
+/**
+ * Recall indexes transcript files on disk; threads.start returns once the agent is launched, not
+ * after the first turn (and fake Claude may still be writing). Wait so member /find tests do not
+ * race the indexer — Bob's thread, started last, was the usual flake.
+ * @param {any} d live daemon
+ * @param {string[]} threadIds
+ * @param {number} [ms]
+ */
+export async function waitForThreadsFirstTurn(d, threadIds, ms = 90_000) {
+  const ids = threadIds.map(String).filter(Boolean);
+  if (!ids.length) return;
+  await until(async () => {
+    for (const id of ids) {
+      const g = await d.registry.call("threads.get", { thread: id, limit: 50 }, "cli");
+      if (!g.data?.events?.some((/** @type {any} */ e) => e.type === "thread.finished")) return false;
+    }
+    return true;
+  }, "threads' first turn (for recall indexing)", ms);
 }
 
 /** @param {any} d transcripts must already be on disk under the home's configured folders */
