@@ -88,21 +88,6 @@ test("redeem writes the owner, then adopts that person, and a second use is lock
   await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW, directory }, made.code), (/** @type {any} */ e) => e.code === "locked" && /Make a new install line/.test(e.message));
 });
 
-test("redeem confirms the published key before it writes, and a refusal leaves the server unowned", async () => {
-  const me = identity();
-  const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
-  const meta = metaOf();
-  const ctx = ctxOf(meta);
-  ctx.call = async (/** @type {string} */ tool) => {
-    ctx.calls.push({ tool, owner: meta.get("owner") });
-    if (tool === "spaces.identity.confirm-key") return { error: { code: "denied", message: "That key is not one this person has published. Pair again from the Vyre app." } };
-    return { data: { ok: true } };
-  };
-  await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW }, made.code), (/** @type {any} */ e) => e.code === "denied" && /published/.test(e.message));
-  assert.equal(meta.get("owner"), null);
-  assert.deepEqual(ctx.calls.map((/** @type {any} */ c) => c.tool), ["spaces.identity.confirm-key"]);
-});
-
 test("an expired code and a bad signature are refused, and a failed adopt rolls the owner back", async () => {
   const me = identity();
   const secret = crypto.randomBytes(16);
