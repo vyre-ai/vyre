@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { writePrivate, readJson, rmQuiet } from "./files.js";
+import { scrub as scrubKnown } from "../../lib/scrub.js";
 import { hkdf32, x25519Pair, sealTo, openSeal, aesWrap, aesUnwrap } from "./wrap.js";
 
 const ITEM_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -319,7 +320,7 @@ export async function use(dir, o) {
   try { res = await o.transport(req); }
   finally { /* the secret lives only on the request the transport already received */ }
   const status = Number(res && res.status) || 0;
-  return { ok: status >= 200 && status < 300, status, body: scrub(res && res.body, secret) };
+  return { ok: status >= 200 && status < 300, status, body: scrubBody(res && res.body, secret) };
 }
 
 /** @param {{ url?: string, method?: string, headers?: Record<string, string>, body?: string }} request @param {string} secret */
@@ -334,11 +335,11 @@ function inject(request, secret) {
 }
 
 /** @param {any} body @param {string} secret */
-function scrub(body, secret) {
+function scrubBody(body, secret) {
   if (secret.length < 8) return body;
   const text = typeof body === "string" ? body : JSON.stringify(body === undefined ? null : body);
   if (!text.includes(secret)) return body;
-  const cleaned = text.split(secret).join("[redacted]");
+  const cleaned = scrubKnown(text, [secret], { marker: "[redacted]", min: 8 });
   if (typeof body === "string") return cleaned;
   try { return JSON.parse(cleaned); } catch { return { redacted: true }; }
 }

@@ -81,6 +81,7 @@ const b = makeBox(async () => {
 }, { wanted: peerWanted, call: (tool, input, o) => peerCall(tool, peerInput(input, o)) });
 
 export const { connect, listen, call, send, prove, disconnect, socket } = b;
+export { tool } from "../real/box";
 
 /**
  * One POST of JSON to a box route that is not a tool call (the presence challenge), on whichever path

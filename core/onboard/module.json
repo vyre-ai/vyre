@@ -12,7 +12,7 @@
       "onboard.status",
       "onboard.you",
       "onboard.machine",
-      "onboard.windows",
+      { "name": "onboard.windows", "effect": "write", "reach": "anyone", "outward": true },
       "onboard.name",
       "onboard.claude",
       "onboard.pair",
