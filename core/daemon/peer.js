@@ -7,8 +7,8 @@
 // getsockopt, so a one-line perl (on every Mac, and perl-base is in every Debian image) reads it
 // off the socket vyred hands it as fd 3: LOCAL_PEERPID on macOS, SO_PEERCRED on Linux.
 //
-// Then the ancestry: if any process above the caller is a running `claude`, or a process vyred
-// started for a thread, the call comes from inside a Claude session, however it got there.
+// Then the ancestry: if any process above the caller is a registered agent adapter, or a process
+// vyred started for a thread, the call comes from inside that session, however it got there.
 // Processes above vyred itself are not the caller's: a test run, or a vyred someone started from
 // a terminal, shares them.
 
@@ -17,6 +17,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
+import { agentNames } from "../../lib/agent-adapters.js";
+export { adapterCommands, agentNames } from "../../lib/agent-adapters.js";
 
 // The child gets vyred's own connection as fd 3, and a file's O_NONBLOCK is shared by every copy of
 // it. On macOS libuv clears it for the child, which left vyred's socket blocking: the next large
@@ -320,13 +322,13 @@ function trustedLeader(p) {
 
 /**
  * Agent hosts by name, a fallback deny list only (the positive anchor is the security): argv[0] or
- * argv[1] with this basename. Never a directory name.
+ * argv[1] with a basename from lib/agent-adapters.js. Never a directory name.
+ * @param {string} args @param {Set<string>} [names]
  */
-const AGENT_HOSTS = /^(claude|codex|gemini|grok|opencode|cursor-agent|aider|goose)$/;
-/** @param {string} args */
-function agentHost(args) {
+function agentHost(args, names) {
+  const set = names || agentNames();
   const [a0 = "", a1 = ""] = String(args).trim().split(/\s+/);
-  return [a0, a1].some(a => a && AGENT_HOSTS.test(path.basename(a)));
+  return [a0, a1].some(a => a && set.has(path.basename(a)));
 }
 
 /**
@@ -386,10 +388,11 @@ function readable(chain, look) {
  * model that daemonizes gets there through readable links too. A person's own cron or launchd job
  * that calls vyre reads as a model, which is accepted.
  * @param {number} pid
- * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number, uid?: number, start?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, uid?: (pid: number) => number | null, self?: number }} [o]
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number, uid?: number, start?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, uid?: (pid: number) => number | null, self?: number, adapters?: Set<string> }} [o]
  * @returns {{ inside: boolean, by?: number, unknown?: boolean, unreadable?: boolean, server?: { exe: string, pid: number, started: string } }}
  */
-export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, uid = processUid, self = process.pid } = {}) {
+export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, uid = processUid, self = process.pid, adapters } = {}) {
+  const names = adapters || agentNames();
   const bad = { inside: false, unknown: true, unreadable: true };
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
@@ -406,13 +409,13 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   let shared = new Set();
   if (testHosted) shared = new Set(mineChain.chain.map(p => p.pid));
   else if (mineChain.complete && readable(mineChain.chain, look)
-    && !mineChain.chain.some(p => agentHost(p.args) || claudeCommand(p.args) || threads.includes(p.pid))) {
+    && !mineChain.chain.some(p => agentHost(p.args, names) || claudeCommand(p.args) || threads.includes(p.pid))) {
     const t = mineChain.chain[mineChain.chain.length - 1];
     const trow = t ? look(t.pid) : null;
     if (t && trow && trow.ppid <= 1 && trow.pgid === t.pid && trustedLeader(exe(t.pid))) shared = new Set(mineChain.chain.slice(1).map(p => p.pid));
   }
   const { chain, complete, docker } = ancestry(pid, look, p => shared.has(p));
-  for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args) || agentHost(p.args)) return { inside: true, by: p.pid };
+  for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args) || agentHost(p.args, names)) return { inside: true, by: p.pid };
   if (!testHosted && chain.some(p => p.pid === self)) return { inside: true, by: self };
   // A root-owned /usr/bin/login in the chain is the system's own hand-off of a terminal to the person
   // (Terminal.app, iTerm2 and console logins all run it): a model cannot make a root process, and
@@ -676,17 +679,22 @@ function runTmux(socket, args) {
 }
 
 /**
- * Who a plain model caller (the person's own Claude Code through Vyre's MCP, no verified thread) is, from the kernel: the nearest claude ancestor
+ * Who a plain model caller (an agent adapter through Vyre's MCP, no verified thread) is, from the kernel: the nearest adapter ancestor
  * of the socket's peer, its start time, and its working folder. `session` is "<pid>:<start>", stable for the
  * life of that process and never reused by another; `cwd` is where the MCP server (and so the session) runs. Either is null where the OS will not say.
- * @param {number} pid @param {(pid: number) => any} [look] @param {NodeJS.Platform} [platform]
+ * `names` is the adapter set (lib/agent-adapters.js). Omitted, the known hosts still count, including Claude.
+ * @param {number} pid @param {(pid: number) => any} [look] @param {NodeJS.Platform} [platform] @param {Set<string>} [names]
  * @returns {{ session: string|null, cwd: string|null }}
  */
-export function peerIdentity(pid, look = processTable(), platform = process.platform) {
-  const base = a => String(a || "").trim().split(/\s+/)[0].split("/").pop();
-  // The claude process's own folder, never the peer's: a model's shell can `cd` anywhere before it calls. No claude above the peer: nothing is verified.
+export function peerIdentity(pid, look = processTable(), platform = process.platform, names) {
+  const set = names || agentNames();
+  const hit = (/** @type {string} */ args) => {
+    const [a0 = "", a1 = ""] = String(args || "").trim().split(/\s+/);
+    return [a0, a1].some(a => a && set.has(path.basename(a)));
+  };
+  // The adapter process's own folder, never the peer's: a model's shell can `cd` anywhere before it calls. No adapter above the peer: nothing is verified.
   let target = 0;
-  try { for (const c of ancestry(pid, look).chain) if (base(c.args) === "claude") { target = c.pid; break; } } catch { /* none */ }
+  try { for (const c of ancestry(pid, look).chain) if (hit(c.args)) { target = c.pid; break; } } catch { /* none */ }
   if (!target) return { session: null, cwd: null };
   let cwd = null, start = null;
   try {
