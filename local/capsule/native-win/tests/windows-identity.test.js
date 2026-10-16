@@ -82,12 +82,13 @@ test("the Windows app is a client only in 0.2.9: it starts no vyred and offers n
 test("the TPM key signs only bytes the shell can summarise, behind the shell's own native confirmation, and never shows the page's caption (KP-3)", () => {
   const rs = read("../app/src/main.rs");
   const body = /fn enclave_sign\([\s\S]*?\n}\n/.exec(rs)[0];
-  assert.match(body, /chain_summary\(&m\)\.ok_or_else/, "no summary, no signature");
+  assert.match(body, /identity::sign_summary\(&m\)\.ok_or_else/, "no summary, no signature");
   assert.match(body, /confirm_native\(&said\)/);
   assert.ok(body.indexOf("confirm_native") < body.indexOf("ncrypt::sign"), "the person says yes before the key signs");
   assert.ok(!/confirm_native\([^)]*prompt/.test(body), "the page's prompt is not what is shown");
   assert.match(rs, /MessageBoxW/);
   assert.match(read("../src/identity.rs"), /pub fn chain_summary/);
+  assert.match(read("../src/identity.rs"), /pub fn sign_summary\(message: &\[u8\]\) -> Option<String> \{\n    chain_summary\(message\)\.or_else\(\|\| pair_to_summary\(message\)\)/, "an identity-list change or a server ownership proof, nothing else");
 });
 
 test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_CODE=0 at compile time turns it off (the user's ruling of 5 Oct)", () => {

@@ -13,6 +13,21 @@ let signSummarySuite = Suite("sign summary") { t in
         t.eq(SignSummary.of(message: chain(#"{"type":"replace-code","entry":{"kind":"code"}}"#)), "Replace your recovery code")
     }
 
+    // relay/client/pairto-vector.test.js pins the same bytes: what the app's identity signs to own a server (wink.server.adopt's proof).
+    t.test("a server ownership proof, the real bytes the app builds, is read and named; any other shape of it is not") {
+        let real = MacIdentity.unb64url("dnlyZS13aW5rLXBhaXItdG8tdjEKQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Ywp5ZmJlcnByazJ4cTIya29iCjBiNjBjNDA2ZTZlMWE3YzM4YjY5MDBhMw")!
+        t.eq(SignSummary.of(message: real), "Make the server you are pairing yours")
+        let box = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc", dev = "yfberprk2xq22kob", tag = "0b60c406e6e1a7c38b6900a3"
+        for bad in ["vyre-wink-pair-to-v1\n\(box)\n\(dev)",                       // no tag (the older message)
+                    "vyre-wink-pair-to-v1\n\(box)\n\(dev)\n\(tag)\nUnlock Drive",  // a fifth line
+                    "vyre-wink-pair-to-v1\n\(box)\n\(dev)\n\(tag)\n",            // a trailing newline
+                    "vyre-wink-pair-to-v1\n\(box)x\n\(dev)\n\(tag)",              // a key that is not 32 bytes
+                    "vyre-wink-pair-to-v1\n\(box)\nYFBERPRK2XQ22KOB\n\(tag)",       // not a device id
+                    "vyre-wink-pair-to-v1\n\(box)\n\(dev)\n\(tag)00"] {           // not a ticket tag
+            t.eq(SignSummary.of(message: Data(bad.utf8)), nil, bad)
+        }
+    }
+
     t.test("bytes the shell cannot read have no summary, so they are not signed") {
         t.eq(SignSummary.of(message: chain(#"{"type":"agree","target":"abc","agree":"x"}"#)), "Add a sharing key to this device")
         t.eq(SignSummary.of(message: chain(#"{"type":"agree","agree":"x"}"#)), nil)
