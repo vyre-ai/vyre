@@ -34,7 +34,6 @@ import { probe as probeBox } from "../probe.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
 import { findAssistant } from "./assistant.js";
-import { pairHere } from "./pair-here.js";
 import { build, label } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
@@ -264,7 +263,7 @@ async function run(args, deps) {
   }
 
   if (role === "local") {
-    // Nothing is sent to a box from here: pairing is a code (vyre link pair <code>). --connect only saves the address (onboarding's choice 3 comes this way too).
+    // Nothing is sent to a box from here: pairing is `vyre link pair <address>`, approved in the app or on the box. --connect only saves the address (onboarding's choice 3 comes this way too).
     return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json, pair: Boolean(flags.connect) }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
@@ -288,11 +287,9 @@ async function run(args, deps) {
     say(`  paired to ${signal(String(s.space || "your space"))}${s.device ? dim(` · by ${s.device}`) : ""}`);
     return 0;
   }
-  if (json) return done({ paired: false, ready: false, pairing: "vyre call wink.server.code '{\"qr\":true}'" });
-  // Not paired yet and on a terminal: show the pairing here, the same one the installer shows (pair-here.js: the QR, the long code and the typed code, then the code the app shows typed back).
-  const io = deps.io || terminal;
-  if (io.tty && !flags["keep-link"]) { await pairHere({ tool: callTool, io, say, ...(deps.sleep ? { sleep: deps.sleep } : {}) }); return 0; }
-  say(`  not paired yet. Pair this server from your Vyre app: run ${signal("vyre call wink.server.code '{\"qr\":true}'")} here, then scan the QR or paste the long code.`);
+  if (json) return done({ paired: false, ready: false, pairing: "run the install command from the Vyre app (Create a space) on this server" });
+  // Not paired yet: the app makes the install command, with a single-use pair code built in. Nothing is shown or typed here.
+  say(`  not paired yet. In the Vyre app choose ${signal("Create a space")}, pick Linux or Mac, and run the install command it shows on this server. It carries a pair code made from your identity.`);
   return 0;
 }
 
@@ -309,7 +306,7 @@ function upView(d) {
 
 /**
  * `vyre up` on a Mac (ADR 0008 sections 1, 3 and 7). With no box known it asks where Vyre should run. Then:
- * the box answers, this Mac is paired with it (wink.server.home; pairing is `vyre link pair <code>`), the Capsule is
+ * the box answers, this Mac is paired with it (wink.server.home; pairing is `vyre link pair <address>`), the Capsule is
  * opened, and the ending is printed. Every step says what to do when it cannot finish.
  * `deps` is for tests; `say`, `done` and `fail` come from up() so --json stays one object.
  * @param {string|null|undefined} box
@@ -367,13 +364,13 @@ export async function mac(box, { capsule = true, pair: asked = false } = {}, dep
     return 1;
   }
   const paired = await pair(box, tool, say);
-  if (json) return done({ box, ready: paired !== "unpaired", ...(paired === "unpaired" ? { pairing: "vyre link pair <code>, with the code the server shows" } : {}) });
+  if (json) return done({ box, ready: paired !== "unpaired", ...(paired === "unpaired" ? { pairing: "vyre link pair <your server's address>, then approve the request in the Vyre app or with vyre link approve <code> on the server" } : {}) });
   if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
     say(`  Lumen is not installed yet. Build it with ${signal("vyre capsule install")}`);
   }
   if (paired === "unpaired") {
-    say(dim(`\n  This Mac is not paired with ${box} yet. On the server, run: vyre call wink.server.code '{"qr":true}', then here: vyre link pair <code>`));
+    say(dim(`\n  This Mac is not paired with ${box} yet. Here, run: vyre link pair ${box}, then approve the request in the Vyre app, or on the server with vyre link approve <code>`));
     return 0;
   }
   // The box's health does not name the assistant; the box does, over the link, once paired.
@@ -387,8 +384,8 @@ export async function mac(box, { capsule = true, pair: asked = false } = {}, dep
 }
 
 /**
- * Say whether this Mac is paired with its box. Pairing is Wink's: the server shows a code (a typed WINK code, or the QR's long code) at its own terminal,
- * the person gives it here (`vyre link pair <code>`), and confirms three words at the server. There is nothing to start from the Mac by address alone.
+ * Say whether this Mac is paired with its box: the person runs `vyre link pair <address>` here, which asks the box and shows a code, and approves it in the app
+ * or on the box with `vyre link approve <code>`.
  * Resolves "linked" or "unpaired", or "unknown" (a vyred without the Wink module, or an error already said).
  * @param {string} box @param {any} tool @param {(s: string) => void} say
  * @returns {Promise<"linked" | "unpaired" | "unknown">}
@@ -428,7 +425,7 @@ async function where(io, deps) {
     out(dim("  Its address is on the box's last screen, and in the Deck: https://<name>.vyre.run"));
     const a = (await io.ask("  Your box's address: ")).trim();
     if (!a) { out(beacon("  no address given") + dim(" · vyre up --connect <address> when you have it")); return 1; }
-    out(dim(`  Saved ${normalize(a)}. To pair this Mac with it: on the server run vyre call wink.server.code '{"qr":true}', then here run vyre link pair <code>.`));
+    out(dim(`  Saved ${normalize(a)}. To pair this Mac with it, run vyre link pair ${normalize(a)}, then approve the request in the Vyre app or with vyre link approve <code> on the server.`));
     return up(["--connect", a], deps);
   }
   out(beacon("  nothing chosen") + dim(" · vyre box add user@host, vyre up --box, or vyre up --connect <address>"));

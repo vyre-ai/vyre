@@ -156,7 +156,7 @@
  "core/cli/commands/vitals.test.js": 2,
  "core/cli/commands/voice.test.js": 3,
  "core/cli/commands/watchers.test.js": 1,
- "core/cli/commands/wink.test.js": 7,
+ "core/cli/commands/wink.test.js": 6,
  "core/cli/commands/words.test.js": 2,
  "core/cli/consistency.test.js": 9,
  "core/cli/delight.test.js": 5,

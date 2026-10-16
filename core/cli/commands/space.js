@@ -1,11 +1,11 @@
 // @ts-check
 // `vyre space`: this server's space, and which space this terminal acts in.
 //   vyre space                        the space's details in plain lines: name and address, owner, members, Records, vault, version, and the next step if anything is missing
-//   vyre space up                     the code that sets this server's space up from the Vyre app (the typed code, the four words, the QR when the terminal is wide enough)
+//   vyre space up                     where to set this server's space up from the Vyre app (the install command it shows); says so when it is already set up
 //   vyre space use <name>             remembers a space for this terminal's calls, `use --clear` forgets it. `vyre call` passes it as `space` to any tool that takes one (and `--space <name>`
 //                                     overrides it for one call); with none, tools act in the home's own space and name it in their answer.
 //
-// Built from tools that exist: wink.server.code, wink.server.status, relay.setup.status (the words), spaces.list, spaces.get, vault.list and /v1/health. No new kernel logic.
+// Built from tools that exist: wink.server.status, spaces.list, spaces.get, vault.list and /v1/health. No new kernel logic.
 // --json shapes: bare {running, version, home: {id, name, address}|null, space: the remembered space or null, owned, owner, members, owners, records, vault, next} (vyred down: {running: false, space, next}); up {owned: false, code, code_expires, words, qr} or {owned: true, space};
 // use {space: string|null}.
 
@@ -15,10 +15,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, json, emit, fail, usage, failTool } from "../kit.js";
 import { readSpace, writeSpace } from "../space-pref.js";
 
-/** The widest line of a block of text, without colour codes. @param {string} art */
-const widthOf = art => Math.max(0, ...String(art).split("\n").map(l => l.replace(/\u001b\[[0-9;]*m/g, "").length));
-
-/** `vyre space up`: the code that sets this server's space up from the app. */
+/** `vyre space up`: where this server's space is set up from: the app's install command. */
 async function up() {
   const st = await call("wink.server.status", {});
   if (st.error) return failTool(st.error);
@@ -29,22 +26,10 @@ async function up() {
     out(dim("  To add a device, open the Vyre app on it and choose this space, or run: vyre phone add"));
     return 0;
   }
-  const made = await call("wink.server.code", { qr: true });
-  if (made.error) return failTool(made.error);
-  const m = made.data || {};
-  if (!m.code) return fail("this server made no typed code, so there is nothing short to type", { next: "paste the long code into the app instead: vyre call wink.server.code '{\"qr\":true}'" });
-  // The typed code's own life (`code_expires`), not the QR's.
-  const minutes = Math.max(1, Math.round((Number(m.code_expires || m.expires) - Date.now()) / 60_000));
-  const w = await call("relay.setup.status", {});
-  const words = w.data && typeof w.data.words === "string" ? w.data.words : "";
-  if (json()) return emit({ owned: false, code: m.code, code_expires: m.code_expires ?? null, words: words || null, qr: m.qr ?? null }, { kind: "card", title: "Space code", state: "wait", fields: [{ label: "Code", value: String(m.code) }, ...(words ? [{ label: "Four words", value: words }] : [])] });
+  const message = "This server is not set up yet. In the Vyre app choose Create a space, pick Linux or Mac, and run the install command it shows on this server. It carries a pair code made from your identity.";
+  if (json()) return emit({ owned: false, next: "run the install command from the Vyre app (Create a space) on this server" }, { kind: "card", title: "Space", state: "wait", fields: [{ label: "Space", value: "not set up yet" }, { label: "Next", value: "Create a space in the Vyre app and run its install command here" }] });
   out("");
-  out(`  Your space code: ${bold(String(m.code))} ${dim(`(good for ${minutes} minute${minutes === 1 ? "" : "s"}, one use)`)}`);
-  out(`  ${words ? `Your four words: ${bold(words)}` : dim("Your four words show here once the app starts adding this server (vyre words).")}`);
-  out(dim("  In the Vyre app, choose Add a server, type the code, then choose Same when the app shows these four words."));
-  // The QR only when the terminal is wide enough to draw it whole; a narrow one would wrap it into noise.
-  const cols = Number(process.stdout.columns) || 0;
-  if (m.art && cols && widthOf(m.art) + 2 <= cols) { out(""); out(String(m.art).replace(/\n$/, "")); }
+  out(`  ${message}`);
   out("");
   return 0;
 }
@@ -96,8 +81,8 @@ async function details() {
 }
 
 export default {
-  name: "space", order: 84, usage: "vyre space [up | use <name> | use --clear | add-agent <space> <agent>] [--json]", summary: "this server's space: its details, its setup code, and which space this terminal acts in",
-  help: "`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` shows the code that sets it up from the Vyre app (again, any time). `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.",
+  name: "space", order: 84, usage: "vyre space [up | use <name> | use --clear | add-agent <space> <agent>] [--json]", summary: "this server's space: its details, where it is set up from, and which space this terminal acts in",
+  help: "`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` says where a server that is not set up yet is set up from: the install command in the Vyre app. `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.",
   /** @param {string[]} args */
   async run(args) {
     const a = args.filter(x => x !== "--json");
