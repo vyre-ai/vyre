@@ -43,6 +43,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(ui): touch targets on a phone are real boxes: the small Button is 44 high on a phone (36 on a computer) and a pressed Chip has a 44 high tap area, so the picture rules stop flagging them (issue 183: Add a group, the field-kind chips, Add a rule). The pictures of those fixtures change and are refreshed after the baseline PR.
 - ci(app): the app's CI checks every file of the web export against the release manifest's own path rule (relay/app/manifest.js `PATH`, now exported) with apps/app/scripts/check-export-names.mjs, so a chunk named with a character the signed manifest refuses fails the app's check, not the release's last step.
 - test(design-pictures): a picture that draws nothing (a fixture still unpainted on a slow runner) is waited for and, if it stays blank, fails as a rule fault instead of being written as a reference; a manual run of the workflow can write the references (update input).
+- fix(vault): a vault wipe finds a sealing process from the folder's own record, not from a listing of processes: the process that spawns the sealer writes `<seal dir>/sealer.pid` at once and removes it when the sealer exits, and the wipe refuses while that pid is a live sealing process (a record whose process is gone is ignored). A sealer that has not appeared in `ps` yet can no longer slip past it. [kernel +4]
 
 ## 0.5.1
 
