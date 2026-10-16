@@ -118,6 +118,7 @@ const TURN_INTO_FLOW = "Turn what you just did into a Flow: use flows.from-chat 
 
 export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { store, rows: layoutRows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
   // steps in a row are one folded line (tool-runs.js); the items behind them stay as they are
@@ -470,7 +471,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onModel={realComposer?.onModel}
           slots={answerSlots}
           peopleOnly={peopleChat}
-          onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
+          onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } if (name === "skills") { router.push("/u/skills"); return true; } return false; }}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}

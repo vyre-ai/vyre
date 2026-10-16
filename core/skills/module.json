@@ -63,6 +63,11 @@
         "reach": "anyone"
       },
       {
+        "name": "skills.decline",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
         "name": "skills.rollback",
         "effect": "write",
         "reach": "anyone"

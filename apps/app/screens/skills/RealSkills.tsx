@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { IconTile } from "../places/Page";
-import { browse, get, versions, type SkillRow, type SkillVersion } from "./skills";
+import { browse, get, versions, draft, approve, rollback, decline, type SkillRow, type SkillVersion, type BrowsePack } from "./skills";
+import { AIS } from "../../../lib/skill-library.js";
 
 const LEVELS = [
   { id: "personal", label: "Mine (identity)" },
@@ -13,33 +14,48 @@ const LEVELS = [
 ] as const;
 
 const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
+const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
+const pluginTpl = (name: string) => JSON.stringify({ name, description: "A plugin that adds skills for the Space.", skills: [{ name: `${name}-skill`, body: skillTpl(`${name}-skill`) }], hooks: [{ id: "on-save", event: "Save", script: "export default async () => ({ ok: true });", network: ["api.example.com"] }], mcp: [{ name: "helper", transport: "stdio", command: "echo", args: ["ok"] }] }, null, 2);
 
 export function RealSkills() {
   const [level, setLevel] = useState<string>("space");
-  const [rows, setRows] = useState<SkillRow[] | null>(null);
-  const [drafts, setDrafts] = useState<SkillVersion[]>([]);
-  const [identityPersonal, setIdentityPersonal] = useState(false);
+  const [pack, setPack] = useState<BrowsePack | null>(null);
   const [err, setErr] = useState("");
   const [pick, setPick] = useState<SkillRow | null>(null);
   const [hist, setHist] = useState<SkillVersion[] | null>(null);
   const [body, setBody] = useState("");
+  const [installOpen, setInstallOpen] = useState(false);
+  const [installName, setInstallName] = useState("");
+  const [installKind, setInstallKind] = useState<"skill" | "plugin">("skill");
+  const [installBody, setInstallBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const can = pack?.can || { draft: {}, approve: {}, plugin: {} };
   const load = useCallback(() => {
     setErr("");
-    browse(level).then((r) => { setRows(r.skills || []); setDrafts(r.drafts || []); setIdentityPersonal(Boolean(r.identityPersonal)); }).catch((e) => setErr(errWords(e)));
+    browse(level).then(setPack).catch((e) => setErr(errWords(e)));
   }, [level]);
   useEffect(load, [load]);
+  const act = (run: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    run().then(() => { showToast(done); load(); if (pick) open(pick); }).catch((e) => showToast(errWords(e))).finally(() => setBusy(false));
+  };
   const open = (s: SkillRow) => {
     setPick(s); setHist(null); setBody("");
     get(s.id).then((g) => setBody(g.text || "")).catch((e) => showToast(errWords(e)));
     const parts = s.id.split("/");
     const lv = s.level || parts[0];
     const scope = s.scope || (lv === "agent" || lv === "project" ? parts[1] : "");
-    const name = s.name;
-    versions(name, lv, scope).then((v) => setHist(v.versions || [])).catch(() => setHist([]));
+    versions(s.name, lv, scope).then((v) => setHist(v.versions || [])).catch(() => setHist([]));
   };
+  const harnessChips = (h?: string[]) => (h && h.length ? h : [...AIS]).map((x) => <Chip key={x} tone="plain">{x}</Chip>);
+  const rows = pack?.skills || [];
+  const drafts = pack?.drafts || [];
+  const mayDraft = Boolean(can.draft?.[level]);
+  const mayPlugin = Boolean(can.plugin?.[level]);
   return (
-    <Frame back="/u/playbooks" title="Skills and plugins" sub="Browse, draft and approve skills at each level. Space skills apply to every session and cannot be overridden by a personal skill with the same name.">
-      {identityPersonal && level === "personal" ? <Banner><Text size="caption">Personal skills are kept on your identity and follow you into every Space you belong to.</Text></Banner> : null}
+    <Frame back="/u/playbooks" title="Skills and plugins" sub="Browse, install, draft, approve or roll back. Space skills apply to every session and cannot be overridden by a personal skill with the same name.">
+      {pack?.identityPersonal && level === "personal" ? <Banner><Text size="caption">Personal skills are kept on your identity and follow you into every Space you belong to.</Text></Banner> : null}
+      {pack?.role ? <Banner><Text size="caption">You are signed in as {pack.role} for this Space.</Text></Banner> : null}
       <Sec title="Level">
         <Card flush>
           {LEVELS.map((l, i) => (
@@ -49,15 +65,25 @@ export function RealSkills() {
           ))}
         </Card>
       </Sec>
+      {mayDraft ? (
+        <Sec title="Install">
+          <Card>
+            <View className="flex-row flex-wrap gap-s2">
+              <Button size="sm" kind="primary" label="New skill or plugin" onPress={() => { setInstallName(""); setInstallKind("skill"); setInstallBody(skillTpl("my-skill")); setInstallOpen(true); }} />
+            </View>
+          </Card>
+        </Sec>
+      ) : null}
       <Sec title="In use">
         {err ? <Card flush><ErrorState title="Skills did not load" reason={err} retry={load} /></Card> : null}
-        {rows === null && !err ? <LoadingState rows={4} /> : null}
-        {rows && !rows.length ? <Card><EmptyState title="Nothing at this level yet" body="Draft a skill from chat or ask your assistant to propose one; approve it in Now or here." /></Card> : null}
-        {rows && rows.length ? (
+        {pack === null && !err ? <LoadingState rows={4} /> : null}
+        {pack && !rows.length ? <Card><EmptyState title="Nothing at this level yet" body={mayDraft ? "Install a skill or plugin, or ask your assistant to draft one." : "Ask an owner or admin to add a Space skill."} /></Card> : null}
+        {rows.length ? (
           <Card flush>
             {rows.map((s, i) => (
               <View key={s.id}>{i ? <Divider /> : null}
-                <Row lead={<IconTile icon="spark" />} title={s.name} sub={[s.level, s.scope, s.description].filter(Boolean).join(" · ")} end={<Button size="sm" label="Open" onPress={() => open(s)} />} />
+                <Row lead={<IconTile icon="spark" />} title={s.name} sub={[s.level, s.scope, s.description].filter(Boolean).join(" · ")}
+                  end={<View className="flex-row flex-wrap items-center gap-s1 max-w-[45%] justify-end">{harnessChips(s.harnesses)}<Button size="sm" label="Open" onPress={() => open(s)} /></View>} />
               </View>
             ))}
           </Card>
@@ -68,7 +94,11 @@ export function RealSkills() {
           <Card flush>
             {drafts.map((d, i) => (
               <View key={`${d.name}-${d.version}`}>{i ? <Divider /> : null}
-                <Row title={d.name} sub={`${d.level} · version ${d.version}`} end={<Chip>draft</Chip>} />
+                <Row title={d.name} sub={`${d.level} · version ${d.version}${d.proposer ? ` · ${d.proposer}` : ""}`}
+                  end={<View className="flex-row gap-s2 flex-wrap justify-end">
+                    {can.approve?.[d.level] ? <Button size="sm" kind="primary" label="Approve" disabled={busy} onPress={() => act(() => approve({ name: d.name, level: d.level, scope: d.scope, version: d.version, ...(d.ack ? { ack: d.ack } : {}) }), "Approved.")} /> : null}
+                    <Button size="sm" kind="ghost" label="Decline" disabled={busy} onPress={() => act(() => decline({ name: d.name, level: d.level, scope: d.scope, version: d.version }), "Turned down.")} />
+                  </View>} />
               </View>
             ))}
           </Card>
@@ -77,20 +107,41 @@ export function RealSkills() {
       <Sheet open={!!pick} onClose={() => setPick(null)} title={pick?.name || ""}>
         {pick ? (
           <View className="gap-s3">
+            <View className="flex-row flex-wrap gap-s1">{harnessChips(pick.harnesses)}</View>
             <Text size="caption" tone="label">{pick.id}</Text>
+            {pick.declares ? (
+              <Card><Text size="caption" strong>Plugin declares</Text><Text mono size="caption">{JSON.stringify(pick.declares, null, 2).slice(0, 4000)}</Text></Card>
+            ) : null}
             <Card><Text mono size="caption">{body.slice(0, 4000)}{body.length > 4000 ? "\n…" : ""}</Text></Card>
             {hist ? (
               <Card flush>
                 {hist.map((v, i) => (
                   <View key={v.version}>{i ? <Divider /> : null}
-                    <Row title={`Version ${v.version}`} sub={v.state} end={v.state === "approved" ? <Chip tone="ok">live</Chip> : null} />
+                    <Row title={`Version ${v.version}`} sub={v.state}
+                      end={<View className="flex-row gap-s2">
+                        {v.state === "approved" ? <Chip tone="ok">live</Chip> : null}
+                        {v.state === "retired" && can.approve?.[v.level] ? <Button size="sm" label="Roll back" disabled={busy} onPress={() => act(() => rollback({ name: v.name, level: v.level, scope: v.scope, to: v.version, ...(v.ack ? { ack: v.ack } : {}) }), "Rolled back.")} /> : null}
+                      </View>} />
                   </View>
                 ))}
               </Card>
             ) : <LoadingState rows={2} />}
-            <Text size="caption" tone="label">Approve or roll back from Now, chat, or skills.approve. Plugins with hooks or MCP servers need the acknowledgement the draft shows.</Text>
           </View>
         ) : null}
+      </Sheet>
+      <Sheet open={installOpen} onClose={() => setInstallOpen(false)} title="Install at this level">
+        <View className="gap-s3">
+          <Field label="Name" value={installName} onChangeText={setInstallName} placeholder="house-style" />
+          <View className="flex-row gap-s2">
+            <Button size="sm" label="Skill" kind={installKind === "skill" ? "primary" : "ghost"} onPress={() => { setInstallKind("skill"); if (!installBody.trim()) setInstallBody(skillTpl(installName || "my-skill")); }} />
+            {mayPlugin ? <Button size="sm" label="Plugin" kind={installKind === "plugin" ? "primary" : "ghost"} onPress={() => { setInstallKind("plugin"); setInstallBody(pluginTpl(installName || "my-plugin")); }} /> : null}
+          </View>
+          <Field label={installKind === "plugin" ? "Plugin JSON (hooks, MCP servers)" : "SKILL.md"} value={installBody} onChangeText={setInstallBody} multiline />
+          <Button kind="primary" label="Save draft" disabled={busy || !installName.trim()} onPress={() => act(async () => {
+            await draft({ name: installName.trim(), level, kind: installKind, body: installBody });
+            setInstallOpen(false);
+          }, "Draft saved. Approve it when you are ready.")} />
+        </View>
       </Sheet>
     </Frame>
   );
