@@ -37,7 +37,7 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
-import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult } from "./needs-you-hold.js";
+import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -1146,11 +1146,11 @@ export class Registry {
       // that module's tools.
       store: this.routedStore(m, db, () => homeKernel),
       // A function for built in callers, with the levels module API 1 names (ADR 0047 section 3).
-      log: Object.assign((msg, extra) => log(`[${m.name}] ${msg}`, extra), {
-        info: (msg, extra) => log(`[${m.name}] ${msg}`, extra),
-        warn: (msg, extra) => log(`warn: [${m.name}] ${msg}`, extra),
-        error: (msg, extra) => log(`error: [${m.name}] ${msg}`, extra),
-        debug: (msg, extra) => log(`debug: [${m.name}] ${msg}`, extra),
+      log: Object.assign((msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)), {
+        info: (msg, extra) => log(redactLog(`[${m.name}] ${msg}`), redactExtra(extra)),
+        warn: (msg, extra) => log(redactLog(`warn: [${m.name}] ${msg}`), redactExtra(extra)),
+        error: (msg, extra) => log(redactLog(`error: [${m.name}] ${msg}`), redactExtra(extra)),
+        debug: (msg, extra) => log(redactLog(`debug: [${m.name}] ${msg}`), redactExtra(extra)),
       }),
       events: {
         emit: (type, payload, where) => {
@@ -1749,7 +1749,7 @@ export class Registry {
         meta = { ...meta, presence: { method: "pending", keyId: null } };
       } else {
         const got = await this.yesFloor({ tool, moment, caller, meta, input, approval, proof, yesProof, presence, def });
-        if (got.error) return got;
+        if (got.error) return scrubVaultResult(caller, tool, got, input, def);
         meta = { ...meta, presence: got.presence };
       }
     }
@@ -1785,7 +1785,7 @@ export class Registry {
         let card;
         try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
-        return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
+        return scrubVaultResult(caller, tool, { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } }, input, def);
       }
     }
     // A Flow's call step: the Flows host spent the person's approval for exactly this act (bound to this input) before it got here, so the act is the person's own yes, and a send the tool files at the Gate
@@ -1814,9 +1814,9 @@ export class Registry {
     // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
     // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
     // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
-    const askedGate = this.deps.gates ? await this.deps.gates.needsAsk({ tool, def, caller, meta, input }) : def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
+    let armed = /** @type {any} */ (null); const askedGate = this.deps.gates ? await this.deps.gates.needsAsk({ tool, def, caller, meta, input }) : def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
-      if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
+      armed = armSecrets(caller, input, def, meta); if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
         return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
       }
       // `{{field:<urn>#<name>}}` in an OUTWARD tool's input (what a group chat's session saw instead of a value the room may not read) is resolved here, before the tool runs, from the record
@@ -1835,8 +1835,8 @@ export class Registry {
       try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: coveredRide(this.tools, cur, tool, caller) || cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
-    const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
-    return scrubVaultResult(caller, tool, result);
+    const result = await (async () => { try { return idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run(); } finally { if (armed) disarmSecrets(armed); } })();
+    return scrubVaultResult(caller, tool, result, input, def);
   }
 
   /**

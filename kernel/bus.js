@@ -11,6 +11,7 @@ import { createEventLog } from "./core/events.js";
 import { createChainBuilder } from "./core/chain.js";
 import { createKernelSeal } from "./core/seal.js";
 import { credentialAtTokenStart } from "../lib/credential-shapes.js";
+import { scrubScopedPayload } from "../lib/secret-schema.js";
 
 const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 
@@ -110,10 +111,11 @@ export class Events {
    */
   emit(source, type, payload = {}, where = {}) {
     if (!NAME.test(type)) throw new Error(`event type "${type}" must look like noun.past-verb`);
-    const json = JSON.stringify(payload);
+    const body = scrubScopedPayload(payload);
+    const json = JSON.stringify(body);
     if (LOOKS_SECRET.test(json)) throw new Error(`event ${type} from ${source} carries something that looks like a secret; events are readable by every module`);
     const at = where.at || Date.now();
-    const event = this.#append(source, type, payload, { ...where, at });
+    const event = this.#append(source, type, body, { ...where, at });
     // An event a listener emits while another is being delivered waits its turn: every listener hears events in id order, so a stream that
     // follows an id cursor (the SSE one) never meets 13 before 12 and drops the 12 (a model.switched the settings hub answered with its own
     // event was lost to every live Deck this way, #41).
