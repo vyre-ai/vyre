@@ -12,17 +12,19 @@
 // and the storage are the tools' own, once. A member never picks the Space, the person or the chain: the service has them from the wire.
 
 import { KernelError } from "../../kernel/core/errors.js";
+import { IN_SPACE } from "../modules/index.js";
 
 /** Each call of the wire's `chat` group and the daemon tool that serves it: [tool, the tool's own call]. */
 const CALLS = Object.freeze(/** @type {Record<string, [string, string]>} */ ({
   persistent: ["work.chat.serve", "persistent"], pin: ["work.chat.serve", "pin"], list: ["work.chat.serve", "list"], get: ["work.chat.serve", "get"], create: ["work.chat.serve", "create"],
   send: ["stream.serve", "send"], catchup: ["stream.serve", "catchup"], typing: ["stream.serve", "typing"], react: ["stream.serve", "react"], "pin-message": ["stream.serve", "pin"],
-  "reply-mode": ["stream.serve", "reply-mode"], "mark-read": ["stream.serve", "mark-read"], read: ["stream.serve", "read"],
+  "reply-mode": ["stream.serve", "reply-mode"], "mark-read": ["stream.serve", "mark-read"],   read: ["stream.serve", "read"],
+  open: ["stream.serve", "open"],
 }));
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found" });
 
 /**
- * @param {{ space: string, kernel: any, registry: { callInSpace(m: any, space: string, base: any, tool: string, input: any, chain: any): Promise<any> } }} o
+ * @param {{ space: string, kernel: any, registry: { callInSpace(m: any, space: string, base: any, tool: string, input: any, chain: any): Promise<any>, call(tool: string, input: any, caller: string, meta?: any): Promise<any> } }} o
  */
 export function createChatService(o) {
   const who = (/** @type {any} */ chain) => {
@@ -33,13 +35,15 @@ export function createChatService(o) {
   const isMember = (/** @type {string} */ person) => {
     try { const r = o.kernel?.gateway?.members?.roleOf({ kind: "person", id: person, space: o.space }); return typeof r === "string" && r !== ""; } catch { return false; }
   };
-  const run = (/** @type {string} */ name) => async (/** @type {any} */ chain, /** @type {any} */ input) => {
+  const run = (/** @type {string} */ name) => async (/** @type {any} */ chain, /** @type {any} */ input, /** @type {{ peerStream?: any } | undefined} */ peer) => {
     const person = who(chain);
     if (!isMember(person)) throw new KernelError("not_found", "not found");   // not a member: nothing to say
     const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     delete i.space; delete i.as;
     const [tool, call] = CALLS[name];
-    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, tool, { call, input: i }, chain);
+    const r = name === "open"
+      ? await o.registry.call(tool, { call, input: i }, "module:vyred", { door: true, ...(peer && peer.peerStream ? { peerStream: peer.peerStream } : {}), [IN_SPACE]: { space: o.space, chain } })
+      : await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, tool, { call, input: i }, chain);
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };
