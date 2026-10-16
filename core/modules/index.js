@@ -36,6 +36,8 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
+import { FIRST_RUN_RELAY, relayedPerson, carriesPerson, agentsMayRelay, checkAgentsRelay } from "./relay-context.js";
+export { agentsMayRelay, checkAgentsRelay };
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra, modelCaller } from "./needs-you-hold.js";
 
@@ -74,12 +76,6 @@ export const firstParty = dir => {
 // settings passes a person's change on to the module that keeps the value, as that person.
 /** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
 const TARGET_MS = 2000;
-/** The tools the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send, and giving the keyboard back (threads.release) once the ask is answered, which only lets go of the asker's own lease. @param {string} tool */
-export const agentsMayRelay = tool => tool === "threads.send" || tool === "threads.release";
-/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
-export function checkAgentsRelay(tool, as) {
-  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send and threads.release only`);
-}
 /** @type {Record<string, any>} */
 /**
  * What a first-party module that relays a person (`as`) may relay: connectors writes a person's api-credential (vault.put), deletes a connection's own (vault.delete of conn-<id>) and runs one of its operations (vault.request by operation); appmods
@@ -674,11 +670,7 @@ const RELAY_ALLOWED = Object.freeze({
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
-  // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
-  mentions: ["vault.mention.search", "vault.mention.resolve"],
-  identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
-  // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
-  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "vault.put", "vault.", "link.", "relay.", "devices.signin", "sessions.accounts.", "onboard."],
+  ...FIRST_RUN_RELAY,
 });
 
 export class Registry {
@@ -1258,14 +1250,9 @@ export class Registry {
         if (opts && opts.relay === true) {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
-          const cur = currentCall();
-          const personSurface = isPerson(String(cur.caller)) && !modelCaller(String(cur.caller));
-          // Onboard and identity relay from the person's own surface before a session token exists; every other module needs proven facts or a token.
-          const hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
-          if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
-          const origin = captureOrigin() || (personSurface ? String(cur.caller) : undefined);
-          const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
-          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: relayed });
+          const facts = relayedPerson(m.name, currentCall(), { isPerson, captureOrigin });
+          if (!facts) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
+          return this.call(tool, input, `module:${m.name}`, { ...(facts.origin ? { origin: facts.origin } : {}), [RELAY]: facts.relayed });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
@@ -1293,10 +1280,7 @@ export class Registry {
         const relayed = m.name === "pluginagent" && tool === "agents.delete" && opts && opts.relay && typeof opts.relay === "object" ? { ...(opts.relay.kernelFacts ? { kernelFacts: opts.relay.kernelFacts } : {}), ...(opts.relay.kernel_proof ? { kernel_proof: opts.relay.kernel_proof } : {}) } : {};
         // agents relays the asking person to threads.send and threads.release WITH that person's own verified facts (the ones their agents.ask arrived with): the chat gate judges the person, and a
         // relay without them would be refused for every person who asks an agent from a device.
-        const personAs = as && isPerson(String(as));
-        const mentionsRelay = m.name === "mentions" && (String(as) === "module:sessions" || String(as) === "module:assistant");
-        const sessionsRelay = (m.name === "threads" || m.name === "switchboard") && (String(as) === "module:sessions" || String(as) === "module:assistant");
-        const cur = (personAs || mentionsRelay || sessionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
+        const cur = carriesPerson(m.name, as, tool, isPerson, agentsMayRelay) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
@@ -1583,8 +1567,7 @@ export class Registry {
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
     delete meta[VIEW_FOR];
-    const spaceHop = Boolean(meta.in_space_chain);
-    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || spaceHop) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
+    const hop = String(caller).startsWith("module:") && caller !== "module:vyred" && (relayed || Boolean(meta.in_space_chain)) && (def.defaulted || (Boolean((m => m && this.isFirstParty(m.dir))(String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null)) && def.reach === "person" && meta.origin));
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.

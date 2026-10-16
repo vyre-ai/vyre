@@ -36,7 +36,7 @@ import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
 import { standingFor } from "./standing-run.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
-import { nameIsSecret } from "../../lib/secret-keys.js";
+import { hiddenField } from "../../lib/secret-keys.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
@@ -91,10 +91,7 @@ export function showable(v) {
     if (depth > 6) return "\u2026";
     if (typeof x === "string") return redactText(x);
     if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => {
-      const sealed = typeof y === "string" && /^\{\{field:[^}]+\}\}$/.test(y);
-      return [k, nameIsSecret(k) && typeof y !== "object" && !sealed ? "[hidden]" : walk(y, depth + 1)];
-    }));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, hiddenField(k, y) ? "[hidden]" : walk(y, depth + 1)]));
     return x;
   };
   const out = walk(v, 0);
