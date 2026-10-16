@@ -120,6 +120,7 @@ export class Pool {
    *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
    *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
    *   memberTokenKey?: () => Promise<string>,
+   *   profileStore?: { keyFor: (agentId: string, kind?: string) => Promise<Buffer|null> },
    *   wait?: (ms: number) => Promise<void>, probe?: ((host: string, port: number) => Promise<boolean>) | null }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
@@ -140,6 +141,7 @@ export class Pool {
     this.egress = deps.egress || (() => undefined);
     this.tailnet = deps.tailnet || null;
     this.memberTokenKey = deps.memberTokenKey || null;
+    this.profileStore = deps.profileStore || null;
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
@@ -883,6 +885,10 @@ export class Pool {
       try {
         await this.ensure(computerId);
         await this.reseedMembers(computerId);
+        if (this.profileStore) {
+          const key = await this.profileStore.keyFor(agentId, "agent");
+          if (!key) this.log(`shared browser: add ${agentName} without ${"vyre-browser-agent-profile-key"} in the vault; profile encryption is off until the item exists`);
+        }
       } catch (e) {
         if (before) {
           this.db.prepare("UPDATE computers_members SET agent_name = ?, generation = ? WHERE computer_id = ? AND agent_id = ?")
