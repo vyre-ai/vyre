@@ -2375,8 +2375,7 @@ export default {
       const pin = st.exists && st.id ? identity.pin() : null;
       return st.exists && st.id ? { id: st.id, name: st.name || null, label: st.name || null, ...(pin && pin.head ? { pin: { id: String(pin.id), seq: Number(pin.seq), head: String(pin.head) } } : {}) } : null;
     }, { internal: true });
-    // This computer's own entry on its identity's list, for the daemon's runner ({ deviceId, deviceKey }: the id the Offers name it by and its public key); null until an identity is claimed.
-    // The paired server that hosts a Space this computer made there (the id this computer knows that server by), or null: the Wink module asks it to check that a message about a Space's grant comes from that Space's own home.
+    tool("spaces.identity.published-key", "The public root key of a space on this device. For install to check the directory. No private key.", obj({ space: str }, ["space"]), async (i) => { let k = null; try { k = files.keys.load(String(i.space || "")); } catch { k = null; } if (!k || !k.publicKey) throw refuse("This space has no published key on this device yet.", "not_found"); return { space: String(i.space), pub: k.publicKey }; }, { internal: true });
     tool("spaces.server.of", "The paired server that hosts this space: { device }, or null when this computer does not know one. For the Wink module.", obj({ space: str }, ["space"]), async (i) => ({ device: await serverOf(String(i.space)) }), { internal: true });
     tool("spaces.identity.device", "This device's entry on its identity list: { deviceId, deviceKey }, or null when none is claimed. The public half only. For the daemon.", obj(), async () => {
       const st = identity.status();

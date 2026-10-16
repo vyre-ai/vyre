@@ -462,6 +462,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.published-key",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.server.of",
     "reach": "modules"
    },

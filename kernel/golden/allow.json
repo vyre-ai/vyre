@@ -912,6 +912,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (unlocks the identity; held so the person enters the master password on their device)"
  },
  {
+  "tool": "identity.vault.install",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (installs the held master key into the running vault and returns the space's published key; held so the person who unlocked on this device is the one who installs it)"
+ },
+ {
   "tool": "learn.add",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; learn.add opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: a model's lesson is proposed and never made active; the person accepts it"
  },

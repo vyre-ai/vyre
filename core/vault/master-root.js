@@ -4,10 +4,11 @@
 // lets this box lend with nobody unlocked. A home with no master record keeps the file or keychain keystore.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { currentPersonalKey } from "../../kernel/identity/holder.js";
 import { readMaster } from "../../kernel/identity/master.js";
-import { adoptVaultKey, dropPlainVaultKey, openVaultKey } from "../../kernel/identity/vault-at-rest.js";
+import { adoptVaultKey, dropPlainVaultKey, openVaultKey, plainVaultKeyPath } from "../../kernel/identity/vault-at-rest.js";
 import { keyObject, unwrapVaultKey } from "./crypto.js";
 import { readJsonFile } from "./store.js";
 
@@ -107,4 +108,34 @@ export async function deviceKey(vault) {
   const raw = await vault.keys.create();
   if (vault.log) vault.log(`vault key created in the ${vault.kind} keystore`);
   return raw;
+}
+
+/**
+ * Put the held master key into the running vault and drop any plaintext vault/key.
+ * A vault that is already open stays open when the held key unwraps the same agent key.
+ * A held key that does not is refused, and the open vault is left as it is.
+ * The caller is identity.vault.install. vault.key() does not replace an agent key it already holds.
+ * @param {{ dir: string, kind: string, vk: import("node:crypto").KeyObject|null, key: () => Promise<import("node:crypto").KeyObject> }} vault
+ */
+export async function installHeldKey(vault) {
+  if (vault.kind === "passphrase") throw locked("This vault stays a passphrase lock. Unlock it with its passphrase.");
+  const root = path.dirname(vault.dir);
+  const held = currentPersonalKey();
+  if (!held) throw locked("Unlock this identity on this device before the vault can take the master key.");
+  if (!opensAgent(vault.dir, held)) {
+    held.fill(0);
+    throw locked("The master key does not open this vault. Restore the vault key from a backup, then unlock on this device.");
+  }
+  if (!readMaster(root)) {
+    held.fill(0);
+    throw locked("Set a master password on this device before the vault can take the master key.");
+  }
+  try {
+    if (!vault.vk) await vault.key();
+    adoptVaultKey(root, held);
+  } finally {
+    held.fill(0);
+  }
+  if (fs.existsSync(plainVaultKeyPath(root))) throw locked("The plaintext vault key is still on disk. Unlock on this device and install again.");
+  return { installed: true, plaintext: false };
 }

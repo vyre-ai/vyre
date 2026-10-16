@@ -90,6 +90,52 @@ export default {
         return forCaller(meta, M.unlockMaster({ root, password: input.password, recoveryCode: input.recovery, confirm: input.confirm === true, identityFile: idFile }));
       });
 
+    const answered = (/** @type {any} */ r) => (r && r.data !== undefined ? r.data : r);
+
+    tool("identity.vault.install", "Install the unlocked master key into the running vault and return the published public key. No private key.",
+      obj({ space: str }),
+      async (input, meta) => {
+        refuseModel(meta, input);
+        let installed = null;
+        try {
+          const r = await ctx.call("vault.master.install", {}, { relay: true });
+          if (!r || r.error) throw refuse((r && r.error && r.error.message) || "Unlock this identity on this device before the vault can take the master key.", (r && r.error && r.error.code) || "locked");
+          installed = answered(r);
+        } catch (e) {
+          const err = /** @type {any} */ (e);
+          throw refuse(err.message || "Unlock this identity on this device before the vault can take the master key.", err.code === "not_found" ? "not_found" : "locked");
+        }
+        if (!installed || installed.installed !== true || installed.plaintext !== false) throw refuse("The vault did not take the master key.", "locked");
+        let id = M.masterStatus(root, idFile).id || null;
+        let deviceKey = null;
+        try {
+          const r = await ctx.call("spaces.identity.self", {}, { relay: true });
+          const self = r && r.error ? null : answered(r);
+          if (self && self.id) id = self.id;
+        } catch { /* the master record still names the person */ }
+        try {
+          const r = await ctx.call("spaces.identity.device", {}, { relay: true });
+          const device = r && r.error ? null : answered(r);
+          if (device && typeof device.deviceKey === "string") deviceKey = device.deviceKey;
+        } catch { deviceKey = null; }
+        let space = null;
+        if (input && input.space) {
+          let published = null;
+          try {
+            const r = await ctx.call("spaces.identity.published-key", { space: String(input.space) }, { relay: true });
+            if (!r || r.error) throw refuse((r && r.error && r.error.message) || "This space has no published key on this device yet.", "not_found");
+            published = answered(r);
+          } catch (e) {
+            const err = /** @type {any} */ (e);
+            throw refuse(err.message || "This space has no published key on this device yet.", "not_found");
+          }
+          if (!published || typeof published.pub !== "string" || !published.pub) throw refuse("This space has no published key on this device yet.", "not_found");
+          space = { id: String(input.space), pub: published.pub };
+        }
+        return forCaller(meta, { installed: true, plaintext: false, id, deviceKey, space });
+      },
+      obj({ installed: { type: "boolean" }, plaintext: { type: "boolean" }, id: str, deviceKey: str, space: obj({ id: str, pub: str }) }));
+
     tool("identity.lock", "Lock this device and forget the unlocked keys in memory.",
       obj({}), async (_input, meta) => { M.lockMaster(idFile); return forCaller(meta, { locked: true }); });
 

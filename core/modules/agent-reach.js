@@ -655,6 +655,7 @@ export const ASK_FIRST = new Map([
   ["appmods.domain.remove", "takes the person's own domain from an app, so its public pages stop answering at that address"],
   ["identity.create", "makes the username and wraps the keys; held so the person enters the master password on their device"],
   ["identity.unlock", "unlocks the identity; held so the person enters the master password on their device"],
+  ["identity.vault.install", "installs the held master key into the running vault and returns the space's published key; held so the person who unlocked on this device is the one who installs it"],
   ["identity.migrate", "wraps an existing identity under a master password; held so the person enters it on their device"],
   ["identity.github.link", "links a GitHub login to the username; held for the person's one tap, and it does not unlock the vault"],
   ["identity.discover", "opts the username into the public directory; held for the person's one tap"],
