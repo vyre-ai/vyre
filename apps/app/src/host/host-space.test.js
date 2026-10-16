@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHost } from "./host-core.js";
 import { verifyPairCode } from "../../../../lib/pair-code.js";
+import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { commandOk } from "../../../../lib/first-run-shape.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
@@ -323,4 +324,45 @@ test("a vyre.run/i link whose space the directory cannot name, names another kin
   assert.deepEqual((await host.call("onboard.space.list")).spaces, []);
   pp.seen.spaceById = () => { throw new Error("down"); };
   await assert.rejects(() => host.call("onboard.join.read", { link: `https://vyre.run/i/${inviteToken("chain-x1234567")}` }));
+});
+
+test("a space made here and the same space signed in to from another device are the same row: id, name, role, server", { timeout: 240000 }, async (t) => {
+  const d = directory(t);
+  const rec = new Map();
+  const svc = createLoginService({ space: "alex-space", store: { get: (k) => rec.get(k), set: (k, v) => rec.set(k, v) }, now: d.now, verifyIdentity: async () => true, isMember: async () => true });
+  const named = { id: "spc_abcdefghijkl", name: "alex-space", role: "owner", server: "https://alex-space.vyre.run" };
+  const fetchAll = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.host === "alex-space.vyre.run" && u.pathname === "/login") {
+      const body = JSON.parse(init.body);
+      const out = body.op === "begin" ? svc.begin(body, "203.0.113.5")
+        : body.op === "finish" ? await svc.finish(body, "203.0.113.5").then((r) => (r && r.ok ? { ...r, spaces: [named] } : r))
+        : await svc.register(body).catch((e) => ({ error: { code: e.code, message: e.message } }));
+      return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (u.pathname.startsWith("/v1/ids/spaces/")) return new Response("{}", { status: 200 });
+    return d.fetch(url, init);
+  };
+  // Device one makes the identity at the production cost, creates the space, and registers its sign-in record at it.
+  const pp = ports();
+  const one = createHost({ store: memoryStore(), directory: d.base, fetch: fetchAll, now: d.now, space: { load: async () => pp }, sleep: nap, pollMs: 5 });
+  await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  const open = await one.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(one, open.id, (r) => r.online);
+  const created = (await one.call("onboard.space.list")).spaces;
+  assert.deepEqual(await svc.register(await one.registerLogin("alex-space", PASSWORD)), { ok: true, username: "alex" });
+
+  // Device two has nothing and signs in with the address, the username and the master password.
+  const two = createHost({ store: memoryStore(), directory: d.base, fetch: fetchAll, now: d.now });
+  await two.call("onboard.signin", { space: "alex-space.vyre.run", username: "alex", password: PASSWORD });
+  const signed = (await two.call("onboard.space.list")).spaces;
+
+  assert.equal(created.length, 1);
+  assert.deepEqual(signed, created, "the same row, whichever way the space got onto the device");
+  for (const row of [created[0], signed[0]]) {
+    assert.deepEqual(Object.keys(row).sort(), ["id", "name", "role", "server"]);
+    assert.match(row.id, /^spc_[a-z2-7]{8,}$/);
+    assert.equal(row.server, `https://${row.name}.vyre.run`);
+  }
 });
