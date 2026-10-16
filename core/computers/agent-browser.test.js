@@ -26,6 +26,7 @@ function setup(t, { browse = "browser" } = {}) {
     config: { driver: "fake", browse, sweepMs: 0 },
     memberTokenKey: () => Promise.resolve("test-member-key"),
   });
+  pool._helperFetch = async () => ({ ok: true, json: async () => ({}) });
   const shared = new SharedBrowser({ pool, call: pool.call, cfg: () => ({ driver: "fake", browse }) });
   const agentBrowser = new AgentBrowser({ pool, shared, cfg: () => ({ driver: "fake", browse }) });
   return { pool, shared, agentBrowser, driver };
