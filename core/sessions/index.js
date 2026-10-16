@@ -813,6 +813,8 @@ export default {
       // The @ and # references in them become lines the model can use (lib/doc-refs.js). What the reader may open is asked of the checks that exist: a project by work.project.may-read, for the person the session is for;
       // a person, an agent or a tag is a name the whole Space already lists. Anything else, and every reference when no person is named, keeps its name only.
       return withRefsResolved(docs, async ref => {
+        // the first word of an address is trusted as a kind only when the Space has no record type of its own by that name: asked of the type definitions once per reference (records.address-kind, never a row)
+        if (ref.kind !== "record") { const k = await ctx.call("records.address-kind", { urn: ref.urn }).catch(() => null); if (!k || k.error || !k.data || k.data.kind === "record") return false; }
         if (ref.kind === "person" || ref.kind === "agent" || ref.kind === "tag") return true;
         if (ref.kind === "project" && i.person) { const r = await ctx.call("work.project.may-read", { project: ref.urn, person: String(i.person) }); return Boolean(r && !r.error && r.data && r.data.ok === true); }
         return false;
