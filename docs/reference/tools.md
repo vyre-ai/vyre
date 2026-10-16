@@ -497,7 +497,7 @@ Stop using your own domain for an app's public pages: { host }.
 End every open sign-in to a preview (its access changed, or it was removed). Internal: the previews module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.front`
 
@@ -568,28 +568,28 @@ Where a running app is reached from this daemon: { origin }. For Vyre's own modu
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.remove`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.run`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.publish.stop`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.remove`
 
@@ -613,28 +613,28 @@ List screens of running installed apps as [{ module, id, label, path, icon? }]; 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signed.revoke`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signing.request`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.signing.waiting`
 
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `appmods.start`
 
@@ -665,7 +665,7 @@ Stop an installed app. Its data stays.
 A one-time sign-in address for a preview, on its own origin: { url, host }. Internal: the previews module has already decided that this person may open it.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## approvals
 
@@ -3244,7 +3244,6 @@ Send a file from this server to one of your computers. It waits here, sealed to 
   - `device` string, required: One of your computers: its id or its name (files.drop.targets).
   - `path` string, required
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Registered only on the box.
 
 ### `files.dirs`
 
@@ -3256,7 +3255,6 @@ List folders inside a folder (default: every root), or with q, folders under it 
   - `q` string: folder name to match; walks below path, bounded
   - `source` "mac" or "box"
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.access`
 
@@ -3266,7 +3264,6 @@ Make one of the box's shares read-only (ro) or read-write (rw) for this Mac. Rem
   - `mode` "ro" or "rw", required
   - `name` string, required
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.address`
 
@@ -3275,7 +3272,6 @@ Where one of this box's VyreDrive shares is reached on the tailnet, for a device
 - Input:
   - `share` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drive.audit`
 
@@ -3283,7 +3279,6 @@ Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besid
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.drive.candidates`
 
@@ -3291,7 +3286,6 @@ The box's folders you could share over VyreDrive, projects first (asked over the
 
 - Input: none
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.link.create`
 
@@ -3304,7 +3298,6 @@ Share one version of a file in the Space's Drive with a link that reads it until
   - `version` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.drive.link.list`
 
@@ -3312,7 +3305,6 @@ The shared links made on this box, newest first, with when each expires, how oft
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.link.revoke`
 
@@ -3321,7 +3313,6 @@ Stop a shared link now and delete the copy it served: { code }. Taking access aw
 - Input:
   - `code` string, required
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.list`
 
@@ -3337,7 +3328,6 @@ Where a box file is on this Mac through a mounted VyreDrive share, or null when 
 - Input:
   - `path` string, required
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.measure`
 
@@ -3346,7 +3336,6 @@ How big one of the box's folders is and whether it may be shared (asked over the
 - Input:
   - `path` string, required
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.mount`
 
@@ -3355,7 +3344,6 @@ Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and Lumen
 - Input:
   - `share` string, required
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.offer`
 
@@ -3366,7 +3354,6 @@ Share one of the box's folders you picked over VyreDrive, by path, in one step. 
   - `access` "ro" or "rw"
   - `name` string
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.open`
 
@@ -3376,7 +3363,6 @@ Open a mounted box share, or a file or folder in it, in Finder.
   - `share` string, required
   - `path` string
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.read`
 
@@ -3394,7 +3380,6 @@ Restore an old version of a file in the Space's Drive as a NEW version (nothing 
   - `version` integer, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.search`
 
@@ -3406,7 +3391,6 @@ Find files by name or content across the box's offered VyreDrive shares, asked f
   - `limit` integer
   - `share` string
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.share`
 
@@ -3426,7 +3410,6 @@ The files in the Space's Drive under a folder, under the caller's own grants: { 
   - `prefix` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.space.read`
 
@@ -3437,7 +3420,6 @@ Download one file from the Space's Drive, head or a named version, under the cal
   - `space` string
   - `version` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.status`
 
@@ -3453,7 +3435,6 @@ Unmount one of the box's shared folders from this Mac.
 - Input:
   - `share` string, required
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.unshare`
 
@@ -3462,7 +3443,6 @@ Stop sharing one of the box's folders.
 - Input:
   - `name` string, required
 - Callers: `capsule`, `cli`, `local`
-- Registered only on the Mac (local).
 
 ### `files.drive.upload`
 
@@ -3474,7 +3454,6 @@ Put a file in the Space's Drive as a new version, under the caller's own grants:
   - `base` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drive.url`
 
@@ -3483,7 +3462,6 @@ The WebDAV address of one of the box's VyreDrive shares, as this Mac reaches it.
 - Input:
   - `share` string, required
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drive.versions`
 
@@ -3495,7 +3473,6 @@ The versions of one file in the Space's Drive, newest last, under the caller's o
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
-- Registered only on the Mac (local).
 
 ### `files.drop.ack`
 
@@ -3504,7 +3481,6 @@ VyreDrop on the server: ack. Called by the person's own paired computers over th
 - Input:
   - `id` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.begin`
 
@@ -3517,7 +3493,6 @@ VyreDrop on the server: begin. Called by the person's own paired computers over 
   - `to` string, required
   - `total` number, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.cancel`
 
@@ -3526,7 +3501,6 @@ VyreDrop on the server: cancel. Called by the person's own paired computers over
 - Input:
   - `id` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.finish`
 
@@ -3535,7 +3509,6 @@ VyreDrop on the server: finish. Called by the person's own paired computers over
 - Input:
   - `id` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.get`
 
@@ -3545,7 +3518,6 @@ VyreDrop on the server: get. Called by the person's own paired computers over th
   - `id` string, required
   - `index` number, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.meta`
 
@@ -3554,7 +3526,6 @@ VyreDrop on the server: meta. Called by the person's own paired computers over t
 - Input:
   - `id` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.offered`
 
@@ -3563,7 +3534,6 @@ A drop is waiting on the server for this computer (the Wink module calls this).
 - Input:
   - `id` string, required
 - Callers: any caller
-- Registered only on the Mac (local).
 
 ### `files.drop.pending`
 
@@ -3571,7 +3541,6 @@ VyreDrop on the server: pending. Called by the person's own paired computers ove
 
 - Input: none
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.push`
 
@@ -3580,7 +3549,6 @@ Offer a computer the drops waiting for it (the daemon calls this when the comput
 - Input:
   - `device` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.put`
 
@@ -3591,7 +3559,6 @@ VyreDrop on the server: put. Called by the person's own paired computers over th
   - `id` string, required
   - `index` number, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.register`
 
@@ -3600,7 +3567,6 @@ VyreDrop on the server: register. Called by the person's own paired computers ov
 - Input:
   - `eid` string, required
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.targets`
 
@@ -3608,7 +3574,6 @@ VyreDrop on the server: targets. Called by the person's own paired computers ove
 
 - Input: none
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.drop.unregister`
 
@@ -3616,7 +3581,6 @@ VyreDrop on the server: unregister. Called by the person's own paired computers 
 
 - Input: none
 - Callers: any caller
-- Registered only on the box.
 
 ### `files.dropbox.linked`
 
@@ -3629,7 +3593,6 @@ One Dropbox file call (list_folder, get_metadata, download, upload, move_v2, cre
   - `bodyB64` string
   - `raw` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
-- Registered only on the Mac (local).
 
 ### `files.fetch`
 
@@ -3651,7 +3614,6 @@ Delete a file in a linked folder, at the source (the source decides whether it c
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.link`
 
@@ -3664,7 +3626,6 @@ Link a folder from a source (Google Drive first) so it appears live at Linked/<n
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.linked.list`
 
@@ -3673,7 +3634,6 @@ The folders linked in this Space: { space? } -> { links }.
 - Input:
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.ls`
 
@@ -3684,7 +3644,6 @@ List a folder in a linked folder, from your own index: { space?, id, path? }.
   - `path` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.mentions.resolve`
 
@@ -3695,7 +3654,6 @@ Make a tagged linked file known to the chat it was tagged in: its text as contex
   - `thread` string, required
   - `said` string
 - Callers: `module`
-- Registered only on the Mac (local).
 
 ### `files.linked.mentions.search`
 
@@ -3705,7 +3663,6 @@ Files in the linked folders whose name or text matches what you typed after #, a
   - `limit` integer
   - `q` string
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.linked.pick`
 
@@ -3715,7 +3672,6 @@ Choose a folder to link, one level at a time, as you (what your account may see)
   - `provider` string, required
   - `parent` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.providers`
 
@@ -3723,7 +3679,6 @@ The sources a folder can be linked from: { } -> { providers: [{ id, label, pick 
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.read`
 
@@ -3734,7 +3689,6 @@ Open a file in a linked folder: { id, path }. Fetched from the source as you, at
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.rename`
 
@@ -3746,7 +3700,6 @@ Rename or move a file inside a linked folder, at the source: { space?, id, path,
   - `to` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.search`
 
@@ -3758,7 +3711,6 @@ Search the linked folders by name, path and text, among what your account sees: 
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.status`
 
@@ -3768,7 +3720,6 @@ A linked folder and how your index of it stands: { space?, id }.
   - `id` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.sync`
 
@@ -3779,7 +3730,6 @@ Bring your own index of a linked folder up to date, as you (what your account se
   - `full` boolean
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.linked.tree`
 
@@ -3789,7 +3739,6 @@ Every file in your own index of each linked folder, for the # picker. An unsynce
   - `limit` integer
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.unlink`
 
@@ -3800,7 +3749,6 @@ Stop showing a linked folder: { space?, id }. Only who linked it or the Space ow
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
 - Needs a person present.
-- Registered only on the Mac (local).
 
 ### `files.linked.versions`
 
@@ -3811,7 +3759,6 @@ A file's history at the source: { space?, id, path } -> { versions: [{ rev, modi
   - `path` string, required
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
-- Registered only on the Mac (local).
 
 ### `files.linked.write`
 
@@ -3824,7 +3771,6 @@ Save a file into a linked folder, at the source: { space?, id, path, base64, bas
   - `base_rev` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`
-- Registered only on the Mac (local).
 
 ### `files.mentions.resolve`
 
@@ -3835,7 +3781,6 @@ Make a tagged file readable in the chat it was tagged in. The box does this; a M
   - `thread` string, required
   - `said` string
 - Callers: `module`
-- Registered only on the Mac (local).
 
 ### `files.mentions.search`
 
@@ -3845,7 +3790,6 @@ Files on the box's VyreDrive shares whose name matches what you typed after #, f
   - `limit` integer
   - `q` string
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.preview`
 
@@ -3864,7 +3808,6 @@ Turn on or off whether this computer takes in files your other computers send it
 - Input:
   - `on` boolean, required
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Registered only on the Mac (local).
 
 ### `files.recent`
 
@@ -3874,7 +3817,6 @@ The folders sessions worked in lately, newest first, with how many sessions ran 
   - `limit` integer
   - `source` "mac" or "box"
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
-- Registered only on the Mac (local).
 
 ### `files.search`
 
@@ -3895,7 +3837,6 @@ Send a file from this computer to another of your computers, through your server
   - `path` string, required
   - `to` string: One of your other computers: its name or id (files.drop.targets lists them). Left out, the only one that is ready.
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Registered only on the Mac (local).
 
 ### `files.stat`
 
@@ -6825,7 +6766,7 @@ Mute a node so memory never offers it, everywhere (scope '*') or in one project 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.pace`
 
@@ -6859,7 +6800,7 @@ Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.profile`
 
@@ -8328,7 +8269,7 @@ Remove an enrolled Lumen key, device key or passkey by id. Needs presence.
 The folder a files preview serves, for Publish: { root }. Internal: Publish only, for the person who pressed the card.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.frame`
 
@@ -8398,7 +8339,7 @@ The person types what a stuck run asked for (a code, an answer) on its card: { r
 Where a preview's host leads, for the front: { origin }. Internal: the appmods module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.restart`
 
@@ -8447,7 +8388,7 @@ Whether the person has finished signing in: { id, state } (waiting, done, cancel
 A folder's files as a static site that runs on its own: a React page becomes its page, compiled files and libraries. Internal: the builder module only.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `previews.step`
 
@@ -8482,7 +8423,7 @@ The address to open a preview at: { url }, on its own origin, with a one-time si
 Is this the front's signed viewer header for a preview: { ok }. Internal: the runner module only, for the preview of a chat on a person's computer (a process on this box that finds that port cannot forge one).
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## projects
 
@@ -9124,7 +9065,7 @@ No description.
 No description.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `recall.index`
 
