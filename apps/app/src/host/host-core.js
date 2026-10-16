@@ -13,6 +13,15 @@ import * as C from "../../../../kernel/identity/chain.js";
 import { githubSay } from "../identity/github-core.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
 
+/**
+ * Is this key a DEVICE key on the person's checked chain? A sign-in that opens a record whose identity key the chain does not list as a device is refused: the server (or a swapped record) cannot hand a device
+ * a key the person never published. @param {Uint8Array} seed @param {{ eid: string, kind: string }[]} entries
+ */
+export async function seedIsDeviceOnChain(seed, entries) {
+  const key = await fromSeed(seed);
+  return Array.isArray(entries) && entries.some((e) => e && e.eid === key.eid && e.kind === "device");
+}
+
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
 const b64u = (/** @type {Uint8Array} */ b) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
@@ -68,7 +77,7 @@ export function createHost(o) {
     if (!res.ok || !d || !Array.isArray(d.ops)) throw bad("That identity is not in the directory.", "bad_login");
     const state = await C.verifyChain(d.ops, { now: o.now ? o.now() : Date.now() });
     if (state.id !== id) throw bad("That identity's chain does not match.", "bad_login");
-    return { ops: d.ops, pin: C.pinOf(state) };
+    return { ops: d.ops, pin: C.pinOf(state), entries: /** @type {any[]} */ (state.entries || []) };
   }
 
   /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
@@ -144,6 +153,7 @@ export function createHost(o) {
       } finally { d.close(); }
       const chain = await chainOf(String(done.bundle.id));
       const seed = unb64(keys.privateKey);
+      if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_login" });
       const row = { id: addr.space, name: addr.space, role: String(done.role || "member"), server: addr.address };
       await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
       held = seed;
@@ -152,22 +162,31 @@ export function createHost(o) {
 
     // Sign in with GitHub: the relay vouches for the GitHub account with a short assertion; the names directory answers with the spaces that account's linked username belongs to (only to a valid assertion);
     // the master password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
-    "onboard.signin.github": async () => {
+    "onboard.signin.github": async ({ space } = {}) => {
       if (!o.github) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
       if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
       const started = await o.github.start();
       if (!started.ok || !started.session) throw Object.assign(new Error(githubSay(started.code)), { code: started.code || "denied" });
-      const assertion = await o.github.assert(started.session, "names");
-      let res;
-      try { res = await f(`${base}/v1/ids/spaces`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assertion }) }); } catch { throw bad("Cannot reach the names directory right now.", "unreachable"); }
-      /** @type {any} */ let body = null;
-      try { body = await res.json(); } catch { /* not JSON */ }
-      const d = body && body.data;
-      // Not linked, wrong, expired and foreign assertions are one answer, so GitHub sign-in reveals nothing about who has a Vyre name.
-      if (!res.ok || !d || !Array.isArray(d.spaces) || !d.spaces.length) throw Object.assign(new Error(githubSay("not_linked")), { code: "not_linked" });
-      const spaces = d.spaces.map((/** @type {any} */ x) => spaceAddressOf(String(x.address || `${x.name}.vyre.run`))).filter(Boolean);
-      if (!spaces.length) throw Object.assign(new Error(githubSay("not_linked")), { code: "not_linked" });
-      pendingGithub = { session: started.session, username: String(d.username || ""), spaces: /** @type {{ space: string, address: string }[]} */ (spaces), at: Date.now() };
+      /** @type {{ space: string, address: string }[]} */ let spaces = [];
+      let username = "";
+      // The directory's list of this GitHub account's spaces, when it has one (only a valid assertion gets it). Without one (the list is not there yet, or the account is not linked), the person's own space
+      // address, typed on the sign-in screen, is the one space to log in to; the space's reply names the rest.
+      try {
+        const assertion = await o.github.assert(started.session, "names");
+        const res = await f(`${base}/v1/ids/spaces`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assertion }) });
+        /** @type {any} */ const body = await res.json().catch(() => null);
+        const d = body && body.data;
+        if (res.ok && d && Array.isArray(d.spaces)) {
+          username = String(d.username || "");
+          spaces = /** @type {any} */ (d.spaces.map((/** @type {any} */ x) => spaceAddressOf(String(x.address || `${x.name}.vyre.run`))).filter(Boolean));
+        }
+      } catch { /* no list: the typed address below */ }
+      if (!spaces.length) {
+        const typed = space ? spaceAddressOf(String(space).includes(".") ? space : `${String(space).trim()}.vyre.run`) : null;
+        if (!typed) throw Object.assign(new Error("Type the address of a space you belong to, then continue with GitHub again."), { code: "needs_space" });
+        spaces = [typed];
+      }
+      pendingGithub = { session: started.session, username, spaces, at: Date.now() };
       return { login: pendingGithub.username, spaces: spaces.map((x) => ({ id: x.space, name: x.space, role: "member", server: x.address })) };
     },
 
@@ -197,6 +216,7 @@ export function createHost(o) {
       if (!first || !keys) throw bad("None of your spaces answered. Try again.", "unreachable");
       const chain = await chainOf(String(first.bundle.id));
       const seed = unb64(keys.privateKey);
+      if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_password" });
       const rows = opened.map((x) => ({ id: x.space, name: x.space, role: x.role, server: x.address }));
       await o.store.save({ master: first.bundle, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
       held = seed;

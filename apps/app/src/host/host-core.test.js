@@ -2,7 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHost } from "./host-core.js";
+import { createHost, seedIsDeviceOnChain } from "./host-core.js";
+import { fromSeed } from "../identity/keys.js";
 import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
@@ -186,4 +187,29 @@ test("GitHub sign-in with no link, or a cancelled GitHub window, says so in the 
   const cancelled = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now, github: { start: async () => ({ ok: false, code: "denied" }), assert: async () => "x" } });
   await assert.rejects(() => cancelled.call("onboard.signin.github"), (e) => e.code === "denied" && /cancelled/.test(e.message));
   await assert.rejects(() => cancelled.call("onboard.signin.unlock", { password: PASSWORD }), (e) => e.code === "expired");
+});
+
+test("a record whose identity key is not a device key on the person's chain is refused", async () => {
+  const seed = new Uint8Array(32).fill(7);
+  const key = await fromSeed(seed);
+  assert.equal(await seedIsDeviceOnChain(seed, [{ eid: key.eid, kind: "device" }, { eid: "other", kind: "code" }]), true);
+  assert.equal(await seedIsDeviceOnChain(seed, [{ eid: key.eid, kind: "code" }]), false, "a recovery entry is not a device");
+  assert.equal(await seedIsDeviceOnChain(seed, [{ eid: "someone-else", kind: "device" }]), false);
+  assert.equal(await seedIsDeviceOnChain(seed, []), false);
+  assert.equal(await seedIsDeviceOnChain(seed, /** @type {any} */ (null)), false);
+});
+
+test("GitHub sign-in with no directory list uses the one space address the person typed", { timeout: 240000 }, async (t) => {
+  const w = spaceWorld(t);
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const noList = async (url, init) => (new URL(url).pathname === "/v1/ids/spaces" ? new Response("{}", { status: 404 }) : w.fetch(url, init));
+  const github = { start: async () => ({ ok: true, session: { ticket: "t", cv: "c" }, user: { id: 7, login: "alexg" } }), assert: async (_s, audience) => `assert:${audience}` };
+  const two = createHost({ store: memoryStore(), directory: w.base, fetch: noList, now: w.now, github });
+  await assert.rejects(() => two.call("onboard.signin.github", {}), (e) => e.code === "needs_space" && /address of a space/.test(e.message));
+  const found = await two.call("onboard.signin.github", { space: "juniper.vyre.run" });
+  assert.deepEqual(found.spaces.map((x) => x.name), ["juniper"]);
+  const opened = await two.call("onboard.signin.unlock", { password: PASSWORD });
+  assert.equal(opened.username, "alex");
 });

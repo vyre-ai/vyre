@@ -148,10 +148,10 @@ export async function signInPassword(input) {
   catch (e) { return fail(e); }
 }
 
-/** Sign in with GitHub: it finds the spaces this person belongs to. The master password is asked once, next (unlockGithub). */
-export async function signInGithub() {
+/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The master password is asked once, next (unlockGithub). @param {string} [space] */
+export async function signInGithub(space) {
   if (MOCK) return mock.signInGithub();
-  try { return done(await tool("onboard.signin.github", {})); }
+  try { return done(await tool("onboard.signin.github", space ? { space } : {})); }
   catch (e) { return fail(e); }
 }
 
