@@ -4,6 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHost, seedIsDeviceOnChain } from "./host-core.js";
 import { fromSeed } from "../identity/keys.js";
+import { actMessage } from "../../../../names/worker/id-messages.js";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
@@ -212,4 +214,42 @@ test("GitHub sign-in with no directory list uses the one space address the perso
   assert.deepEqual(found.spaces.map((x) => x.name), ["juniper"]);
   const opened = await two.call("onboard.signin.unlock", { password: PASSWORD });
   assert.equal(opened.username, "alex");
+});
+
+test("publishing a space to the directory is an act the identity key signs, and sign-in sends one stable device id", { timeout: 240000 }, async (t) => {
+  const w = spaceWorld(t);
+  const posted = [];
+  const fetchSeen = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.pathname.startsWith("/v1/ids/spaces/")) { posted.push({ path: u.pathname, body: JSON.parse(init.body) }); return new Response("{}", { status: 200 }); }
+    return w.fetch(url, init);
+  };
+  const store = memoryStore();
+  const host = createHost({ store, directory: w.base, fetch: fetchSeen, now: w.now, kdf: FAST });
+  await assert.rejects(() => host.publishSpace("juniper"), (e) => e.code === "no_identity");
+  await host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  const r = await host.publishSpace("juniper");
+  assert.equal(r.address, "juniper.vyre.run");
+  await host.publishSpace("juniper.vyre.run", "remove");
+  assert.deepEqual(posted.map((p) => p.path), ["/v1/ids/spaces/add", "/v1/ids/spaces/remove"]);
+  const add = posted[0].body;
+  assert.deepEqual([add.name, add.address], ["alex", "juniper.vyre.run"]);
+  const kept = await store.load();
+  const entry = (await (async () => { const C = await import("../../../../kernel/identity/chain.js"); return (await C.verifyChain(kept.ops, { now: w.now() })).entries.find((e) => e.eid === add.act.by); })());
+  assert.ok(entry && entry.kind === "device", "signed by a device key on the person's chain");
+  const msg = actMessage({ action: "space-add", name: "alex", domain: "juniper.vyre.run", ts: add.act.ts });
+  assert.equal(ed25519.verify(Buffer.from(add.act.sig, "base64url"), msg, Buffer.from(entry.pub, "base64url")), true);
+  await assert.rejects(() => host.publishSpace("not an address"), /not a space address/);
+  await host.call("identity.lock");
+  await assert.rejects(() => host.publishSpace("juniper"), (e) => e.code === "locked");
+
+  // sign-in carries a stable device id, and only a well-formed one.
+  const seen = [];
+  const peek = async (url, init = {}) => { if (new URL(url).pathname === "/login") { const b = JSON.parse(init.body); if (b.op === "finish") seen.push(b.device); } return w.fetch(url, init); };
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  await one.call("onboard.person.create", { username: "blair", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const two = createHost({ store: memoryStore(), directory: w.base, fetch: peek, now: w.now, signin: { deviceId: () => "abcdef0123456789" } });
+  await two.call("onboard.signin", { space: "juniper.vyre.run", username: "blair", password: PASSWORD });
+  assert.deepEqual(seen, [{ id: "abcdef0123456789", label: "This browser" }]);
 });

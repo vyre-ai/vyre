@@ -11,6 +11,7 @@ import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
 import { githubSay } from "../identity/github-core.js";
+import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
 
 /**
@@ -34,7 +35,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  */
 
 /**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string }, github?: GithubPorts }} o
+ * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -53,6 +54,12 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
+
+  /** This browser's stable device id (so a known browser does not ring the person's other devices on every sign-in) and its label. */
+  async function deviceInfo() {
+    const id = o.signin && o.signin.deviceId ? await o.signin.deviceId() : "";
+    return { ...(/^[A-Za-z0-9_-]{8,64}$/.test(String(id)) ? { id: String(id) } : {}), label: (o.signin && o.signin.label) || "This browser" };
+  }
 
   /** POST one step of the space's sign-in door: https://<space>.vyre.run/login, text/plain so the browser sends no preflight. The answer is the door's own JSON (kernel/identity/space-login.js shapes). */
   async function door(/** @type {string} */ space, /** @type {any} */ body) {
@@ -147,7 +154,7 @@ export function createHost(o) {
       /** @type {any} */ let done, keys;
       try {
         const sig = d.sign(loginMessage(addr.space, name, String(begun.challenge)));
-        done = await door(addr.space, { op: "finish", username: name, challenge: begun.challenge, sig, device: { label: (o.signin && o.signin.label) || "This browser" } });
+        done = await door(addr.space, { op: "finish", username: name, challenge: begun.challenge, sig, device: await deviceInfo() });
         if (!done.bundle || done.bundle.username !== name) throw Object.assign(new Error(BAD), { code: "bad_login" });
         keys = await openMasterRecord(done.bundle, { kek: d.K }).catch(() => { throw Object.assign(new Error(BAD), { code: "bad_login" }); });
       } finally { d.close(); }
@@ -202,7 +209,7 @@ export function createHost(o) {
         let done;
         try {
           const assertion = await o.github.assert(pend.session, sp.space);
-          done = await door(sp.space, { op: "github", assertion, device: { label: (o.signin && o.signin.label) || "This browser" } });
+          done = await door(sp.space, { op: "github", assertion, device: await deviceInfo() });
         } catch (e) { if (!first) throw e; continue; }
         if (!done.bundle) continue;
         if (!first) {
@@ -270,6 +277,25 @@ export function createHost(o) {
         const sig = b64u(await (await fromSeed(held)).sign(registerMessage(space, k.username, d.loginPub, bundleHash(k.master), ts)));
         return { op: "register", username: k.username, person: k.id, pub, ts, sig, salt: String(k.master.kdf.salt), loginPub: d.loginPub, bundle: k.master };
       } finally { d.close(); }
+    },
+    /**
+     * Add (or remove) a space address in the names directory's list for this username, signed by the identity as an act (`space-add` / `space-remove`), so GitHub sign-in can find the person's spaces. Called when a space
+     * is created or joined. @param {string} space the space's name (juniper) @param {"add" | "remove"} [what]
+     */
+    async publishSpace(space, what = "add") {
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      if (!held) throw bad("Unlock with your master password first.", "locked");
+      const addr = spaceAddressOf(`${String(space).replace(/\.vyre\.run$/, "")}.vyre.run`);
+      if (!addr) throw bad("That is not a space address.");
+      const key = await fromSeed(held);
+      const ts = o.now ? o.now() : Date.now();
+      const domain = `${addr.space}.vyre.run`;
+      const sig = b64u(await key.sign(actMessage({ action: `space-${what}`, name: k.username, domain, ts })));
+      let res;
+      try { res = await f(`${base}/v1/ids/spaces/${what}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: k.username, address: domain, act: { by: key.eid, ts, sig } }) }); } catch { throw bad("Cannot reach the names directory right now.", "unreachable"); }
+      if (!res.ok) throw bad("The names directory did not take the space.", "directory");
+      return { ok: true, address: domain };
     },
     /** The unlocked key for the identity's own signing (the next stage's pair code), or null while locked. */
     signer: () => (held ? { seed: held } : null),

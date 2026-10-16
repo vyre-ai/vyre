@@ -35,8 +35,18 @@ const github = {
   },
 };
 
+/** One id per browser, kept on this device and never secret: it only tells a space "the same browser again". localStorage on the web; a session's own when storage is refused. */
+let sessionDeviceId = "";
+async function deviceId(): Promise<string> {
+  const KEY = "vyre.device-id";
+  try { const kept = typeof localStorage !== "undefined" ? localStorage.getItem(KEY) : null; if (kept && /^[A-Za-z0-9_-]{8,64}$/.test(kept)) return kept; } catch { /* no storage */ }
+  if (!sessionDeviceId) sessionDeviceId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  try { if (typeof localStorage !== "undefined") localStorage.setItem(KEY, sessionDeviceId); } catch { /* no storage */ }
+  return sessionDeviceId;
+}
+
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
-  if (!host) host = createHost({ store: hostStore, directory: directory(), github });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), github, signin: { deviceId } });
   return host;
 }
