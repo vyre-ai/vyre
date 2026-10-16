@@ -39,7 +39,7 @@ const EXEMPT = {
 const FOLDERISH = ["repo", "folder", "folders", "workspace", "slug", "dir", "path", "paths"];
 /** Agent-reachable tools with a FOLDERISH input that nobody has judged yet (issue 119), by tool. Judge one (declare projectArg/cwdArg, or move it to EXEMPT with the reason) and delete the line; never add one. */
 const UNJUDGED = Object.fromEntries([
-  "artifacts.capture.register", "documents.signed-link", "documents.send-signed", "files.stat", "files.preview", "files.fetch", "files.drive.list", "files.drive.read", "files.drive.measure", "files.drive.offer", "files.dirs", "files.drive.local",
+  "artifacts.capture.register", "documents.signed-link", "documents.send-signed", "files.stat", "files.preview", "files.fetch", "files.drive.list", "files.drive.read", "files.dirs",
   "glass.files.list", "glass.files.stat", "glass.files.preview", "glass.files.download", "glass.files.upload", "glass.files.mkdir", "glass.files.trash", "import.scan", "relay.devices.path", "threads.undo-edit", "vault.sweep", "vault.pass.create",
   "work.start-project", "work.file.share", "work.file.unshare", "work.project.create",
 ].map(t => [t, t.split(".")[0]]));

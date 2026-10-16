@@ -1,5 +1,5 @@
 // @ts-check
-// browse: looking inside a VyreDrive share and reading a file from it, through the box.
+// browse: looking inside one of the box's shares and reading a file from it, through the box.
 //
 // A phone cannot mount a share (a mounted share has no phone client), and a page in a browser cannot
 // speak WebDAV to it either. So the box answers two plain calls: files.drive.list (what is in
@@ -142,7 +142,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   };
 
   ctx.tool("files.drive.list", {
-    description: "List a folder inside one of the box's VyreDrive shares: name, kind, size and date per entry, folders first, a page at a time.",
+    description: "List a folder inside one of the box's shares: name, kind, size and date per entry, folders first, a page at a time.",
     input: { type: "object", required: ["share"], properties: { share: { type: "string", description: "share name, from files.drive.status" }, path: { type: "string", description: "folder inside the share; default its top" }, limit: { type: "integer", description: "entries per page" }, offset: { type: "integer", description: "entries to skip" } } },
     run: async ({ share, path: rel = "", limit = PAGE, offset = 0 }, meta = {}) => {
       limit = clamp(Number(limit) || PAGE, 1, PAGE_MAX);
@@ -186,7 +186,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   });
 
   ctx.tool("files.drive.read", {
-    description: "Read one chunk (up to 1 MiB) of a file in a box VyreDrive share, as base64, with its size and an end flag.",
+    description: "Read one chunk (up to 1 MiB) of a file in one of the box's shares, as base64, with its size and an end flag.",
     input: { type: "object", required: ["share", "path"], properties: { share: { type: "string" }, path: { type: "string" }, offset: { type: "integer", description: "start byte; use the next offset for a bigger file" }, length: { type: "integer", description: "chunk size in bytes, up to 1 MiB" } } },
     run: async ({ share, path: rel, offset = 0, length = CHUNK }, meta = {}) => {
       if (!rel) throw refuse("path is required", "bad_input");

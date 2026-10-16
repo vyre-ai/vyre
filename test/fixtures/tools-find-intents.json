@@ -137,12 +137,6 @@
   ]
  },
  {
-  "intent": "share a folder over the tailnet",
-  "expect": [
-   "files.drive.offer"
-  ]
- },
- {
   "intent": "ask the backend teammate to fix the login bug",
   "expect": [
    "team.ask"

@@ -54,7 +54,7 @@ test("a Member has no mail, calendar or computers until a role turns them on; he
 test("a Guest has the smaller list: sign-in, chat, shared records and files only", { timeout: 200_000 }, async t => {
   const { as } = await rig(t);
   for (const tool of ["records.list", "stream.catchup", "threads.list", "tasks.list", "presence.person.status"]) assert.ok(!gated(await as("guest", tool), tool), `${tool}: a Guest has it`);
-  for (const tool of ["agents.create", "flows.start", "memory.facts", "records.create", "spaces.members.list", "files.drive.unshare"]) assert.ok(met(await as("guest", tool), guestRefusal()), `${tool}: a Guest is refused in words that name a next step`);
+  for (const tool of ["agents.create", "flows.start", "memory.facts", "records.create", "spaces.members.list"]) assert.ok(met(await as("guest", tool), guestRefusal()), `${tool}: a Guest is refused in words that name a next step`);
   for (const tool of ["mail.accounts", "computers.list", "publish.list"]) assert.ok(met(await as("guest", tool), refusal(tool)), `${tool}: a Guest has no group`);
   for (const tool of GUEST_MAY) assert.ok(MEMBER_MAY.has(tool), `${tool} is on a Member's list too`);
   assert.match(guestRefusal(), /Ask the owner or an admin/);

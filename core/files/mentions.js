@@ -62,7 +62,7 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
   try { db().prepare("DELETE FROM files_mention_grants WHERE at < ?").run(Date.now() - 30 * 86_400_000); } catch { /* same */ }
 
   ctx.tool("files.mentions.search", {
-    description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
+    description: "Files on the box's shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
     input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
     callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent"],
     run: async ({ q = "", limit = 30 }) => {

@@ -6,7 +6,6 @@
   "comms.email": "an outward send of an email: held at the Gate for the person's yes before anything leaves",
   "comms.send": "an outward send: held at the Gate for the person's yes",
   "comms.service.get": "reads one comms service's settings, never a secret",
-  "files.drive.address": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
   "files.drive.list": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
   "files.drive.read": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
   "files.drive.search": "reads, searches or previews the person's files; nothing leaves, nothing is shared",

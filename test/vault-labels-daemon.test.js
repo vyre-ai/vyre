@@ -45,9 +45,9 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   const tn = await d.registry.call("vault.connections.list", {}, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "nodeA" } });
   assert.ok(tn.error || tn.data.surface !== "person", "a tailnet label that merely claims a person session gets no person surface");
 
-  // Drive share: a paired Mac's tailnet label with a claimed person session and no proven facts is refused
+  // Drive: a paired Mac's tailnet label with a claimed person session and no proven facts is refused
   const cols = d.registry.deps.db.prepare("PRAGMA table_info(link_peers)").all().filter(c => c.notnull && c.dflt_value === null && c.name !== "stable_id");
   d.registry.deps.db.prepare(`INSERT INTO link_peers (stable_id${cols.map(c => `, ${c.name}`).join("")}) VALUES (?${cols.map(c => (/INT|REAL/i.test(c.type) ? ", 1" : ", 'x'")).join("")})`).run("macA");
-  const share = await d.registry.call("files.drive.share", { name: "projects" }, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "macA" } });
-  assert.ok(share.error && ["denied", "presence_required"].includes(share.error.code) && !(share.data && share.data.shared), `a paired Mac's label alone is not the person: ${JSON.stringify(share.error || share.data)}`);
+  const put = await d.registry.call("files.drive.upload", { path: "x.txt", base64: "aGk=" }, "tailnet:alex@harlow.example", { person: { id: "ps1" }, peer: { stableId: "macA" } });
+  assert.ok(put.error && ["denied", "presence_required"].includes(put.error.code) && !put.data, `a paired Mac's label alone is not the person: ${JSON.stringify(put.error || put.data)}`);
 });

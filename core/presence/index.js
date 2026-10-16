@@ -42,11 +42,7 @@ export const HUMAN_ONLY = new Set([
   "presence.enroll", "presence.remove", "presence.code",
   // Signing a browser in as the person for 30 days (core/presence/person.js).
   "presence.person.start",
-  // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
-  // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
-  // and the sites that leave through the owner's Mac. Switching a share the owner already made
-  // between read-only and read-write is the owner's own (PERSON_ONLY below).
-  "files.drive.share", "files.drive.unshare",
+  // What the internet can send this box: a public webhook route.
   "hooks.enable", "hooks.open", "hooks.close",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
   // weight a vault grant to an agent carries. Taking it away (projects.access.revoke) is
@@ -59,11 +55,10 @@ export const HUMAN_ONLY = new Set([
  * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
  * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
  * nothing), the owner's hands on an agent's computer (taking the keyboard pauses the agent,
- * handing it back returns what it had), the user's own lessons, switching one of the box's
- * VyreDrive shares between read-only and read-write (files.drive.access: the share already exists
- * and reaches no one new), and moving a box's project homes to /work/projects (projects.move).
+ * handing it back returns what it had), the user's own lessons, and moving a box's project homes
+ * to /work/projects (projects.move).
  * None sends, pays, pairs or releases a secret. The tools' caller checks keep models, agents and
- * guests out (computers ownSurface, glass surfaceOf, drive's owner check, the allowlists), the
+ * guests out (computers ownSurface, glass surfaceOf, the allowlists), the
  * harness floor refuses a model's shell that names one of these, as it does the list above, and
  * vyred refuses a socket call to one from any process under a `claude` or a thread's process
  * (core/daemon/peer.js).
@@ -77,7 +72,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // teammate's notes) trust the same caller label, and were first fixed here per-tool (e2e
   // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
   // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "files.receive", "projects.move",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.receive", "projects.move",
   // Who watches a project's Needs without running a session in it: the owner's own list to edit.
   "projects.watchers.add", "projects.watchers.remove",
   // Taking an agent's project access away (Vyre Drive step 3): instant, no presence, so the owner
@@ -117,7 +112,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // machine-to-machine call it must still take, a paired Mac unpairing itself, is MACHINE_SELF
   // below (the reviewer's LOW for 0.1.1).
   "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
-  "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
+  "files.send", "agents.delete",
   "memory.correct", "memory.merge", "memory.split",
   // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
   // Touch ID prompt now"); a diagnostic bundle (paths, device names, logs) is not the model's to
@@ -149,8 +144,8 @@ export const PERSON_SURFACES = new Set(PERSON_SURFACE_LIST);
  * deny, and OPT_OUT is the only way off it - a short, explicit, reviewed list of tools that are
  * harmless even if a model's own shell spoofs "cli", one line of reason each. It may only shrink
  * (test/person-only-guard.test.js freezes it); nothing on the reviewer's protect list (link.pair,
- * link.unpair, vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount,
- * files.drive.unmount, files.drive.open, files.send, agents.delete, memory.correct, memory.merge,
+ * link.unpair, vault.device.join, vault.device.revoke, vault.vaults.create,
+ * files.send, agents.delete, memory.correct, memory.merge,
  * memory.split, and anything else that sends, pairs, joins or changes what is remembered) belongs
  * here.
  */

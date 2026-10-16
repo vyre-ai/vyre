@@ -60,11 +60,11 @@ test("presence: OPT_OUT only shrinks (a new entry needs the reviewer's own sign-
 });
 
 test("presence: OPT_OUT names nothing the reviewer's protect list covers", () => {
-  // link.pair/unpair, vault.device.join/revoke, vault.vaults.create, files.drive.mount/unmount/open,
+  // link.pair/unpair, vault.device.join/revoke, vault.vaults.create,
   // files.send, agents.delete, memory.correct/merge/split, and anything else that sends, pairs,
   // joins or changes what is remembered must never be opted out (team lead + reviewer, 28 Sep).
   const MUST_PROTECT = new Set(["link.pair", "link.unpair", "vault.device.join", "vault.device.revoke",
-    "vault.vaults.create", "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send",
+    "vault.vaults.create", "files.send",
     "agents.delete", "memory.correct", "memory.uncorrect", "memory.merge", "memory.split", "memory.read"]);
   const violated = [...OPT_OUT].filter(name => MUST_PROTECT.has(name));
   assert.deepEqual(violated, []);

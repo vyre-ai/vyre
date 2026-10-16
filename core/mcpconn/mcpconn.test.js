@@ -159,7 +159,7 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.deepEqual(risky, [], "a hosted key reaches a tool that can run code or drive a screen");
   for (const ok of ["recall.search", "memory.ask", "memory.remember", "records.list", "records.update", "projects.list", "work.chat.create", "threads.send", "flows.run", "files.drive.search", "mail.send", "tasks.list"]) if (d.registry.tools.has(ok)) assert.ok(hostedKeyMay(ok), `${ok} is what a hosted key is for`);
   assert.ok(!hostedKeyMay("some.new-tool"), "a tool nobody placed is refused to a hosted key");
-  for (const no of ["records.define", "records.forget", "flows.define", "flows.kit.propose", "projects.create", "files.drive.share", "approvals.answer", "tasks.decide"]) assert.ok(!hostedKeyMay(no), `${no} is not for a hosted key`);
+  for (const no of ["records.define", "records.forget", "flows.define", "flows.kit.propose", "projects.create", "approvals.answer", "tasks.decide"]) assert.ok(!hostedKeyMay(no), `${no} is not for a hosted key`);
   // the same call on a LOCAL key is not refused for being hosted
   assert.ok(!JSON.stringify(await call("roles.list", {}, as2)).includes("hosted key"), "a local key keeps its reach");
   // revoke is one call, and the next request is a 401

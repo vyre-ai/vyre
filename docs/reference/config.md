@@ -103,7 +103,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DOCS_HARVEST` | Not described yet. | `core/store/index.js` |
 | `VYRE_DOCUMENTS_PDF` | Not described yet. | `core/documents/index.js` |
-| `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
 | `VYRE_FINISH_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
@@ -215,7 +214,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_INSTALL_FROM_LINE` | Not described yet. | `core/wink/install-pair.js` |
 | `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
-| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
+| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_PROVIDER` | Not described yet. | `harness/mcp/server.js` |
@@ -233,7 +232,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
+| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/config/index.js`, `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_MASTER_KDF` | `cheap`: the identity tools use a tiny Argon2id for tests. Production always uses the master-password parameters. A tool never accepts this from its input. | `core/identity/index.js` |
