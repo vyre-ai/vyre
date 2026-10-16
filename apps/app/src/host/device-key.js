@@ -39,3 +39,18 @@ export function openDeviceKey(kept, identitySeed) {
   if (b64u(ed25519.getPublicKey(seed)) !== kept.pub) { seed.fill(0); throw Object.assign(new Error("This device's key does not match its record."), { code: "bad_device_key" }); }
   return { pub: kept.pub, sign: (/** @type {Uint8Array} */ m) => ed25519.sign(m, seed), close: () => seed.fill(0) };
 }
+
+/**
+ * The device key as this page uses it. In a Mac or Windows shell that keeps this computer's identity key (Keychain or the Windows store, seed never in the page: shell.ts `identity`), that key IS
+ * the device key, so nothing for this device is kept in the page at all. Anywhere else it is the wrapped key above, opened with the unlocked identity seed.
+ * @param {{ shell?: { public(create?: boolean): Promise<string>, sign(message: string): Promise<string> } | null, kept?: { pub: string, wrapped: { iv: string, ct: string } } | null, identitySeed: Uint8Array }} o
+ * @returns {Promise<{ pub: string, sign: (m: Uint8Array) => Promise<Uint8Array> | Uint8Array, close: () => void, where: "shell" | "page" }>}
+ */
+export async function deviceKey(o) {
+  if (o.shell) {
+    const pub = await o.shell.public(true);
+    return { pub, where: "shell", close() {}, sign: async (m) => unb64(await o.shell.sign(b64u(m))) };
+  }
+  if (!o.kept) throw Object.assign(new Error("This device has no key yet. Unlock to make one."), { code: "bad_device_key" });
+  return { ...openDeviceKey(o.kept, o.identitySeed), where: "page" };
+}
