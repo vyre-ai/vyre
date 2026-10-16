@@ -415,13 +415,15 @@ export function registerFirstRun(ctx, io) {
 
   ctx.tool("onboard.phone.add", {
     effect: "write",
-    description: "Add this person's phone. Returns a link the phone opens. Changes which devices can reach the space.",
+    description: "Add this person's phone as one of their own devices. Returns the link and the typed code the phone uses, good for one phone and five minutes. It is not an invite to a space.",
     input: obj({ space: str, name: str, type: str, fingerprint: str }),
     callers: [...OPEN],
-    run: async ({ space }, meta) => {
-      const { held, personId } = await heldOf(meta);
-      const made = remember(await invite(personCall, held, personId, space, "member", 1, false));
-      return { link: made.link, space: made.space, role: "member" };
+    run: async (_input, meta) => {
+      // A phone is a device of this identity (wink.phone.open: a QR and a code, one phone, five minutes). It is never a member invite, which would add a second person.
+      const opened = await personCall("wink.phone.open", {});
+      const link = String((opened && (opened.link || opened.qr)) || "");
+      if (!link) throw bad("The phone link did not come back. Try again.");
+      return { link, role: "device", expires: opened.expires ?? null, ...(opened.code ? { code: String(opened.code) } : {}) };
     },
   });
 

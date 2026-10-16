@@ -75,6 +75,7 @@ function harness(opt = {}) {
     if (name === "wink.install.status") return opt.status || { issued: true, owned: false, locked: false, expires: Math.floor(Date.now() / 1000) + 1800 };
     if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
+    if (name === "wink.phone.open") return { qr: "vyre://wink/2?p=phoneseed", link: "vyre://wink/2?p=phoneseed", expires: 1_900_000_000_000, code: "WINK-ABCD-EFGH" };
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
       if (link.includes("adminlink")) return { space: "spc_juniper", name: "juniper", role: "admin", server: "https://juniper.vyre.run" };
@@ -172,14 +173,21 @@ test("the install command is the pairing line, and an invite goes through the sp
   const join = await tools.get("onboard.space.join").run({ link: link.link }, {});
   assert.equal(join.joined, true);
   assert.equal(calls.some((c) => c.name === "spaces.invites.accept"), true);
+  const invitesBefore = calls.filter((c) => c.name === "spaces.invites.create").length;
   const phone = await tools.get("onboard.phone.add").run({ space: "juniper" }, {});
-  assert.match(phone.link, /^https:\/\/vyre\.run\/i\//);
+  assert.equal(phone.link, "vyre://wink/2?p=phoneseed");
+  assert.equal(phone.role, "device");
+  assert.equal(phone.code, "WINK-ABCD-EFGH");
+  assert.equal(calls.some((c) => c.name === "wink.phone.open"), true, "a phone is paired as the person's own device");
+  assert.equal(calls.filter((c) => c.name === "spaces.invites.create").length, invitesBefore, "adding a phone makes no invite for a second person");
   const computer = await tools.get("onboard.computer.add").run({ url: "https://juniper.vyre.run", username: "alex", password: "correct horse battery" }, {});
   assert.equal(computer.url, "https://juniper.vyre.run");
   assert.equal(computer.username, "alex");
   assert.equal("password" in computer, false);
   assert.equal(calls.some((c) => c.name === "devices.signin"), true);
   assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
+  // The card for adding a computer names the server it will sign in to.
+  assert.match(lineOfOp("onboard.computer.add", { url: "https://juniper.vyre.run", username: "alex" }, "An assistant"), /juniper\.vyre\.run/);
 });
 
 test("one identity is owner of one space and admin of another, and a computer signs into both servers", async () => {

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(first-run): `onboard.phone.add` pairs the phone as one of the person's own devices through `wink.phone.open` (the link and the typed code, one phone, five minutes). It used to make a member invite, which would add a second person. The approval card for `onboard.computer.add` names the server it will sign in to.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
