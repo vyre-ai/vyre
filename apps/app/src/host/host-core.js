@@ -55,6 +55,17 @@ export function createHost(o) {
   }
 
 
+  /**
+   * The row for a space this device signed in to: the id, name, role and address the SPACE says it is (its own reply), so a signed-in space and a created one are the same row. A space that does not say which
+   * space it is gets no row. @param {any} done the door's finish or github answer @param {{ space: string, address: string }} addr
+   */
+  function rowFromReply(done, addr) {
+    const list = Array.isArray(done && done.spaces) ? done.spaces : [];
+    const mine = list.find((/** @type {any} */ x) => x && x.name === addr.space) || list[0];
+    if (!mine || !/^spc_[a-z2-7]{8,}$/.test(String(mine.id))) throw Object.assign(new Error("That space did not say which space it is. Check the address and try again."), { code: "bad_space" });
+    return { id: String(mine.id), name: String(mine.name || addr.space), role: String(mine.role || done.role || "member"), server: String(mine.server || addr.address) };
+  }
+
   /** This browser's stable device id (so a known browser does not ring the person's other devices on every sign-in) and its label. */
   async function deviceInfo() {
     const id = o.signin && o.signin.deviceId ? await o.signin.deviceId() : "";
@@ -161,7 +172,7 @@ export function createHost(o) {
       const chain = await chainOf(String(done.bundle.id));
       const seed = unb64(keys.privateKey);
       if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_login" });
-      const row = { id: addr.space, name: addr.space, role: String(done.role || "member"), server: addr.address };
+      const row = rowFromReply(done, addr);
       await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
       held = seed;
       return { username: name, id: String(done.bundle.id), spaces: [row] };
@@ -203,7 +214,7 @@ export function createHost(o) {
       const pend = pendingGithub;
       if (!pend || Date.now() - pend.at > 10 * 60_000 || !o.github) throw bad("Start with GitHub again.", "expired");
       if (!password) throw bad("Enter your master password on this device.", "person_enters");
-      /** @type {{ space: string, address: string, role: string }[]} */ const opened = [];
+      /** @type {{ space: string, address: string, row: { id: string, name: string, role: string, server: string } }[]} */ const opened = [];
       /** @type {any} */ let first = null, keys = null;
       for (const sp of pend.spaces) {
         let done;
@@ -218,13 +229,13 @@ export function createHost(o) {
           finally { d.close(); }
           first = done;
         }
-        opened.push({ space: sp.space, address: sp.address, role: String(done.role || "member") });
+        opened.push({ space: sp.space, address: sp.address, row: rowFromReply(done, sp) });
       }
       if (!first || !keys) throw bad("None of your spaces answered. Try again.", "unreachable");
       const chain = await chainOf(String(first.bundle.id));
       const seed = unb64(keys.privateKey);
       if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_password" });
-      const rows = opened.map((x) => ({ id: x.space, name: x.space, role: x.role, server: x.address }));
+      const rows = opened.map((x) => x.row);
       await o.store.save({ master: first.bundle, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
       held = seed;
       pendingGithub = null;
