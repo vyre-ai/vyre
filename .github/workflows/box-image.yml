@@ -14,7 +14,7 @@ permissions:
   contents: read
 concurrency:
   group: box-image-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') }}
 jobs:
   detect:
     runs-on: ubuntu-latest
