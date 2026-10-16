@@ -49,7 +49,7 @@ test("build: /v1/health and system.info report version and commit", async t => {
   // The Capsule runs this vyred's own CLI by argv: node, then bin/vyre in the same tree.
   assert.equal(h.cli[0], process.execPath);
   assert.ok(h.cli[1].endsWith(path.join("bin", "vyre")) && fs.existsSync(h.cli[1]));
-  assert.deepEqual(i.network, { origins: ["https://app.vyre.run"] }, "the hosted app's origin, when config names none");
+  assert.deepEqual(i.network, { origins: ["https://web.vyre.run", "https://app.vyre.run"] }, "the hosted app's origins (the Vyre app on the web, and the old host until its redirect is live), when config names none");
 });
 
 test("build: the app's service worker carries the build, so a release is a new sw.js", () => {

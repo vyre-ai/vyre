@@ -1,28 +1,41 @@
 // @ts-check
-// worker: serves app.vyre.run from static assets (ADR 0026 section 10, ADR 0027 section 4). Every
-// response gets the same strict headers. The folders under /v/<sha>/ are content-addressed and
-// never change, so they cache for a year. The loader, its signed manifest and sw.js are
-// revalidated on every load. Any other path (such as /pair, whose fragment the browser keeps)
-// gets the loader's index.html. No state, no cookies, nothing about any box.
+// worker: app.vyre.run is retired. The Vyre app on the web is web.vyre.run (relay/web), the same app as the Mac, Windows and Android apps, so this host only sends a person on to it.
+// Every GET and HEAD gets a permanent redirect to web.vyre.run (a phone's old join or pair link goes to the route it meant; the URL fragment is kept by the browser). /sw.js is the one
+// file it serves: a worker that clears what the old loader cached, unregisters itself and moves any open window to web.vyre.run, so a phone that installed the old app does not keep it for ever.
+// No state, no cookies, nothing about any server or any person, and no script that is not that one file.
 
-export const CSP = [
-  "default-src 'none'", "script-src 'self'", "style-src 'self'", "img-src 'self' data: blob:", "font-src 'self'",
-  "connect-src 'self' https://relay.vyre.run wss://relay.vyre.run https://*.ts.net wss://*.ts.net https://names.vyre.run", "manifest-src 'self'", "worker-src 'self'",
-  "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'",
-].join("; ");
+export const TARGET = "https://web.vyre.run";
 
 export const SECURITY = Object.freeze({
-  "content-security-policy": CSP,
   "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
-  "permissions-policy": "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), interest-cohort=()",
   "cross-origin-opener-policy": "same-origin",
   "cross-origin-resource-policy": "same-origin",
 });
 
-const IMMUTABLE = "public, max-age=31536000, immutable";
-const REVALIDATE = "no-cache";
+/** The old loader's service worker, replaced by one that takes the old app down on every phone and browser that holds it. */
+export const KILL_SWITCH = `// app.vyre.run has moved to ${TARGET}. This worker removes the old app from this browser.
+self.addEventListener("install", () => { self.skipWaiting(); });
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    for (const name of await caches.keys()) await caches.delete(name);
+    await self.registration.unregister();
+    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate("${TARGET}/").catch(() => {});
+  })());
+});
+`;
+
+/**
+ * Where an old address goes. The phone app's links (/app/join, /app/pair) and the loader's own routes (/join, /pair, /github-return, /onboard) keep their meaning; the old built files
+ * (/app/..., /v/<sha>/...) and anything else go to the front door.
+ * @param {URL} url
+ */
+export function destination(url) {
+  const m = /^\/(?:app\/)?(join|pair|github-return|onboard)(\/[\w./@~%+=-]*)?$/.exec(url.pathname);
+  const path = m && !url.pathname.includes("..") ? `/${m[1]}${m[2] || ""}` : "/";
+  return `${TARGET}${path}${m ? url.search : ""}`;
+}
 
 /** @param {Response} r @param {string} cache */
 function dress(r, cache) {
@@ -34,20 +47,11 @@ function dress(r, cache) {
 }
 
 export default {
-  /** @param {Request} req @param {{ ASSETS: { fetch: (r: Request) => Promise<Response> } }} env */
-  async fetch(req, env) {
+  /** @param {Request} req */
+  async fetch(req) {
     const url = new URL(req.url);
-    if (req.method !== "GET" && req.method !== "HEAD") return dress(new Response("method not allowed", { status: 405 }), REVALIDATE);
-    // The built app's own files are answered by the service worker, from the verified build. A
-    // request that reaches here (no worker yet) is a 404, never the loader page.
-    if (url.pathname.startsWith("/app/")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
-    if (url.pathname.startsWith("/v/")) {
-      if (!/^\/v\/[a-f0-9]{40}\/[\w./@[\]+-]+$/.test(url.pathname) || url.pathname.includes("..")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
-      return dress(await env.ASSETS.fetch(req), IMMUTABLE);
-    }
-    const r = await env.ASSETS.fetch(req);
-    if (r.status !== 404) return dress(r, REVALIDATE);
-    // Anything else is the app's own route: the loader page, which keeps the URL fragment.
-    return dress(await env.ASSETS.fetch(new Request(new URL("/index.html", url), req)), REVALIDATE);
+    if (req.method !== "GET" && req.method !== "HEAD") return dress(new Response("method not allowed", { status: 405 }), "no-store");
+    if (url.pathname === "/sw.js") return dress(new Response(req.method === "HEAD" ? null : KILL_SWITCH, { headers: { "content-type": "text/javascript; charset=utf-8" } }), "no-cache");
+    return dress(new Response(null, { status: 308, headers: { location: destination(url) } }), "public, max-age=3600");
   },
 };

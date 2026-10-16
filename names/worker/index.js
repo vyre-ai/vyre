@@ -26,7 +26,7 @@
 //
 // Nothing here serves user content, sets a cookie or reads one. CORS is narrow: `GET /v1/ids/resolve` and the name availability check `GET /v1/names/check` are public read-only data and answer any origin (no credentials). `POST /v1/ids/claim`,
 // `/v1/ids/finalize`, `/v1/ids/reserved-for`, `/v1/ids/append` and `/v1/ids/update` carry their own proof (the identity's own signature is the authentication), so they also accept the Vyre app's origins (env.APP_ORIGINS, default
-// https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none. `POST /v1/ids/reserve` takes no credentials and answers any origin, with a per-address daily limit.
+// https://web.vyre.run and https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none. `POST /v1/ids/reserve` takes no credentials and answers any origin, with a per-address daily limit.
 
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
@@ -217,7 +217,7 @@ const fail = e => reply(e.status, { error: { code: e.code, message: e.message } 
 const APP_OPS = new Set(["idClaim", "idFinalize", "idReservedFor", "idAppend", "idUpdate"]);
 /** Reserving a name takes no key and returns a code only to its asker: the web page (any origin) may call it, with no credentials. */
 const OPEN_OPS = new Set(["idReserve"]);
-const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
+const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://web.vyre.run,https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
 /** The CORS headers for this request on this route, or null. resolve: any origin, never credentials. App routes: the exact allowed origin only. */
 function corsHeaders(request, env, op) {
   const origin = request.headers.get("origin");

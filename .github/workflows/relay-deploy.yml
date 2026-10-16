@@ -1,5 +1,5 @@
 # The one gated deploy of the three Cloudflare Workers 0.2.0 needs: the relay (relay.vyre.run), the name directory (names.vyre.run)
-# and the hosted web app (app.vyre.run). Nothing here runs until a person dispatches it, and the real deploy waits for the
+# and the redirect that retired the old hosted app (app.vyre.run, now a redirect to web.vyre.run; web.vyre.run itself deploys from web-deploy.yml). Nothing here runs until a person dispatches it, and the real deploy waits for the
 # `deploy` environment's required reviewer (the same reviewer as `release`) after the dry runs have been read.
 #
 #   gh workflow run relay-deploy.yml --ref work/stage-0.2 -f sha=<the stage sha> -f relay=true -f names=true
@@ -23,13 +23,9 @@ on:
         type: boolean
         default: false
       app:
-        description: "Deploy relay/app (app.vyre.run). Needs app_out_run."
+        description: "Deploy relay/app (app.vyre.run): the redirect to web.vyre.run and the service worker that removes the old app. No build is needed."
         type: boolean
         default: false
-      app_out_run:
-        description: "The run id of the release run that uploaded the signed `app-out` artifact (for app)"
-        required: false
-        type: string
       names_admin_secret:
         description: "Also set the names Worker's ADMIN_SECRET (the support-only rebind) from the environment's NAMES_ADMIN_SECRET"
         type: boolean
@@ -106,18 +102,11 @@ jobs:
         working-directory: names/worker
         run: |
           "$W" deploy --dry-run --outdir /tmp/names-out 2>&1 | tee /tmp/names-dry.txt; grep -E "DIRECTORY|NAMES_LIMITER|ZONE|ORIGIN" /tmp/names-dry.txt
-      - name: relay/app, the signed build to deploy (the release workflow's run for this commit, signature verified)
-        if: ${{ inputs.app }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN: ${{ inputs.app_out_run }}
-          SHA: ${{ inputs.sha }}
-        run: scripts/deploy/fetch-app-out.sh "$RUN" "$SHA"
       - name: relay/app, dry run
         if: ${{ inputs.app }}
         working-directory: relay/app
         run: |
-          "$W" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt; grep -E "ASSETS|Assets|assets" /tmp/app-dry.txt
+          "$W" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt; grep -E "app.vyre.run|vyre-app" /tmp/app-dry.txt
   deploy:
     name: deploy (waits for the deploy environment's reviewer)
     needs: dry-run
@@ -238,13 +227,6 @@ jobs:
           printf %s "$NAMES_TUNNEL_IPV4" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || { echo "::error::NAMES_TUNNEL_IPV4 must be an environment secret holding the edge VM's reserved IPv4 address"; exit 1; }
           printf %s "$NAMES_RELAY_SECRET" | "$W" secret put RELAY_SECRET
           printf %s "$NAMES_TUNNEL_IPV4" | "$W" secret put TUNNEL_IPV4
-      - name: relay/app, the signed build (checked again here)
-        if: ${{ inputs.app }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN: ${{ inputs.app_out_run }}
-          SHA: ${{ inputs.sha }}
-        run: scripts/deploy/fetch-app-out.sh "$RUN" "$SHA"
       - name: relay/app
         if: ${{ inputs.app }}
         working-directory: relay/app

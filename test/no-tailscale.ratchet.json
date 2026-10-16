@@ -134,8 +134,6 @@
   "modules/vault-extension/README.md",
   "modules/vault-extension/manifest.json",
   "names/worker/index.js",
-  "relay/app/README.md",
-  "relay/app/worker.js",
   "relay/client/README.md",
   "relay/client/paths.test.js",
   "relay/client/setup.test.js",
