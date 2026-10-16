@@ -9,20 +9,22 @@ on:
     # suite on what landed. The newest tip cancels an older run.
     branches: ["main", "work/lead-*", "work/release-*", "release/**", "work/stage-0.2"]
   pull_request:
+    # ready_for_review starts the run that marking a draft ready asks for (the full matrix). A draft, and any pull request into an integrate/ branch, runs Node 24 only; the integrate branch's own pull request into a release branch, once ready, runs 22 and 24.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: node-${{ github.ref }}
   # The integration tip (work/lead-*) never cancels: a run finishes and the newest tip waits behind it, so a full result always arrives.
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2') }}
 jobs:
   # docs-check harvests every module in a child process; on shard 2 it used to run beside person-only-guard and the rest of the shard under full parallelism, and a slow harvest made the committed reference pages look stale. This job runs it alone; the sharded test job omits the file (VYRE_TEST_OMIT).
   docs:
     strategy:
       matrix:
-        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
-    runs-on: ubuntu-latest
+        node: ${{ fromJSON(((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       VYRE_NO_DIALOGS: "1"
@@ -40,13 +42,13 @@ jobs:
       matrix:
         # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
         # requests run both versions.
-        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+        node: ${{ fromJSON(((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
         # Five shards (node --test-shard) so a run is about a fifth of the suite per job; the eval and the perf gate run on shard 1 only.
         shard: [1, 2, 3, 4, 5]
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
-    runs-on: ${{ (vars.NODE_ON_TESTBOX == '1' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       VYRE_NO_DIALOGS: "1"

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci: the node tests (and the docs check), the app jobs and the design pictures run on the self-hosted runners (labels self-hosted, linux-heavy) when the repo variable CI_SELF_HOSTED is 1, and never for a fork pull request or pull_request_target; otherwise on ubuntu-latest. Mac and Windows jobs stay on GitHub.
+- ci: a draft pull request, and any pull request into an integrate/ branch, runs the node tests on Node 24 only (5 shards); a ready pull request into a release branch, release branches and main run Node 22 and 24. A new push cancels the older run of the same pull request (node, lumen-mac, app, box-image; a pull request's ref never matched the work/ test before, so nothing was cancelled). lumen-mac no longer runs twice for a work branch with a pull request.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
 - test: a hosted key is refused for every onboard and wink.install tool, and that check runs before the full allowlist comparison.
 - fix(install): redeeming an install line uses the one published-key check. On another computer, wink.install.status asks the adopting server over the paired route and returns the space id once the server has adopted the creator.
