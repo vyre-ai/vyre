@@ -27,7 +27,7 @@ export function SystemScreen() {
       <Tests />
       <Banner>The cards below are for people who run their own home computer. A command is shown to copy and run yourself. Vyre never runs one for you.</Banner>
       <Advanced />
-      <Drive />
+      {RC.vyreDrive ? <Drive /> : null}
     </Page>
   );
 }

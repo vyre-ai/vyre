@@ -8,6 +8,8 @@ import { flagNotOff } from "./flag.js";
 export const RC = {
   // Sites (Publish) is on: the place, its pages and the chat's Publish sheet are all connected to core/publish (0.5).
   sites: true,
+  // VyreDrive's box-share section in Settings, This computer: off. It was built on another VPN product's file sharing and its fix-it lines send a person to that product's console. Mounted box files return with VyreDrop; the Space's own Files screen is unaffected.
+  vyreDrive: false,
   // Glass, renamed Screen Share, is 0.3.1 (user ruling): no route, button or command reaches it in 0.2.9. screens/glass, src/glass and scripts/glass-assets.mjs stay for then.
   glass: false,
   // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
