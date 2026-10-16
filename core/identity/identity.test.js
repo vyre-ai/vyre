@@ -29,8 +29,9 @@ test("an agent cannot supply the master password, and a migration strips the pla
   await store.generate();
   store.setName("alex");
   await assert.rejects(() => tools.get("identity.migrate").run({ password: "correct horse battery" }, { caller: "mcp" }), (e) => e.code === "secret_refused");
+  await assert.rejects(() => tools.get("identity.migrate").run({ password: "correct horse battery" }, { caller: "module:onboard", origin: "mcp" }), (e) => e.code === "secret_refused");
   assert.equal(identityHeld(path.join(root, "spaces", "identity.json")), false);
-  const made = await tools.get("identity.migrate").run({ password: "correct horse battery" }, { caller: "cli" });
+  const made = await tools.get("identity.migrate").run({ password: "correct horse battery" }, { caller: "module:onboard", origin: "cli" });
   assert.equal(made.recoveryKey.replace(/-/g, "").length, 26);
   const file = JSON.parse(fs.readFileSync(path.join(root, "spaces", "identity.json"), "utf8"));
   assert.equal(file.privateKey, undefined);

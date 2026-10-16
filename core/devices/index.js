@@ -31,7 +31,7 @@ export default {
         github: { type: "object", properties: { login: str, subject: str } },
       }, ["server", "password"]),
       run: async (input, meta) => {
-        if (modelSuppliedSecret(meta && meta.caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
+        if (modelSuppliedSecret(meta && meta.caller, input, meta && meta.origin)) throw refuse(SECRET_REFUSED, "secret_refused");
         if (input.password == null || input.password === "") throw refuse("Enter your master password on this device.", "person_enters");
         const server = String(input.server || "").trim();
         if (!/^https?:\/\/[A-Za-z0-9._:-]{1,200}$/.test(server)) throw refuse("Give the space server address, starting with https://.", "bad_input");
