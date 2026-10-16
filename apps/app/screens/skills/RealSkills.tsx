@@ -6,9 +6,9 @@ import { IconTile } from "../places/Page";
 import { browse, get, versions, draft, approve, rollback, decline, type SkillRow, type SkillVersion, type BrowsePack } from "./skills";
 import { callT as call } from "../../src/real/call-tool";
 import { pickConnections } from "../connections/model";
-const AIS = ["claude", "codex", "grok"] as const;
 import { PluginDeclaresView, PluginEditor, type ConnectionPick } from "./PluginEditor";
 import { emptyPlugin, pluginBody, type PluginManifest } from "./plugin-model";
+import { AIS } from "../../../../lib/skill-library.js";
 
 const LEVELS = [
   { id: "personal", label: "Mine (identity)" },

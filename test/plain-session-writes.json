@@ -61,7 +61,15 @@
    "class": "held",
    "why": "presence floor"
   },
+  "chrome.api": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
   "chrome.click": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
+  },
+  "chrome.net": {
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
   },
@@ -456,6 +464,10 @@
   "sidebar.unpin": {
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
+  },
+  "skills.decline": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: this call carries no person, and declining a draft is the level owner's act"
   },
   "skills.draft": {
    "class": "own",

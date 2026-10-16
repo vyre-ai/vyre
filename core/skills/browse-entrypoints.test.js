@@ -20,7 +20,8 @@ test("registry-derived: member door and MCP core expose browse; list routes thro
   assert.match(idx, /skills\.browse[\s\S]*browsePack/);
   assert.match(idx, /skills\.list[\s\S]*browsePack/);
   const mcp = fs.readFileSync(path.join(ROOT, "harness/mcp/core-tools.js"), "utf8");
-  assert.match(mcp, /skills_browse/);
+  assert.match(mcp, /skills_find/);
+  assert.doesNotMatch(mcp, /\bskills_browse\b/, "skills_browse stays off CORE (≤30 tools); reach it via tools_find or the memory-tools alias");
   const app = fs.readFileSync(path.join(ROOT, "apps/app/screens/skills/skills-source.ts"), "utf8");
   assert.match(app, /skills\.browse/);
   const cli = fs.readFileSync(path.join(ROOT, "core/cli/commands/skills.js"), "utf8");

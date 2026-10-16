@@ -18,6 +18,7 @@
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
 import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
+import { SPECIAL_BUILDER_ACTIONS } from "../../../../core/flows/special-builder-actions.js";
 
 export { policyWords };
 
@@ -762,7 +763,7 @@ export const actionPick = (o, action) => {
 /** The shape of an action and of the address it acts on, as the engine checks them; the actions the editor has a step of its own for stay those steps. */
 const ACTION_WORDS = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 const RESOURCE_WORDS = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
-export const SPECIAL_ACTIONS = new Set(["documents.generate", "work.start-project", "comms.send", "comms.email"]);
+export const SPECIAL_ACTIONS = new Set(SPECIAL_BUILDER_ACTIONS);
 const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
 
 /** @param {any} s */

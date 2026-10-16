@@ -29,6 +29,7 @@
   "files.recent": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
   "files.search": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
   "files.stat": "reads, searches or previews the person's files; nothing leaves, nothing is shared",
+  "flows.actions": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.attention": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.cancel": "runs or controls a Flow the person already approved; its effects are held at the Gate like any act",
   "flows.card": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",

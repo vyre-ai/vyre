@@ -549,7 +549,7 @@
  },
  {
   "tool": "flows.actions",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the actions a Flow's call step can name: every tool the running modules offer as a Flow step, with what each takes and gives; read it to pick the action for a call step; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists module tools a Flow call step may name, with inputs and outputs; read it to pick a call-step action; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.advance",
@@ -1326,6 +1326,14 @@
  {
   "tool": "skills.approve",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.approve opened to a model or a module in 95132d453 (9 Oct 2026); the body decides: person and owner check: the callers list leaves out the plain mcp and harness, approval needs a chain of exactly one person hop (an assistant is refused), and mayApprove() allows only the level's owner or an admin; a plugin with code also needs the ack hash"
+ },
+ {
+  "tool": "skills.browse",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.browse opened to a model or a module in c8601dbce (16 Oct 2026); the body decides: read-only: the Skills screen library view; lists only what the caller may use at each level (the same project reach and placement rules as skills.list, core/skills/browse-lib.js)"
+ },
+ {
+  "tool": "skills.decline",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.decline opened to a model or a module in c8601dbce (16 Oct 2026); the body decides: person and owner check: the call must carry a verified person chain (need()), and decline() allows only the draft's proposer or the level's owner (core/skills/library.js)"
  },
  {
   "tool": "skills.draft",
