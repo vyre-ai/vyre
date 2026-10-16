@@ -13,6 +13,7 @@ import {
   memberReadTools,
 } from "../../lib/member-read-scope-audit.js";
 import {
+  BOB,
   relayDaemon,
   twoMembers,
   scratchWork,
@@ -22,6 +23,21 @@ import {
   ensureFakeSessionProvider,
   threadStartProviderFields,
 } from "../sessions/testing/fake-agent-harness.js";
+import {
+  hookRecallTestEmbedder,
+  recallFts5Available,
+} from "../sessions/testing/recall-live.js";
+import {
+  indexRecall,
+  seedTaskRecord,
+  seedMemoryFact,
+  seedOwnerFile,
+  seedOwnerProject,
+  seedOwnerVaultName,
+  seedPersonalSkill,
+  seedRecallSession,
+  seedVaultMeName,
+} from "../../lib/member-read-scope-seed.js";
 
 process.env.VYRE_KERNEL ??= "1";
 process.env.VYRE_SEAL_DEV = "1";
@@ -50,13 +66,14 @@ function blobHas(data, needle) {
 /**
  * @param {string} tool
  * @param {{
- *   carolThread?: string, ownerThread?: string, chat?: string, carolPlannerTitle?: string,
+ *   carolThread?: string, ownerThread?: string, chat?: string,
+ *   MARK_O?: string, MARK_C?: string, MARK_B?: string, recallIndexed?: boolean,
  * }} seed
  */
 function probeFor(tool, seed) {
   const t = seed.carolThread;
   const fixed = /** @type {Record<string, any>} */ ({
-    "recall.search": { q: seed.carolPlannerTitle || "probe", limit: 5 },
+    "recall.search": { q: seed.recallIndexed ? seed.MARK_C : (seed.MARK_C || "probe"), limit: 8 },
     "threads.list": { all: true },
     "threads.get": t ? { thread: t, limit: 5 } : {},
     "threads.items": t ? { thread: t } : {},
@@ -71,16 +88,23 @@ function probeFor(tool, seed) {
     "planner.ringing": {},
     "planner.parse": { text: "tomorrow 9am" },
     "projects.list": {},
-    "records.list": { type: "contact" },
+    "records.list": { type: "task" },
     "records.me": {},
     "records.types": {},
     "records.holders": { role: "client" },
     "records.kits.library": {},
     "memory.stats": {},
     "memory.graph": { room: "unfiled" },
-    "memory.facts": { limit: 3 },
+    "memory.facts": { limit: 80 },
+    "memory.relevant": { prompt: seed.MARK_O || "probe", limit: 5 },
+    "memory.retrieve": { q: seed.MARK_O || "probe", limit: 5 },
+    "memory.context": { limit: 3 },
     "skills.list": {},
-    "skills.find": { q: "test" },
+    "skills.find": { q: seed.MARK_O || "probe" },
+    "skills.get": { id: "personal/owner-skill-seed" },
+    "files.linked.search": { q: seed.MARK_B || "probe" },
+    "files.linked.list": {},
+    "vault.me.list": {},
     "agents.list": {},
     "agents.history": { agent: "assistant" },
     "agents.context.list": { agent: "assistant" },
@@ -97,7 +121,6 @@ function probeFor(tool, seed) {
     "goals.list": {},
     "tasks.list": {},
     "views.list": {},
-    "vault.me.list": {},
     "vault.me.get": {},
     "sessions.accounts.list": {},
     "mcp.mine.list": {},
@@ -105,12 +128,12 @@ function probeFor(tool, seed) {
   if (fixed[tool] !== undefined) return fixed[tool];
   if (t && tool.startsWith("threads.") && !["threads.list", "threads.commands", "threads.slash"].includes(tool)) return { thread: t };
   if (tool.startsWith("records.") && !["records.me", "records.types", "records.kits.library", "records.kits.get"].includes(tool)) {
-    return { type: "contact" };
+    return { type: "task" };
   }
   if (tool.startsWith("agents.") && tool !== "agents.list" && tool !== "agents.versions" && tool !== "agents.create") return { agent: "assistant" };
   if (tool.startsWith("work.chat.") && tool !== "work.chat.list" && tool !== "work.chat.create") return seed.chat ? { chat: seed.chat } : {};
   if (tool.startsWith("flows.") && tool.includes(".")) return { id: "probe-flow-id" };
-  if (tool.startsWith("files.linked.")) return { link: "probe" };
+  if (tool.startsWith("files.linked.")) return tool === "files.linked.search" ? { q: seed.MARK_B || "probe" } : { link: "probe" };
   return {};
 }
 
@@ -120,8 +143,9 @@ test("MEMBER_MAY read tools: modules wire lib/member-scope.js or native kernel s
   assert.deepEqual(missing, [], `MEMBER_MAY read tools missing member-scope wiring:\n${missing.join("\n")}`);
 });
 
-test("MEMBER_MAY read tools: live calls as member leak no owner or other-member seeded data", { timeout: 300_000 }, async (t) => {
-  const { d } = await relayDaemon(t, "claude");
+test("MEMBER_MAY read tools: live calls as member leak no owner or other-member seeded data", { timeout: 420_000 }, async (t) => {
+  if (recallFts5Available()) hookRecallTestEmbedder(t);
+  const { d } = await relayDaemon(t, "claude", { recall: recallFts5Available() });
   const readTools = memberReadTools(d.registry, MEMBER_MAY);
   assert.ok(readTools.length >= 100, `expected many read tools, got ${readTools.length}`);
   assert.ok(d.registry.tools.has("threads.start"), "threads module must load (manifest declares threads.recall-sessions)");
@@ -136,6 +160,7 @@ test("MEMBER_MAY read tools: live calls as member leak no owner or other-member 
   const MARK_C = `vyre-read-leak-carol-${stamp}`;
   const MARK_B = `vyre-read-leak-bob-${stamp}`;
 
+  const db = d.registry.deps.db;
   const ownerTh = await d.registry.call("threads.start", {
     cwd: work, prompt: MARK_O, surface: "cli", ...threadStartProviderFields("claude"),
   }, "cli", ownerMeta);
@@ -144,17 +169,34 @@ test("MEMBER_MAY read tools: live calls as member leak no owner or other-member 
   const plannerAdd = (meta, title) => d.registry.call("planner.add", {
     kind: "reminder", title, body: "seed", at: "at 10am",
   }, "cli", meta);
-  const ownerPlan = await plannerAdd(ownerMeta, MARK_O);
-  assert.ok(ownerPlan.data, JSON.stringify(ownerPlan.error));
+  assert.ok((await plannerAdd(ownerMeta, MARK_O)).data);
   assert.ok((await plannerAdd(carolMeta, MARK_C)).data);
-  const bobPlan = await plannerAdd(bobMeta, MARK_B);
-  assert.ok(bobPlan.data, JSON.stringify(bobPlan.error));
+  assert.ok((await plannerAdd(bobMeta, MARK_B)).data);
+
+  await seedMemoryFact(d, ownerMeta, MARK_O);
+  seedOwnerFile(work, MARK_O);
+  await seedOwnerProject(d, ownerMeta, work, MARK_O);
+  await seedTaskRecord(d, ownerMeta, MARK_O);
+  await seedTaskRecord(d, carolMeta, MARK_C);
+  await seedTaskRecord(d, bobMeta, MARK_B);
+  await seedPersonalSkill(d, ownerMeta, "owner-skill-seed", MARK_O);
+  await seedOwnerVaultName(d, ownerMeta, MARK_O);
+  await seedVaultMeName(d, bobMeta, MARK_B);
+  await seedVaultMeName(d, carolMeta, MARK_C);
+
+  let recallIndexed = false;
+  if (recallFts5Available()) {
+    await seedRecallSession(d, ownerMeta, null, work, MARK_O, db);
+    await seedRecallSession(d, ownerMeta, BOB, work, MARK_B, db);
+    recallIndexed = await indexRecall(d);
+  }
 
   const seed = {
     carolThread: undefined,
     ownerThread: ownerTh.data.id,
     chat: undefined,
-    carolPlannerTitle: MARK_C,
+    MARK_O, MARK_C, MARK_B,
+    recallIndexed,
   };
 
   const carolPlanner = await d.registry.call("planner.list", {}, "cli", carolMeta);
