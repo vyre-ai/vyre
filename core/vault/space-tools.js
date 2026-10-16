@@ -3,6 +3,7 @@
 
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { userHostFetch } from "../../lib/http.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import * as SV from "../../kernel/identity/space-vault.js";
 
@@ -77,7 +78,7 @@ export function registerSpaceTools(ctx) {
         id: input.id,
         request: { url: input.url, method: input.method, headers: input.headers, body: input.body },
         transport: async (req) => {
-          const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+          const r = await userHostFetch(req.url, { method: req.method, headers: req.headers, body: req.body });
           return { status: r.status, body: await r.text() };
         },
       });
