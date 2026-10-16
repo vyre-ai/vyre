@@ -94,7 +94,8 @@ export default {
         const chosen = providers(ctx.modules.status()).filter(p => !want || want.has(p.kind));
         const answers = await Promise.all(chosen.map(async p => {
           try {
-            const r = await within(ctx.call(p.search, { q, limit }, personCallOpts(meta.caller, meta) || { as: meta.caller }), SEARCH_MS);
+            const relayAs = personCallOpts(meta.caller, meta) || (RESOLVERS.includes(String(meta.caller)) ? { relay: true } : null);
+            const r = await within(ctx.call(p.search, { q, limit }, relayAs || undefined), SEARCH_MS);
             if (!r || r.error || (r.data && r.data.error)) return { p, failed: true };
             const d = r.data !== undefined ? r.data : r;
             const raw = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items : [];
@@ -118,7 +119,8 @@ export default {
         const p = providers(ctx.modules.status()).find(x => x.kind === input.kind);
         if (!p) throw fail("no_such_kind", `no provider offers ${input.kind}`);
         let r;
-        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, personCallOpts(meta.caller, meta) || { as: meta.caller }), 2000); }
+        const relayAs = personCallOpts(meta.caller, meta) || (RESOLVERS.includes(String(meta.caller)) ? { relay: true } : null);
+        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, relayAs || undefined), 2000); }
         catch { throw fail("unavailable", `${p.kind} did not answer`); }
         const bad = !r || r.error || (r.data && r.data.error);
         if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
