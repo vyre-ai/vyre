@@ -22,11 +22,13 @@ test("a password never appears on an approval card", async () => {
   const fields = holdFields(input);
   const view = viewOf(input);
   const page = pageOf(input);
-  const blob = JSON.stringify({ fields, view, page, input });
+  const blob = JSON.stringify({ fields, view, page });
   assert.equal(blob.includes(SECRET), false);
   assert.equal(blob.includes(NESTED), false);
   assert.equal(blob.includes("AAAA-BBBB"), false);
   assert.equal(fields.password, undefined);
+  assert.equal(input.password, SECRET, "the call that runs keeps the field");
+  assert.equal(input.auth.secret, NESTED);
   assert.match(blob, /juno@example.com/);
   assert.match(blob, /Invoice 1042/);
   const w = await world();
