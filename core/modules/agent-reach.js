@@ -13,6 +13,8 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
+  ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],
+  ["onboard.agent.signin", "signs an AI provider into the person's own vault: credentials never reach an assistant"],
   ["identity.lock", "locks the unlocked session: the person's own act"],
   ["mcp.mine.list", "lists the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
   ["mcp.mine.add", "adds an MCP server and its token to the person's own vault: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],

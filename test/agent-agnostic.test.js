@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
-import { sessionAdapters, sessionCaller } from "../lib/agent-adapters.js";
+import { loginAdapters, sessionAdapters, sessionCaller } from "../lib/agent-adapters.js";
 import { agentClaim } from "../core/modules/index.js";
 import { modelCaller, scrubVaultResult } from "../core/modules/needs-you-hold.js";
 import { catalogOf, listing } from "../harness/mcp/core-tools.js";
@@ -30,6 +30,9 @@ test("every registered session adapter gets the same caller, the same secret fil
   const adapters = sessionAdapters(d.registry.providers.keys());
   for (const id of ["claude", "codex", "grok", "openrouter", "openai-compatible"]) assert.ok(adapters.includes(id), id);
   assert.ok(adapters.length >= 5, "the loop is the registry, plus Claude");
+  const logins = loginAdapters(d.registry.providers.keys());
+  for (const id of ["claude", "codex", "grok"]) assert.ok(logins.includes(id), id);
+  assert.ok(!logins.includes("openrouter"), "API-key providers are not login steps");
 
   const rules = fs.readFileSync(path.join(ROOT, "DEVELOPMENT-RULES.md"), "utf8");
   assert.match(rules, /Treat every session adapter the same at the tool door/);

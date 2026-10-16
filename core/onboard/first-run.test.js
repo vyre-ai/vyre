@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { JOIN_COPY, PHASES, afterIdentity, commandOk, mentionsServer, parseInvite, passwordOk, usernameOf } from "../../lib/first-run-shape.js";
+import { JOIN_COPY, PHASES, afterAi, afterRecovery, commandOk, mentionsServer, parseInvite, passwordOk, usernameOf } from "../../lib/first-run-shape.js";
 import { lineOfOp } from "../../lib/one-yes.js";
 import { registerFirstRun } from "./first-run.js";
 
@@ -31,12 +31,13 @@ test("a username, an invite link and the install line have one shape", () => {
 test("the join path never names a server, and identity leads to the path the person chose", () => {
   for (const text of Object.values(JOIN_COPY)) assert.equal(mentionsServer(text), false, text);
   assert.deepEqual(PHASES, ["Identity", "Space", "Ready"]);
-  assert.equal(afterIdentity({ path: "join" }), "join.link");
-  assert.equal(afterIdentity({ path: "join", heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
-  assert.equal(afterIdentity({ path: "create" }), "create.kind");
-  assert.equal(afterIdentity({}), "space.choice");
-  assert.equal(afterIdentity({ path: "computer" }), "computer.add");
-  assert.equal(afterIdentity({ path: "phone" }), "phone.add");
+  assert.equal(afterRecovery({}), "id.ai");
+  assert.equal(afterAi({ path: "join" }), "join.link");
+  assert.equal(afterAi({ path: "join", heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
+  assert.equal(afterAi({ path: "create" }), "create.kind");
+  assert.equal(afterAi({}), "space.choice");
+  assert.equal(afterAi({ path: "computer" }), "computer.add");
+  assert.equal(afterAi({ path: "phone" }), "phone.add");
 });
 
 /** @param {{ status?: any }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[] }} */
@@ -94,7 +95,8 @@ test("the first-run tools are the ones the app calls, and an access change is ma
   const { tools } = harness();
   const names = [...tools.keys()].sort();
   assert.deepEqual(names, [
-    "onboard.computer.add", "onboard.first.done", "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
+    "onboard.agent.list", "onboard.agent.signin", "onboard.computer.add", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save",
+    "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
     "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
     "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll",
   ]);

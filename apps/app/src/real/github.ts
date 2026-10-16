@@ -8,10 +8,9 @@
 import { Platform } from "react-native";
 import { MOCK, tool } from "../../src/real/box";
 import { relayUrl } from "../../src/api/relay-url";
-import { GITHUB_MOCK } from "./flow-model.js";
-import { accountMessage, githubSay, homeHintText, linkMessage, newVerifier, openRelease, parseHomeHint, ticketId } from "./github-core.js";
-import type { GithubUser } from "./types";
-import type { Outcome } from "./real-identity";
+import { GITHUB_MOCK } from "../../screens/first-run/mock.js";
+import { accountMessage, githubSay, homeHintText, linkMessage, newVerifier, openRelease, parseHomeHint, ticketId } from "../identity/github-core.js";
+import type { GithubUser, Outcome } from "./github-types";
 import * as C from "../../../../kernel/identity/chain.js";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");

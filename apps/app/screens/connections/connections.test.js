@@ -318,9 +318,9 @@ test("connect-anything only (G26): Connections has no tab for Google or GitHub, 
   const labels = [...tabs[1].matchAll(/\["([a-z]+)", "([^"]+)"\]/g)].map((m) => m[2]);
   assert.deepEqual(labels, ["Connected", "Add", "Any app", "MCP", "Access"], "no Google tab, no GitHub tab");
   assert.ok(!fs.existsSync(new URL("./RealGoogle.tsx", import.meta.url)) && !fs.existsSync(new URL("./RealGithub.tsx", import.meta.url)), "their screens are gone");
-  const onboard = fs.readFileSync(new URL("../../../../web/onboard/onboard.js", import.meta.url), "utf8");
-  const step = onboard.slice(onboard.indexOf("accounts(col, s) {"), onboard.indexOf("devices(col, s) {"));
-  assert.ok(step.includes("Any app") && !/github/i.test(step), "the accounts step points to Any app and offers no GitHub pick");
+  assert.ok(!fs.existsSync(new URL("../../../../web/onboard/onboard.js", import.meta.url)), "the server-hosted onboard wizard script is gone");
+  const doc = fs.readFileSync(new URL("../../../../docs/design/onboarding-v2.md", import.meta.url), "utf8");
+  assert.ok(!/deck\/onboard/i.test(doc), "onboarding docs do not point at the old deck flow");
 });
 
 test("sending service: shown without a key, saved through the vault once, tested to one address, removed by its item", { skip: !strip }, async () => {
