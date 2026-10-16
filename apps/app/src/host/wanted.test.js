@@ -25,3 +25,13 @@ test("the Windows app's window may reach what the page host calls: the relay and
   for (const need of ["https://relay.vyre.run", "wss://relay.vyre.run", "https://names.vyre.run"]) assert.ok(connect.includes(need), `connect-src lacks ${need}`);
   assert.ok(!/unsafe-eval|\*/.test(csp), "the window's policy stays narrow");
 });
+
+test("both computer apps say the one thing hostWanted reads: a window with no daemon sets `boxless` on __vyreShell", () => {
+  const read = (p) => fs.readFileSync(new URL(`../../../../${p}`, import.meta.url), "utf8");
+  const mac = read("local/capsule/native/Sources/Host/VyreAppWindow.swift");
+  assert.match(mac, /window\.__vyreBoxless = true;/, "a window with no vyred marks itself before the bridge is made");
+  assert.match(mac, /kind: "mac",\s+boxless: !!window\.__vyreBoxless/);
+  assert.ok(!/Content-Security-Policy/i.test(mac), "the Mac window adds no content policy that would block the names directory");
+  const win = read("local/capsule/native-win/app/src/main.rs");
+  assert.match(win, /kind: "windows", boxless: \{boxless\}/);
+});
