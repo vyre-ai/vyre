@@ -14,6 +14,14 @@ export { publishedDeviceKeys };
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const SPACE_ID = /^spc_[a-z2-7]{8,}$/;
 
+/** The one directory client. A test passes `directory`. Otherwise this is `names.directory` on the kernel config, the same host identity.create published to. @param {any} o */
+function directoryClient(o) {
+  if (o.directory) return o.directory;
+  const raw = o.ctx && o.ctx.config && o.ctx.config.names && o.ctx.config.names.directory;
+  const base = typeof raw === "string" && /^https?:\/\//.test(raw) ? raw : undefined;
+  return idDirectory({ ...(base ? { base } : {}), seen: memorySeen() });
+}
+
 /** The home space id, once this server has a kernel. Empty until then. @param {any} ctx */
 function kernelSpace(ctx) {
   const id = ctx && ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
@@ -24,8 +32,8 @@ const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = [
 
 /**
  * Redeem one install code on this server. The one published-key check runs before anything is written. The owner record is written before spaces.owner.adopt. A second redeem is refused.
- * `directory` is the test seam. Production asks the identity directory through assertPublishedKey.
- * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function, kernel?: { space?: string, owner?: string } }, meta: { get: Function, set: Function, del: Function }, now?: () => number, directory?: { resolveById: (id: string) => Promise<any> } }} o
+ * `directory` is the test seam. Production asks the directory this computer is configured to use, through assertPublishedKey. There is no second check.
+ * @param {{ ctx: { call: Function, events?: { emit: Function }, log?: Function, kernel?: { space?: string, owner?: string }, config?: { names?: { directory?: string } } }, meta: { get: Function, set: Function, del: Function }, now?: () => number, directory?: { resolveById: (id: string) => Promise<any> } }} o
  * @param {string} code
  */
 export async function redeemInstallCode(o, code) {
@@ -33,7 +41,7 @@ export async function redeemInstallCode(o, code) {
   const v = verifyPairCode(String(code || ""), now);
   if (!v.ok) throw fail(v.code, v.message);
   const pub = Buffer.from(v.pub).toString("base64url");
-  try { await assertPublishedKey(o.directory || idDirectory({ seen: memorySeen() }), v.person, pub, { fullDevice: true }); }
+  try { await assertPublishedKey(directoryClient(o), v.person, pub, { fullDevice: true }); }
   catch (e) {
     const c = /** @type {any} */ (e).code;
     throw fail(c === "unavailable" ? "unavailable" : "denied", c === "unavailable" ? "The directory could not confirm this key. Wait a minute and run the install line again." : "That install code is not signed by a key this person has published. Make a new install line in the Vyre app.");

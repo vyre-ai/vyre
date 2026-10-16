@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mintPairCode, verifyPairCode, installCommand, PAIR_CODE_LEN, personIdOfKey } from "../lib/pair-code.js";
@@ -120,6 +121,29 @@ test("redeem adopts only when the published key for that person id matches, and 
   await assert.rejects(() => redeemInstallCode({ ctx: ctxOf(missing), meta: missing, now: NOW, directory: closed("not_found") }, made.code), (/** @type {any} */ e) => e.code === "denied");
   assert.equal(missing.get("owner"), null);
   assert.deepEqual(publishedDeviceKeys({ entries: [{ kind: "device", pub: me.pub }, { kind: "device", pub: other.pub, held: "web" }, { kind: "code", pub: other.pub }] }), [me.pub]);
+});
+
+test("redeem asks the name directory this computer is configured to use", async () => {
+  const me = identity();
+  const made = await mintPairCode({ person: PERSON, publicKey: me.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => me.sign(m) });
+  /** @type {string[]} */ const hits = [];
+  const server = http.createServer((req, res) => {
+    hits.push(String(req.url));
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: "not_found", message: "no such name" } }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  try {
+    const meta = metaOf();
+    const ctx = { ...ctxOf(meta), config: { names: { directory: `http://127.0.0.1:${port}` } } };
+    await assert.rejects(() => redeemInstallCode({ ctx, meta, now: NOW }, made.code), (/** @type {any} */ e) => e.code === "denied" && /published/.test(e.message));
+    assert.equal(meta.get("owner"), null);
+    assert.ok(hits.some((u) => u.includes(`/v1/ids/resolve?id=${encodeURIComponent(PERSON)}`)), hits.join(" "));
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve(null)));
+  }
 });
 
 test("the setup page takes the code in the body, locks, and refuses a code in the address", async () => {
