@@ -26,6 +26,12 @@ const defaultSpec = account => ({
   credentialRoutes: account ? [{ route: "/provider", ref: account.item, allow: PROVIDER_ALLOW, provider: true }] : [],
 });
 
+/** Compute consent for the member a lease names (spaces.compute.status allows module:vyred for another person; lent-home uses it for maxSessions). Undefined when the registry has no such tool. @param {any} registry */
+export function registryComputeStatus(registry) {
+  if (!registry || !registry.tools.has("spaces.compute.status")) return undefined;
+  return async (/** @type {string} */ space, /** @type {string} */ person) => { try { const r = /** @type {any} */ (await registry.call("spaces.compute.status", { space, person }, "module:vyred", { door: true })); return r && r.data ? r.data : { active: false }; } catch { return { active: false }; } };
+}
+
 /**
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
  * `emit(type, payload)` is told when a session moves (thread.moved); `resume(i)` is the server's continuation of a session a lender gave up or lost; `titleOf(space, chat)` names a chat for the lender's list. Each Space's
@@ -34,6 +40,7 @@ const defaultSpec = account => ({
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {
+  if (!o.computeStatus) o = { ...o, computeStatus: registryComputeStatus(o.registry) };
   /** @type {Map<string, () => void>} */ const subs = new Map();
   /** @type {Map<string, any>} the service each Space has now, for the home's own view of what is lent */ const live = new Map();
   /** @type {Map<string, any>} the kernel each live service was made for */ const liveK = new Map();
