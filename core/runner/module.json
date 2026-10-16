@@ -237,6 +237,26 @@
       "apply": "live"
     },
     {
+      "key": "runner.mode",
+      "group": "devices",
+      "label": "When this computer is ready",
+      "help": "Always allow: new chats start here and a session that left comes back after this computer has stayed ready for a minute. Ask: only what you put on this computer runs here.",
+      "type": "enum",
+      "enum": [
+        "always",
+        "ask"
+      ],
+      "labels": {
+        "always": "Always allow",
+        "ask": "Ask"
+      },
+      "default": "always",
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
       "key": "runner.plugged_in_only",
       "group": "devices",
       "label": "Only while plugged in",

@@ -99,6 +99,8 @@ export function lentPlacements(registry, extra = {}) {
     foldersOf: (/** @type {string} */ space, /** @type {string} */ person) => { const h = homeOf(space); return h && typeof h.foldersOf === "function" ? h.foldersOf(person) : []; },
     /** The server takes a chat back from a computer now (the book moves it, the lender is fenced, the pipe ends as a move to the server, the server carries on). @param {string} space @param {string} session @param {string} reason */
     takeBack: async (space, session, reason) => { const h = homeOf(space); return h && typeof h.takeOver === "function" ? h.takeOver(session, reason) : { changed: false, why: "unavailable" }; },
+    /** May the person's standing choice (Always allow) put this session back on its computer now? @param {string} space @param {string} session @param {string} person */
+    mayReturn: (space, session, person) => { const h = homeOf(space); return Boolean(h && typeof h.mayReturn === "function" && h.mayReturn(session, person)); },
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }
