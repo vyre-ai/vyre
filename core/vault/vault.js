@@ -102,7 +102,7 @@ export const MIGRATIONS = [
      items TEXT NOT NULL, mode TEXT NOT NULL, expires INTEGER, accepted INTEGER NOT NULL
    );`,
   FILL_MIGRATION,
-  // A pass can be bound to the holder's Tailscale login as well as their device key.
+  // A pass could once be bound to a holder's network login as well as their device key; the columns stay (a migration never goes back), nothing reads or writes them.
   `ALTER TABLE vault_people ADD COLUMN login TEXT;
    ALTER TABLE vault_passes ADD COLUMN holder_login TEXT;`,
   // ADR 0006: item versions and vault classes, the meta sealed with each item, and row MACs.

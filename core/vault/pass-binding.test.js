@@ -1,5 +1,5 @@
 // @ts-check
-// A relayed pass binds to its holder's identity key and the signed, single-use, audience-bound request, and to nothing on a network: no VPN login, no policy grant (the Tailscale binding was removed).
+// A relayed pass binds to its holder's identity key and the signed, single-use, audience-bound request, and to nothing on a network: no VPN login, no policy grant (that binding was removed).
 // A request from anyone else, with any meta a listener might once have attached, gets nothing; a revoked, expired or unlisted pass stays refused. Every vault lives under the checkout's scratch dir.
 
 import "../../scripts/mac-test-guard.mjs";
