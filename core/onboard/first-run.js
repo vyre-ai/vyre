@@ -18,6 +18,8 @@ import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js"
 import { modelCaller } from "../modules/needs-you-hold.js";
 
 const OPEN = Object.freeze(["cli", "local", "deck", "capsule", "device", "mcp", "harness"]);
+/** The tools that take the master password are the person's own surfaces only: a model never sees a password field here. An agent that wants the person to do these asks for a link or a Needs-you card instead. */
+const PERSON_ONLY = Object.freeze(["cli", "local", "deck", "capsule", "device"]);
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const bad = (message) => Object.assign(new Error(message), { code: "bad_input" });
@@ -182,7 +184,7 @@ export function registerFirstRun(ctx, io) {
     effect: "write",
     description: "Create this person's identity and vault from a username and master password. Returns the recovery key once.",
     input: obj({ username: str, password: str, confirm: str }, ["username", "password"]),
-    callers: [...OPEN],
+    callers: [...PERSON_ONLY],
     run: async ({ username, password, confirm }, meta) => {
       refuseAgentSecret(meta, { username, password, confirm });
       const { held, personId } = await heldOf(meta);
@@ -361,7 +363,7 @@ export function registerFirstRun(ctx, io) {
     effect: "write",
     description: "Sign this computer into every space this identity belongs to. Each space uses its own server.",
     input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str, name: str, type: str, fingerprint: str }, ["password"]),
-    callers: [...OPEN],
+    callers: [...PERSON_ONLY],
     run: async ({ url, username, password, github, login, subject }, meta) => {
       refuseAgentSecret(meta, { url, username, password, github, login, subject });
       const { held, personId } = await heldOf(meta);
