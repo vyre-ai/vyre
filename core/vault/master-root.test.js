@@ -11,6 +11,7 @@ import { tempHome } from "../../test/helpers.js";
 import { createMaster, TEST_KDF, serverVaultKey, readVaultKeyFile } from "../../kernel/identity/master.js";
 import { newRecoveryCode } from "../../kernel/identity/code.js";
 import { clearPersonal, currentPersonalKey, forgetAll, holdPersonal } from "../../kernel/identity/holder.js";
+import { installHeldKey } from "./master-root.js";
 
 process.env.VYRE_TEST_MASTER_KDF = "cheap";
 
@@ -70,4 +71,44 @@ test("a master key that does not open the agent vault fails closed and leaves th
   clearPersonal();
   await assert.rejects(vault.key(), (e) => /** @type {any} */ (e).code === "locked" && /no server copy/.test(e.message));
   assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+});
+
+test("installHeldKey puts the held key into a vault that is not open yet and drops plaintext", async (t) => {
+  const { root, vault } = home(t);
+  const made = serverVaultKey(root);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  master(root, Buffer.from(made));
+  assert.equal(vault.vk, null);
+  fs.writeFileSync(path.join(root, "vault", "key"), `${made.toString("hex")}\n`, { mode: 0o600 });
+  const installed = await installHeldKey(vault);
+  assert.deepEqual(installed, { installed: true, plaintext: false });
+  assert.ok(vault.vk);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  await vault.put({ name: "juniper", kind: "secret", fields: { value: "tray-7" } }, "cli");
+  const row = /** @type {any} */ (vault.db.prepare("SELECT * FROM vault_items WHERE name = ?").get("juniper"));
+  vault.lock();
+  clearPersonal();
+  assert.equal((await vault.open(row)).fields.value, "tray-7");
+});
+
+test("installHeldKey keeps an already open vault and a mismatched key does not replace it", async (t) => {
+  const { root, vault } = home(t);
+  await vault.put({ name: "northwind", kind: "secret", fields: { value: "keep-open" } }, "cli");
+  const raw = Buffer.from(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), "hex");
+  const open = vault.vk;
+  master(root, raw);
+  fs.writeFileSync(path.join(root, "vault", "key"), `${raw.toString("hex")}\n`, { mode: 0o600 });
+  const installed = await installHeldKey(vault);
+  assert.deepEqual(installed, { installed: true, plaintext: false });
+  assert.equal(vault.vk, open);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
+  clearPersonal();
+  holdPersonal(crypto.randomBytes(32));
+  fs.writeFileSync(path.join(root, "vault", "key"), `${"ab".repeat(32)}\n`, { mode: 0o600 });
+  await assert.rejects(installHeldKey(vault), (e) => /** @type {any} */ (e).code === "locked");
+  assert.equal(vault.vk, open);
+  assert.equal(fs.readFileSync(path.join(root, "vault", "key"), "utf8").trim(), "ab".repeat(32));
+  clearPersonal();
+  await assert.rejects(installHeldKey(vault), (e) => /** @type {any} */ (e).code === "locked" && /Unlock this identity/.test(e.message));
+  assert.equal(vault.vk, open);
 });

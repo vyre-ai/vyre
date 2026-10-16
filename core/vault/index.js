@@ -62,6 +62,7 @@ import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 import * as autobackup from "./autobackup.js";
 import { registerSpaceTools } from "./space-tools.js";
+import { installHeldKey } from "./master-root.js";
 import { pumpRetries } from "../../kernel/identity/space-vault.js";
 
 const PEOPLE = ["cli", "local"];
@@ -543,6 +544,7 @@ export default {
     // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
+    internal("vault.master.install", "Install the held master key into this running vault. Drops any plaintext key file.", obj({}), () => installHeldKey(vault));
     const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
     // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
     agentFillTools.register({ ctx, vault, said, tool });

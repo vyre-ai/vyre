@@ -55,7 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`identity`](#identity) | `core/identity` | `box`, `local` | 8 | 0 | cli |
+| [`identity`](#identity) | `core/identity` | `box`, `local` | 9 | 0 | cli |
 | [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 15 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 121 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 122 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
@@ -108,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 189 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 190 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -509,7 +509,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Folder: `core/google`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [25](tools.md#google)
+- Tools: [25](tools.md#google), 3 of them only for other modules
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
@@ -566,10 +566,10 @@ The username, the master password and the recovery key.
 - Folder: `core/identity`, version 0.5.3
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [8](tools.md#identity)
+- Tools: [9](tools.md#identity)
 - Emits: no events
 - Shows on: cli
-- Needs tools: `spaces.identity.create`
+- Needs tools: `spaces.identity.create`, `spaces.identity.self`, `spaces.identity.device`, `spaces.identity.published-key`, `vault.master.install`
 
 ## import
 
@@ -1016,7 +1016,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [121](tools.md#spaces), 35 of them only for other modules
+- Tools: [122](tools.md#spaces), 36 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
@@ -1175,7 +1175,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [189](tools.md#vault), 24 of them only for other modules
+- Tools: [190](tools.md#vault)
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`

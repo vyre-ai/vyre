@@ -665,6 +665,7 @@ const RELAY_ALLOWED = Object.freeze({
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
   mentions: ["vault.mention.search", "vault.mention.resolve"],
+  identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
 });
 
 export class Registry {

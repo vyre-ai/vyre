@@ -8,6 +8,7 @@
     "tools": [
       { "name": "identity.create", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.unlock", "effect": "write", "reach": "person", "outward": true },
+      { "name": "identity.vault.install", "effect": "write", "reach": "person", "outward": true },
       { "name": "identity.lock", "effect": "write", "reach": "person" },
       { "name": "identity.status", "effect": "read", "reach": "person" },
       { "name": "identity.migrate", "effect": "write", "reach": "person", "outward": true },
@@ -18,6 +19,6 @@
   },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
-  "needs": { "tools": ["spaces.identity.create"] },
+  "needs": { "tools": ["spaces.identity.create", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key", "vault.master.install"] },
   "teaches": {}
 }
