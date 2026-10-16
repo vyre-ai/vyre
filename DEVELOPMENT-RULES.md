@@ -98,6 +98,7 @@ Groups: [Architecture](#architecture), [Security](#security), [UI and design](#u
 6. **Write `docs/agents` short, true and for agents.** Each page states a token budget and a `when`, no human page links to one, and the site does not publish them. Generated blocks match the code (`scripts/gen-agent-docs.mjs`). An agent pays for each token it reads. Check: `test/agent-docs.test.js`.
 7. **Run a woken or lent agent inside the reach of the person it acts for.** An agent is never the person. Check: `test/one-yes-floor.test.js`, `test/agent-change-daemon.test.js`, the `test/reach-*.test.js` set.
 8. **Call models through the one inference door** (`model.call`, `kernel/contracts/model.d.ts`), and take model names from `sessions.models`. Do not hardcode a model name in a surface. Check: `test/cohesion-drift.test.js`.
+9. **Treat every session adapter the same at the tool door.** Claude, Codex, Grok and every provider the registry registers get the same MCP tool list and the same secret filter. A provider name never decides either. The caller is `mcp` for all of them. Owner ruling of 16 Oct 2026. Check: `test/agent-agnostic.test.js`.
 
 ## Writing
 
