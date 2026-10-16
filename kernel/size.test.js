@@ -36,7 +36,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9690 on the stage tip 9633: 9633 + 57.
 // 9691 (fail-closed, 13 Oct 2026): one line in kernel/index.js, the chain() throw that refuses an unenrolled device and a refused fact.
 // 9695 (rel6, 16 Oct 2026, [kernel +4: lead ruling YES, 16 Oct 2026] seal/client.js writes <seal dir>/sealer.pid when it spawns the sealing process and removes it when the process exits, so lib/vault-wipe.js sees a sealer a ps listing cannot see yet).
-const CAP = 9695;
+// 9820 (integrate/0.6, 16 Oct 2026): standing grants in gate kernel hooks, flows.actions and skills/chrome tools on the registry, and browser-access unification land in the trusted base together (+125 on 9695).
+const CAP = 9820;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

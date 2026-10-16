@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
@@ -41,7 +41,7 @@ const statesOf = (/** @type {string} */ needle) => {
 async function world(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ over = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "bl-agent-"));
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
-  const root = fs.mkdtempSync(path.join(SCRATCH, "bl-root-"));
+  const root = runnerScratch("bl-root-");
   const r = await rig(t, { keyIsDevice: true, lapseMs: 1500, specFor: async () => ({ command: process.execPath, args: [path.join(agentDir, "agent.js")], env: {}, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }), ...over });
   const chat = (await r.g.chats.create(r.bob, { people: [] })).id;
   const net = { cut: false, hang: false, slow: 0 };

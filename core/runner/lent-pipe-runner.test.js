@@ -11,7 +11,7 @@ import http from "node:http";
 import net from "node:net";
 import { encodeClientFrame } from "../../lib/ws.js";
 import path from "node:path";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
@@ -34,7 +34,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const agent = path.join(agentDir, "agent.js");
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), agent);
   const was = process.env.VYRE_CLAUDE_BIN; process.env.VYRE_CLAUDE_BIN = agent;
-  const root = fs.mkdtempSync(path.join(SCRATCH, "lp-root-"));
+  const root = runnerScratch("lp-root-");
   const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map();

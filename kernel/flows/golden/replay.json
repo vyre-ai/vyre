@@ -1,0 +1,2655 @@
+{
+  "agent": {
+    "ledger": {
+      "depth": 0,
+      "error": {
+        "code": "",
+        "step": "r"
+      },
+      "label": "T",
+      "state": "waiting",
+      "steps": {
+        "r": {
+          "input": "Look them up",
+          "status": "waiting",
+          "wait": {
+            "kind": "task"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "Research the client|ready"
+      ]
+    }
+  },
+  "ask": {
+    "ledger": {
+      "depth": 0,
+      "error": {
+        "code": "",
+        "step": "a"
+      },
+      "label": "T",
+      "state": "waiting",
+      "steps": {
+        "a": {
+          "input": "Approve the refund?",
+          "status": "waiting",
+          "wait": {
+            "kind": "task"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "Approve the refund?|ready"
+      ]
+    }
+  },
+  "assign": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "a1": {
+          "input": "Review the file",
+          "output": {
+            "task": "<id>"
+          },
+          "status": "done"
+        },
+        "after": {
+          "input": {
+            "client": "After"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "After"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"After\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "Review the file|ready"
+      ]
+    }
+  },
+  "call": {
+    "ledger": {
+      "depth": 0,
+      "error": {
+        "code": "",
+        "step": "c"
+      },
+      "label": "T",
+      "state": "waiting",
+      "steps": {
+        "c?ask": {
+          "status": "waiting",
+          "wait": {
+            "kind": "task"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "T: send an email?|needs_check"
+      ]
+    }
+  },
+  "classify": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "c": {
+          "output": {
+            "label": "urgent",
+            "raw_ok": true
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "client": "urgent"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "urgent"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"urgent\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "compound: a decision inside a loop, then a task": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "a1": {
+          "input": "Look it over",
+          "output": {
+            "task": "<id>"
+          },
+          "status": "done"
+        },
+        "d@0": {
+          "output": {
+            "branch": "else"
+          },
+          "status": "done"
+        },
+        "d@1": {
+          "output": {
+            "branch": "then"
+          },
+          "status": "done"
+        },
+        "each": {
+          "output": {
+            "count": 2,
+            "items": [
+              "a",
+              "b"
+            ]
+          },
+          "status": "done"
+        },
+        "mb@1": {
+          "input": {
+            "client": "B!"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "B!"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "mo@0": {
+          "input": {
+            "client": "a"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "a"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"B!\"}",
+            "{\"client\":\"a\"}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "Look it over|ready"
+      ]
+    }
+  },
+  "compound: lanes that wait and a step after the join": {
+    "ledger": {
+      "depth": 0,
+      "error": {
+        "code": "",
+        "step": "p"
+      },
+      "label": "T",
+      "state": "waiting",
+      "steps": {
+        "p": {
+          "status": "waiting",
+          "wait": {
+            "kind": "children"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 3,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"Right\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": [
+        "Left lane work|ready"
+      ]
+    }
+  },
+  "create": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "m": {
+          "input": {
+            "amount": 1,
+            "client": "A"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 1,
+                "client": "A"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":1,\"client\":\"A\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "decide": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "after": {
+          "input": {
+            "client": "After"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "After"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "big": {
+          "input": {
+            "client": "Big"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "Big"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "d": {
+          "output": {
+            "branch": "then"
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"After\"}",
+            "{\"client\":\"Big\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "extract": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "e": {
+          "output": {
+            "fields": {
+              "amount": 1250.5,
+              "client": "Rivera"
+            },
+            "found": [
+              "client",
+              "amount"
+            ],
+            "raw_ok": true
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "amount": 1250.5,
+            "client": "Rivera"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 1250.5,
+                "client": "Rivera"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":1250.5,\"client\":\"Rivera\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "filter": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "f": {
+          "output": {
+            "count": 2,
+            "rows": [
+              {
+                "data": {
+                  "client": "A",
+                  "fee": {
+                    "amount": 10,
+                    "currency": "USD"
+                  }
+                },
+                "id": "<id>",
+                "type": "matter",
+                "urn": "vyre://spc_harlow000001/matter/<id>",
+                "version": 1
+              },
+              {
+                "data": {
+                  "client": "B",
+                  "fee": {
+                    "amount": 300,
+                    "currency": "USD"
+                  }
+                },
+                "id": "<id>",
+                "type": "matter",
+                "urn": "vyre://spc_harlow000001/matter/<id>",
+                "version": 1
+              }
+            ]
+          },
+          "status": "done"
+        },
+        "g": {
+          "output": {
+            "count": 1,
+            "rows": [
+              {
+                "data": {
+                  "client": "B",
+                  "fee": {
+                    "amount": 300,
+                    "currency": "USD"
+                  }
+                },
+                "id": "<id>",
+                "type": "matter",
+                "urn": "vyre://spc_harlow000001/matter/<id>",
+                "version": 1
+              }
+            ]
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "amount": 1,
+            "client": "Kept"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 1,
+                "client": "Kept"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"A\",\"fee\":{\"amount\":10,\"currency\":\"USD\"}}",
+            "{\"client\":\"B\",\"fee\":{\"amount\":300,\"currency\":\"USD\"}}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":1,\"client\":\"Kept\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "find": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "f": {
+          "output": {
+            "count": 2,
+            "rows": [
+              {
+                "data": {
+                  "client": "A",
+                  "fee": {
+                    "amount": 10,
+                    "currency": "USD"
+                  }
+                },
+                "id": "<id>",
+                "type": "matter",
+                "urn": "vyre://spc_harlow000001/matter/<id>",
+                "version": 1
+              },
+              {
+                "data": {
+                  "client": "B",
+                  "fee": {
+                    "amount": 200,
+                    "currency": "USD"
+                  }
+                },
+                "id": "<id>",
+                "type": "matter",
+                "urn": "vyre://spc_harlow000001/matter/<id>",
+                "version": 1
+              }
+            ]
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "amount": 2,
+            "client": "Found"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 2,
+                "client": "Found"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"A\",\"fee\":{\"amount\":10,\"currency\":\"USD\"}}",
+            "{\"client\":\"B\",\"fee\":{\"amount\":200,\"currency\":\"USD\"}}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":2,\"client\":\"Found\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "fn": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "f": {
+          "output": {
+            "n": 1
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "amount": 1,
+            "client": "Ran"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 1,
+                "client": "Ran"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":1,\"client\":\"Ran\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "parallel": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "after": {
+          "input": {
+            "client": "After"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "After"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "p": {
+          "output": {
+            "branches": {
+              "left": {
+                "run": "<id>",
+                "state": "done",
+                "steps": {
+                  "l1": {
+                    "record": {
+                      "data": {
+                        "client": "Left"
+                      },
+                      "id": "<id>",
+                      "type": "payment",
+                      "urn": "vyre://spc_harlow000001/payment/<id>",
+                      "version": 1
+                    }
+                  }
+                }
+              },
+              "right": {
+                "run": "<id>",
+                "state": "done",
+                "steps": {
+                  "r1": {
+                    "record": {
+                      "data": {
+                        "client": "Right"
+                      },
+                      "id": "<id>",
+                      "type": "payment",
+                      "urn": "vyre://spc_harlow000001/payment/<id>",
+                      "version": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "status": "done",
+          "wait": {
+            "kind": "children"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 3,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"After\"}",
+            "{\"client\":\"Left\"}",
+            "{\"client\":\"Right\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "pick": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "m": {
+          "input": {
+            "client": "C"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "C"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "p": {
+          "output": {
+            "found": true,
+            "record": {
+              "data": {
+                "client": "C"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"C\"}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"C\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "remove": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "r": {
+          "output": {
+            "record": {
+              "data": {
+                "client": "Gone"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 2
+            },
+            "removed": true
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "repeat": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "each": {
+          "output": {
+            "count": 3,
+            "items": [
+              "a",
+              "b",
+              "c"
+            ]
+          },
+          "status": "done"
+        },
+        "mk@0": {
+          "input": {
+            "client": "a"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "a"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "mk@1": {
+          "input": {
+            "client": "b"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "b"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "mk@2": {
+          "input": {
+            "client": "c"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "c"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"a\"}",
+            "{\"client\":\"b\"}",
+            "{\"client\":\"c\"}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "service": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "g": {
+          "input": null,
+          "output": {
+            "response": {
+              "body": "",
+              "headers": {
+                "content-type": "application/json"
+              },
+              "json": null,
+              "ok": true,
+              "status": 200,
+              "truncated": false
+            }
+          },
+          "status": "done"
+        },
+        "m": {
+          "input": {
+            "client": null
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": null
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": true,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":null}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "stage": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "s": {
+          "output": {
+            "record": {
+              "data": {
+                "client": "Moved",
+                "stage": "Engagement"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 2
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"Moved\",\"stage\":\"Engagement\"}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "subflow": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "after": {
+          "input": {
+            "amount": 5,
+            "client": "After"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "amount": 5,
+                "client": "After"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "s": {
+          "output": {
+            "result": {
+              "n": 5
+            },
+            "run": "<id>",
+            "state": "done"
+          },
+          "status": "done",
+          "wait": {
+            "kind": "children"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":5,\"client\":\"After\"}",
+            "{\"amount\":5,\"client\":\"Inner\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "update": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "u": {
+          "input": {
+            "client": "New"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "New",
+                "stage": "Intake"
+              },
+              "id": "<id>",
+              "type": "matter",
+              "urn": "vyre://spc_harlow000001/matter/<id>",
+              "version": 2
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          [
+            "{\"client\":\"New\",\"stage\":\"Intake\"}"
+          ]
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          []
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "upsert": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "up1": {
+          "input": {
+            "amount": 1
+          },
+          "output": {
+            "created": true,
+            "record": {
+              "data": {
+                "amount": 1,
+                "client": "Z"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "up2": {
+          "input": {
+            "amount": 2
+          },
+          "output": {
+            "created": false,
+            "record": {
+              "data": {
+                "amount": 2,
+                "client": "Z"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 2
+            }
+          },
+          "status": "done"
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"amount\":2,\"client\":\"Z\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  },
+  "wait": {
+    "ledger": {
+      "depth": 0,
+      "error": null,
+      "label": "T",
+      "state": "done",
+      "steps": {
+        "after": {
+          "input": {
+            "client": "After"
+          },
+          "output": {
+            "record": {
+              "data": {
+                "client": "After"
+              },
+              "id": "<id>",
+              "type": "payment",
+              "urn": "vyre://spc_harlow000001/payment/<id>",
+              "version": 1
+            }
+          },
+          "status": "done"
+        },
+        "w": {
+          "output": {
+            "waited_ms": 61000
+          },
+          "status": "done",
+          "wait": {
+            "kind": "time"
+          }
+        }
+      },
+      "tainted": false,
+      "trigger": {
+        "kind": "event"
+      },
+      "version": 1
+    },
+    "runs": 1,
+    "world": {
+      "rows": [
+        [
+          "chat-record",
+          []
+        ],
+        [
+          "communication",
+          []
+        ],
+        [
+          "contact",
+          []
+        ],
+        [
+          "contact_point",
+          []
+        ],
+        [
+          "event",
+          []
+        ],
+        [
+          "matter",
+          []
+        ],
+        [
+          "organization",
+          []
+        ],
+        [
+          "payment",
+          [
+            "{\"client\":\"After\"}"
+          ]
+        ],
+        [
+          "playbook",
+          []
+        ],
+        [
+          "project",
+          []
+        ],
+        [
+          "project-template",
+          []
+        ],
+        [
+          "skill",
+          []
+        ],
+        [
+          "task",
+          []
+        ],
+        [
+          "team-member",
+          []
+        ],
+        [
+          "template",
+          []
+        ]
+      ],
+      "tasks": []
+    }
+  }
+}

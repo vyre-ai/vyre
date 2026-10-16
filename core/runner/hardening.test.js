@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { readInside, listInside, writeInside } from "./safefs.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
@@ -20,7 +20,7 @@ import { driverFor, workspaceUnavailable } from "./workspace.js";
 import { watch } from "./watchdog.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
-const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hd-"));
+const tmp = () => runnerScratch("hd-");
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const POSIX = process.platform !== "win32";

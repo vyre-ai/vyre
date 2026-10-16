@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import crypto from "node:crypto";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { place, hereBlock, deviceState } from "./placement.js";
 import { createLease } from "./lease.js";
 import { createEgress } from "./egress.js";
@@ -23,7 +23,7 @@ import { fakeSpace } from "./testing/fake-space.js";
 const hmac = s => crypto.createHmac("sha256", "test-seal-key").update(s).digest("hex");
 const seal = st => ({ ...st, mac: hmac(JSON.stringify(st)) });
 const unseal = st => { const { mac, ...rest } = st || {}; return Boolean(mac) && mac === hmac(JSON.stringify(rest)); };
-const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "rn-"));
+const tmp = () => runnerScratch("rn-");
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { runnerScratch } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
@@ -59,7 +59,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   deps.lentSpaces = () => [SPACE];
 
   // the computer: the runner module, in the sandbox, enrolled for the Space
-  const lenderRoot = fs.mkdtempSync(path.join(SCRATCH, "lce-lender-"));
+  const lenderRoot = runnerScratch("lce-lender-");
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();

@@ -1687,7 +1687,10 @@ export class FlowRunner {
       const id = recordId(val(s.record));
       if (!id) throw new StepFail("bad_input", `step ${s.id}: no record to act on`);
       const cur = await this.k.records.get(chain, s.type, id);
-      if (!cur) throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      if (!cur) {
+        if (s.kind === "remove") return { record: { id, type: s.type }, removed: true, already_gone: true };
+        throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      }
       if (cur.labels && (cur.labels.trust === "external" || cur.labels.trust === "untrusted")) ctx.run.tainted = true;
       if (s.kind === "remove") { const r = await this.k.records.remove(chain, s.type, id, cur.version, kernelOpts); return { record: plain(r), removed: true }; }
       const patch = s.kind === "stage" ? { [stageField ? stageField.name : "stage"]: s.to } : val(s.set);
