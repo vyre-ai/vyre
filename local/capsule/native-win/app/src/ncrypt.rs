@@ -1,7 +1,7 @@
 //! This computer's key for the device entry's `enclave` field (NK-2): a P-256 key. The shell tries three stores, in order, and uses the first that already holds the key or can make it:
 //! Windows Hello ("Microsoft Passport Key Storage Provider", store `windows_hello`), then the TPM ("Microsoft Platform Crypto Provider", store `tpm`), then the software store
 //! ("Microsoft Software Key Storage Provider", store `software`), whose keys stay with this Windows user (DPAPI). Hello and the TPM get a UI policy asking Windows to ask the person.
-//! The software store does not: it has no person prompt. THAT A PROMPT FOLLOWS EVERY SIGNATURE IS NOT PROVEN: it needs a run on a real PC (reviewer-3, 5 Oct), and Hello's own prompt text is not
+//! A new software key is made only after the person says yes in a window. If nobody can answer, software is refused. THAT A PROMPT FOLLOWS EVERY SIGNATURE IS NOT PROVEN: it needs a run on a real PC (reviewer-3, 5 Oct), and Hello's own prompt text is not
 //! the shell's summary (KP-3). Until a Hello prompt is shown on hardware, the page treats this key as no proof of the person: the device entry is held as a web key and cannot change who speaks
 //! for the identity (src/identity/mac-key.ts `shellKeyHeld`). The shell still asks in its own window before the key signs. The private key never leaves the store that made it. The signature is
 //! the raw 64 bytes r||s CNG gives for ECDSA, over the SHA-256 of the message; the public key is the raw uncompressed point (65 bytes). A computer where none of the three stores will make a key
@@ -108,19 +108,40 @@ mod imp {
         vyre_capsule_win::identity::point_from_ecc_blob(&blob).ok_or_else(|| "The key is not a P-256 key.".to_string())
     }
 
+    /// Yes, no, or nobody could answer (a window that did not open).
+    fn ask_software_key() -> Option<bool> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONQUESTION, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO};
+        let text = w("Windows Hello could not make this computer's key. Keep a software key for this Windows user instead?");
+        let title = w("Vyre");
+        let answered = unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND) };
+        if answered == 0 { return None; }
+        Some(answered == IDYES)
+    }
+
     /// The key's public point (65 bytes) and which store holds it (`windows_hello`, `tpm` or `software`), made on first use when `create`.
+    /// Hello, then the TPM. Software only after the person says yes. [reviewed: trust]
     pub fn public_point(create: bool) -> Result<([u8; 65], &'static str), String> {
         if let Some((_p, key, store)) = find_key() { return export_point(&key).map(|p| (p, store)); }
         if !create { return Err("There is no key on this computer.".into()); }
         let mut last = "This computer has no TPM that Vyre can use.".to_string();
         for (name, store, ui) in STORES {
+            if *store == "software" { continue; }
             let Ok(p) = open_provider(name) else { continue };
             match make(&p, *ui) {
                 Ok(key) => return export_point(&key).map(|pt| (pt, *store)),
                 Err(e) => last = e,
             }
         }
-        Err(last)
+        // Hello and the TPM did not make a key. Software is not a silent fallback.
+        let decision = vyre_capsule_win::identity::identity_key_store(false, false, ask_software_key());
+        if decision != Ok("software") {
+            return Err(decision.err().unwrap_or("This computer has no TPM that Vyre can use.").to_string());
+        }
+        let Ok(p) = open_provider("Microsoft Software Key Storage Provider") else { return Err(last); };
+        match make(&p, false) {
+            Ok(key) => export_point(&key).map(|pt| (pt, "software")),
+            Err(e) => Err(e),
+        }
     }
 
     /// The raw 64-byte signature (r then s) over the SHA-256 of `message`. Err when there is no key or the person says no.

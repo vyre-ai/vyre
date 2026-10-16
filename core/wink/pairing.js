@@ -681,7 +681,7 @@ export function createPairing(o) {
     });
     ctx.tool("wink.pair.server", {
       description: "Pair a new server from this app with the QR or code it shows, and choose where it goes. The person at the server confirms.",
-      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["target"]),
+      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str, type: str, fingerprint: str }, ["target"]),
       presence: { summary: async () => "Add a server to Vyre" },
       run: async (input, meta = {}) => {
         owner(meta, "pairing a server");
@@ -1444,7 +1444,7 @@ export function createPairing(o) {
     const avatarOf = code => { const b = codeToAvatarBytes(code); return b ? b64url(b) : null; };
     ctx.tool("wink.phone.open", {
       description: "Add a phone from a signed-in computer: a QR and a code, good for one phone and five minutes. A phone pairs to you only.",
-      input: obj({ space: str, typed: { type: "boolean" } }),
+      input: obj({ space: str, typed: { type: "boolean" }, name: str, type: str, fingerprint: str }),
       presence: { summary: async () => "Show a code to add a phone" },
       run: async (input, meta = {}) => {
         owner(meta, "adding a phone");

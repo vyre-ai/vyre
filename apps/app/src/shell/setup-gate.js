@@ -13,10 +13,11 @@ export const LANDING_ROUTE = "/u/now";
 
 /**
  * Where the gate sends this path, or null to let it stay.
- * @param {{ path: string, paired: boolean, direct: boolean, skipped?: boolean }} o `direct`: the box's address is configured (a dev or web build), which needs no pairing; `skipped`: the person chose "Not now"
+ * @param {{ path: string, paired: boolean, direct: boolean, skipped?: boolean, firstRun?: boolean }} o `direct`: the box's address is configured (a dev or web build), which needs no pairing; `skipped`: the person chose "Not now"; `firstRun`: a stored solo install opened Identity, a space, then Ready
  * @returns {string | null}
  */
-export function gateTarget({ path, paired, direct, skipped = false }) {
+export function gateTarget({ path, paired, direct, skipped = false, firstRun = false }) {
+  if (firstRun && !OPEN_ROUTES.test(path)) return SETUP_ROUTE;
   if (paired || direct) return null;
   if (OPEN_ROUTES.test(path)) return null;
   if (skipped) return /^\/u(\/|$)/.test(path) ? null : LANDING_ROUTE;

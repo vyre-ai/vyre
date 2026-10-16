@@ -37,7 +37,7 @@ import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/m
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
-import { surfaceAllows, holdNeedsYou, listingMarks } from "./needs-you-hold.js";
+import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult } from "./needs-you-hold.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -111,7 +111,7 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
- * with `config.machine` -- "server" or "device" (a stored "solo" loads as a device) -- and this
+ * with `config.machine` -- "server" or "device" (a stored "solo" is rewritten to a device) -- and this
  * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
  * caller, mostly tests, that still passes one directly) passes straight through unchanged.
  * @param {string} role @returns {string[]}
@@ -1836,7 +1836,7 @@ export class Registry {
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
-    return result;
+    return scrubVaultResult(caller, tool, result);
   }
 
   /**

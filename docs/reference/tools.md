@@ -7650,10 +7650,10 @@ A one-time link to the onboarding page on this machine's loopback address. Only 
 
 ### `onboard.machine`
 
-ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.
+Choose server or device for this computer. An assistant's call waits for your one tap. solo is not a value.
 
 - Input:
-  - `machine` one of "solo", "server", "device", required
+  - `machine` one of "server", "device", required
 - Callers: `capsule`, `cli`, `deck`, `local`, `module`, `onboard`
 - Needs a person present.
 

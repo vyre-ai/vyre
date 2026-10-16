@@ -114,9 +114,13 @@ test("onboard: an assistant does not receive a vault value, and a device change 
     assert.equal(refused.error && refused.error.code, "denied", name);
     assert.equal(refused.data, undefined, name);
   }
-  const held = await d.registry.call("onboard.windows", { label: "desk" }, "mcp");
-  assert.equal(held.error && held.error.code, "held_for_approval");
+  const held = await d.registry.call("onboard.windows", { label: "desk", name: "Desk", type: "windows", fingerprint: "ab12cd34ef56" }, "mcp");
+  assert.equal(held.error && held.error.code, "held_for_approval", JSON.stringify(held.error));
+  assert.match(held.error.line, /Desk/);
+  assert.match(held.error.line, /ab12cd34ef56/);
   assert.equal(held.data, undefined);
+  const missing = await d.registry.call("onboard.windows", { label: "desk" }, "mcp");
+  assert.equal(missing.error && missing.error.code, "bad_input");
   const own = await d.registry.call("onboard.windows", { label: "desk" }, "cli");
   assert.ok(!own.error || own.error.code !== "held_for_approval", "a person in their own app is not held");
   const info = await d.registry.call("releases.info", {}, "mcp");
@@ -205,8 +209,11 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   // status and machine, the two exceptions, still work. Solo is not a value.
   const status = await d.registry.call("onboard.status", {}, "cli");
   assert.equal(status.data.machine, "device");
+  assert.equal(status.data.firstRun, "open");
+  assert.equal(status.data.finished, false);
   assert.equal(status.data.needsServer, undefined);
   assert.equal(status.data.notice, undefined);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).machine, "device");
   const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
   assert.equal(solo.error.code, "bad_input");
 });

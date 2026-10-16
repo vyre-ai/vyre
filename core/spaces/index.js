@@ -982,8 +982,8 @@ export default {
       return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
     };
     tool("spaces.devices.remove", "Remove one of your devices from one space. Its other spaces stay as they are.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, false));
-    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
-    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str, name: str, type: str, fingerprint: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str, name: str, type: str, fingerprint: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
     tool("spaces.devices.set", "Set the whole list of spaces a device is enrolled in, as pairing does: every space you are in comes pre-ticked and the person unticks the ones to leave out. Leave device out for the device you are on.",
       obj({ device: str, spaces: { type: "array", items: str } }, ["spaces"]), async (i, meta) => {
         const s = me();

@@ -19,17 +19,17 @@ A person who runs only on one computer cannot be reached by a phone, a second co
 ## Decision
 
 1. **Two machines.** `config.machine` is `server` or `device`. `isDevice("solo")` is false. A fresh Mac or Windows install defaults to `device`. A fresh Linux install defaults to `server`.
-2. **Solo is not a mode.** A stored `machine` of `solo` loads as `device`. There is no notice, no error code, and no tool for a move. The file on disk is not rewritten. A role of `local` with no machine is already a device.
+2. **Solo is not a mode.** A stored `machine` of `solo` is rewritten to `device`, and that install opens the new first run (Identity, a space, then Ready). There is no notice, no error code, and no tool for a move. Setup does not accept `solo`. A role of `local` with no machine is already a device.
 3. **`onboard.machine` accepts server or device.** `solo` is not a value, so the call is `bad_input` and nothing is saved. A module may still set `device` (the relay and onboarding already do). A module may not set `server`.
 4. **First run is the same everywhere.** The web page, the Mac app and the Windows app use the same screens: Identity, a space, then Ready. There is no Solo choice. Those screens call `onboard.*`. When the server has them, those tools call `identity.create`, `identity.unlock`, `devices.signin` and `wink.install.issue`, `wink.install.status` and `wink.install.complete`.
-5. **A person in the app does not wait.** An assistant's change to people, devices or vault access waits on a Needs-you card. Nothing changes until the person taps. An assistant never receives a vault value, and a tap does not reveal one. `releases.info` is a read of the version and the names of missing signing secrets, and it does not wait.
+5. **A person in the app does not wait.** An assistant's change to people, devices or vault access waits on a Needs-you card. Nothing changes until the person taps. An assistant never receives a vault value, and a tap does not reveal one. The only lending paths are `vault.request` and `vault.space.use`, and those results are scrubbed. A card that adds a device names the device, its type, its key fingerprint, and who asked. An assistant cannot add one without those. `releases.info` is a read of the version and the names of missing signing secrets, and it does not wait.
 
 ## Consequences
 
-- A file that still says `solo` loads the local modules, because a device loads that set. Nothing asks the person to move it.
+- A file that still says `solo` is rewritten to `device` and opens the first run. It loads the local modules. Nothing asks the person to move it.
 - Windows enrollment (`onboard.windows`) records the label the person asked for and tells them to open Vyre on that PC and approve it there. The call does not change the device.
 - `releases.info` reports the app version and whether the Mac and Windows signing secrets are present. It names the missing secrets and never their values.
 
 ## Proof
 
-`core/config/config.test.js` covers a stored solo loading as a device with no notice. `test/onboard.test.js` covers `solo` as bad input, the vault refusal, and the held device change. `test/mcp-coverage.test.js` fails if a kernel tool the onboarding, device or invite screens use is not offered through MCP.
+`core/config/config.test.js` covers a stored solo rewritten to a device that opens the first run. `test/onboard.test.js` covers `solo` as bad input, the vault refusal, and the held device change. `test/mcp-vault-result.test.js` covers an MCP result that must not contain a vault value. `test/mcp-coverage.test.js` checks its own list of onboarding, device and invite tools against the declared list and against what MCP offers.

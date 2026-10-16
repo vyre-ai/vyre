@@ -44,6 +44,8 @@ try {
   }
   & $kits[0].FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_AUTHENTICODE_PFX_PASSWORD $Exe
   if ($LASTEXITCODE -ne 0) { throw "signtool exited $LASTEXITCODE" }
+  $sig = Get-AuthenticodeSignature -LiteralPath $Exe
+  if ($sig.Status -ne "Valid") { throw "the signature does not verify ($($sig.Status))" }
   Write-Status "authenticode"
 } finally {
   if (Test-Path -LiteralPath $pfx) { Remove-Item -Force -LiteralPath $pfx }
