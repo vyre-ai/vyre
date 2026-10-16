@@ -14,7 +14,7 @@ Some actions are yours alone. Claude Code runs as your Unix user, so anything it
 
 A yes is asked for exactly these, and for nothing else:
 
-- **Pairing, or widening reach.** Adding a device, changing the keys that can give a yes, and what widens what an agent, a module or an outsider can do: `presence.enroll`, `presence.remove`, `presence.code`, `link.pair.approve`, `relay.devices.trust`, `wink.approve`, `spaces.members.set-role`, `projects.access.grant`, `computers.egress.set`, `hooks.enable`, `learn.skill-install`, `appmods.install`, `pluginagent.grant` and the others listed in `MOMENT_OPS.pair` in `lib/one-yes.js`.
+- **Pairing, or widening reach.** Adding a device, changing the keys that can give a yes, and what widens what an agent, a module or an outsider can do: `presence.enroll`, `presence.remove`, `presence.code`, `link.pair.approve`, `relay.devices.trust`, `wink.approve`, `spaces.members.set-role`, `projects.access.grant`, `hooks.enable`, `learn.skill-install`, `appmods.install`, `pluginagent.grant` and the others listed in `MOMENT_OPS.pair` in `lib/one-yes.js`.
 - **A vault secret.** Showing, copying or computing a code for one; grants and passes; destroying shared secrets; a bulk import: `vault.reveal`, `vault.copy`, `vault.totp`, `vault.grant`, `vault.approve`, `vault.offboard`, `vault.restore`, `vault.import` and the others in `MOMENT_OPS.vault`.
 - **An outward send, post or pay.** A tool marked `outward: true` in its `module.json`, and `gate.approve`. A model's call to one is held as a card until you say yes.
 

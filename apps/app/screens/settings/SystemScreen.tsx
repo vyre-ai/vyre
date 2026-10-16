@@ -7,7 +7,7 @@ import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Se
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
 import { RunHere } from "../runner/RunHere";
-import { winkCard, accessWord, auditLines, egressCard, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
+import { winkCard, accessWord, auditLines, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -140,9 +140,9 @@ function Advanced() {
   const [cards, setCards] = useState<StatusCard[] | null>(null);
   const [hb, setHb] = useState<ReturnType<typeof handbackOf> | null>(null);
   const load = useCallback(() => {
-    Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.egress(), system.handback()]).then(([h, hs, w, e, b]) => {
+    Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.handback()]).then(([h, hs, w, b]) => {
       // A tool this box does not have leaves its card out.
-      setCards([h && hooksCard(h, hs), w && winkCard(w), RC.glass && e && egressCard(e)].filter(Boolean) as StatusCard[]);
+      setCards([h && hooksCard(h, hs), w && winkCard(w)].filter(Boolean) as StatusCard[]);
       setHb(b ? handbackOf(b) : null);
     });
   }, []);

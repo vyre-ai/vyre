@@ -16,9 +16,9 @@
 // What this rests on, stated so a change that breaks it is noticed:
 //   - no computer has NET_RAW or NET_ADMIN, and none can gain a capability (cap_drop ALL, no-new-privileges: driver/policy.js,
 //     FORBIDDEN_CAPS), so no process in a computer can forge a source address or poison the bridge;
-//   - nothing in a computer forwards remote traffic to loopback (tailscale in userspace mode, `tailscale serve`, socat, a local
+//   - nothing in a computer forwards remote traffic to loopback (another VPN client in userspace mode, a serve proxy, socat, a local
 //     proxy to 7000 or 5900 would make a remote peer look local, and loopback is let in). None runs: the image has no
-//     tailscaled, and image/loopback.test.js and the J7 matrix step 7.5c check it.
+//     VPN daemon, and image/loopback.test.js and the J7 matrix step 7.5c check it.
 
 /** @param {unknown} a */
 export const plainAddr = a => String(a || "").replace(/^::ffff:/, "");
