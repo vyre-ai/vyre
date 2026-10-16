@@ -22,8 +22,9 @@ import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
 import { Fills } from "./fill.js";
-import { helper, tellComputerd } from "./helper.js";
+import { tellComputerd } from "./helper.js";
 import { SharedBrowser } from "./shared-browser.js";
+import { AgentBrowser } from "./agent-browser.js";
 import { BrowserGlass } from "./browser-glass.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
@@ -82,17 +83,11 @@ export default {
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
     const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });
+    const agentBrowser = new AgentBrowser({ pool, shared, cfg: () => (ctx.config && ctx.config.computers) || {} });
     const keyboard = new Keyboard({ pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
+    const helperFor = agent => agentBrowser.helper(agent);
     const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
-      { ...o, computerRow: shared.enabled() ? shared.computer() : agent }, a => helperFor(a)) });
-    const helperFor = async agent => {
-      if (shared.enabled()) {
-        await shared.touch(agent);
-        const h = (await shared.endpoint(agent)).helper;
-        return { url: h.url, token: h.token };
-      }
-      return helper(pool, agent);
-    };
+      { ...o, computerRow: agentBrowser.computerRow(agent) }, a => helperFor(a)) });
     const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
@@ -111,7 +106,7 @@ export default {
       const { Glass } = await import("./glass.js");
       glass = new Glass({ pool, keyboard, log: ctx.log });
       ctx.upgrade("glass", (req, socket, head, info) => glass.handle(req, socket, head, info));
-      browserGlass = new BrowserGlass({ pool, shared, keyboard, log: ctx.log });
+      browserGlass = new BrowserGlass({ pool, agentBrowser, keyboard, log: ctx.log });
       ctx.upgrade("browser-glass", (req, socket, head, info) => browserGlass.handle(req, socket, head, info));
     } catch (e) {
       glass = null;
@@ -239,16 +234,16 @@ export default {
         const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const labels = (ctx.config.computerLabels && typeof ctx.config.computerLabels === "object") ? ctx.config.computerLabels : {};
         const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({
-          ...(shared.enabled() ? shared.view(n) : pool.view(n)),
+          ...agentBrowser.view(n),
           label: labels[n] || null,
         }));
-        return { driver: driver ? driver.name : "none", screens: shared.enabled() ? 0 : pool.opts.screens, computers, browse: shared.enabled() ? "browser" : "desktop" };
+        return { driver: driver ? driver.name : "none", screens: agentBrowser.mode() === "browser" ? 0 : pool.opts.screens, computers, browse: agentBrowser.mode() };
       });
 
     tool("computers.get", "One agent's computer.", obj({ agent: str }),
       async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        return shared.enabled() ? shared.view(agent) : pool.view(agent);
+        return agentBrowser.view(agent);
       });
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when screens are busy.",
@@ -258,11 +253,7 @@ export default {
         // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
         const thread = agentClaim(caller) ? live : i.thread;
         const agent = await resolve(i, caller);
-        if (shared.enabled()) {
-          await shared.hold(agent, { thread, why: i.why });
-          return { agent, screen: null, thread };
-        }
-        return pool.checkout(agent, { thread, why: i.why });
+        return agentBrowser.checkout(agent, { thread, why: i.why });
       }, { callers: OWN });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
@@ -334,21 +325,18 @@ export default {
         if (pool.unknown.has(agent)) throw Object.assign(new Error(UNKNOWN), { code: "unavailable" });
         const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
         const { w, h } = pool.size(agent);
-        if (shared.enabled()) {
-          return { ticket, path: `/v1/streams/computers/browser-glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h, mode: "screencast" };
+        const path = `${agentBrowser.glassPath()}?ticket=${encodeURIComponent(ticket)}`;
+        if (agentBrowser.mode() === "browser") {
+          return { ticket, path, width: w, height: h, mode: "screencast" };
         }
-        return { ticket, path: `/v1/streams/computers/glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
+        return { ticket, path, width: w, height: h };
       });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
       obj({ agent: str, thread: str }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        if (shared.enabled()) {
-          await shared.hold(agent, { thread: i.thread, why: "hands" });
-          return shared.endpoint(agent);
-        }
-        await pool.checkout(agent, { thread: i.thread, why: "hands" });
-        return pool.endpoint(agent);
+        const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
+        return { helper: ep.helper };
       }, { internal: true });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",

@@ -19,6 +19,7 @@
 import { agentClaim } from "../../core/modules/index.js";
 import { isPerson } from "../../lib/caller.js";
 import { requirePublicUrl } from "./nav.js";
+import { cdpUrlOf } from "../../lib/browser-access.js";
 import { CdpPool } from "./cdp.js";
 import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
@@ -134,7 +135,7 @@ export default {
       const r = await ctx.call("computers.endpoint", { agent });
       if (r.error) throw new Error(r.error.message);
       // Chrome's own port is never handed out; only computerd's authenticated /cdp proxy is.
-      const cdp = await pool.get(agent, `${r.data.helper.url}/cdp`, r.data.helper.token);
+      const cdp = await pool.get(agent, cdpUrlOf(r.data.helper), r.data.helper.token);
       const sessionId = await cdp.page();
       return { cdp, sessionId };
     };

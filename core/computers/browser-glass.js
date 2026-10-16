@@ -6,8 +6,7 @@
 // surface holds the keyboard.
 
 import { STOPPED, UNKNOWN } from "./pool.js";
-import { Cdp } from "../../lib/cdp.js";
-import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
+import { encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
 import { scrub as scrubText } from "../../lib/scrub.js";
 
 /** @param {import("node:net").Socket} socket @param {number} status @param {string} reason */
@@ -29,12 +28,12 @@ function scrub(msg, ...secrets) { return scrubText(msg == null ? "an error" : ms
 
 export class BrowserGlass {
   /**
-   * @param {{ pool: import("./pool.js").Pool, shared: import("./shared-browser.js").SharedBrowser,
+   * @param {{ pool: import("./pool.js").Pool, agentBrowser: import("./agent-browser.js").AgentBrowser,
    *   keyboard: import("./keyboard.js").Keyboard, log?: (m: string) => void }} deps
    */
-  constructor({ pool, shared, keyboard, log }) {
+  constructor({ pool, agentBrowser, keyboard, log }) {
     this.pool = pool;
-    this.shared = shared;
+    this.agentBrowser = agentBrowser;
     this.keyboard = keyboard;
     this.log = log || (() => {});
     /** @type {Set<import("node:net").Socket>} */
@@ -70,7 +69,7 @@ export class BrowserGlass {
 
     let closed = false;
     let viewerHeld = false;
-    /** @type {Cdp|null} */
+    /** @type {import("../../lib/cdp.js").Cdp|null} */
     let cdp = null;
     /** @type {string|null} */
     let sessionId = null;
@@ -86,7 +85,7 @@ export class BrowserGlass {
       closed = true;
       if (viewerHeld) {
         viewerHeld = false;
-        try { this.shared.viewer(agent, -1); } catch {}
+        try { this.agentBrowser.viewer(agent, -1); } catch {}
       }
       if (screencastOn && cdp && sessionId) {
         cdp.send("Page.stopScreencast", {}, sessionId).catch(() => {});
@@ -131,9 +130,7 @@ export class BrowserGlass {
     if (head && head.length) onBrowserData(head);
 
     try {
-      await this.shared.ensureMember(agent);
-      await this.shared.hold(agent, { why: "watch" });
-      this.shared.viewer(agent, 1);
+      await this.agentBrowser.viewer(agent, 1);
       viewerHeld = true;
     } catch (e) {
       const err = /** @type {any} */ (e);
@@ -143,26 +140,17 @@ export class BrowserGlass {
     }
     if (closed) return;
 
-    if (this.pool.died.has(agent) && (this.pool.row(this.shared.computer()) || {}).state !== "running") {
+    const computerRow = this.agentBrowser.computerRow(agent);
+    if (this.pool.died.has(agent) && (this.pool.row(computerRow) || {}).state !== "running") {
       closeWith(socket, 4001, STOPPED);
       closeAll(STOPPED, true);
       return;
     }
 
-    let helper;
     try {
-      const ep = await this.shared.endpoint(agent);
-      helper = ep.helper;
-    } catch (e) {
-      closeWith(socket, 4001, "");
-      closeAll(/** @type {Error} */ (e).message, true);
-      return;
-    }
-
-    cdp = new Cdp({ cdpUrl: `${helper.url}/cdp`, token: helper.token });
-    try {
-      await cdp.connect();
-      sessionId = await cdp.page();
+      const opened = await this.agentBrowser.openCdp(agent, { why: "watch" });
+      cdp = opened.cdp;
+      sessionId = opened.sessionId;
       await cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, everyNthFrame: 1 }, sessionId);
       screencastOn = true;
     } catch (e) {

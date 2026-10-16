@@ -34,17 +34,11 @@ export async function helper(pool, agent) {
  * computerd starts unshielded anyway. Throws when computerd cannot be told; the caller logs it
  * and the shield in vyred holds regardless.
  * @param {import("./pool.js").Pool} pool
- * @param {string} agent
- * @param {boolean} on
- * @param {{ reason?: string, fill_token?: string }} [o]
- * @returns {Promise<boolean>} whether computerd was told
- */
-/**
- * @param {import("./pool.js").Pool} pool
  * @param {string} agent agent name (for thawing)
  * @param {boolean} on
  * @param {{ reason?: string, fill_token?: string, computerRow?: string }} [o] computerRow: pool row key when it differs from agent (shared browser)
  * @param {(agent: string) => Promise<{ url: string, token: string }>} [getHelper]
+ * @returns {Promise<boolean>} whether computerd was told
  */
 export async function tellComputerd(pool, agent, on, o = {}, getHelper) {
   const row = o.computerRow || agent;

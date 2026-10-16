@@ -5,27 +5,15 @@
 // agent_id), not a per-agent desktop checkout. computers.endpoint, helper, watch, takeover and
 // hands-chrome all go through here when browse mode is "browser" (the default on a box).
 
-import crypto from "node:crypto";
+import {
+  SHARED_COMPUTER_ID,
+  browseMode,
+  sharedBrowserOn,
+} from "../../lib/browser-access.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
-/** The synthetic row id for the install's shared browser computer (never a real agent name). */
-export const SHARED_COMPUTER_ID = "browser-shared";
 
-/** @param {any} cfg computers section of config */
-export function browseMode(cfg) {
-  const m = cfg && cfg.browse;
-  if (m === "desktop" || m === "desktops" || m === "pool") return "desktop";
-  if (m === "browser") return "browser";
-  if (cfg && cfg.browser === false) return "desktop";
-  // Real boxes default to the shared headless browser; the fake driver keeps desktop unless asked.
-  if (cfg && cfg.driver === "fake") return "desktop";
-  return "browser";
-}
-
-/** @param {any} cfg */
-export function sharedBrowserOn(cfg) {
-  return browseMode(cfg) === "browser";
-}
+export { SHARED_COMPUTER_ID, browseMode, sharedBrowserOn };
 
 /**
  * @typedef {{ viewers: number, touched: number, thread: string|null, since: number }} Hold
