@@ -105,12 +105,7 @@ export function ChatToolsSheet(p: ChatToolsProps) {
               onPress={() => run(() => chatTools.replyMode(p.chat as string, p.replyMode === "mention" ? "every" : "mention"), undefined, "Changed. Everyone in the chat sees it.")} /><Divider /></> : null}
             <Row dense title="Mention someone" sub="A teammate, a project, a file or a record" chevron onPress={() => go("mention")} />
             <Divider />
-            <Row dense title="Running here" sub="What it is doing in the background" chevron onPress={() => go("tasks")} />
-            <Divider />
-            <Row dense title="Context used" sub="What Vyre can see from this chat" chevron onPress={() => go("context")} />
-            <Divider />
             {p.chat ? <><Row dense title="Files" sub="What this chat made or received, and what is shared with the project" chevron onPress={() => (p.onOpenFiles ? (p.onClose(), p.onOpenFiles()) : go("files"))} /><Divider /></> : null}
-            <Row dense title="Transcript and recall" chevron onPress={() => go("transcript")} />
             {p.project && p.session ? <><Divider /><Row dense title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => go("back")} /></> : null}
           </View>
         ) : null}
