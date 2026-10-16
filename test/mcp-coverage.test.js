@@ -14,6 +14,7 @@ import { offeredTool } from "../harness/mcp/offered.js";
 const EXPECTED = Object.freeze([
   "flows.kit.library",
   "flows.kit.library.get",
+  "flows.kit.propose",
   "onboard.computer.add",
   "onboard.github.finish",
   "onboard.github.start",

@@ -690,7 +690,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         return;
       }
       closeStep(m);
-      if (!b.h && !(await begin(m, b, message))) { if (!m.dead && !refused.has(message)) projectionStuck(m); return; }
+      if (!b.h && !(await begin(m, b, message))) { if (!m.dead) projectionStuck(m); return; }
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
       if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat: a person in the chat adds it again (work.chat.change)"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
       const text = String(s.data.text);

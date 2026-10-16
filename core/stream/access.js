@@ -33,7 +33,8 @@ export function createAccess({ ctx, groups, logs }) {
 
   /** The thread, read as the caller. Returns true (it is a thread the caller may read), false (no such thread), or throws the refusal. @param {string} session @param {any} meta */
   async function thread(session, meta) {
-    if (groups && groups.known(session)) return false;
+    // A group chat is not a switchboard thread; a thread log alone (no participants) still resolves through threads.get.
+    if (groups && groups.known(session) && groups.people(session).size > 0) return false;
     const caller = String((meta && meta.caller) || "");
     let r;
     try { r = await ctx.call("threads.get", { thread: session, limit: 1 }, personCallOpts(caller, meta) || undefined); }
@@ -98,7 +99,7 @@ export function createAccess({ ctx, groups, logs }) {
       const viewer = { id: person, roles: /** @type {string[]} */ (person === "person:owner" ? ["owner"] : []) };
       if (await thread(session, meta)) return { viewer, via: "thread", chain: null };
       // The kernel is on and this call carries no session of its own: the 0.2 group store is not a chat's authority any more.
-      if (!(ctx.kernel && ctx.kernel.chats) && groups && groups.known(session)) {
+      if (!(ctx.kernel && ctx.kernel.chats) && groups && groups.known(session) && groups.people(session).size > 0) {
         if (groups.people(session).has(person)) return { viewer, via: "group", chain: null };
         throw fail("not_found", "no such session");
       }
