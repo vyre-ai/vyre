@@ -21,7 +21,7 @@ process.env.VYRE_LENT_AGENT_DEV = "1";
 const SKIP = unavailable() || workspaceUnavailable() || "";
 const LINUX = process.platform === "linux";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
-const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
+const waitFor = async (/** @type {() => any} */ fn, ms = 20_000, /** @type {string} */ why = "timed out") => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error(why); };
 /** The pids of the processes on this box whose command line mentions `needle`. */
 const pidsOf = (/** @type {string} */ needle) => {
   const out = [];
@@ -128,11 +128,18 @@ test("switching running here off in Settings hands the sessions over with its re
 });
 
 test("more sessions than one heartbeat names go in several calls, so none looks dead and is taken", { skip: SKIP || false, timeout: 120_000 }, async t => {
-  const w = await world(t, { beatMax: 1, lapseMs: 1500 });
-  for (const s of ["a1", "a2", "a3"]) await w.run("runner.start", { space: SPACE, session: s });
-  await sleep(4000);   // well past the lapse: a session the heartbeat missed would have been taken
+  const w = await world(t, { beatMax: 1, lapseMs: 30_000 });
+  const ids = ["a1", "a2"];   // default spaces.compute maxSessions is 2
+  for (const s of ids) await w.run("runner.start", { space: SPACE, session: s });
+  await waitFor(() => ids.every(s => (w.book.get(s).beat || 0) > 0), 20_000, "each session was beaten at least once");
+  const t0 = Date.now();
+  while (Date.now() - t0 < 6000) {
+    await w.r.home.sweep();
+    assert.deepEqual(ids.map(s => w.book.get(s).where), ["mac", "mac"]);
+    await sleep(200);
+  }
   await w.r.home.sweep();
-  assert.deepEqual(["a1", "a2", "a3"].map(s => w.book.get(s).where), ["mac", "mac", "mac"]);
+  assert.deepEqual(ids.map(s => w.book.get(s).where), ["mac", "mac"]);
 });
 
 test("a session the person stops is not brought back to life by the server: the home forgets it and does not count its silence", { skip: SKIP || false, timeout: 120_000 }, async t => {

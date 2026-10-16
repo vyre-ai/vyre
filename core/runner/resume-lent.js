@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import { createTurnSeal } from "./ownserver.js";
 import { coverOf } from "./sync.js";
 import { readInside, writeInside, plantable } from "./safefs.js";
-import { manifestSessionFilePattern } from "../sessions/drivers/lent-agent.js";
+import { lentProcessProvider, manifestSessionFilePattern } from "../sessions/drivers/lent-agent.js";
 
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const PAGE = 2000;
@@ -91,9 +91,21 @@ export function createResumeLent(o) {
     const port = o.port ? o.port(i.space) : null;
     let turn = Number(cp.turn) || 0;
     if (port) {
-      const seal = createTurnSeal({ port, session: tg.native, file, root });
-      const done = await seal.seal({ state: tg.cwd ? { cwd: tg.cwd } : {} });
-      turn = done.turn;
+      const prov = lentProcessProvider(tg.provider || i.provider || "claude") || "claude";
+      if (prov === "claude") {
+        const seal = createTurnSeal({ port, session: tg.native, file, root });
+        const done = await seal.seal({ state: tg.cwd ? { cwd: tg.cwd } : {} });
+        turn = done.turn;
+      } else {
+        for (let from = 1; from <= cp.seq; ) {
+          const page = await i.view.transcript(from, Math.min(PAGE, cp.seq - from + 1));
+          if (!Array.isArray(page) || !page.length) break;
+          await port.appendTranscript(tg.native, page);
+          from += page.length;
+        }
+        await port.putCheckpoint(tg.native, { turn: Number(cp.turn) || 1, seq: cp.seq, manifest: {}, state: { ...(tg.cwd ? { cwd: tg.cwd } : {}), provider: prov } });
+        turn = Number(cp.turn) || 1;
+      }
     }
     // the files the session changed
     let files = 0; const conflicts = /** @type {string[]} */ ([]);

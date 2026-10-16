@@ -219,8 +219,9 @@ export function createLentHome(o) {
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
   // The home's own chain: it reads a session the lender gave up from the same store, to resume it on the server. A private object, never on the wire, so nothing a peer sends can be it.
   const HOME = Object.freeze({ space: o.space, hops: [] });
+  const homeChain = (/** @type {any} */ c) => c && c.space === o.space && Array.isArray(c.hops) && c.hops.length === 0;
   const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, ...(o.key ? { key: o.key } : {}), authorize: async ({ chain, resource }) => {
-    if (chain === HOME) return { effect: "allow" };
+    if (chain === HOME || homeChain(chain)) return { effect: "allow" };
     const session = String(resource).split("/checkpoint/")[1] || "";
     try { mine(chain, session); return { effect: "allow" }; } catch { return { effect: "deny" }; }
   } });
