@@ -6,21 +6,23 @@
 // key lives in this object's memory until lock. Space steps are the next stage and answer `host_unsupported` until then.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
-import { passwordOk, personRoutes, usernameOf } from "../../../../lib/first-run-shape.js";
+import { passwordOk, personRoutes, spaceAddressOf, usernameOf } from "../../../../lib/first-run-shape.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
+import * as C from "../../../../kernel/identity/chain.js";
+import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
 const b64u = (/** @type {Uint8Array} */ b) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
 
 /**
- * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: { id: string, name: string, role: string, server: string | null }[], current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  */
 
 /**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number }} o
+ * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string } }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -37,6 +39,33 @@ export function createHost(o) {
     if (res.status === 200 && body && body.data && typeof body.data.code === "string") return String(body.data.code);
     const code = body && body.error && body.error.code;
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
+  }
+
+
+  /** POST one step of the space's sign-in door: https://<space>.vyre.run/login, text/plain so the browser sends no preflight. The answer is the door's own JSON (kernel/identity/space-login.js shapes). */
+  async function door(/** @type {string} */ space, /** @type {any} */ body) {
+    const base = (o.signin && o.signin.base ? o.signin.base(space) : `https://${space}.vyre.run`).replace(/\/+$/, "");
+    let res;
+    try { res = await f(`${base}/login`, { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify(body) }); }
+    catch { throw bad("Cannot reach that space right now. Check the address and try again.", "unreachable"); }
+    /** @type {any} */ let out = null;
+    try { out = await res.json(); } catch { /* not JSON */ }
+    if (!out || typeof out !== "object") throw bad("That address did not answer like a Vyre space. Check it and try again.", "unreachable");
+    if (out.error) throw Object.assign(new Error(String(out.error.message || "That did not work.")), { code: String(out.error.code || "failed"), ...(out.error.retry ? { retry: out.error.retry } : {}) });
+    return out;
+  }
+
+  /** The whole chain of a person from the names directory, checked, and the pin a later claim carries. @param {string} id */
+  async function chainOf(id) {
+    let res;
+    try { res = await f(`${base}/v1/ids/resolve?id=${encodeURIComponent(id)}`); } catch { throw bad("Cannot reach the names directory right now.", "unreachable"); }
+    /** @type {any} */ let body = null;
+    try { body = await res.json(); } catch { /* not JSON */ }
+    const d = body && body.data;
+    if (!res.ok || !d || !Array.isArray(d.ops)) throw bad("That identity is not in the directory.", "bad_login");
+    const state = await C.verifyChain(d.ops, { now: o.now ? o.now() : Date.now() });
+    if (state.id !== id) throw bad("That identity's chain does not match.", "bad_login");
+    return { ops: d.ops, pin: C.pinOf(state) };
   }
 
   /** @type {Record<string, (input: any) => Promise<any>>} */
@@ -88,6 +117,33 @@ export function createHost(o) {
 
     "identity.lock": async () => { if (held) held.fill(0); held = null; return { locked: true }; },
 
+    // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
+    // opens the returned record with the same key. Every refusal for a wrong name or password is the door's one bad_login answer.
+    "onboard.signin": async ({ space, username, password }) => {
+      const addr = spaceAddressOf(String(space || "").includes(".") ? space : `${String(space || "").trim()}.vyre.run`);
+      const name = usernameOf(username);
+      const BAD = "That username and password do not match.";
+      if (!addr) throw bad("Use the address of a space, like juniper.vyre.run.");
+      if (!name || !password) throw Object.assign(new Error(BAD), { code: "bad_login" });
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      const begun = await door(addr.space, { op: "begin", username: name });
+      const kdf = acceptKdf(begun.kdf);
+      const d = await deriveLogin(String(password).normalize("NFKC"), String(begun.salt), kdf);
+      /** @type {any} */ let done, keys;
+      try {
+        const sig = d.sign(loginMessage(addr.space, name, String(begun.challenge)));
+        done = await door(addr.space, { op: "finish", username: name, challenge: begun.challenge, sig, device: { label: (o.signin && o.signin.label) || "This browser" } });
+        if (!done.bundle || done.bundle.username !== name) throw Object.assign(new Error(BAD), { code: "bad_login" });
+        keys = await openMasterRecord(done.bundle, { kek: d.K }).catch(() => { throw Object.assign(new Error(BAD), { code: "bad_login" }); });
+      } finally { d.close(); }
+      const chain = await chainOf(String(done.bundle.id));
+      const seed = unb64(keys.privateKey);
+      const row = { id: addr.space, name: addr.space, role: String(done.role || "member"), server: addr.address };
+      await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
+      held = seed;
+      return { username: name, id: String(done.bundle.id), spaces: [row] };
+    },
+
     "onboard.first.progress": async () => {
       const k = await o.store.load();
       return k && k.progress ? { ok: true, ...k.progress } : { ok: true, screen: null, stack: [] };
@@ -117,6 +173,23 @@ export function createHost(o) {
       const fn = tools[name];
       if (!fn) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
       return fn(input || {});
+    },
+    /**
+     * The body that registers this identity's sign-in record at a space (op "register"), signed by the identity key: K is the password key of the stored master record (its own salt and cost), so the
+     * login key and the record's wrap come from one stretch. The password is the person's, held in memory by the caller only until this is made. @param {string} space @param {string} password
+     */
+    async registerLogin(space, password) {
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      if (!held) throw bad("Unlock with your master password first.", "locked");
+      const kdf = acceptKdf(k.master.kdf);
+      const d = await deriveLogin(String(password).normalize("NFKC"), String(k.master.kdf.salt), kdf);
+      try {
+        const ts = o.now ? o.now() : Date.now();
+        const pub = (await fromSeed(held)).publicKey;
+        const sig = b64u(await (await fromSeed(held)).sign(registerMessage(space, k.username, d.loginPub, bundleHash(k.master), ts)));
+        return { op: "register", username: k.username, person: k.id, pub, ts, sig, salt: String(k.master.kdf.salt), loginPub: d.loginPub, bundle: k.master };
+      } finally { d.close(); }
     },
     /** The unlocked key for the identity's own signing (the next stage's pair code), or null while locked. */
     signer: () => (held ? { seed: held } : null),

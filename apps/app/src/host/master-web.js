@@ -63,15 +63,16 @@ function unwrap(kek, box, aad) {
 }
 
 /**
- * Make the master record. `privateKey` and `agreePrivate` are the identity halves as base64url (agree may be null).
- * @param {{ username: string, id: string, password: string, recoveryCode: string, privateKey: string, agreePrivate?: string | null, kdf?: { memoryKiB: number, passes: number } }} o
+ * Make the master record. `privateKey` and `agreePrivate` are the identity halves as base64url (agree may be null). With `kek` and `salt` given (the sign-in key K the caller already stretched from this
+ * password and salt, login-web.js), no second Argon2id runs: K is the password wrap's key, as in kernel/identity/space-login.js.
+ * @param {{ username: string, id: string, password: string, recoveryCode: string, privateKey: string, agreePrivate?: string | null, kdf?: { memoryKiB: number, passes: number }, salt?: Uint8Array, kek?: Uint8Array }} o
  */
 export async function createMasterRecord(o) {
   const password = checkPassword(o.password);
   const recovery = checkRecovery(o.recoveryCode);
   const kdf = { ...MASTER_KDF, ...(o.kdf || {}), lanes: 1, tagLength: 32 };
-  const salt = rand(16);
-  const kek = await passwordKek(kdf, salt, password);
+  const salt = o.salt || rand(16);
+  const kek = o.kek ? Uint8Array.from(o.kek) : await passwordKek(kdf, salt, password);
   const rk = rand(32);
   const boxPriv = rand(32);
   const rec = {
@@ -96,13 +97,16 @@ export async function createMasterRecord(o) {
 
 /**
  * Open a master record with the password or the recovery key. Returns the identity halves for the caller to hold in memory; a wrong secret is `bad_password` or `bad_recovery`.
- * @param {any} rec @param {{ password?: string, recovery?: string }} o
+ * @param {any} rec @param {{ password?: string, recovery?: string, kek?: Uint8Array }} o (`kek`: the key already stretched from the password, so no second Argon2id runs)
  * @returns {Promise<{ privateKey: string, agreePrivate: string | null }>}
  */
 export async function openMasterRecord(rec, o) {
   if (!rec || rec.v !== 1) throw refuse("There is no master password on this device yet. Create your username first.", "no_identity");
   /** @type {Uint8Array} */ let rk;
-  if (o.recovery) {
+  if (o.kek) {
+    try { rk = unwrap(o.kek, rec.passwordWrap, AAD_PW); }
+    catch { throw refuse("That password does not unlock this identity. Try again, or enter your recovery key on this device.", "bad_password"); }
+  } else if (o.recovery) {
     const recovery = checkRecovery(o.recovery);
     try { rk = unwrap(recoveryKek(recovery), rec.recoveryWrap, AAD_RE); }
     catch { throw refuse("That recovery key does not unlock this identity. Check it and enter it again on this device.", "bad_recovery"); }
