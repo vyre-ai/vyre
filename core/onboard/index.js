@@ -159,7 +159,7 @@ export default {
     const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
-      const r = await ctx.call(tool, input);
+      const r = await ctx.call(tool, input, { relay: true });
       if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? `${tool.split(".")[0]} is not running on this machine` : r.error.message), { code: r.error.code });
       return r.data;
     };

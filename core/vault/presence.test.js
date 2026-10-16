@@ -79,7 +79,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // The outside-agents module serves the pass's own tools to a registered agent (module-only; the pass was made with the person's yes).
     "vault.mcp.agent.tools", "vault.mcp.agent.call",
     // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
-    "vault.space.use"]);
+    "vault.space.use",
+    // Identity installs the held master key into the running vault (module:identity only); it takes no value out.
+    "vault.master.install"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 

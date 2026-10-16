@@ -115,6 +115,9 @@
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**",
+    "!harness/member-relay-harness.js",
+    "apps/app/src/chat/core/commands.js",
+    "apps/app/src/chat/core/match.js",
     "packages/module-sdk/testing.js"
   ],
   "homepage": "https://vyre.run",

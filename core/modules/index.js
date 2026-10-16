@@ -653,7 +653,7 @@ const RELAY = Symbol("vyre.relay");
  * module relays them to the chat and memory ports, and those relay them on to the per-member storage. Nothing else is open, and a relay needs a running call that has a person.
  */
 const RELAY_ALLOWED = Object.freeze({
-  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
+  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
   memory: ["spaces.storage."],
   work: ["spaces.storage.", "vault.uses.for"], // vault.uses.for: the timeline asks, as the person looking
   publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
@@ -669,6 +669,8 @@ const RELAY_ALLOWED = Object.freeze({
   // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
   mentions: ["vault.mention.search", "vault.mention.resolve"],
   identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
+  // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
+  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "devices.signin", "sessions.accounts.signin"],
 });
 
 export class Registry {

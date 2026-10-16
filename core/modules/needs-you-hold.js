@@ -115,6 +115,8 @@ export function listingMarks(name, d) {
  */
 export function scrubVaultResult(caller, tool, result, input, def) {
   if (!modelCaller(caller) || result == null || typeof result !== "object") return result;
+  // settings.get and friends already mask secret values; egress must not strip the masked shape.
+  if (String(tool || "").startsWith("settings.")) return result;
   const secrets = collectSecrets(input, def && def.input);
   rememberSecrets(secrets);
   const stripVaultValue = !lending(tool) && String(tool || "").startsWith("vault.");

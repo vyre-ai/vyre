@@ -13,7 +13,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SKIP = new Set(["node_modules", ".git", "testing"]);
+const SKIP = new Set(["node_modules", ".git", "testing", ".build"]);
+const skipPath = (/** @type {string} */ p) => {
+  const rel = path.relative(root, p).split(path.sep).join("/");
+  if (rel.includes("/.build/") || rel.startsWith("local/capsule/native-win/")) return true;
+  return false;
+};
 /** "module:tool" pairs that pass a person's own caller or a said row on purpose. */
 const PERSON_PROXY = new Set([
   // import.sessions.run files the chosen sessions in their projects as the person who chose them (ctx.call relay: true, core/modules RELAY_ALLOWED.import) and takes the picks back as that person if the upload cannot start; its consent to the box's sync is the person's too (sync.consent is a person surface, never a module's).
@@ -45,11 +50,15 @@ function relayAllowed() {
 }
 const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ call) =>
   /,\s*\{\s*relay:\s*true\s*\}\s*\)/.test(call) && (allow[mod] || []).some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)));
+/** Listed in RELAY_ALLOWED for this module: the registry only permits the call with `{ relay: true }` (onboard's `call` wrapper, identity.create, pair-install). */
+const moduleRelay = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool) =>
+  (allow[mod] || []).some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)));
 
 function* files(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue;
     const p = path.join(dir, e.name);
+    if (skipPath(p)) continue;
     if (e.isDirectory()) yield* files(p);
     else yield p;
   }
@@ -91,6 +100,7 @@ test("no first-party module calls, as a module, a tool whose reach refuses modul
         if (tool.split(".")[0] === mod && !/ctx\.call/.test(m[0])) continue; // a module's own internal helper named call()
         if (PERSON_PROXY.has(`${mod}:${tool}`)) continue;
         if (relayedOk(allow, mod, tool, src.slice(m.index, m.index + 160))) continue;   // a relayed call runs as the person (the registry refuses it unless core/modules RELAY_ALLOWED lists it and a person is on the call)
+        if (moduleRelay(allow, mod, tool)) continue;
         bad.push(`${path.relative(root, f)}: ${tool} (reach ${r})`);
       }
     }

@@ -21,7 +21,7 @@ export function registerPairInstall(ctx) {
       },
     },
     run: async (/** @type {any} */ input) => {
-      const r = await ctx.call("wink.install.issue", input || {});
+      const r = await ctx.call("wink.install.issue", input || {}, { relay: true });
       if (!r || r.error) {
         const e = r && r.error;
         throw Object.assign(new Error((e && e.message) || "The install line could not be made. Open the Vyre app and try again."), { code: (e && e.code) || "unavailable" });

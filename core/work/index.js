@@ -245,7 +245,7 @@ export default {
         return chatPrefsOf().set(c, i);
       } });
     ctx.tool("work.chat.prefs.muted", { description: "Whether a person muted a chat (for notifications). Internal.", internal: true, callers: ["module"],
-      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => ({ muted: chatPrefsOf().isMuted(String(i.person), String(i.chat)) }) });
+      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { kernelOf(); return { muted: chatPrefsOf().isMuted(String(i.person), String(i.chat)) }; } });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),
