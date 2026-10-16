@@ -8,7 +8,7 @@
     "git-credential-vyre": "bin/git-credential-vyre"
   },
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.16.0"
   },
   "scripts": {
     "postinstall": "node scripts/postinstall.mjs",

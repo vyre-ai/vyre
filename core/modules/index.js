@@ -663,6 +663,8 @@ const RELAY_ALLOWED = Object.freeze({
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
+  mentions: ["vault.mention.search", "vault.mention.resolve"],
 });
 
 export class Registry {
@@ -1274,7 +1276,8 @@ export class Registry {
         // agents relays the asking person to threads.send and threads.release WITH that person's own verified facts (the ones their agents.ask arrived with): the chat gate judges the person, and a
         // relay without them would be refused for every person who asks an agent from a device.
         const personAs = as && isPerson(String(as));
-        const cur = (personAs || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
+        const mentionsRelay = m.name === "mentions" && (String(as) === "module:sessions" || String(as) === "module:assistant");
+        const cur = (personAs || mentionsRelay || (m.name === "agents" && agentsMayRelay(tool))) ? currentCall() : null;   // any `{ as: cli|deck|… }` relay carries this turn's proven person (token / kernelFacts)
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
