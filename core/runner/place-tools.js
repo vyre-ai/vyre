@@ -15,10 +15,12 @@ export const hereLine = (cpuPercent, memoryMb, state) => `${state === "paused" ?
 
 /** The limits a person may set for a computer (the Settings page's ranges; the same numbers are declared in module.json). */
 export const LIMITS = Object.freeze({ cpuPercent: [10, 100], memoryMb: [512, 65536] });
-export const SETTING_KEYS = Object.freeze({ enabled: "runner.enabled", mode: "runner.mode", pluggedInOnly: "runner.plugged_in_only", cpuPercent: "runner.cpu_percent", memoryMb: "runner.memory_mb" });
-/** `enabled` is the master switch (Never is off). `mode` is what an enabled computer does on its own: "always" starts new chats here and takes sessions back after a steady stretch of being well; "ask" takes only what the person puts on it. */
+export const SETTING_KEYS = Object.freeze({ enabled: "runner.enabled", pluggedInOnly: "runner.plugged_in_only", cpuPercent: "runner.cpu_percent", memoryMb: "runner.memory_mb" });
+export const SETTING_DEFAULTS = Object.freeze({ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
+/** What an enabled computer does on its own (`enabled` is the master switch: Never is off). "always" starts new chats here and takes sessions back after a steady stretch of being well; "ask" takes only what the person puts on it.
+ *  Read and written through the settings tools like any setting; not part of the runner.settings contract, which stays the four limits. */
+export const MODE_KEY = "runner.mode";
 export const MODES = Object.freeze(["always", "ask"]);
-export const SETTING_DEFAULTS = Object.freeze({ enabled: false, mode: "always", pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
 
 /**
  * What a computer's limits are, read through the one settings mechanism (core/settings): a key the settings module cannot give now reads as its default, so a daemon without it still answers.
@@ -193,17 +195,16 @@ export function registerPlaceTools(ctx, d) {
   });
 
   ctx.tool("runner.settings", {
-    description: "This computer's limits for running a space's sessions: enabled, mode (always or ask), pluggedInOnly, cpuPercent, memoryMb.",
+    description: "This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.",
     input: obj(),
     run: async (_i, meta) => { await d.person(meta, "this computer's limits"); return d.readSettings(); },
   });
 
   ctx.tool("runner.settings.set", {
-    description: "Change this computer's limits for running sessions: any of enabled, mode (always or ask), pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.",
-    input: obj({ enabled: { type: "boolean" }, mode: { type: "string", enum: [...MODES] }, pluggedInOnly: { type: "boolean" }, cpuPercent: { type: "integer" }, memoryMb: { type: "integer" } }),
+    description: "Change this computer's limits for running sessions: any of enabled, pluggedInOnly, cpuPercent (10 to 100), memoryMb (512 to 65536). Answers the limits now in effect.",
+    input: obj({ enabled: { type: "boolean" }, pluggedInOnly: { type: "boolean" }, cpuPercent: { type: "integer" }, memoryMb: { type: "integer" } }),
     run: async (i, meta) => {
       await d.person(meta, "this computer's limits");
-      if (i.mode !== undefined && !MODES.includes(i.mode)) throw refuse("mode is always or ask (off is the switch)", "bad_input");
       for (const k of /** @type {const} */ (["cpuPercent", "memoryMb"])) {
         if (i[k] === undefined) continue;
         const [lo, hi] = LIMITS[k];

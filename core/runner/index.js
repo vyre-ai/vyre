@@ -14,7 +14,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createLenderHost } from "./lender-host.js";
-import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
+import { registerPlaceTools, settingsReader, SETTING_DEFAULTS, MODE_KEY } from "./place-tools.js";
 import { startPump } from "./pipe-pump.js";
 import { within, withinOrThrow } from "../../lib/within.js";
 /** The folder this Vyre is installed in: its MCP server (harness/mcp/run.js) is what a chat's session on this computer talks to. */
@@ -167,9 +167,14 @@ export default {
       run: async ({ space, pinned }) => (await forSpace(space)).decide({ pinnedToServer: Boolean(pinned) }),
     });
     /** The limits the person set for this computer, as last read. */
-    const limits = { ...SETTING_DEFAULTS };
+    const limits = { ...SETTING_DEFAULTS, mode: "always" };
     const readSettings = settingsReader(key => ctx.call("settings.get", { key }));
-    const refreshSettings = async () => { Object.assign(limits, await readSettings()); return limits; };
+    const refreshSettings = async () => {
+      Object.assign(limits, await readSettings());
+      // what the computer does on its own: a read that fails changes nothing, and anything but "ask" is Always allow, as it always was
+      try { const m = /** @type {any} */ (await ctx.call("settings.get", { key: MODE_KEY })); const v = m && m.data && m.data.value; if (v === "ask" || v === "always") limits.mode = v; } catch { /* the last good value stands */ }
+      return limits;
+    };
     /** Is running here switched on? A settings module that has never answered gives no switch to honour (nothing moves for want of one); one that answers is believed. */
     const enabledNow = () => !readSettings.known() || limits.enabled;
     /** Titles of the chats the sessions here belong to, as the home told this computer when it lent them. @type {Map<string, string>} */ const titles = new Map();
