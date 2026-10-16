@@ -656,7 +656,7 @@ export default {
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
         const r = await reach(agent, caller, meta);
-        if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        if (!r.all && !r.member && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
         const scoped = rows => {
