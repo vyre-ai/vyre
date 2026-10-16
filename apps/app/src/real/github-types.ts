@@ -1,3 +1,5 @@
+export type Outcome<T = object> = ({ ok: true } & T) | { ok: false; say: string };
+
 /** What the relay read from GitHub: the numeric id (a login can change), the login, the avatar, and the Vyre name already linked to this id, if any. */
 export type GithubUser = { id: number; login: string; displayName?: string; avatarUrl?: string; linkedName?: string };
 export type Device = "computer" | "phone";

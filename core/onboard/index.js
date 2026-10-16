@@ -164,7 +164,29 @@ export default {
       return r.data;
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
-    registerFirstRun(ctx, { call, tryCall, save });
+    ctx.store.migrate(["CREATE TABLE IF NOT EXISTS onboard_flow (person TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL, updated INTEGER NOT NULL)"]);
+    const flow = {
+      load: (person) => {
+        const id = String(person || "");
+        if (!id) return null;
+        try {
+          const row = ctx.store.db.prepare("SELECT payload FROM onboard_flow WHERE person = ?").get(id);
+          return row ? JSON.parse(String(row.payload)) : null;
+        } catch { return null; }
+      },
+      save: (person, payload) => {
+        const id = String(person || "");
+        if (!id) return;
+        ctx.store.db.prepare("INSERT INTO onboard_flow (person, payload, updated) VALUES (?, ?, ?) ON CONFLICT(person) DO UPDATE SET payload = excluded.payload, updated = excluded.updated")
+          .run(id, JSON.stringify(payload), Date.now());
+      },
+      clear: (person) => {
+        const id = String(person || "");
+        if (!id) return;
+        try { ctx.store.db.prepare("DELETE FROM onboard_flow WHERE person = ?").run(id); } catch { /* empty */ }
+      },
+    };
+    registerFirstRun(ctx, { call, tryCall, save, flow, adapters: () => ctx.registry.providers.keys() });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things

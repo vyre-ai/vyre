@@ -39,6 +39,8 @@ function wrappedWrites() {
   for (const m of src.matchAll(/\bcall\(\s*"([a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*)+)"/g)) names.add(m[1]);
   names.delete("spaces.list");
   names.delete("identity.status");
+  // Settings connects AI accounts the same way; onboarding reaches it only through onboard.agent.signin in the app.
+  names.delete("sessions.accounts.signin");
   return [...names].sort();
 }
 
@@ -82,8 +84,6 @@ test("each onboarding door calls an onboard tool, and the native shells open tha
     "apps/app/src/real/install.ts",
     "apps/app/screens/devices/RealInvite.tsx",
     "apps/app/screens/devices/RealAdd.tsx",
-    "apps/app/screens/onboard/real-space.ts",
-    "apps/app/screens/onboard/real-identity.ts",
   ];
   for (const rel of doors) {
     const names = clientCalls(path.join(ROOT, rel)).filter((n) => onboard.has(n));

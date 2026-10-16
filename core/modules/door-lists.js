@@ -34,7 +34,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
-  "onboard.assistant", "onboard.claude", "onboard.computer.add", "onboard.finish", "onboard.first.done", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
+  "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.computer.add", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
   "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
   "onboard.setup", "onboard.skip", "onboard.status", "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll", "onboard.windows", "onboard.you",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
@@ -279,6 +279,7 @@ export const PLUMBING = Object.freeze(new Set([
  * @type {Readonly<Record<string, string>>}
  */
 export const MEMBER_OUTWARD = Object.freeze({
+  "onboard.agent.signin": "the person's yes: signing an AI provider into the person's own vault is held for one tap when an assistant asks; her own call from her device needs only her.",
   "files.linked.link": "the owner's yes: a link points the Space at a folder at a source, and the assistant's request lands as a held card in the owner's approvals; her own call from her device needs only her.",
   "files.linked.write": "the owner's yes for an assistant's request, held like the Space Drive's; her own save from her device goes through as her, in her own account at the source.",
   "files.linked.rename": "the owner's yes for an assistant's request, held like the Space Drive's; her own rename goes through as her, in her own account at the source.",

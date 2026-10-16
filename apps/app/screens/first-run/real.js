@@ -1,10 +1,7 @@
 // @ts-check
 // The only door the first-run screens use. Every name is a registry tool (core/onboard/first-run.js), which the MCP server forwards as itself.
 import { MOCK, tool } from "../../src/real/box";
-import { GITHUB_MOCK } from "../onboard/flow-model.js";
-
-/** Sample spaces for the mock export. One identity, added as the person joins or creates. */
-const mock = { person: /** @type {string | null} */ (null), id: "id_alex", current: /** @type {string | null} */ (null), spaces: /** @type {{ id: string, name: string, role: string, server: string | null }[]} */ ([]) };
+import * as mock from "./mock-api.js";
 
 /** @param {any} e */
 const fail = (e) => {
@@ -18,123 +15,128 @@ const done = (value) => ({ ok: true, ...(value && typeof value === "object" ? va
 
 /** @param {string} username */
 export async function lookupPerson(username) {
-  if (MOCK) return { ok: true, username, route: `https://vyre.run/u/${username}` };
+  if (MOCK) return mock.lookupPerson(username);
   try { return done(await tool("onboard.person.lookup", { username })); }
   catch (e) { return fail(e); }
 }
 
 export async function personStatus() {
-  if (MOCK) return { ok: true, exists: false, username: mock.person, id: mock.person ? mock.id : null, current: mock.current, spaces: mock.spaces.slice() };
+  if (MOCK) return mock.personStatus();
   try { return done(await tool("onboard.person.status", {})); }
   catch (e) { return fail(e); }
 }
 
 /** @param {{ username: string, password: string, confirm: string }} input */
 export async function createPerson(input) {
-  if (MOCK) {
-    mock.person = input.username;
-    return { ok: true, username: input.username, id: mock.id, route: `https://vyre.run/u/${input.username}`, recoveryKey: "R1-SAMPLE-KEY-SHOWN-ONCE", once: true, already: false };
-  }
+  if (MOCK) return mock.createPerson(input);
   try { return done(await tool("onboard.person.create", { username: input.username, password: input.password, confirm: input.confirm })); }
   catch (e) { return fail(e); }
 }
 
 export async function startGithub() {
-  if (MOCK) return { ok: true, url: null, user: GITHUB_MOCK.fresh };
+  if (MOCK) return mock.startGithub();
   try { return done(await tool("onboard.github.start", {})); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} login */
 export async function finishGithub(login) {
-  if (MOCK) return { ok: true, linked: true, login, vault: "password" };
+  if (MOCK) return mock.finishGithub(login);
   try { return done(await tool("onboard.github.finish", { login })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} link */
 export async function readInvite(link) {
-  if (MOCK) return { ok: true, link, role: "member", space: "juniper", ttlDays: 7 };
+  if (MOCK) return mock.readInvite(link);
   try { return done(await tool("onboard.join.read", { link })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} link */
 export async function joinSpace(link) {
-  if (MOCK) {
-    const name = mock.spaces.some((s) => s.name === "juniper") ? "studio" : "juniper";
-    const role = name === "studio" ? "admin" : "member";
-    const row = { id: `spc_${name}`, name, role, server: `https://${name}.vyre.run` };
-    mock.spaces = mock.spaces.filter((s) => s.id !== row.id).concat([row]);
-    mock.current = row.id;
-    return { ok: true, joined: true, space: name, id: row.id, role, server: row.server };
-  }
+  if (MOCK) return mock.joinSpace(link);
   try { return done(await tool("onboard.space.join", { link })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {{ kind: "linux" | "mac", name?: string }} input */
 export async function openSpace(input) {
-  if (MOCK) {
-    const name = input.name || "space";
-    const row = { id: `spc_${name}`, name, role: "owner", server: /** @type {string | null} */ (null) };
-    mock.spaces = mock.spaces.filter((s) => s.id !== row.id).concat([row]);
-    mock.current = row.id;
-    return { ok: true, id: "fr_sample", spaceId: row.id, role: "owner", kind: input.kind, command: "curl -fsSL vyre.run/i | sh" };
-  }
+  if (MOCK) return mock.openSpace(input);
   try { return done(await tool("onboard.space.open", { kind: input.kind, ...(input.name ? { name: input.name } : {}) })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} id */
 export async function pollSpace(id) {
-  if (MOCK) return { ok: true, id, online: false, expired: false };
+  if (MOCK) return mock.pollSpace(id);
   try { return done(await tool("onboard.space.poll", { id })); }
   catch (e) { return fail(e); }
 }
 
 export async function listSpaces() {
-  if (MOCK) return { ok: true, person: mock.person || "alex", id: mock.id, current: mock.current, spaces: mock.spaces.slice() };
+  if (MOCK) return mock.listSpaces();
   try { return done(await tool("onboard.space.list", {})); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} space */
 export async function chooseSpace(space) {
-  if (MOCK) {
-    const hit = mock.spaces.find((s) => s.id === space || s.name === space);
-    if (!hit) return { ok: false, message: "That space is not one this identity belongs to.", code: "bad_input" };
-    mock.current = hit.id;
-    return { ok: true, current: hit.id, name: hit.name, role: hit.role, server: hit.server };
-  }
+  if (MOCK) return mock.chooseSpace(space);
   try { return done(await tool("onboard.space.current", { space })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {{ space?: string, role: string, ttlDays: number }} input */
 export async function makeInvite(input) {
-  if (MOCK) return { ok: true, link: "https://vyre.run/i/sampletoken", role: input.role, ttlDays: input.ttlDays, space: input.space || "juniper" };
+  if (MOCK) return mock.makeInvite(input);
   try { return done(await tool("onboard.member.link", { role: input.role, ttlDays: input.ttlDays, ...(input.space ? { space: input.space } : {}) })); }
   catch (e) { return fail(e); }
 }
 
 /** @param {{ url: string, username?: string, password: string, github?: boolean }} input */
 export async function addComputer(input) {
-  if (MOCK) return { ok: true, url: input.url, username: input.username || null, github: input.github === true, added: true };
+  if (MOCK) return mock.addComputer(input);
   try {
     return done(await tool("onboard.computer.add", { url: input.url, password: input.password, ...(input.username ? { username: input.username } : {}), ...(input.github ? { github: true } : {}) }));
   } catch (e) { return fail(e); }
 }
 
 export async function finishFirstRun() {
-  if (MOCK) return { ok: true, done: true };
+  if (MOCK) return mock.finishFirstRun();
   try { return done(await tool("onboard.first.done", {})); }
   catch (e) { return fail(e); }
 }
 
 /** @param {string} [space] */
 export async function addPhone(space) {
-  if (MOCK) return { ok: true, link: "https://vyre.run/i/samplephone", space: space || null };
+  if (MOCK) return mock.addPhone(space);
   try { return done(await tool("onboard.phone.add", space ? { space } : {})); }
+  catch (e) { return fail(e); }
+}
+
+export async function listAgentProviders() {
+  if (MOCK) return mock.listAgentProviders();
+  try { return done(await tool("onboard.agent.list", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** @param {{ provider: string, label?: string, flow?: string, code?: string }} input */
+export async function signInAgent(input) {
+  if (MOCK) return mock.signInAgent(input);
+  try { return done(await tool("onboard.agent.signin", input)); }
+  catch (e) { return fail(e); }
+}
+
+export async function loadProgress() {
+  if (MOCK) return mock.loadProgress();
+  try { return done(await tool("onboard.first.progress", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** @param {{ screen: string, stack: string[] }} input */
+export async function saveProgress(input) {
+  if (MOCK) return mock.saveProgress(input);
+  try { return done(await tool("onboard.first.progress.save", input)); }
   catch (e) { return fail(e); }
 }
