@@ -6268,7 +6268,10 @@ Send an email as the user, always held at the Gate until they approve it. With s
   - `subject` string, required
   - `to` string or list of string, required: an address, a comma list, or a list
   - `account` string: a mail account id from mail.accounts (a vault connection id); reads default to every account this caller may use
+  - `agent` string: ignored; the session's agent is used, never a name in the input
+  - `agent_name` string: ignored; naming another agent does not borrow its standing permission
   - `bcc` string or list of string: an address, a comma list, or a list
+  - `by` string: ignored; naming another agent does not borrow its standing permission
   - `cc` string or list of string: an address, a comma list, or a list
   - `in_reply_to` string: the Message-ID being answered, from mail.read
   - `on_behalf` object
@@ -14422,7 +14425,7 @@ Make an automatic vault backup now.
 When the vault was last backed up automatically, how many backups are kept, and how the last restore drill went.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.backup`
 
@@ -14784,7 +14787,7 @@ The .env files in your project folders that hold secrets: which project, how man
 
 - Input:
   - `roots` list of string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.fetch.public`
 
@@ -14957,7 +14960,7 @@ Import a .env file, a folder of them, or a password manager export. vyred reads 
   - `format` string
   - `rewrite` boolean: swap each imported .env value for a vault:// reference once stored
   - `token` string: the token from vault.import.preview; refuses a file that changed since
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
 - Needs a person present.
 
 ### `vault.import.preview`
@@ -14969,7 +14972,7 @@ Preview an import by name and count only: what it adds, skips or finds in confli
   - `file` string: path to a file, or a folder scanned for .env files (variables come back with type and secret flag)
   - `filename` string
   - `format` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
 - Needs a person present.
 
 ### `vault.inject`
@@ -15508,7 +15511,7 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
   - `reprompt` boolean
   - `url` string
   - `value` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`
 - Needs a person present.
 
 ### `vault.relay`
@@ -15834,7 +15837,7 @@ SSH keys in the vault: name, type, fingerprint and public key, plus the agent so
 Whether the vault is open, for the app's empty and locked states: { locked, keystore, unlock: "passphrase" | "none", items }. Never a value.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.sweep`
 
@@ -15881,7 +15884,7 @@ Unlock a passphrase vault (the first unlock sets the passphrase).
 
 - Input:
   - `passphrase` string, required
-- Callers: `cli`, `device`, `local`
+- Callers: `cli`, `device`, `local`, `mobile`
 - Needs a person present.
 
 ### `vault.unlock-passphrase`

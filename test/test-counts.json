@@ -370,7 +370,7 @@
  "core/runner/mac-hosted.test.js": 3,
  "core/runner/module.test.js": 5,
  "core/runner/runner.foundation.test.js": 18,
- "core/runner/runner.handover-slow.test.js": 7,
+ "core/runner/runner.handover-slow.test.js": 6,
  "core/runner/runner.handover.test.js": 9,
  "core/runner/runner.session.test.js": 10,
  "core/sessions/accounts.test.js": 12,
