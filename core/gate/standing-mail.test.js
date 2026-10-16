@@ -37,7 +37,8 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
     const row = (await ok("agents.list")).find((/** @type {any} */ a) => a.name === name);
     const uid = row && row.uid;
     assert.ok(uid, `agent ${name} has a uid`);
-    return d.registry.call(tool, input, `mcp:agent:${name}`, { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: uid, session: `s-${name}-${person.slice(4, 8)}`, thread: `t-${name}-${person.slice(4, 8)}`, person, vouched: true }), {})).token, thread: "t-1", agent: name });
+    const personChain = K.chains.fromFacts({ kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "direct", session: "s" });
+    return d.registry.call(tool, input, `mcp:agent:${name}`, { token: (await K.surfaces.open(personChain, { agent: uid, session: `s-${name}-${person.slice(4, 8)}`, thread: `t-${name}-${person.slice(4, 8)}` })).token, thread: "t-1", agent: name });
   };
   return { d, K, OWNER, dev, as, ok, agentCall };
 }

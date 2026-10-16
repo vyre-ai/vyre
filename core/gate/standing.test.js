@@ -43,7 +43,7 @@ test("a standing permission lets one agent send inside its scope with no questio
   const ownerChain = dev(OWNER);
   await K.gateway.grants.setRole(ownerChain, { person: ANA, role: "admin" }, { presence: { op: "stand-in", fields: {}, n: 1 } }).catch(() => {});
   const uid = (await ok(OWNER, "agents.create", { name: "juno", kind: "agent" })).uid;
-  const agent = async (/** @type {string} */ name, /** @type {any} */ extra = {}) => ({ token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: name, session: `s-${name}`, thread: `t-${name}`, person: OWNER, vouched: true, ...extra }), {})).token });
+  const agent = async (/** @type {string} */ agentId, /** @type {any} */ extra = {}) => ({ token: (await K.surfaces.open(ownerChain, { agent: agentId, session: `s-${agentId.slice(-8)}`, thread: `t-${agentId.slice(-8)}`, ...extra })).token });
   const send = async (/** @type {string} */ to, /** @type {string} */ id = uid) => d.registry.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "Re: intake", body: "Hi, the form is on staging." } }, "mcp:agent:juno", { ...(await agent(id)), thread: "t-1", agent: "juno" });
 
   // before any permission: held, as ever
@@ -110,7 +110,7 @@ test("a list is the addresses it holds when the permission is made; following it
   await K.gateway.records.define(ownerChain, { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "email", kind: "text", label: "Email" }, { name: "other_emails", kind: "emails", label: "Other emails" }] }] });
   const lee = await K.gateway.records.create(ownerChain, "contact", { name: "Lee", email: "lee@harlowlegal.com" });
   const uid = (await ok("agents.create", { name: "juno", kind: "agent" })).uid;
-  const send = async (/** @type {string} */ to) => d.registry.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "Re: intake", body: "Hi." } }, "mcp:agent:juno", { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "agent_session", agent: uid, session: "s-j", thread: "t-j", person: OWNER, vouched: true }), {})).token, thread: "t-1", agent: "juno" });
+  const send = async (/** @type {string} */ to) => d.registry.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "Re: intake", body: "Hi." } }, "mcp:agent:juno", { token: (await K.surfaces.open(ownerChain, { agent: uid, session: "s-j", thread: "t-j" })).token, thread: "t-1", agent: "juno" });
   const snap = await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mail", to: { lists: [`contact:${lee.id}`] }, daily_cap: 50 });
   const follow = await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mail", to: { lists: [`contact:${lee.id}`] }, follow_lists: true, daily_cap: 50 });
   assert.match(follow.warning, /Anyone who can edit these lists can change who juno sends to/);

@@ -1026,7 +1026,7 @@ export default {
       callers: ["module"],
       run: async ({ name, uid }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent and vault modules only; agents.list shows the agents"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault" && c !== "module:gate") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent, vault and gate modules only; agents.list shows the agents"), { code: "denied" });
         if (uid !== undefined) { const r = /** @type {any} */ (db.prepare("SELECT name FROM agents_agents WHERE uid = ?").get(String(uid))); return { name: r ? String(r.name) : null }; }
         return { uid: must(String(name).toLowerCase()).uid };
       },
