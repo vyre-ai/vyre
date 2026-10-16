@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { TEST_KDF } from "./master.js";
 import { aesWrap, aesUnwrap } from "./wrap.js";
-import { acceptKdf, bundleHash, createLoginService, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
+import { acceptKdf, buildRegistration, bundleHash, createLoginService, deriveLogin, loginMessage, registerMessage, LOGIN_KDF, KDF_FLOOR } from "./space-login.js";
 
 const SPACE = "juniper";
 const PERSON = "per_" + "a".repeat(26);
@@ -130,4 +130,19 @@ test("a device refuses a KDF that is too weak or too heavy, and the login key is
   assert.notEqual(Buffer.from(d.loginPub, "base64url").toString("hex"), d.K.toString("hex"));
   assert.equal(deriveLogin(PASSWORD, "AAAAAAAAAAAAAAAAAAAAAA", TEST_KDF).loginPub, d.loginPub, "deterministic");
   assert.notEqual(deriveLogin(PASSWORD, "BBBBBBBBBBBBBBBBBBBBBB", TEST_KDF).loginPub, d.loginPub, "salted");
+});
+
+test("a password change makes a new salt and a new login key, and the old password stops working", async () => {
+  const r = await rig();
+  const change = await buildRegistration({
+    space: SPACE, username: "alex", person: PERSON, password: "a brand new master password", kdf: TEST_KDF, identity: { pub: r.idKey.pub, sign: m => r.idKey.sign(m) },
+    makeBundle: K => ({ v: 1, username: "alex", id: PERSON, passwordWrap: aesWrap(K, r.rk, "vyre:master:password:v1") }), now: () => r.clock.t,
+  });
+  assert.notEqual(change.body.salt, r.salt, "a new salt");
+  assert.notEqual(change.body.loginPub, r.login.loginPub, "the login key rotated");
+  assert.equal((await r.svc.register(change.body)).ok, true);
+  assert.equal((await signIn(r, "alex", PASSWORD, "203.0.113.20")).error.code, "bad_login", "the old password no longer signs in");
+  const next = await signIn(r, "alex", "a brand new master password", "203.0.113.21");
+  assert.equal(next.ok, true);
+  assert.deepEqual(aesUnwrap(next.K, next.bundle.passwordWrap, "vyre:master:password:v1"), r.rk);
 });

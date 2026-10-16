@@ -101,6 +101,20 @@ function limiter(now) {
 }
 
 /**
+ * The body of a `register` request, for a new username and for a password change alike (a change makes a new salt, so the login key rotates). `makeBundle(K)` wraps the master record under
+ * the new K and returns it. The identity key signs the whole thing, so only the identity can set or replace a record. The caller zeroes the returned `K` when it is done with it.
+ * @param {{ space: string, username: string, person: string, password: string, kdf?: any, identity: { pub: string, sign: (msg: Buffer) => string | Promise<string> }, makeBundle: (K: Buffer) => any, now?: () => number, random?: (n: number) => Buffer }} o
+ */
+export async function buildRegistration(o) {
+  const salt = b64((o.random || (n => crypto.randomBytes(n)))(16));
+  const d = deriveLogin(o.password, salt, o.kdf || LOGIN_KDF);
+  const bundle = o.makeBundle(d.K);
+  const ts = (o.now || Date.now)();
+  const sig = await o.identity.sign(registerMessage(o.space, o.username, d.loginPub, bundleHash(bundle), ts));
+  return { K: d.K, body: { op: "register", username: o.username, person: o.person, pub: o.identity.pub, ts, sig, salt, loginPub: d.loginPub, bundle } };
+}
+
+/**
  * The server side for one space. State that must survive a restart (records) goes through `store`; challenges, sessions and counters are memory only.
  * @param {{ space: string, store: { get: (k: string) => any, set: (k: string, v: any) => void }, secret?: Buffer, now?: () => number, random?: (n: number) => Buffer,
  *   isMember?: (username: string, person: string) => boolean | Promise<boolean>, verifyIdentity?: (person: string, pub: string) => Promise<boolean>, onNewDevice?: (e: { username: string, label: string, address: string, at: number }) => void }} o
