@@ -37,6 +37,7 @@ jobs:
       - name: Export the web app, pointed at the stand-ins
         working-directory: apps/app
         env:
+          EXPO_PUBLIC_VYRE_HOST: "1"
           EXPO_PUBLIC_VYRE_NAMES_DIRECTORY: http://127.0.0.1:${{ env.FIRST_RUN_NAMES_PORT }}
           EXPO_PUBLIC_VYRE_RELAY: ws://${{ env.PROOF_HOST_IP }}:${{ env.FIRST_RUN_RELAY_PORT }}
         run: |
@@ -77,6 +78,7 @@ jobs:
       - name: Export the web app, pointed at the stand-ins on the Mac runner's loopback
         working-directory: apps/app
         env:
+          EXPO_PUBLIC_VYRE_HOST: "1"
           EXPO_PUBLIC_VYRE_NAMES_DIRECTORY: http://127.0.0.1:${{ env.FIRST_RUN_NAMES_PORT }}
           EXPO_PUBLIC_VYRE_RELAY: ws://127.0.0.1:${{ env.FIRST_RUN_RELAY_PORT }}
         run: |
