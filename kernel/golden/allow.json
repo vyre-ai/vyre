@@ -548,6 +548,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
  },
  {
+  "tool": "flows.actions",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the actions a Flow's call step can name: every tool the running modules offer as a Flow step, with what each takes and gives; read it to pick the action for a call step; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.advance",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger"
  },

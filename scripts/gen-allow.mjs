@@ -486,6 +486,7 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.connections": "lists, per Connection, the Flows that use it with their health lines: names and levels, no data",
   "flows.attention": "lists the runs that need a person, in plain words with the message redacted; no step data",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
+  "flows.actions": "lists the actions a Flow's call step can name: every tool the running modules offer as a Flow step, with what each takes and gives; read it to pick the action for a call step",
 });
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";
