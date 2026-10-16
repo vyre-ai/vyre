@@ -101,8 +101,8 @@ test("an ask step keeps its record and an assign step keeps how and template", (
   assert.deepEqual([out.steps[0].kind, out.steps[0].record], ["ask", { expr: "event.subject" }]);
   assert.deepEqual([out.steps[1].how, out.steps[1].template], ["tailor", "Dear client"]);
   assert.deepEqual(checkFlow(out), []);
-  const odd = fromDefinition(flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "reason" }] }]), options);
-  assert.equal(odd.steps[0].kind, "advanced", "a question with a form of its own stays as it was");
+  const odd = fromDefinition(flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "reason", note: "x" }] }]), options);
+  assert.equal(odd.steps[0].kind, "advanced", "a form field the editor cannot show stays as it was");
 });
 
 test("a condition can say contains and compare to yes or no, and a quoted number stays the text it was", () => {
@@ -198,6 +198,19 @@ test("an agent or assign step says what comes back, not only a note", () => {
   assert.equal(odd.steps[0].kind, "advanced");
 });
 
+test("an Ask step has a form of questions the engine checks, and names are made from the labels", () => {
+  const d = flow([{ id: "q1", kind: "ask", to: "role:owner", title: "Approve?", form: [{ name: "amount", label: "Refund amount", kind: "number", required: true }, { name: "how", label: "How paid", kind: "choice", choices: ["Card", "Cash"] }, { name: "why" }] }]);
+  const draft = fromDefinition(d, options);
+  assert.deepEqual(draft.steps[0].form.map((f) => [f.name, f.label, f.kind, f.required]), [["amount", "Refund amount", "number", true], ["how", "How paid", "choice", false], ["why", "why", "text", false]]);
+  assert.equal(draft.steps[0].form[1].choices, "Card, Cash");
+  const out = toDefinition(draft, options);
+  assert.deepEqual(out.steps[0].form, [{ name: "amount", label: "Refund amount", kind: "number", required: true }, { name: "how", label: "How paid", kind: "choice", choices: ["Card", "Cash"] }, { name: "why", label: "why" }]);
+  assert.deepEqual(checkFlow(out), []);
+  draft.steps[0].form.push({ label: "Refund amount", kind: "text", required: false, choices: "" }, { label: "", kind: "text" });
+  const more = toDefinition(draft, options).steps[0].form;
+  assert.deepEqual(more.map((f) => f.name), ["amount", "how", "why", "refund_amount"], "a new question is named from its label; an empty one is dropped");
+  assert.deepEqual(checkFlow(toDefinition(draft, options)), []);
+});
 test("the action picker searches by name or words and picking one fills where it acts and a row for each plain input", () => {
   const o = { ...options, actions: [{ action: "documents.generate", label: "Make a document from a template", risk: "read", inputs: { template: "string", values: "object", format: "string" } }, { action: "tasks.nudge", label: "Nudge a task", risk: "outward.send", inputs: { id: "string", days: "number" } }] };
   assert.deepEqual(actionChoices(o, "").map((x) => x[0]), ["documents.generate", "tasks.nudge"]);

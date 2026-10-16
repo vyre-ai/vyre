@@ -480,6 +480,35 @@ const outputFrom = (o) => {
   if (o.target !== undefined && !(TARGETED.has(o.kind) && (typeof o.target === "string" || (o.kind === "fields" && Array.isArray(o.target) && o.target.every((x) => typeof x === "string" && x && !x.includes(",")))))) return null;
   return o.kind === "note" ? {} : { output: o.kind, ...(o.target !== undefined ? { outputTarget: Array.isArray(o.target) ? o.target.join(", ") : o.target } : {}) };
 };
+/** The kinds of field a question's form can have, as [stored, words]. */
+export const FORM_KINDS = /** @type {[string, string][]} */ ([["text", "Text"], ["number", "Number"], ["date", "Date"], ["choice", "One of a list"], ["boolean", "Yes or no"], ["file", "A file"]]);
+/** The form of an Ask step as stored: the rows that have a label, each with a name (kept if it had one, else made from the label and never repeated). @param {any} rows */
+const formOf = (rows) => {
+  const named = (rows || []).filter((/** @type {any} */ r) => String(r.label || "").trim());
+  const used = new Set();
+  const out = named.map((/** @type {any} */ r) => {
+    let name = r.name || (slug(String(r.label)).replace(/^[^a-z]+/, "f_$&").slice(0, 40) || "field");
+    for (let i = 2; used.has(name); i++) name = `${name.replace(/_\d+$/, "")}_${i}`;
+    used.add(name);
+    const kind = FORM_KINDS.some((k) => k[0] === r.kind) ? r.kind : "text";
+    const choices = kind === "choice" ? String(r.choices || "").split(",").map((x) => x.trim()).filter(Boolean) : [];
+    return { name, label: String(r.label).trim(), ...(kind !== "text" ? { kind } : {}), ...(r.required ? { required: true } : {}), ...(choices.length ? { choices } : {}) };
+  });
+  return out.length ? out.slice(0, 20) : null;
+};
+/** The stored form as the rows to edit; null when a field says more than the editor shows. @param {any} form */
+const formFrom = (form) => {
+  if (!Array.isArray(form)) return null;
+  const rows = [];
+  for (const f of form) {
+    if (!f || typeof f !== "object" || typeof f.name !== "string" || Object.keys(f).some((k) => !["name", "label", "kind", "required", "choices"].includes(k))) return null;
+    if (f.choices !== undefined && !(f.kind === "choice" && Array.isArray(f.choices) && f.choices.every((/** @type {any} */ c) => typeof c === "string" && c && !c.includes(",")))) return null;
+    if (f.kind !== undefined && !FORM_KINDS.some((k) => k[0] === f.kind)) return null;
+    if (f.required !== undefined && typeof f.required !== "boolean") return null;
+    rows.push({ name: f.name, label: typeof f.label === "string" ? f.label : f.name, kind: f.kind || "text", required: f.required === true, choices: Array.isArray(f.choices) ? f.choices.join(", ") : "" });
+  }
+  return rows;
+};
 /** The skills a task asks for, as the stored list: typed as words separated by commas, at most 20, each at most 60 characters. @param {any} s */
 const skillsOf = (s) => { const list = String(s.skills || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20).map((x) => x.slice(0, 60)); return list.length ? list : null; };
 /** The stored skills as the words typed; null when they are not a list of words this field can show. @param {any} v @returns {string | null} */
@@ -539,7 +568,7 @@ function kindDefinition(s, d) {
     case "email": return s.sendStep === "comms.email"
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
-    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title), ...(s.record ? { record: rec(s.record) } : {}) };
+    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title), ...(s.record ? { record: rec(s.record) } : {}), ...(formOf(s.form) ? { form: formOf(s.form) } : {}) };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || ""), ...Object.fromEntries((s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) } };
     default: throw new Error(`no step kind ${s.kind}`);
   }
@@ -842,7 +871,7 @@ function stepFromKind(s) {
         ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...outputFrom(s.output), ...ppl } : adv;
     }
     case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
-    case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "record"]) && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}) } : adv;
+    case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "form", "record"]) && (s.record === undefined || refOf(s.record)) && (s.form === undefined || formFrom(s.form) !== null) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.form ? { form: formFrom(s.form) } : {}) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
       return rec && f.length >= 1 && f.every((k) => unval(s.set[k]) !== null) && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]), ...(f.length > 1 ? { more: f.slice(1).map((k) => ({ field: k, value: unval(s.set[k]) })) } : {}) } : adv;

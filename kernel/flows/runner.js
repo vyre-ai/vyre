@@ -13,6 +13,7 @@
 
 import { expandConnections } from "./connection-step.js";
 import { runCases } from "./cases.js";
+import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
 import { linksFor, withLinks } from "./links.js";
@@ -1760,7 +1761,14 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
       const t = res.task || {};
-      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
+      // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
+      let values;
+      if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
+        const read = readForm(s.form, t.answer);
+        if (!read.ok) throw new StepFail("invalid_answer", `step ${s.id}: ${read.message}`);
+        values = read.values;
+      }
+      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(values ? { values } : {}), ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
     const who = s.kind === "agent" ? s.assistant : s.to;
     const need = { action: "ask.request", resource: `vyre://${ctx.cat.space}/task/*` };
