@@ -16091,9 +16091,10 @@ List space vault item names. Values stay sealed.
 
 ### `vault.space.put`
 
-Store a space vault item. The value is sealed and never returned.
+Store a space vault item for the hosts it may be sent to. The value is sealed and never returned.
 
 - Input:
+  - `hosts` list of string, required
   - `id` string, required
   - `name` string, required
   - `space` string, required
@@ -16121,7 +16122,7 @@ Whether a space vault exists and which generation it is on. No key is returned.
 
 ### `vault.space.use`
 
-Use a space vault item on an outbound request. The caller gets the response, never the value.
+Use a space vault item on a host it was saved for. Another host, including a redirect, is refused. The response never includes the value.
 
 - Input:
   - `id` string, required
