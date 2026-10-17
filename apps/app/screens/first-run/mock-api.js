@@ -57,6 +57,12 @@ export async function openSpace(input) {
 }
 
 /** @param {string} id */
+/** @param {string} space */
+export async function removeSpace(space) {
+  mock.spaces = mock.spaces.filter((s) => s.id !== space && s.name !== space);
+  return { ok: true };
+}
+
 export async function pollSpace(id) {
   return { ok: true, id, online: false, expired: false };
 }
