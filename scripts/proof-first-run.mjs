@@ -142,7 +142,7 @@ async function macDriver() {
         await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
         const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
         const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
-        const stages = await need().evaluate(() => (/** @type {any} */ (window).__vyreStages || []).join("; ")).catch(() => "");
+        const stages = await need().evaluate(() => ((/** @type {any} */ (window).__vyreTrail || []).concat(/** @type {any} */ (window).__vyreStages || [])).join("; ")).catch(() => "");
         throw new Error(`${e.message} | stages: ${stages || "none seen"} | this window to the relay: ${probe} | the screen starts: ${body.slice(0, 300)} | the screen ends: ${body.slice(-300)}`);
       }
     },

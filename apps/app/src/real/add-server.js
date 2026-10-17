@@ -1,5 +1,6 @@
 // @ts-check
 import { installLine } from "../../screens/install/first-run.js";
+import { trail } from "../host/trail.js";
 // add-server: the ONE way a server joins a person's Vyre (spec 0.3.0 part 10). It serves an upgrade from Home to Cloud, a second server, a replacement server and a team space's first server alike.
 //
 //   1. The app makes an install code bound to this device's identity key (relay/client/pair-install.js) and shows the one install line that carries it, with the Records choice.
@@ -169,7 +170,7 @@ export function createAddServer(o) {
   }
 
   /** One timestamp-free line per step of the pairing, read by the first-run proof when the pairing does not finish (the stage alone cannot say which wait it is in). */
-  const trace = (/** @type {string} */ step) => { try { if (typeof console !== "undefined") console.info(`vyre:stage step ${step}`); } catch { /* no console */ } };
+  const trace = (/** @type {string} */ step) => { trail(`step ${step}`); };
 
   /** "These match my server's terminal": now, and only now, the connection opens and the pairing starts. */
   async function confirmWords() {

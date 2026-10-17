@@ -8,6 +8,7 @@
 import type { PairingSession } from "../api/pairing-session";
 import { macKeyAvailable } from "../identity/mac-key.ts";
 import { shell } from "../shell/shell.ts";
+import { trail } from "../host/trail.js";
 // A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
 import { withCoreProof } from "./core-proof.js";
 /** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */
@@ -198,7 +199,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
-      try { console.info("vyre:stage step pair: adopted, opening the paired session"); } catch { /* no console */ }
+      trail("step pair: adopted, opening the paired session");
       // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
       const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
