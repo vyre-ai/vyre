@@ -30,6 +30,8 @@ export async function kernelRig(o = {}) {
   await gs.bootstrap({ owner: OWNER });
   // the vault module's right to make grants for others, as its manifest declares it (core/vault/module.json needs.kernel.mints)
   await gs.installModule("vault", { actions: [], mints: [{ prefix: "vault", actions: ["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.rotate"] }] });
+  // The Space's agents are registered actors (an unregistered hop is not a member of the Space and the authorizer refuses it before any grant is read)
+  for (const uid of Object.values(agents)) await gw.grants.addActor(owner(), { kind: "agent", id: uid, space: SPACE }, { presence: { n: Math.random() } });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {
     space: SPACE, owner: OWNER, grants: gw.grants, authorize: gw.authorize,
