@@ -26,3 +26,20 @@ test("no screen renders or imports a generic QR component", () => {
   }
   assert.deepEqual(bad, []);
 });
+
+// The owner's rule: no standard QR anywhere a person shares or pairs. The vault's encoder (core/vault/qr.js) may be reached only from the vault's own screens (the 2FA camera use), never from an invite or a first-run screen.
+test("nothing outside the vault's screens imports core/vault/qr.js", () => {
+  const bad = [];
+  for (const f of files(root)) {
+    const rel = path.relative(root, f).split(path.sep).join("/");
+    if (rel.startsWith("screens/vault/") || rel.startsWith("modules/")) continue;
+    if (/vault\/qr(\.js)?["']/.test(fs.readFileSync(f, "utf8"))) bad.push(rel);
+  }
+  assert.deepEqual(bad, []);
+});
+
+test("the invite share draws no code, only the link with Copy and Share", () => {
+  const s = fs.readFileSync(path.join(root, "ui/components/InviteShare.tsx"), "utf8");
+  assert.doesNotMatch(s, /invite-mark|inviteModules|Invite mark/);
+  assert.match(s, /label="Share"/);
+});
