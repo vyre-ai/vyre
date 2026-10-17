@@ -100,6 +100,8 @@ test("agentMay with a person: a member's agent holds the member's own grant on t
   const benRes = `vyre://${space}/vault/${BEN}/item/mc-1`, eveRes = `vyre://${space}/vault/${EVE}/item/mc-2`, ownerRes = `vyre://${space}/vault/${vid}/item/o`;
   // the share's grant: the member's own, for this agent, on her own resource, at one origin
   await h.grants.create(ownerChain, { subject: { kind: "actor", actor: { kind: "agent", id: "agt_kit", space } }, actions: ["vault.fill"], resource: { prefix: benRes }, conditions: { where: { origins: [ORIGIN] } }, source: "vault:member-share:mc-1" }, ok());
+  // and her own side: the share also gives HER Fill in on the copy's address, because a chain of [the member, the agent] holds only what both hold
+  await h.grants.create(ownerChain, { subject: { kind: "actor", actor: { kind: "person", id: BEN, space } }, actions: ["vault.fill"], resource: { prefix: benRes }, conditions: { where: { origins: [ORIGIN] } }, source: "vault:member-share:mc-1:member" }, ok());
   assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN, false, undefined, BEN), true, "[the member, the agent] holds her grant on her resource");
   assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN), false, "with no person it is the owner's chain, which holds nothing in her folder");
   assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, "https://evil.test", false, undefined, BEN), false, "another origin");
