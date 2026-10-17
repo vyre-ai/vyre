@@ -80,7 +80,7 @@ jobs:
         # requests run both versions.
         node: ${{ fromJSON(github.ref_type == 'tag' && '[24]' || ((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
         # Ten shards on the self-hosted runners (twelve of them, so a run takes about half the time), five on GitHub's hosted ones (node --test-shard); the eval and the perf gate run on shard 1 only.
-        shard: ${{ fromJSON(needs.select.outputs.all != 'true' && '[1]' || (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && '[1,2,3,4,5,6,7,8,9,10,11,12]' || '[1,2,3,4,5]') }}
+        shard: ${{ fromJSON(needs.select.outputs.all != 'true' && '[1]' || (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]' || '[1,2,3,4,5]') }}
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
@@ -136,7 +136,7 @@ jobs:
       - if: ${{ needs.select.outputs.all == 'true' }}
         run: npm test
         env:
-          VYRE_TEST_SHARD: ${{ matrix.shard }}/${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && 12 || 5 }}
+          VYRE_TEST_SHARD: ${{ matrix.shard }}/${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && 20 || 5 }}
           VYRE_TEST_OMIT: test/docs-check.test.js
           VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && (vars.CI_TEST_WIDTH || '2') || '' }}
           VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
