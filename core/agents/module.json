@@ -59,6 +59,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.wake-done",
+        "summary": "mark a task's wake over so it stops counting as a running job (the Flows host only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "agents.wake-failed",
         "summary": "mark a task's wake failed so one retry may start it (the Flows host only)",
         "reach": "modules",
