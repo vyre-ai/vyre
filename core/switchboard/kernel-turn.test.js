@@ -284,6 +284,10 @@ async function chipChat(t, who) {
   // an item in the OWNER's vault: what a member's chip must never resolve, and what the owner's own chip does (the control that lets the member test fail)
   const put = await d.registry.call("vault.put", { name: "owner-secret", kind: "api-key", value: "sk-test-owner-only-value", hosts: ["https://api.example.com"] }, "cli");
   assert.ok(put.data && !put.error, JSON.stringify(put));
+  // A member's turn runs on their own sign-in (asker-account.js), never the owner's: Bob has one, so these tests are about chips and not about sign-ins.
+  const bobs = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "Bob's Claude", kind: "login" }, "cli");
+  assert.ok(bobs.data && !bobs.error, JSON.stringify(bobs));
+  d.registry.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, person = ? WHERE id = ?").run(Date.now(), BOB, bobs.data.id);
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);

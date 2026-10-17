@@ -13,7 +13,7 @@ import { registerAgentTools } from "./agent-tools.js";
 function setup(t, { level = "edit" } = {}) {
   const db = open(path.join(tempHome(t), "t.db"));
   t.after(() => db.close());
-  migrate(db, "agentusers", MIGRATIONS);
+  migrate(db, "computers", MIGRATIONS);
   /** @type {string[]} */ const ran = [];
   const ctl = {
     createUser: async (/** @type {any} */ u) => { ran.push(`create ${u.user}`); }, removeUser: async () => {},

@@ -11,7 +11,7 @@ import { select, specifiers, resolve } from "./ci-select.mjs";
 
 /** A tree of file -> source, and the selection for a change to it. @param {Record<string, string>} tree @param {string[]} changed */
 const pick = (tree, changed) => select({ changed, tracked: new Set(Object.keys(tree)), read: f => tree[f] ?? "" });
-/** Twelve unrelated tests plus the files under test, so a third of them is four tests. */
+/** Twelve unrelated tests plus three tests of the files under test: 15 in all, so a third of them is five. */
 const base = () => {
   /** @type {Record<string, string>} */ const t = {
     "lib/a.js": "export const a = 1;", "lib/b.js": `import { a } from "./a.js"; export const b = a;`, "lib/c.js": "export const c = 1;",
@@ -45,12 +45,12 @@ test("a change to a lockfile, a package.json, a workflow, the module loader, the
 
 test("a file that more than a third of the tests reach picks all, one just under does not", () => {
   const t = base();
-  for (let i = 0; i < 4; i++) t[`core/u${i}/u.test.js`] = `import "../../lib/c.js";`;   // c now has 5 of 19 tests: under a third
+  for (let i = 0; i < 4; i++) t[`core/u${i}/u.test.js`] = `import "../../lib/c.js";`;   // c now has 5 of 15 tests: a third of 15 is 5, so not over it
   assert.equal(pick(t, ["lib/c.js"]).all, false);
-  t["core/u4/u.test.js"] = `import "../../lib/c.js";`; t["core/u5/u.test.js"] = `import "../../lib/c.js";`;   // 7 of 19: over a third
+  t["core/u4/u.test.js"] = `import "../../lib/c.js";`; t["core/u5/u.test.js"] = `import "../../lib/c.js";`;   // 7 of 15: over a third
   const r = pick(t, ["lib/c.js"]);
   assert.equal(r.all, true);
-  assert.match(r.why.join(" "), /reached by 7 of 19/);
+  assert.match(r.why.join(" "), /reached by 7 of 15/);
 });
 
 test("notes run nothing; the generated docs and module manifests run the docs check alone", () => {
