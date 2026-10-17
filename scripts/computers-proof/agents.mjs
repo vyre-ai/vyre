@@ -156,6 +156,13 @@ try {
   shOk([...asOwner, CONTAINER, "xdotool", "key", "w"]); await sleep(1500);
   const heard = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "grep -c KeyPress /tmp/agent-xev.log || true"]);
   check(Number(heard) === 0, "(c) a client with the agent's cookie gets no key event of the owner's window", `${heard} key events; ${shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "head -c 200 /tmp/agent-xev.log"]).slice(0, 120)}`);
+  // raw XInput2 root events bypass the window-targeted xev above: a listener on the root under the agent's cookie must hear no key while the owner types, and the owner's own listener must (the control)
+  shOk(["exec", "-u", "20000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth", CONTAINER, "sh", "-c", "(timeout 6 xinput test-xi2 --root > /tmp/agent-xi2.log 2>&1 &) ; sleep 1"]);
+  shOk([...asOwner, CONTAINER, "sh", "-c", "(timeout 6 xinput test-xi2 --root > /tmp/owner-xi2.log 2>&1 &) ; sleep 1; xdotool key r; sleep 1.5"]);
+  const xi2Agent = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "grep -c KeyPress /tmp/agent-xi2.log || true"]);
+  const xi2Owner = shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "grep -c KeyPress /tmp/owner-xi2.log || true"]);
+  check(Number(xi2Owner) >= 1, "the owner's XInput2 root listener hears the key (the control)", xi2Owner);
+  check(Number(xi2Agent) === 0, "(c) an XInput2 root listener with the agent's cookie hears no key", `${xi2Agent}`);
   const ownerHeard = shOk([...asOwner, CONTAINER, "sh", "-c", `timeout 4 xev -id ${wid} > /tmp/owner-xev.log 2>&1 & sleep 1; xdotool key e; sleep 1.5; grep -c KeyPress /tmp/owner-xev.log || true`]);
   check(Number(ownerHeard) >= 1, "the owner's own listener does hear it (the control)", ownerHeard);
   const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);

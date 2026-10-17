@@ -54,7 +54,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg \
       tigervnc-standalone-server tigervnc-common tigervnc-tools \
-      fluxbox xterm xdotool x11-utils x11-xserver-utils \
+      fluxbox xterm xdotool xinput x11-utils x11-xserver-utils \
       at-spi2-core dbus-x11 \
       python3 python3-gi gir1.2-atspi-2.0 \
       chromium \
