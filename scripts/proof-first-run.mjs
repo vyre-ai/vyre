@@ -55,7 +55,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, fieldReady(l: string): Promise<boolean>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, fieldReady(l: string): Promise<boolean>, go(path: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -118,6 +118,7 @@ async function browserDriver() {
     },
     async fill(/** @type {string} */ l, /** @type {string} */ v) { await page.locator(`input[aria-label="${l}"], textarea[aria-label="${l}"]`).first().fill(v, { timeout: 15_000 }); },
     async fieldReady(/** @type {string} */ l) { return Boolean(await page.evaluate(FIELD_READY, l).catch(() => false)); },
+    async go(/** @type {string} */ path) { await page.evaluate(GO, path); },
     async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
     // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
     async reopen() { await d.open(); },
@@ -160,6 +161,7 @@ async function macDriver() {
     },
     async fill(l, v) { await need().fill(l, v, 20_000); },
     async fieldReady(l) { return Boolean(await need().evaluate(FIELD_READY, l).catch(() => false)); },
+    async go(path) { await need().evaluate(GO, path); },
     async turnOn(label) {
       const state = () => need().evaluate((/** @type {string} */ l) => { const e = document.querySelector(`[aria-label="${l.replace(/"/g, '\\"')}"]`); return e ? e.getAttribute("aria-checked") : null; }, label);
       if ((await state()) !== "true") await need().clickAria(label, 15_000);
@@ -200,6 +202,9 @@ function serverLogForFailure() {
     return [...out, "-- last pairing-related lines", ...rest].join("\n");
   } catch (e) { return `no server log (${/** @type {Error} */ (e).message})`; }
 }
+
+/** Move the app to a screen without reloading it (a reload would lock it): the router listens to the history, as it does for the browser's own back button. Runs inside the page. @param {string} path */
+const GO = (path) => { history.pushState({}, "", path); window.dispatchEvent(new PopStateEvent("popstate")); return true; };
 
 /**
  * Is the field with this label drawn, and the topmost thing at its centre? (True only once the app's splash has lifted: the screen's words are in the page before that, and a click on the field's
@@ -338,6 +343,47 @@ try {
     const claimed = [...log.matchAll(/the owner is now the claimed identity (per_[a-z2-7]+)/g)].map((m) => m[1]);
     if (!claimed.length || claimed[claimed.length - 1] !== personId) throw new Error(`the server's kernel took ${claimed.length ? claimed[claimed.length - 1] : "no identity"} as owner, not ${personId}`);
   }, { needs: [S("the server pairs to the creator, the screen names it, and the app reaches Ready")] });
+
+  // ---- The owner's walk, after Ready, in the window as it opens: each screen the owner looks at first, one step each so a failure names the screen. A picture of every one.
+  const BAD = /You may not do that|Pair first|member's own vault|did not answer|did not load|went wrong|not allowed|forbidden/i;
+  const READY = [S("the server pairs to the creator, the screen names it, and the app reaches Ready")];
+  /** Open a screen and wait until it says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} [before] */
+  const look = async (name, file, shows, ms, before) => {
+    if (before) await before();
+    let t = "";
+    await until(async () => { t = await drv.text(); return shows.test(t); }, ms, `${name} to show what it should`).catch((/** @type {Error} */ e) => { throw new Error(`${e.message}. The screen says: ${t.replace(/\s+/g, " ").slice(0, 400)}`); });
+    await drv.shot(file);
+    const bad = BAD.exec(t);
+    if (bad) throw new Error(`${name} shows "${bad[0]}": ${t.replace(/\s+/g, " ").slice(0, 400)}`);
+    return t;
+  };
+  await run.step(S("owner walk: Now loads, with no skeleton after 90 s"), async () => {
+    await drv.go("/u/now");
+    await look("Now", "07-now", /Good (morning|afternoon|evening)|nothing needs you|needs you|Edit/i, 90_000);
+  }, { needs: READY });
+  await run.step(S("owner walk: Records shows its list, or says it is setting up"), async () => {
+    await look("Records", "08-records", /Records|No records yet|setting up|still starting/i, 90_000, async () => { await drv.click("Records"); });
+  }, { needs: READY });
+  await run.step(S("owner walk: Sites lists, with no refusal"), async () => {
+    await look("Sites", "09-sites", /Sites/i, 60_000, async () => { await drv.go("/u/sites"); });
+  }, { needs: READY });
+  await run.step(S("owner walk: Vault, Mine, opens"), async () => {
+    await drv.go("/u/vault");
+    await look("Vault", "10-vault-mine", /Mine|Make your own vault|Your own vault|Vault/i, 60_000, async () => { try { await drv.click("Mine"); } catch { /* the page already shows Mine */ } });
+  }, { needs: READY });
+  await run.step(S("owner walk: Agents, creating an agent succeeds"), async () => {
+    await look("New agent", "11-new-agent", /New agent/i, 60_000, async () => { await drv.go("/u/settings/assistants/new"); });
+    await drv.fill("Name", "walker");
+    await drv.fill("Job", "Answer questions about the Space.");
+    await drv.click("Create");
+    await look("Agents", "12-agents", /walker/i, 60_000, async () => { await drv.go("/u/agents"); });
+  }, { needs: READY });
+  await run.step(S("owner walk: Projects has a Personal or default project"), async () => {
+    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await drv.go("/u/projects"); });
+  }, { needs: READY });
+  await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
+    await look("AI accounts", "14-ai-accounts", /AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
+  }, { needs: READY });
 
   await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
     await drv.reopen();
