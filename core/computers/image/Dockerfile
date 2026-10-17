@@ -155,9 +155,9 @@ RUN chmod 0755 /usr/local/bin/agentd-vncpass \
     && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
     && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
 # The harnesses an agent's sessions run (owner decision, 18 Oct 2026: Claude Code, Codex and Grok run as the agent's own Linux user in its computer). The same pins as the box's own image
-# (box/Dockerfile; test/computer-clis.test.js keeps the two in step). Claude Code is installed at the same version argument the box uses. They are root's, on PATH, and no agent can change them.
+# (box/Dockerfile) for Codex and Grok. Claude Code is an exact version here, never `latest` (the agent computer runs untrusted tasks): agentd-run.test.js refuses `latest` or a range, and the version is recorded in the image label below. They are root's, on PATH, and no agent can change them.
 # curl is needed only for Grok's one static binary and is removed again.
-ARG CLAUDE_CODE_VERSION=latest
+ARG CLAUDE_CODE_VERSION=2.1.286
 ARG CODEX_VERSION=0.159.3
 ARG CODEX_ACP_VERSION=2.1.0
 ARG GROK_VERSION=1.0.46
@@ -175,6 +175,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
  && claude --version && codex --version && grok --version \
  && apt-get purge -y --auto-remove curl \
  && rm -rf /var/lib/apt/lists/*
+LABEL vyre.harness.claude-code="${CLAUDE_CODE_VERSION}" vyre.harness.codex="${CODEX_VERSION}" vyre.harness.codex-acp="${CODEX_ACP_VERSION}" vyre.harness.grok="${GROK_VERSION}"
 
 COPY computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

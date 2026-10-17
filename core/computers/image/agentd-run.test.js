@@ -13,7 +13,8 @@ import { fileURLToPath } from "node:url";
 import { Tickets, createRelay, RUN, frame } from "./agentd-relay.js";
 import { createAgentd } from "./agentd-server.js";
 import { callAgentd } from "./agentd-client.js";
-import { homeOf } from "./agentd.js";
+import { homeOf, planExec } from "./agentd.js";
+import { PIPE } from "./agentd-relay.js";
 import { makeAgentRun } from "../agent-run.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -135,12 +136,68 @@ test("the run helper keeps its rules: the agent range only, a home it builds fro
 test("the computer image carries the same pinned harnesses as the box", () => {
   const computer = fs.readFileSync(path.join(HERE, "Dockerfile"), "utf8");
   const box = fs.readFileSync(path.join(HERE, "..", "..", "..", "box", "Dockerfile"), "utf8");
-  for (const arg of ["CLAUDE_CODE_VERSION", "CODEX_VERSION", "CODEX_ACP_VERSION", "GROK_VERSION", "GROK_SHA256_AMD64", "GROK_SHA256_ARM64"]) {
+  for (const arg of ["CODEX_VERSION", "CODEX_ACP_VERSION", "GROK_VERSION", "GROK_SHA256_AMD64", "GROK_SHA256_ARM64"]) {
     const re = new RegExp(`^ARG ${arg}=(\\S+)$`, "m");
     assert.ok(re.exec(computer), `${arg} is in the computer image`);
     assert.equal(re.exec(computer)?.[1], re.exec(box)?.[1], `${arg} is the box's`);
   }
+  const claude = /^ARG CLAUDE_CODE_VERSION=(\S+)$/m.exec(computer)?.[1];
+  assert.match(String(claude), /^\d+\.\d+\.\d+$/, "Claude Code is an exact version in the computer image, never latest or a range");
+  assert.match(computer, /LABEL vyre\.harness\.claude-code="\$\{CLAUDE_CODE_VERSION\}"/, "the versions are recorded in the image");
   assert.match(computer, /sha256sum -c -/, "Grok's binary is checked against its sum");
   assert.match(computer, /apt-get purge -y --auto-remove curl/, "curl does not stay in the image");
   assert.match(computer, /COPY agentd\.js[^\n]*agentd-run\.py/);
 });
+
+test("every forbidden variable is refused in any case, and the limits a run helper and a one-shot command carry are the stated numbers", () => {
+  for (const k of ["PATH", "path", "Path", "LD_PRELOAD", "ld_preload", "Ld_Library_Path", "BASH_ENV", "bash_env", "NODE_OPTIONS", "node_options", "Home", "display", "Xauthority"]) {
+    const t = new Tickets();
+    assert.throws(() => t.add(T2, U, "run", null, { ...SPEC, env: { [k]: "x" } }), /cannot be set/, k);
+  }
+  assert.throws(() => new Tickets().add(T2, U, "run", null, { ...SPEC, argv: ["/usr/bin/id", "a\0b"] }), /text arguments/);
+  assert.throws(() => new Tickets().add(T2, U, "run", null, { ...SPEC, cwd: `${HOME}/a/../../ag20004/home` }), /inside the agent's home/);
+  const line = planExec(U, { argv: ["/usr/bin/id"] }).join(" ");
+  assert.match(line, /--as=3221225472 --nproc=512 --nofile=4096 --fsize=4294967296 --cpu=120 /, "address space, processes, open files, file size and CPU seconds of a one-shot command");
+});
+
+test("a ticket opens only what it was registered for, once, as the uid it names; the run helper is not reachable with another kind's ticket and the reverse", async t => {
+  const tickets = new Tickets();
+  /** @type {string[][]} */ const spawned = [];
+  const relay = createRelay({ tickets, peer: () => "127.0.0.1", helloMs: 300, spawn: argv => { spawned.push(argv); return spawn("/bin/cat", [], { stdio: ["pipe", "pipe", "ignore"] }); } });
+  await new Promise(r => relay.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => relay.close());
+  const port = /** @type {any} */ (relay.address()).port;
+  const use = async (/** @type {string} */ ticket) => {
+    const s = net.connect(port, "127.0.0.1"); s.on("error", () => {});
+    await new Promise(r => s.on("connect", () => r(null)));
+    s.write(`${ticket}\n`);
+    /** @type {Buffer[]} */ const got = [];
+    s.on("data", d => got.push(d));
+    await new Promise(r => setTimeout(r, 150));
+    s.destroy();
+    return Buffer.concat(got).length;
+  };
+  const T3 = "c".repeat(32);
+  tickets.add(T1, U, "run", null, SPEC);
+  tickets.add(T2, U, "vnc");
+  tickets.add(T3, { ...U, user: "ag20004", uid: 20004, display: 24 }, "cdp");
+  await use(T1); await use(T2); await use(T3);
+  assert.equal(spawned.length, 3);
+  assert.ok(spawned[0].join(" ").endsWith(RUN) && spawned[0].includes("--reuid=20003"), "a run ticket starts the run helper as its own uid");
+  assert.ok(spawned[1].join(" ").endsWith(`${PIPE} vnc`) && !spawned[1].includes(RUN) && spawned[1].includes("--reuid=21003"), "a screen ticket starts the screen pipe, never the run helper");
+  assert.ok(spawned[2].join(" ").endsWith(`${PIPE} cdp`) && !spawned[2].includes(RUN) && spawned[2].includes("--reuid=21004"), "a Chrome ticket starts the Chrome pipe as that agent's browser uid, not as the agent whose ticket opened the run");
+  assert.equal(await use(T1), 0, "a second connection with a spent ticket gets no byte");
+  assert.equal(spawned.length, 3, "and starts nothing");
+  const run = new Tickets();
+  run.add(T1, U, "run", null, SPEC);
+  assert.equal(run.take(T1)?.kind, "run", "the kind is the ticket's, not the connection's");
+});
+
+test("the run helper limits are set at their numbers", () => {
+  const relay = fs.readFileSync(path.join(HERE, "agentd-relay.js"), "utf8");
+  assert.match(relay, /asAgent\(u, \{ memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 \* 86400 \}\)/);
+  const line = ([...planExecLimits()]).join(" ");
+  assert.match(line, /--as=8589934592 --nproc=1024 --nofile=8192 --fsize=8589934592 --cpu=604800 /);
+});
+import { asAgent } from "./agentd.js";
+const planExecLimits = () => asAgent(U, { memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 * 86400 });

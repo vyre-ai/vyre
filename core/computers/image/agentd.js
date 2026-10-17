@@ -53,24 +53,25 @@ export const browserOf = u => {
 /**
  * The argv prefix that runs something as the agent's uid with nothing extra: every capability set emptied (inheritable, ambient, bounding), no new privileges, no groups, limited
  * and niced, with an environment built from nothing. Absolute paths throughout, so no PATH can be bent. @param {{ user: string, uid: number }} u
- * @param {{ memoryMb?: number, procs?: number }} [lim] @param {Record<string, string>} [env] extra variables for the child (DISPLAY, HOME)
+ * @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim] @param {Record<string, string>} [env] extra variables for the child (DISPLAY, HOME)
  */
 export function asAgent(u, lim = {}, env = {}) {
   return asUid(u.uid, u.user, homeOf(u.user), lim, env);
 }
 
-/** The same, for the agent's browser uid (its own home, its own name; no group of the agent's). @param {{ uid: number, user: string }} u @param {{ memoryMb?: number, procs?: number }} [lim] @param {Record<string, string>} [env] */
+/** The same, for the agent's browser uid (its own home, its own name; no group of the agent's). @param {{ uid: number, user: string }} u @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim] @param {Record<string, string>} [env] */
 export function asBrowser(u, lim = {}, env = {}) {
   const b = browserOf(u);
   return asUid(b.uid, b.user, b.home, lim, env);
 }
 
-/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number }} lim @param {Record<string, string>} env */
+/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} lim @param {Record<string, string>} env */
 function asUid(uid, user, home, lim, env) {
   const vars = { HOME: home, USER: user, LOGNAME: user, PATH: PATH_SAFE, LANG: "C.UTF-8", ...env };
   const u = { uid };
   return ["/usr/bin/setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs",
-    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, "/usr/bin/nice", "-n", "5",
+    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
+    ...(lim.cpuSeconds ? [`--cpu=${lim.cpuSeconds}`] : []), "/usr/bin/nice", "-n", "5",
     "/usr/bin/env", "-i", ...Object.entries(vars).map(([k, v]) => `${k}=${v}`)];
 }
 
@@ -234,14 +235,14 @@ export function validateRun(u, req, maxArgvBytes = EXEC_LIMITS.argvBytes) {
  * Run a command as the agent: its uid, no groups, no capabilities, no new privileges, the usual memory and process limits, a clean environment (HOME, USER, PATH, LANG, the agent's display and cookie, and
  * the named variables the caller asked for, none of the forbidden names), in a folder under the agent's own home. Nothing is passed through a shell.
  * @param {{ user: string, uid: number, display: number }} u
- * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number }} [lim]
+ * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim]
  * @returns {string[]}
  */
 export function planExec(u, req, lim = {}) {
   const { argv, cwd, env } = validateRun(u, req);
   const b = browserOf(u);
   // the fixed variables are laid over the caller's, never the reverse
-  return [...asAgent(u, lim, { ...env, DISPLAY: `:${u.display}`, XAUTHORITY: b.xauth }), "/usr/bin/env", "-C", cwd, ...argv];
+  return [...asAgent(u, { cpuSeconds: 120, ...lim }, { ...env, DISPLAY: `:${u.display}`, XAUTHORITY: b.xauth }), "/usr/bin/env", "-C", cwd, ...argv];
 }
 
 /** A streaming run (a harness session) may carry a longer command line than a one-shot exec. */

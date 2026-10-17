@@ -89,7 +89,7 @@ export function createRelay(o) {
       // the helper and its one fixed word come from the ticket's kind, never from text the ticket carried
       // a harness session needs more room than a screen helper: a Node process reserves a lot of address space
       const argv = u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color", DISPLAY: `:${u.display}`, XAUTHORITY: browserOf(u).xauth }), "/usr/bin/python3", "-I", TERM, String(u.session)]
-        : u.kind === "run" ? [...asAgent(u, { memoryMb: 8192, procs: 1024 }), "/usr/bin/python3", "-I", RUN]
+        : u.kind === "run" ? [...asAgent(u, { memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 * 86400 }), "/usr/bin/python3", "-I", RUN]
         : [...asBrowser(u), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"];
       const child = spawn(argv);
       let done = false;

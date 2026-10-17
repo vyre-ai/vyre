@@ -10,7 +10,7 @@ import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const B = { user: "ag20001", uid: 20001, display: 21 };
 const flat = steps => steps.map(s => s.join(" "));
-const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=\d+ --nproc=\d+ \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
+const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=\d+ --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
 
 test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
