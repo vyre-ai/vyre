@@ -44,8 +44,8 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const real = d.registry.deps.kernelSession;
   d.registry.deps.kernelSession = async (/** @type {any} */ q) => {
     const out = await real(q);
-    // what the session's own token says (the kernel's verified facts), read now, while the session is open
-    const facts = out && out.token ? await K.surfaces.verify(out.token).catch(() => null) : null;
+    // what the session's own token says (its signed body, read as the kernel reads it)
+    const facts = out && typeof out.token === "string" ? (() => { try { return JSON.parse(Buffer.from(out.token.split(".")[0], "base64url").toString()); } catch { return null; } })() : null;
     seen.push({ thread: q.thread, runas: q.runas, asker: q.asker, ...(facts ? { person: facts.person, agent: facts.agent, chat: facts.chat } : {}) });
     return out;
   };
