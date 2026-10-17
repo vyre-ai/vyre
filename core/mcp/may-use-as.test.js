@@ -48,3 +48,22 @@ test("a call with exactly Alice reads and removes her row; an agent behind it, B
   assert.equal(await hub.mayUse(row, { person: true, agent: null, thread: null, me: "per_not_a_function" }, "own"), false, "a me that is not the tool's function is not read");
   assert.equal(row.owner, ALICE, "the row is untouched");
 });
+
+test("a grantee's direct call of an outward tool is held (no token is asked for it); a read tool asks with write false; only a released item asks with write true, as its requester", async () => {
+  const { hub, row, asks } = tokenRig();
+  const who = { person: false, agent: null, thread: null, me: async () => CY2 };
+  /** @type {string[]} */ const did = [];
+  hub.row = () => row; hub.inScope = async () => true; hub.must = () => row;
+  hub.findTool = (/** @type {any} */ _r, /** @type {string} */ tool) => ({ tool, outward: tool === "send_message", name: tool });
+  hub.hold = async () => { did.push("held"); return { held: "g1" }; };
+  hub.runInner = async () => hub.connectionHeaders(row);
+  const out = await hub.call({ server: "notion-alice", tool: "send_message", arguments: {} }, who);
+  assert.deepEqual([out.held, did, asks.length], ["g1", ["held"], 0], "an outward call is held and no token is asked for it");
+  await hub.call({ server: "notion-alice", tool: "search", arguments: {} }, who);
+  assert.deepEqual(asks.map(a => [a.as, a.write]), [[CY2, false]], "a read tool asks as the member, write false");
+  asks.length = 0;
+  hub.findTool = () => ({ tool: "send_message", outward: true });
+  hub.retarget = (/** @type {any} */ a) => a;
+  await hub.release({ id: "i1", to: [], content: { server: "notion-alice", tool: "send_message", arguments: {} } });
+  assert.deepEqual(asks.map(a => [a.as, a.write]), [[CY2, true]], "after the Gate's yes, the token is asked as the requester with write true");
+});
