@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
-import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar, AGENTD_EXEC, AGENTD_TOKEN, agentdTokenTar, allowAgentdExec } from "./policy.js";
+import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar, AGENTD_EXEC, AGENTD_TOKEN, agentdTokenTar, allowAgentdExec, LAYOUT, layoutTar } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -272,6 +272,16 @@ export class DockerDriver {
   async seedAgentd(id, token) {
     await this.own(id);
     await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENTD_TOKEN.dir)}`, agentdTokenTar(token));
+  }
+
+  /**
+   * Put the state volume's folders (the agents', their browsers', the X cookie and downloads folders) in a computer whose volume was made before the image had them. Directories only, owners and modes fixed in
+   * policy.js; the same call is a no-op on a volume that has them. Before the first start.
+   * @param {string} id
+   */
+  async migrateLayout(id) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(LAYOUT.dir)}`, layoutTar());
   }
 
   /**

@@ -409,6 +409,8 @@ export class Pool {
         volume: `${this.opts.prefix}-home-${agent}`,
         browserVolume: `${this.opts.prefix}-browser-${agent}`,
       });
+      // A state volume made by an older image lacks the folders the agents live in; put them there before the first start (directories only, fixed owners; harmless on a volume that has them).
+      if (typeof d.migrateLayout === "function") await d.migrateLayout(id);
       this.set(agent, { container: id, state: "stopped" });
       this.emit("computer.created", { agent });
       this.log(`${agent}'s computer created`);

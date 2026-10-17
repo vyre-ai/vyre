@@ -739,3 +739,13 @@ test("pool: after a vyred start, every running computer is shown the token once,
   await pool.reconcile(); // a failure is not a restart, and not an error
   assert.equal(pool.view("kit").state, "running");
 });
+
+test("pool: a computer made on an old state volume gets the agents' folders before its first start, and a new volume is left as the image made it", async t => {
+  const driver = new FakeDriver();
+  const { pool } = setup(t, { driver });
+  driver.volumes.set("vyre-browser-kit", { layout: 1 });
+  await pool.ensure("kit");
+  assert.equal(driver.volumes.get("vyre-browser-kit")?.layout, 2, "the old volume's folders were put right");
+  await pool.ensure("pax");
+  assert.equal(driver.volumes.get("vyre-browser-pax")?.layout, 2);
+});
