@@ -31,6 +31,13 @@ function run(args, input, env) {
 }
 const hook = (piece, payload, env) => run([path.join(PLUGIN, "hooks", "hook.js"), piece], JSON.stringify(payload), env);
 
+/** The owner's own surface. With the kernel on, a call with no person on its chain gets nothing of the Gate (core/gate/requester.js: an unnamed caller sees no held item), so the owner's calls here carry the owner's token, as the local socket's do in the daemon. */
+async function ownerMeta(/** @type {any} */ d) {
+  const K = d.kernel;
+  if (!K) return {};
+  return { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token };
+}
+
 test("plugin: the manifest, hooks and MCP config are valid and point at files that exist", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
@@ -358,7 +365,7 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
     p.on("close", () => resolve(JSON.parse(s)));
   });
   assert.equal(out[0].structuredContent.state, "held", JSON.stringify(out[0]));
-  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  const held = (await d.registry.call("gate.held", {}, "local", await ownerMeta(d))).data;
   assert.equal(held.length, 1);
   assert.equal(held[0].thread, session, "filed under the session the call came from, which the model never named");
   assert.equal(out[1].isError, true);
@@ -419,7 +426,7 @@ test("mcp: the hub's tools are offered through the one vyre entry; a read reache
   assert.ok(!send.isError, JSON.stringify(send));
   assert.match(send.content[0].text, /Held at the Gate|approve/i);
   assert.ok(send.structuredContent.held);
-  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  const held = (await d.registry.call("gate.held", {}, "local", await ownerMeta(d))).data;
   assert.equal(held.length, 1);
   assert.equal(held[0].via, "mcp:issues");
   const calls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("call "));
@@ -501,7 +508,7 @@ test("mcp: the hub is never a route around the floor", async t => {
 
   // A person without presence cannot approve either; with it, the send reaches the server once.
   // approving a held send is the outward yes: the person's own device sends the header its client sends, and the floor asks this presence about it
-  const approve = () => d.registry.call("gate.approve", { id }, "cli", { proof: { method: "touchid" } });
+  const approve = async () => d.registry.call("gate.approve", { id }, "cli", { proof: { method: "touchid" }, ...(await ownerMeta(d)) });
   assert.equal((await approve()).error?.code, "presence_required");
   assert.deepEqual(sent(), []);
   here = true;
