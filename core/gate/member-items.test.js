@@ -34,7 +34,7 @@ async function rig(t) {
   for (const p of [BEN, CY]) await K.gateway.grants.setRole(chain(OWNER), { person: p, role: "member" }, { presence: proof() });
   const ownerTok = (await K.surfaces.open(chain(OWNER), {})).token;
   const uid = (await d.registry.call("agents.create", { name: "juno", kind: "agent" }, "cli", { token: ownerTok })).data.uid;
-  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool === "gate.revise" ? "device" : "deck", { token: (await K.surfaces.open(chain(person), {})).token });
+  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool === "gate.revise" ? "cli" : "deck", { token: (await K.surfaces.open(chain(person), {})).token });
   // A member's agent reaches the Gate through a module's tool (mail.send, microsoft.mail.send ...), which files the request in the agent's own turn: the door keeps gate.request itself to the owner, and a module call is not at
   // the door. The courier stands in for that module with the agent's token, so the Gate sees the same verified chain.
   const agentOf = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
@@ -153,10 +153,13 @@ test("every Gate path, for each kind of caller: the requester, another member, a
   // a member's item
   for (const [tool, input] of paths) {
     const id = await memberItem();
-    for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["owner", (tl, i) => as(OWNER, tl, i)], ["admin", (tl, i) => as(ADA, tl, i)], ["Cy", (tl, i) => as(CY, tl, i)], ["no person", noPerson], ["module", asModule]]))
+    for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["owner", (tl, i) => as(OWNER, tl, i)], ["admin", (tl, i) => as(ADA, tl, i)], ["Cy", (tl, i) => as(CY, tl, i)], ["no person", noPerson]]))
       assert.equal((await call(/** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error?.code, "not_found", `${who} ${tool} on a member's item`);
     assert.ok(!(await as(BEN, /** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error, `the requester ${tool}`);
   }
+  { const id = await memberItem(); assert.ok((await asModule("gate.revise", { id, edited: { text: "x" } })).error, "a module that is not an approver cannot change a member's item"); }
+  // the module whose sender holds the item reads it (to release it) and takes it back; it cannot change it
+  for (const tool of ["gate.get", "gate.reject"]) { const id = await memberItem(); assert.ok(!(await asModule(tool, { id })).error, `the item's own sender module ${tool}`); }
   // held, with the count
   const ben1 = await memberItem(), legacy = await legacyItem();
   const ids = async (/** @type {Promise<any>} */ p) => ((await p).data || []).map((/** @type {any} */ i) => i.id).sort();
@@ -172,7 +175,8 @@ test("every Gate path, for each kind of caller: the requester, another member, a
     for (const [who, call, ok] of /** @type {[string, (t: string, i: any) => Promise<any>, boolean][]} */ ([["Ben", (tl, i) => as(BEN, tl, i), false], ["no person", noPerson, false], ["owner", (tl, i) => as(OWNER, tl, i), true], ["admin", (tl, i) => as(ADA, tl, i), true], ["module", asModule, true]])) {
       const id = await legacyItem();
       const r = await call(/** @type {string} */ (tool), /** @type {Function} */ (input)(id));
-      if (ok) assert.ok(!r.error, `${who} ${tool} on an older item: ${JSON.stringify(r.error)}`); else assert.equal(r.error?.code, "not_found", `${who} ${tool} on an older item`);
+      if (ok && who === "module" && tool === "gate.revise") assert.notEqual(r.error?.code, "not_found", "a module reaches the older item (the courier is not an approver, which is a separate refusal)");
+      else if (ok) assert.ok(!r.error, `${who} ${tool} on an older item: ${JSON.stringify(r.error)}`); else assert.equal(r.error?.code, "not_found", `${who} ${tool} on an older item`);
     }
   }
   for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["Ben", (tl, i) => as(BEN, tl, i)], ["no person", noPerson]])) assert.equal((await call("gate.approve", { id: legacy })).error?.code, "not_found", `${who} approve on an older item`);

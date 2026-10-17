@@ -34,7 +34,7 @@ export function register({ ctx, people, tool }) {
   const teams = async (/** @type {any} */ meta) => { try { const c = await ctx.kernel.chain(meta); const ts = ctx.kernel.grants && ctx.kernel.grants.teams ? await ctx.kernel.grants.teams.list(c) : null; return Array.isArray(ts) ? ts : null; } catch { return null; } };
   const agentUid = async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.uid", { name: String(name).toLowerCase() }); return r && r.data ? String(r.data.uid) : null; } catch { return null; } };
   const own = async (/** @type {string} */ id, /** @type {string} */ name) => {
-    if (!(await people.service(id).has(name))) throw Object.assign(new Error(`you have no connection named ${String(name).slice(0, 80)}`), { code: "not_found" });
+    if (!(await people.service(id).has(name))) throw Object.assign(new Error(`you have no connection named ${String(name).slice(0, 80)}: connect the app first`), { code: "not_found" });
   };
 
   tool("vault.me.connection.share", MEMBER_SURFACES, "Share one of your app connections with a person, a team or an agent, at Fill in only: they can have the app used as you and never get the token. level null takes the share away.",
@@ -53,7 +53,7 @@ export function register({ ctx, people, tool }) {
       if (kind === "team") who = { kind: "group", id: subject };
       if (kind === "agent") {
         // Only an agent she may instruct herself (she made it, or was given Can use or Can edit): one that others also instruct would let them use her connection through it. Anything else is not found.
-        if (level) { const who = await ctx.call("agents.instructors", { agent: String(subject).toLowerCase() }); if (who.error || !who.data) throw Object.assign(new Error("no agent has that name"), { code: "not_found" }); }
+        if (level) { const who = await ctx.call("agents.instructors", { agent: String(subject).toLowerCase() }); if (who.error || !who.data) throw Object.assign(new Error("no agent has that name: check the name of the agent"), { code: "not_found" }); }
         const uid = (await agentUid(subject)) || (level ? null : subject);
         if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" });
         key = uid; who = { kind: "actor", actor: { kind: "agent", id: uid, space: ctx.kernel.space } };

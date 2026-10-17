@@ -114,6 +114,8 @@ const ASKS_PROOF = {
   "github.project.pr.review": ["core/github/registry.test.js", "reach asked - an agent is refused not_asked"],
   "google.mail.send": ["core/google/module.test.js", "holds sends and invites"],
   "google.calendar.create": ["core/google/module.test.js", "holds sends and invites"],
+  "microsoft.mail.send": ["core/microsoft/module.test.js", "a model or MCP caller is held, not run"],
+  "microsoft.calendar.create": ["core/microsoft/module.test.js", "a model or MCP caller is held, not run"],
   "google.calendar.update": ["core/google/module.test.js", "holds sends and invites"],
   "apps.send": ["local/apps/module.test.js", "apps.send needs a person's proof from every non-module caller"],
   "vault.api.send": ["core/vault/api-credential.test.js", "vault.request and its Gate sender: who may call"],
