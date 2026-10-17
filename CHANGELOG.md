@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(app): the Connect apps screen, as a preview on sample data (`/connect-demo`; nothing is wired to a server). A search across apps, category chips (Productivity, Communication, Design, Code, Data, More), "Recommended for you", one row per app with Add, Set up or Connected and "N connected" at the top. A row that needs setup says what it needs first (a pasted token or the firm's own developer app). A connected app's menu opens Share with..., which uses the Vault levels (Fill in, Read, Edit and rotate; an agent only at Fill in). Library components `ConnectApps`, `ShareSheet`, `SetupSheet` in `ui/connect`, rules in `connect-model.js`.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).
