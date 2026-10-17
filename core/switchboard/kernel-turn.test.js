@@ -304,6 +304,8 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
   const bobToken = (await d.kernel.surfaces.open(bobChain, {})).token;
   const added = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "Bob's Claude", kind: "login" }, "deck", { token: bobToken });
   assert.ok(!added.error, JSON.stringify(added.error));
+  // signed in, the way core/stream/person-turns-live.test.js marks a member's login: the row says when she signed in (the check is the real one, not a mock)
+  d.registry.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
