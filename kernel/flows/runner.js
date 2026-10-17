@@ -36,7 +36,6 @@ import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
 import { standingFor } from "./standing-run.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
-import { hiddenField } from "../../lib/secret-keys.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
@@ -64,50 +63,9 @@ const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant",
 const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 
-class Suspend extends Error { constructor() { super("suspended"); this.name = "Suspend"; } }
-class StepFail extends Error {
-  /** @param {string} code @param {string} message */
-  constructor(code, message) { super(message); this.name = "StepFail"; this.code = code; }
-}
-/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. @param {any} e @returns {never} */
-function portFail(e) {
-  if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
-  throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
-}
-/** What went wrong, as a code and words, whatever was thrown. A port's own code is kept; the usual network faults get the names a retry policy knows. @param {any} e @returns {{ code: string, message: string }} */
-function failOf(e) {
-  if (e instanceof StepFail) return { code: e.code, message: e.message };
-  const raw = e && typeof e.code === "string" ? e.code : "error";
-  const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
-  return { code, message: e instanceof Error ? e.message : String(e) };
-}
-/**
- * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, and the whole is cut to 2 KB. A sealed placeholder stays a placeholder.
- * @param {any} v @returns {any}
- */
-export function showable(v) {
-  if (v === undefined) return undefined;
-  const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
-    if (depth > 6) return "\u2026";
-    if (typeof x === "string") return redactText(x);
-    if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, hiddenField(k, y) ? "[hidden]" : walk(y, depth + 1)]));
-    return x;
-  };
-  const out = walk(v, 0);
-  const text = JSON.stringify(out) ?? "null";
-  return text.length > 2048 ? { cut: true, head: text.slice(0, 2000) } : out;
-}
-
-/** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
-class Hold extends Error {
-  /** @param {string} reason */
-  constructor(reason) { super(reason); this.name = "Hold"; this.reason = reason; }
-}
-class PauseFlow extends Error {
-  /** @param {string} reason */
-  constructor(reason) { super(reason); this.name = "PauseFlow"; this.reason = reason; }
-}
+import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
+import { showable } from "./runner-faults.js";
+export { showable };
 
 /**
  * @typedef {import('./store.js').Run} Run
