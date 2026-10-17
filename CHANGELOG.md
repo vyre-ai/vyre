@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(connectors): the test-presets switch (`VYRE_CONNECTORS_TEST_PRESETS`) goes through `devSwitch`, so a release build ignores it like the catalog file switch; it no longer reads `NODE_TEST_CONTEXT`. A test with a packaged root proves it.
 - feat(mcp): the catalog snapshot now holds all 27 rows mcp6 reviewed (batch 1 adds Egnyte, DocuSign, monday, ClickUp, Airtable, Intercom, Miro, Klaviyo, Square and Cloudflare). The snapshot script reads `lib/mcp-catalog.reviewed.json` on every pull (`--reviewed` names another file), so the reviewers' rows replace the same ids in the snapshot and the weekly pull request carries any new ones.
 - feat(mcp): the first catalog snapshot is the 17 rows mcp6 reviewed against each vendor's own documents (`lib/mcp-catalog.reviewed.json`), written to `lib/connector-presets/catalog.snapshot.json`; the weekly pull adds to them. A reviewed row (one with a `verdict`) survives every pull whole, even when nothing lists it. `oneClick` is true only for a vendor-published row whose probe found a server that registers a client by itself, or an open server, and whose verdict (when it has one) is one-click. The `preset` on a row is the curated preset that already serves that address, else the one made from the row.
 - fix(mcp): a test may name another catalog file in config only with `VYRE_CATALOG_TEST_FILE=1` in a development build (`devSwitch`); a release build ignores it.
