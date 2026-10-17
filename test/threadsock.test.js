@@ -192,7 +192,7 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(realManifest.name, "threads", "the real manifest name");
-  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "chatFor", "sandbox", "credentials", "listModels"], "it declares what it needs from the daemon");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "turnRecordTags", "chatFor", "sandbox", "credentials", "listModels"], "it declares what it needs from the daemon");
   const row = d.registry.status().find(m => m.name === "threads");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const real = d.registry.context(realManifest);
@@ -420,7 +420,7 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   const fresh = await read();
   const { BOOT_KERNEL_EVENTS, SYSTEM_FILES } = await import("../lib/data-stores.js");
   const files = (dir, out = []) => { for (const f of fs.readdirSync(dir)) { const p = path.join(dir, f); fs.lstatSync(p).isDirectory() ? files(p, out) : out.push(path.relative(root, p)); } return out; };
-  const why = () => `events not boot: ${d.kernel.log.read().filter(e => !BOOT_KERNEL_EVENTS.has(e.type)).map(e => `${e.type}${e.data && e.data.legacy === 1 ? "(legacy)" : ""}<${e.actor}>`).join(" ")} | files: ${files(root).filter(f => !SYSTEM_FILES.has(f.split(path.sep).join("/"))).join(" ")}`;
+  const why = () => `events not boot: ${d.kernel.log.read().filter(e => !BOOT_KERNEL_EVENTS.has(e.type)).map(e => `${e.type}${e.data && e.data.legacy === 1 ? "(legacy)" : ""}<${e.actor}>${e.type === "grant.revoked" ? JSON.stringify(e.data).slice(0, 400) : ""}`).join(" ")} | files: ${files(root).filter(f => !SYSTEM_FILES.has(f.split(path.sep).join("/"))).join(" ")}`;
   assert.equal(fresh["the Space's records, events and grants"], false, `${JSON.stringify(fresh)} ${why()}`);
   assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
   assert.equal(fresh["the files in this server's home"], false, `${JSON.stringify(fresh)} ${why()}`);
