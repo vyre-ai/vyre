@@ -11,7 +11,7 @@ import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   addComputer, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, removeSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "ready";
@@ -41,6 +41,9 @@ export function FirstRun() {
   const [command, setCommand] = useState(shot?.command || "");
   const [waitId, setWaitId] = useState("");
   const [online, setOnline] = useState(false);
+  // A page with no daemon has no server to sign an AI in on until its space is online: its AI step comes then, and goes on to Ready.
+  const noDaemon = pageHasNoDaemon();
+  const [aiThen, setAiThen] = useState<string>("");
   const [paired, setPaired] = useState<{ id: string; name: string; address: string } | null>(null);
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
@@ -89,7 +92,7 @@ export function FirstRun() {
     void personStatus().then((r) => {
       if (!live || !r.ok || !r.exists) return;
       setUsername(r.username || "");
-      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path })] : s));
+      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path, skipAi: noDaemon })] : s));
     });
     return () => { live = false; };
   }, [shot, screen, path]);
@@ -244,7 +247,7 @@ export function FirstRun() {
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
-          if (r.already) { setUsername(r.username || usernameOf(username)); go(afterRecovery({ path, heldInvite: review?.link })); return; }
+          if (r.already) { setUsername(r.username || usernameOf(username)); go(afterRecovery({ path, heldInvite: review?.link, skipAi: noDaemon })); return; }
           setRecovery(typeof r.recoveryKey === "string" ? r.recoveryKey : "");
           setUsername(r.username || usernameOf(username));
           go("id.recovery");
@@ -260,7 +263,7 @@ export function FirstRun() {
   if (screen === "id.recovery") {
     return (
       <FlowStep steps={steps} onBack={back} title="Save your recovery key" lead="One key for your identity and your vault. It is shown once."
-        failure={failure} primary={{ label: "Continue", disabled: recovery ? !saved : false, loading: busy, onPress: () => go(afterRecovery({ path, heldInvite: review?.link })) }}>
+        failure={failure} primary={{ label: "Continue", disabled: recovery ? !saved : false, loading: busy, onPress: () => go(afterRecovery({ path, heldInvite: review?.link, skipAi: noDaemon })) }}>
         {recovery ? <RecoveryKeySheet secret={recovery} saved={saved} onSaved={setSaved} /> : <Text tone="muted">Your name is saved on this device. The recovery key appears when the vault can be created from here.</Text>}
       </FlowStep>
     );
@@ -269,11 +272,12 @@ export function FirstRun() {
   if (screen === "id.ai") {
     return (
       <FlowStep steps={steps} onBack={back} title={AI_SIGNIN_COPY.title} lead={AI_SIGNIN_COPY.lead} failure={failure}
-        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: () => go(afterAi({ path, heldInvite: review?.link })) }}
+        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: () => go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })) }}
         primary={{ label: agentFlow ? "Done" : "Continue", loading: busy, onPress: () => void run(async () => {
-          if (signedAgents.length === agents.length && agents.length) { go(afterAi({ path, heldInvite: review?.link })); return; }
+          if (signedAgents.length === agents.length && agents.length) { go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
           const pick = agents.find((a) => !signedAgents.includes(a.id));
-          if (!pick) { go(afterAi({ path, heldInvite: review?.link })); return; }
+          // Nothing to sign in to is not "signed in": the person goes on only by choosing to skip, never by a Continue that did nothing.
+          if (!pick) { if (!agents.length) { setFailure("No AI sign-in is available here yet. Press Skip for now to go on, and add one later in Settings."); return; } go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
           const r = await signInAgent({ provider: pick.id, label: pick.label, ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
           if (!r.ok) { setFailure(r.message); return; }
           if (r.flow && r.step !== "done") {
@@ -331,7 +335,7 @@ export function FirstRun() {
           const r = await joinSpace(review.link);
           if (!r.ok) { setFailure(r.message); return; }
           if (r.space) setSpace(String(r.space));
-          go(r.joined ? "ready" : "join.link");
+          if (r.joined && noDaemon) { setAiThen("ready"); go("id.ai"); } else go(r.joined ? "ready" : "join.link");
           if (!r.joined) setFailure(r.message || "The space has not confirmed this invite yet.");
         }) }}>
         <Text strong>{review.space || "A space"}</Text>
@@ -375,7 +379,7 @@ export function FirstRun() {
         lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
-        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => go("ready") }}>
+        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("ready"); go("id.ai"); } else go("ready"); } }}>
         {taken ? (
           <>
             <Field label="Space name" name="Space name" value={space} onChangeText={setSpace} help={suggest ? `${suggest} is free.` : undefined} />

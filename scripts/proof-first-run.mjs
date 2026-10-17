@@ -273,6 +273,11 @@ try {
     if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
     await drv.click("Continue");
+    // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
+    const ai = await drv.waitFor("Sign in to an AI", 30_000);
+    if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
+    await drv.shot("04b-ai-signin");
+    await drv.click("Skip for now");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.

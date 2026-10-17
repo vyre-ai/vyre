@@ -474,6 +474,28 @@ export function createHost(o) {
       return { joined: true, space: name || null, id, role, server: name ? `https://${name}.vyre.run` : null, listed };
     },
 
+    // AI accounts are made on the server (a member's own login, sessions.accounts.signin), so a page with no daemon offers them once its space is online: the three providers, and the sign-in forwarded to the
+    // paired server over the peer wire with the same start (provider, label), then poll (flow, code) the screen already speaks. Nothing secret is returned.
+    "onboard.agent.list": async () => {
+      if (!o.space) throw unsupported();
+      return { providers: [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }] };
+    },
+    "onboard.agent.signin": async (input) => {
+      if (!o.space) throw unsupported();
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      const row = (k.spaces || []).find((s) => s && s.paired && s.paired.box);
+      if (!row) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
+      const provider = String((input && input.provider) || "");
+      if (!["claude", "codex", "grok"].includes(provider)) throw bad("That provider does not support sign-in here.");
+      const ports = await o.space.load();
+      const body = { provider, ...(input.label ? { label: String(input.label).slice(0, 80) } : {}), ...(input.flow ? { flow: String(input.flow).slice(0, 200) } : {}), ...(input.code ? { code: String(input.code).slice(0, 200) } : {}) };
+      const r = await ports.call("sessions.accounts.signin", body, row.paired.box);
+      const out = { ...(r && typeof r === "object" ? r : {}) };
+      for (const x of ["token", "key", "apiKey", "api_key", "password", "secret", "recoveryKey"]) delete out[x];
+      return out;
+    },
+
     "onboard.space.list": async () => {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
