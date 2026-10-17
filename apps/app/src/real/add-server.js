@@ -209,7 +209,7 @@ export function createAddServer(o) {
     try { chan.close(); } catch { /* gone */ }
     if (mine !== run) return;
     trace("pairing starts");
-    try { await o.pair(qr, { pageKey: p.key }); } catch (e) { trace(`pairing failed ${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).code || "no code")}`); if (mine === run) stop("pair"); return; }
+    try { await o.pair(qr, { pageKey: p.key }); } catch (e) { trace(`pairing failed ${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).code || "no code")}: ${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).message || "").replace(/\s+/g, " ").slice(0, 160)}`); if (mine === run) stop("pair"); return; }
     trace("pairing finished");
     if (mine !== run) return;
     set({ stage: "done" });

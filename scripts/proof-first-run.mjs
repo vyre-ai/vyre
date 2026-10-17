@@ -275,7 +275,8 @@ try {
     await drv.click("Continue");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
-    if (!/owner/i.test(ready)) throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`);
+    // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
+    await until(async () => /owner/i.test(await drv.text()), 30_000, "Ready listing the space with the owner role").catch(() => { throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`); });
     await drv.click("Open Vyre");
     await until(async () => !(await drv.text()).includes("You're in"), 30_000, "Open Vyre leaving the first run");
   }, { needs: [S("the real installer runs the command on a server")] });
