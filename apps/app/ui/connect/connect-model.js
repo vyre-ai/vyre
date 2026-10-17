@@ -1,6 +1,6 @@
 // @ts-check
 // The Connect apps screen's rules, as plain data: which apps show, under which chip, what each row's button says, and who an app may be shared with at which Vault level. It draws nothing and calls nothing;
-// ConnectApps.tsx draws it and the screen owns what a tap does. Sample data lives at the end, for the preview and the gallery (sample world: alex, juno, kit, Harlow Legal).
+// ConnectApps.tsx draws it and the screen owns what a tap does. Sample data lives at the end, for the preview and the gallery (the sample world: alex, juno, kit, Juniper Studio).
 
 /** The category chips, in the order the screen shows them. "More" holds whatever fits no other chip. */
 export const CATEGORIES = /** @type {const} */ ([["all", "All"], ["productivity", "Productivity"], ["communication", "Communication"], ["design", "Design"], ["code", "Code"], ["data", "Data"], ["more", "More"]]);
@@ -25,7 +25,7 @@ export const buttonOf = (app) => (app.state === "connected" ? "Connected" : app.
 /** The line under the name when an app needs setup, in the words a person reads. @param {{ state: string, setup?: string }} app */
 export function setupLine(app) {
   if (app.state !== "setup") return "";
-  return app.setup === "app" ? "Needs setup: your firm's own developer app" : "Needs setup: a token you paste";
+  return app.setup === "app" ? "Needs setup: your team's own developer app" : "Needs setup: a token you paste";
 }
 
 /** @param {string} s */
@@ -92,7 +92,7 @@ export function sampleApps() {
     a("sentry", "Sentry", "Errors and releases", "code", "one-tap"),
     a("stripe", "Stripe", "Payments, invoices and customers", "data", "one-tap", { recommended: true }),
     a("gohighlevel", "GoHighLevel", "Contacts, pipelines and messages", "data", "setup", { setup: "token", recommended: true }),
-    a("egnyte", "Egnyte", "Files and folders for the firm", "productivity", "one-tap"),
+    a("egnyte", "Egnyte", "Files and folders for the team", "productivity", "one-tap"),
     a("docusign", "DocuSign", "Send and track documents for signature", "productivity", "setup", { setup: "app" }),
     a("slack", "Slack", "Channels and messages", "communication", "setup", { setup: "app" }),
     a("intercom", "Intercom", "Conversations with customers", "communication", "one-tap"),

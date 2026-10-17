@@ -92,14 +92,14 @@ export function ShareSheet({ app, grantees, open, onClose, onChange }: { app: Ap
   );
 }
 
-/** What a row that needs setup needs first: a token the person pastes, or the firm's own developer app. */
+/** What a row that needs setup needs first: a token the person pastes, or your team's own developer app. */
 export function SetupSheet({ app, open, onClose, onDone }: { app: App | null; open: boolean; onClose: () => void; onDone: (a: App) => void }) {
   if (!app) return null;
   const token = app.setup !== "app";
   return (
     <Sheet open={open} onClose={onClose} title={`Set up ${app.name}`}>
       <View style={{ gap: 12 }}>
-        <Text>{token ? `${app.name} signs in with a token. Make one in your ${app.name} account and paste it here. It goes straight into the Vault and is never shown again.` : `${app.name} needs an app made in your firm's own ${app.name} account. Make it there, then enter its client ID and secret here. They go straight into the Vault.`}</Text>
+        <Text>{token ? `${app.name} signs in with a token. Make one in your ${app.name} account and paste it here. It goes straight into the Vault and is never shown again.` : `${app.name} needs an app made in your team's own ${app.name} account. Make it there, then enter its client ID and secret here. They go straight into the Vault.`}</Text>
         {token ? <Field label={`${app.name} token`} kind="password" value="" onChangeText={() => {}} /> : <><Field label="Client ID" value="" onChangeText={() => {}} /><Field label="Client secret" kind="password" value="" onChangeText={() => {}} /></>}
         <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
           <Button kind="ghost" label="Cancel" onPress={onClose} />

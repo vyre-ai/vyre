@@ -20,7 +20,7 @@ test("the button says Add for one tap, Set up for a row that needs setup, Connec
   assert.equal(buttonOf({ state: "setup" }), "Set up");
   assert.equal(buttonOf({ state: "connected" }), "Connected");
   assert.equal(setupLine({ state: "setup", setup: "token" }), "Needs setup: a token you paste");
-  assert.equal(setupLine({ state: "setup", setup: "app" }), "Needs setup: your firm's own developer app");
+  assert.equal(setupLine({ state: "setup", setup: "app" }), "Needs setup: your team's own developer app");
   assert.equal(setupLine({ state: "one-tap" }), "");
 });
 
