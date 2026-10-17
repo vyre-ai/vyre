@@ -359,7 +359,7 @@ exec 9> >(freezer)
 AGENTD_DIR="${VYRE_HOME}/agentd"
 if [ -f "${AGENTD_DIR}/token" ]; then
   log "starting agentd"
-  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid -- \
+  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --securebits=+noroot,+noroot_locked --no-new-privs -- \
     env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
     node /opt/agentd/agentd-main.js &
 fi

@@ -416,3 +416,16 @@ test("isolation (static): no environment variable can redirect agentd or its cli
   assert.match(ENTRYPOINT, /setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=\+setuid,\+setgid --ambient-caps=\+setuid,\+setgid --bounding-set=-all,\+setuid,\+setgid/);
   assert.match(DOCKERFILE, /groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s \/usr\/sbin\/nologin/);
 });
+
+test("isolation (static): agentd starts with no new privileges and the root locked out, and its code is root's and not writable", () => {
+  const entry = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
+  const line = entry.split("\n").find(l => l.includes("--reuid=1004"));
+  assert.ok(line, "the agentd start line");
+  assert.match(line, /--securebits=\+noroot,\+noroot_locked/);
+  assert.match(line, /--no-new-privs/);
+  assert.match(line, /--bounding-set=-all,\+setuid,\+setgid/);
+  const tail = DOCKERFILE.split("COPY agentd-vncpass.sh")[1];
+  assert.match(tail, /chown -R root:root \/opt\/agentd/);
+  assert.match(tail, /chmod 0644 \/opt\/agentd\/\*\.js/);
+  assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
+});
