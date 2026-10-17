@@ -5,7 +5,7 @@ import { Platform, useWindowDimensions } from "react-native";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
 import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
-import { ChatsSidebar } from "../chats/ChatsSidebar";
+import { ChatsSidebar, ChatsSidebarHeader } from "../chats/ChatsSidebar";
 import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
@@ -96,7 +96,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   return {
     id,
     panel: {
-      id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
+      id, title: meta.title, icon: meta.icon, search: meta.search, ...(id === "chats" ? { top: (back: React.ReactNode) => <ChatsSidebarHeader lead={back} /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}

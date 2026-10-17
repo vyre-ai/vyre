@@ -2,8 +2,8 @@
 // The sidebar's numbers (the Quiet look, picked by the owner): one object, so nothing in the rail or its panels carries a size of its own.
 
 export const RAIL = Object.freeze({
-  width: 248, /** The width while the Chat list is open: names and previews are not cut short. */ listWidth: 336, inset: 16,
-  rowH: 38, rowGap: 2, rowRadius: 10, rowPadX: 12, iconSize: /** @type {18} */ (18), labelSize: 15, labelLine: 20,
+  width: 248, /** The width while the Chat list is open: names and previews are not cut short. */ listWidth: 336, minWidth: 240, maxWidth: 400, maxWidthList: 520, inset: 16,
+  rowH: 44, rowGap: 2, rowRadius: 12, rowPadX: 14, iconSize: /** @type {18} */ (18), labelSize: 15, labelLine: 20,
   sectionGap: 24, sectionLabelSize: 12,
   tile: /** @type {32} */ (32), face: /** @type {32} */ (32),
   /** The folded rail: a 40 square target centred in the column. */

@@ -61,17 +61,14 @@ function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: bo
   );
 }
 
-export function ConversationList({ items, all, query, onQuery, project, onProject, tags, tag, onTag, extraFilters, onOpen, add, whenOf, menuOf, currentChat }: {
-  /** The rows to draw (already filtered). */ items: readonly Convo[];
+/** The header row of the Chat list: whatever leads it (the sidebar's back button), the search, one filter control and the + menu. */
+export function ConversationHeader({ lead, all, query, onQuery, project, onProject, tags, tag, onTag, extraFilters, add }: {
+  /** Put first in the row (the sidebar's back button). */ lead?: React.ReactNode;
   /** Every row, so the filter menu lists each project once. */ all: readonly Convo[];
   query: string; onQuery: (q: string) => void; project: string; onProject: (id: string) => void;
-  /** The tags a chat can be filtered by, and the one on. */ tags?: readonly string[]; tag?: string; onTag?: (t: string) => void;
+  tags?: readonly string[]; tag?: string; onTag?: (t: string) => void;
   /** More choices at the end of the filter menu (the flow chats). */ extraFilters?: MenuItem[];
-  onOpen: (c: Convo) => void;
   /** The + menu: New chat, New group chat, New agent, New email. */ add: MenuItem[];
-  /** The short "when" at a row's end ("6m"); the screen formats it with the time library. */ whenOf: (c: Convo) => string;
-  /** A row's own menu. */ menuOf?: (c: Convo) => MenuItem[];
-  /** The chat that is open now, marked in the list. */ currentChat?: string;
 }) {
   const chips = convoChips(all);
   const filters: MenuItem[] = [
@@ -81,15 +78,26 @@ export function ConversationList({ items, all, query, onQuery, project, onProjec
   ];
   const narrowed = project !== "all" || Boolean(tag);
   return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        <View style={{ flex: 1, minWidth: 0 }}><Field name="Search chats, agents and teammates" value={query} onChangeText={onQuery} placeholder="Search" onKey={(k) => { if (k === "Escape") onQuery(""); }} /></View>
-        <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={filters} />
-        <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />
-      </View>
-      <View style={{ gap: 2 }}>
-        {items.map((c) => <ConvoRow key={c.id} c={c} selected={Boolean(c.chat) && c.chat === currentChat} when={whenOf(c)} menu={menuOf?.(c)} onOpen={() => onOpen(c)} />)}
-      </View>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+      {lead}
+      <View style={{ flex: 1, minWidth: 0 }}><Field name="Search chats, agents and teammates" value={query} onChangeText={onQuery} placeholder="Search" onKey={(k) => { if (k === "Escape") onQuery(""); }} /></View>
+      <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={filters} />
+      <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />
+    </View>
+  );
+}
+
+/** The rows of the Chat list. */
+export function ConversationList({ items, onOpen, whenOf, menuOf, currentChat }: {
+  /** The rows to draw (already filtered). */ items: readonly Convo[];
+  onOpen: (c: Convo) => void;
+  /** The short "when" at a row's end ("6m"); the screen formats it with the time library. */ whenOf: (c: Convo) => string;
+  /** A row's own menu. */ menuOf?: (c: Convo) => MenuItem[];
+  /** The chat that is open now, marked in the list. */ currentChat?: string;
+}) {
+  return (
+    <View style={{ gap: 2 }}>
+      {items.map((c) => <ConvoRow key={c.id} c={c} selected={Boolean(c.chat) && c.chat === currentChat} when={whenOf(c)} menu={menuOf?.(c)} onOpen={() => onOpen(c)} />)}
     </View>
   );
 }

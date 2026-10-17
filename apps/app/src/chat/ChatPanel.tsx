@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { FileViewer, Avatar, AvatarStack, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, Sheet, Switch, Tabs, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
 import { useRouter } from "expo-router";
+import { ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
@@ -117,6 +118,8 @@ export function ChatPanel(p: ChatPanelProps) {
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
   // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
   const router = useRouter();
+  // The panel is resizable on a wide screen: its width is kept per device, and a double-click on its edge sets the default.
+  const panelW = useStoredWidth("chat-panel", 340, 280, 560);
   const { tab, onTab: setTab } = p;
   const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
   const [helpers, setHelpers] = useState<Task[] | null>(null);
@@ -247,6 +250,6 @@ export function ChatPanel(p: ChatPanelProps) {
   if (p.phone) return <Sheet open onClose={p.onClose} title={undefined}>{body}</Sheet>;
   // Beside the thread, not over it: the thread keeps its width minus the panel's, so nothing is cut off.
   return (
-    <View accessibilityLabel="In this chat" style={{ width: p.page === "file" ? 520 : 340, flexShrink: 0, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as object) : {}) }}>{body}</View>
+    <View accessibilityLabel="In this chat" style={{ width: p.page === "file" ? 520 : panelW.width, flexShrink: 0, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as object) : {}) }}>{body}{p.page === "file" ? null : <ResizeHandle edge="left" label="Resize the panel" width={panelW.width} onChange={panelW.set} onReset={panelW.reset} min={280} max={560} def={340} />}</View>
   );
 }

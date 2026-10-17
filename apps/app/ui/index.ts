@@ -61,6 +61,7 @@ export { motion, SPRING, useReducedMotion, PressableScale, Appear, Stagger, Skel
 export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./motion";
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
+export { ResizeHandle, useStoredWidth } from "./shell/ResizeHandle";
 export { Shell } from "./shell/Shell";
 export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
 export { SidebarRow } from "./shell/SidebarRow";
@@ -188,6 +189,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES, ConversationList, NewAgentDialog, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord,
+  FEATURED_SLASHES, NATIVE_SLASHES, ConversationList, ConversationHeader, NewAgentDialog, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord,
 } from "./chat";
 export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

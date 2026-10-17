@@ -7,7 +7,7 @@ import { useChats } from "../../src/state/chats";
 import { useGap } from "../../src/state/setup-gap";
 import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
-import { ChatsSidebar } from "./ChatsSidebar";
+import { ChatsSidebar, ChatsSidebarHeader } from "./ChatsSidebar";
 import { UNSUPPORTED, chatsShown, chatsView } from "./chats-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
@@ -41,7 +41,7 @@ export default function ChatsScreen() {
         : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
         : view.body === "loading" ? <LoadingState rows={4} />
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
-        : phone ? <ChatsSidebar />
+        : phone ? <View className="gap-s3"><ChatsSidebarHeader /><ChatsSidebar /></View>
         : <Card><EmptyState title={view.body === "empty" ? "No chats yet" : "Pick a chat"} body={view.body === "empty" ? "Start one with an agent or a teammate." : "Your chats are in the list on the left."} action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>}
     </Page>
   );

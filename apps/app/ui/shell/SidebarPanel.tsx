@@ -15,6 +15,10 @@ export type PanelItem = { id: string; label: string; href: string; icon?: IconNa
 export type PanelDef = {
   id: string; title: string; icon: IconName; onBack: () => void; items: PanelItem[]; currentHref?: string; search?: string;
   before?: React.ReactNode; after?: React.ReactNode; empty?: string;
+  /** The header row's own contents, in place of the search (the Chat list has a search, a filter and a + menu of its own). It gets the back button to put first. */
+  top?: (back: React.ReactNode) => React.ReactNode;
+  /** Buttons at the end of the header row, after the search (a filter, a + menu). */
+  actions?: React.ReactNode;
 };
 
 /**
@@ -42,9 +46,22 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
       </View>
     );
   }
+  const backBtn = (
+    <Tip label={`Back to the main sidebar`} hint="Esc" side="top">
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to the main sidebar" onPress={panel.onBack} style={({ hovered, focused }: any) => [{ width: 40, height: 40, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" }]}>
+        <Icon name="chevron-left" tone="text-2" size={RAIL.iconSize} />
+      </Pressable>
+    </Tip>
+  );
   return (
-    <View style={{ flex: 1, gap: RAIL.rowGap, minHeight: 0 }}>
-      {panel.search ? <View style={{ paddingVertical: 4 }}><Field name={panel.search} value={q} onChangeText={setQ} placeholder={panel.search} /></View> : null}
+    <View style={{ flex: 1, gap: RAIL.sectionGap / 2, minHeight: 0 }}>
+      {panel.top ? panel.top(backBtn) : (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          {backBtn}
+          {panel.search ? <View style={{ flex: 1, minWidth: 0 }}><Field name={panel.search} value={q} onChangeText={setQ} placeholder={panel.search} /></View> : <Text medium style={{ flex: 1, fontSize: RAIL.labelSize, color: color["text-2"] }} numberOfLines={1}>{panel.title}</Text>}
+          {panel.actions}
+        </View>
+      )}
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.sectionGap / 2 }}>
         {panel.before}
         {groupItems(shown).map((g) => (
