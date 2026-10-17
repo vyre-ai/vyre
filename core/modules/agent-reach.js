@@ -522,7 +522,6 @@ export const OPEN = new Set([
   "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
-  "microsoft.accounts", // reach anyone, scoped in code by the call's verified chain: a member sees her own provisioned account, the owner the firm app, a call with no person is refused in the body
   "presence.person.locked",
   // what is connected (which services have a credential, which Google accounts are signed in) and the recipe to log one mailbox: the person's own, and the person's proven assistant under their grants; never a guest or an unproven caller
   "connectors.declared",
