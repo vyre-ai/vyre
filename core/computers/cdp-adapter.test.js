@@ -230,6 +230,8 @@ test("the hands never hear the fill's page and cannot type into its session, in 
   assert.deepEqual(heard.filter(m => m.sessionId === sf), [], "the hands hear nothing from the fill's session");
   await assert.rejects(() => hands.send("Input.insertText", { text: "x" }, sf), /not yours/);
   assert.ok(w.chromes.a.seen.includes("Target.detachFromTarget"), "the fill's session was detached when its client went");
+  const order = w.chromes.a.seen.filter(m => /^(Network\.disable|Fetch\.disable|Target\.detachFromTarget)$/.test(m));
+  assert.deepEqual(order, ["Network.disable", "Fetch.disable", "Target.detachFromTarget"], "recording is switched off on the session before it is let go");
 });
 
 test("the adapter listens on loopback only, its tokens are 256-bit random values, one per agent, and an error never carries a token", async t => {

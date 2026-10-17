@@ -10,6 +10,8 @@
 //   - a Vault fill raises a WINDOW (shield): the agent's own clients are cut and refused (423), only the fill's token is let in, and the exact values the fill types are registered. Whatever the agent's DevTools
 //     return afterwards, for as long as the values are registered, has every occurrence of them (plain, URL-encoded, JSON-escaped, base64, and inside a base64 response body) replaced by a marker, and the sign-in
 //     requests' bodies are never given out. Nothing else is held back: the agent has full DevTools in its own Chrome (the owner's ruling, 18 Oct 2026).
+// Limits of the scrub, stated plainly: it is by EXACT value (every common form of it, min length 4), it holds for the window plus RETAIN_MS, and it lives in memory only (a JavaScript string cannot be wiped).
+// A value the page transforms, or shows again after that, is not caught. The real controls are that the fields are emptied at the end of the fill and that the sign-in requests' bodies are never given out.
 // The holder inside the computer serves one client; this is that client.
 
 import http from "node:http";
@@ -140,7 +142,10 @@ export function createCdpAdapter(deps) {
       // the sessions it made go with it (the pages stay)
       for (const [sid, owner] of [...this.owners]) if (owner === client) {
         this.owners.delete(sid);
-        if (this.sock && !this.closed) this.sock.write(JSON.stringify({ id: ++this.seq, method: "Target.detachFromTarget", params: { sessionId: sid } }) + "\0");
+        // stop what the session was recording, then let it go: nothing of the fill's page keeps flowing once its window is over
+        if (this.sock && !this.closed) for (const [method, params] of [["Network.disable", {}], ["Fetch.disable", {}], ["Target.detachFromTarget", { sessionId: sid }]]) {
+          this.sock.write(JSON.stringify({ id: ++this.seq, method, params, ...(method === "Target.detachFromTarget" ? {} : { sessionId: sid }) }) + "\0");
+        }
       }
       if (!this.clients.size) setTimeout(() => { if (!this.clients.size) this.close(); }, 30_000).unref();
     }
