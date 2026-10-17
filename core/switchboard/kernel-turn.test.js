@@ -431,6 +431,26 @@ test("an item the owner tags in a chat is usable on the owner's turns and not on
   assert.equal((await check()).data.allowed, true, "the owner's own turn may use what the owner tagged");
 });
 
+test("a member's turn that is stopped leaves no asker behind, and the owner's turn that was waiting behind it runs as the owner: the vault is asked as the owner", { timeout: 120_000 }, async t => {
+  const c = await chipChat(t);
+  const { d, owner, BOB, thread, chat } = c;
+  const asker = async () => (await d.registry.call("threads.turn-asker", { thread }, "module:vault")).data.asker;
+  await busyAs(d, c, BOB);
+  assert.equal(await asker(), BOB, "Ben's turn is the one running");
+  // the owner's message while Ben's turn runs waits as its own turn: it never steers Ben's
+  const waiting = await d.registry.call("threads.send", { thread, text: "demo", surface: "deck", chat, asker: owner }, "module:stream");
+  assert.ok(waiting.data && !waiting.error && waiting.data.steered !== true, JSON.stringify(waiting));
+  assert.equal(await asker(), BOB, "and until Ben's turn ends it is still Ben's");
+  // Ben's turn is stopped: the waiting owner turn starts, and the asker is the owner's, never Ben's left over
+  await d.registry.call("threads.stop", { thread }, "cli");
+  await until(async () => (await asker()) === owner, "the owner's waiting turn to be the turn running, with the owner as its asker");
+  await d.registry.call("vault.said.record", { thread, said: "said-q", kind: "send", to: ["bob@example.com"], what: "email bob@example.com the figures", asker: owner }, "module:sessions");
+  assert.equal((await d.registry.call("vault.said.match", { kind: "send", via: "mail", to: ["bob@example.com"], thread }, "module:gate")).data.matched, true, "what the owner said covers the owner's turn that followed Ben's stopped one");
+  // and a stopped turn with nothing behind it leaves nobody as its asker
+  await endTurn(d, c);
+  await until(async () => (await asker()) === null, "a stopped turn to leave no asker");
+});
+
 test("a member's message while the owner's turn is running never steers that turn: it waits as its own turn, and the running turn's asker is still the owner", { timeout: 120_000 }, async t => {
   const c = await chipChat(t);
   const { d, owner, BOB, thread, chat, events } = c;

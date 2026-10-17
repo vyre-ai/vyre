@@ -2439,7 +2439,7 @@ export class Switchboard {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
-    const taken = rows.filter(r => mark.run(now, r.id).changes);   if (taken.length && kt0 && kt0.chat) this.turnAsker.set(id, kt0.asker || null);   // a queued turn is its own asker's from the moment it is handed over, as a direct send is
+    const taken = rows.filter(r => mark.run(now, r.id).changes);   if (taken.length) { if (kt0 && kt0.chat) this.turnAsker.set(id, kt0.asker || null); else this.turnAsker.delete(id); }   // a queued turn is its own asker's from the moment it is handed over, as a direct send is (nobody's when it carries no verified asker)
     if (!taken.length) { this.drainDone(id, true, lock); return; }
     // The turn is announced to the stream (its member starts answering for this asker) only once the asker's own kernel session is open: a reply that opened before it would find none.
     const announce = () => { for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project); };
