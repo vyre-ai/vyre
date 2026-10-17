@@ -17,6 +17,9 @@
 
 import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
+import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
+import { agentdCtl } from "./agentd-ctl.js";
+import { registerAgentTools } from "./agent-tools.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -72,7 +75,7 @@ export function pickDriver(cfg, key) {
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {
   async start(ctx) {
-    ctx.store.migrate(MIGRATIONS);
+    ctx.store.migrate([...MIGRATIONS, ...AGENT_USER_MIGRATIONS]);
     const cfg = (ctx.config && ctx.config.computers) || {};
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
@@ -133,7 +136,7 @@ export default {
     // SPEC's floor on polling an install that isn't using computers at all (found by perf).
     const sweepMs = Number(cfg.sweepMs ?? 5_000);
     const idleSweepMs = Number(cfg.idleSweepMs ?? 60_000);
-    const sweep = async () => { keyboard.sweep(); await pool.sweep(); };
+    const sweep = async () => { keyboard.sweep(); await pool.sweep(); await agentUsers.sweep(agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent)).catch(e => ctx.log(`agent screens: ${/** @type {Error} */ (e).message}`)); };
     const busy = () => pool.checkouts.size > 0 || pool.idle.size > 0 || keyboard.takeovers.size > 0;
     let sweeping = false, timer = null;
     const schedule = () => {
@@ -203,7 +206,20 @@ export default {
       return surface;
     };
 
+    // The agents of the space's one computer: a Linux user each, a screen woken on demand and closed after 5 idle minutes (agent-users.js).
+    // agentd inside the computer does the work; its address and token come from config and the vault, and until they are set the Computer tab says so.
+    const NOT_SET = "the agent computer is not set up on this machine: set computers.agentd.url in config.json and put its token in the vault";
+    const agentd = (cfg.agentd && typeof cfg.agentd === "object") ? cfg.agentd : {};
+    const lazy = name => async u => {
+      if (!agentd.url) throw new Error(NOT_SET);
+      const token = await ctx.vault.fetch(String(agentd.tokenItem || "vyre-agentd-token"));
+      const ctl = agentdCtl({ url: String(agentd.url), token: String(token), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      return /** @type {any} */ (ctl)[name](u);
+    };
+    const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(), emit,
+      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
+    registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) });
 
     tool("computers.rename", "Rename an agent's computer: the person's own label for it, shown wherever the computer appears. An empty name goes back to the agent's name.",
       obj({ computer: str, name: str }, ["computer", "name"]), async (i, { caller }) => {
