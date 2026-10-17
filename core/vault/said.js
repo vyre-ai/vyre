@@ -68,9 +68,10 @@ export function ambiguous(s) {
  * @param {{ kind: string, channel?: string, via?: string, to?: string[], hosts?: string[], amount?: number, payee?: string, currency?: string, agent?: string, at?: number }} call
  * @param {{ id: string, thread: string, kind: string, channel?: string|null, to: string[], standing: boolean, limits?: any, at: number, revoked?: number|null }[]} intents
  * @param {string[]} lineage the call's thread and the threads it descends from
+ * @param {string | null} [asker] who asked the turn making the call; an intent recorded for one person covers only that person's turn
  * @returns {{ id: string } | null} the intent that covers it, the latest when several do
  */
-export function matchIntent(call, intents, lineage = []) {
+export function matchIntent(call, intents, lineage = [], asker = null) {
   const covers = COVERS[String(call && call.kind)];
   if (!covers) return null;
   const at = Number.isFinite(call.at) ? /** @type {number} */ (call.at) : Date.now();
@@ -82,6 +83,8 @@ export function matchIntent(call, intents, lineage = []) {
   let best = null;
   for (const it of intents || []) {
     if (!it || it.revoked || !covers.includes(it.kind)) continue;
+    // An ask made in a chat is for the person who made it: a turn with another asker, or none, is not covered by it.
+    if (it.limits && it.limits.asker && norm(it.limits.asker) !== norm(asker)) continue;
     // A plain ask is used up by the send it asked for; only a standing permission persists.
     if (it.used && !it.standing && it.kind !== "use") continue;
     // A tagged login is lent to the conversation, not for good: idle for 8 hours (`used` is the last time it was used) and it stops matching.
@@ -117,7 +120,11 @@ const out = r => ({ id: r.id, thread: r.thread, said: r.said, kind: r.kind, chan
 
 export class SaidIntents {
   /** @param {import("./vault.js").Vault} vault */
-  constructor(vault) { this.vault = vault; }
+  constructor(vault) {
+    this.vault = vault;
+    /** Who asked the turn running on a thread (the Switchboard knows), or null: set by register. An ask recorded for one person is matched only against their own turn. @type {((thread: string) => Promise<string | null>) | null} */
+    this.askerOf = null;
+  }
 
   /**
    * Store one intent. The caller has already been checked as sessions or assistant.
@@ -146,6 +153,11 @@ export class SaidIntents {
     if (i.window_minutes !== undefined) {
       if (!(Number.isFinite(i.window_minutes) && i.window_minutes > 0)) throw bad("window_minutes is a number of minutes");
       limits = { ...(limits || {}), window_ms: Math.round(Math.min(60, Math.max(1, i.window_minutes)) * 60_000) };
+    }
+    // An ask made in a chat is the asker's alone: the match below covers a call only when the same person's turn makes it.
+    if (i.asker !== undefined && i.asker !== null) {
+      if (typeof i.asker !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(i.asker)) throw bad("asker is a person id (per_...)");
+      limits = { ...(limits || {}), asker: i.asker };
     }
     if (i.kind === "use" && !(limits && Array.isArray(limits.hosts))) throw bad("a use intent carries the item's hosts as limits.hosts; record it through vault.mention.resolve");
     if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
@@ -196,13 +208,16 @@ export class SaidIntents {
 
   /**
    * The Gate's question. Reads only rows that pass their MAC and are not revoked.
-   * @param {any} call @param {{ thread?: string, lineage?: string[] }} [where]
+   * @param {any} call @param {{ thread?: string, lineage?: string[], asker?: string | null }} [where]
    */
   async match(call, where = {}, consume = false) {
     await this.vault.key();
     const lineage = [...new Set([...(where.thread ? [where.thread] : []), ...(where.lineage || [])].map(String))];
     const intents = this.rows().map(out);
-    const m = matchIntent(call, intents, lineage);
+    // Every way to this question (the Gate, a use check, a request, a fill) asks here, so the asker is found here: the thread's own turn, else a thread it descends from.
+    let asker = where.asker ?? null;
+    if (!asker && this.askerOf && intents.some(x => x.limits && x.limits.asker)) for (const th of lineage) { asker = await this.askerOf(th).catch(() => null); if (asker) break; }
+    const m = matchIntent(call, intents, lineage, asker);
     if (!m) return m;
     // A tagged login that is used keeps its conversation's lending alive: the idle clock restarts.
     const hit = intents.find(x => x.id === m.id);
@@ -240,14 +255,16 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 
 /**
  * Register the intent tools. `internal` makes a tool only other modules can call.
- * @param {{ vault: import("./vault.js").Vault, tool?: Function, emit?: (type: string, payload: any) => void, internal: (name: string, description: string, input: any, run: Function) => void }} o
+ * @param {{ vault: import("./vault.js").Vault, tool?: Function, call?: (name: string, input: any) => Promise<any>, emit?: (type: string, payload: any) => void, internal: (name: string, description: string, input: any, run: Function) => void }} o
  */
-export function register({ vault, internal, tool, emit }) {
+export function register({ vault, internal, tool, emit, call: callTool }) {
   const said = new SaidIntents(vault);
+  // The Switchboard knows who asked the turn running on a thread (threads.turn-asker, modules only); it is never read from a caller's input.
+  if (callTool) said.askerOf = thread => callTool("threads.turn-asker", { thread }).then(r => (r && r.data && typeof r.data.asker === "string" ? r.data.asker : null));
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
     obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs, window_minutes: { type: "number" },
-      limits: obj({ max_amount: { type: "number" }, currency: str, hosts: strs }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
+      limits: obj({ max_amount: { type: "number" }, currency: str, hosts: strs }), at: { type: "integer" }, asker: str }, ["thread", "said", "kind", "what"]),
     (input, { caller }) => {
       if (!RECORDERS.includes(String(caller))) { vault.audit("said-record", null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant record what the person said"); }
       return said.record(input, String(caller));
@@ -289,12 +306,12 @@ export function register({ vault, internal, tool, emit }) {
   }
 
   internal("vault.mention.resolve", "The person tagged #item in their own turn: record that this thread (and the threads under it) may use the item, bound to the hosts it has now. Only sessions and the assistant; answers what the tag grants, never a value.",
-    obj({ id: str, thread: str, said: str }, ["id", "thread"]),
-    async ({ id, thread, said: ref }, { caller }) => {
+    obj({ id: str, thread: str, said: str, asker: str }, ["id", "thread"]),
+    async ({ id, thread, said: ref, asker }, { caller }) => {
       if (!RESOLVERS.includes(String(caller))) { vault.audit("mention-resolve", String(id || "") || null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant resolve a # tag"); }
       const it = pickable().find(x => x.name === String(id));
       if (!it) throw Object.assign(new Error(`no vault item ${String(id).slice(0, 60)} (vault.list shows them)`), { code: "not_found" });
-      const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts } },
+      const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts }, ...(asker ? { asker } : {}) },
         RESOLVERS.includes(String(caller)) && String(caller) !== "module:mentions" ? String(caller) : "module:sessions");
       return { name: it.name, hint: `${it.kind}${it.hosts.length ? " · " + it.hosts.join(", ") : ""}`, hosts: it.hosts, note: "You may use this credential through vault.request and connectors. You never see its value.", grant: { use: true, hosts: it.hosts }, intent: r.id };
     });

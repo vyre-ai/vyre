@@ -143,6 +143,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.turn-asker",
+        "reach": "modules"
+      },
+      {
         "name": "threads.own-transcript",
         "reach": "modules"
       },
@@ -434,6 +438,7 @@
   "needs": {
     "daemon": [
       "kernelSession",
+      "turnRecordTags",
       "chatFor",
       "sandbox",
       "credentials",

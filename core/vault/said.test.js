@@ -390,3 +390,37 @@ test("api-credential: a person's put with a new config and no secret keeps the s
   // A module, watcher, agent or model still cannot rewrite the config of an existing credential.
   for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ scope: { projects: "*", agents: "*" } }) } }, who)).error, who);
 });
+
+test("matchIntent: an ask made in a chat covers only the turn of the person who made it", () => {
+  const OWNER = "per_" + "o".repeat(26), BEN = "per_" + "b".repeat(26);
+  const mine = intent({ limits: { asker: OWNER } });
+  assert.deepEqual(matchIntent(call1(), [mine], ["t-1"], OWNER), { id: "s_1" }, "the owner's own turn is covered");
+  assert.equal(matchIntent(call1(), [mine], ["t-1"], BEN), null, "Ben's later request in the same chat is not");
+  assert.equal(matchIntent(call1(), [mine], ["t-1"], null), null, "a turn with no asker is not covered by an ask bound to a person");
+  assert.equal(matchIntent(call1(), [mine], ["t-1"]), null);
+  assert.deepEqual(matchIntent(call1(), [intent()], ["t-1"], BEN), { id: "s_1" }, "an ask made on a person's own surface is bound to no one, as before");
+});
+
+test("said: an ask recorded for the owner in a chat is not matched by a call whose turn has no known asker (through the tools)", async t => {
+  const { reg } = await daemon(t);
+  const OWNER = "per_" + "o".repeat(26);
+  const SEND = { thread: "t-chat", said: "said-chat", kind: "send", to: ["bob@harlowlegal.com"], what: "email bob@harlowlegal.com", asker: OWNER };
+  const rec = await reg("vault.said.record", SEND, "module:sessions");
+  assert.ok(rec.data && !rec.error, JSON.stringify(rec));
+  // the recorder refuses an asker that is not a person id
+  assert.ok((await reg("vault.said.record", { ...SEND, said: "x", asker: "bob" }, "module:sessions")).error);
+  const ask = { kind: "send", via: "mail", to: ["bob@harlowlegal.com"], thread: "t-chat" };
+  // the vault asks the Switchboard who asked the turn making the call, and never takes it from the call's own input; a thread with no live chat turn has no asker, so nothing bound to a person is covered
+  assert.equal((await reg("vault.said.match", ask, "module:gate")).data.matched, false, "no asker known: nothing bound to a person is covered");
+  assert.equal((await reg("vault.said.match", { ...ask, asker: OWNER }, "module:gate")).data.matched, false, "a caller cannot name the asker itself");
+});
+
+test("threads.turn-asker answers the vault alone: any other module, an added one too, is refused", async t => {
+  const { reg } = await daemon(t);
+  const mine = await reg("threads.turn-asker", { thread: "t-none" }, "module:vault");
+  assert.ok(mine.data && mine.data.asker === null, JSON.stringify(mine));
+  for (const caller of ["module:gate", "module:sessions", "ext:someone", "module:vault-evil", "cli", "mcp"]) {
+    const r = await reg("threads.turn-asker", { thread: "t-none" }, caller);
+    assert.ok(r.error, `${caller} must be refused`);
+  }
+});
