@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, ensureMacColumns } from "./vault.js";
 import { ensureDir } from "./store.js";
-import { sealItemV2, openItemV2 } from "./crypto.js";
+import { sealItemV2, openItemV2, keyObject } from "./crypto.js";
 import { sealMemberKey, openMemberKey, forgetMemberKey } from "./people-seal.js";
 
 export const PERSON_ID = /^per_[A-Za-z0-9_-]{1,64}$/;
@@ -23,6 +23,10 @@ const KIND = /^[a-z][a-z0-9-]{0,31}$/;
 const FIELD = /^[A-Za-z0-9_.-]{1,64}$/;
 const MAX_VALUE = 64 * 1024, MAX_ITEMS = 500;
 const ITEMS = "me-items";
+const CONN_ITEMS = "conn-items";
+const CK_FILE = "ck.json";
+/** The fields of a connection a person may see: what it connects to, never a token, a secret or a key. */
+const CONNECTION_PUBLIC = new Set(["auth_kind", "server_url", "catalog_id", "connected_by", "scope", "resource", "expires_at", "issuer"]);
 const KV = 1;
 
 /** The age of idleness after which a person's vault locks again. */
@@ -114,7 +118,7 @@ export class PeopleVaults {
       try {
         const r = await (/** @type {any} */ (s.vault)).resetAccount(input, "person:" + id);
         s.last = this.clock();
-        this.seal(id, s);
+        this.rotateConnectionKey(id, s);
         return r;
       } finally { s.sk = null; }
     });
@@ -161,15 +165,52 @@ export class PeopleVaults {
     return s.vault.pvk;
   }
 
-  /** Keep the sealed server copy equal to the unlocked key. A failure is logged and never stops the unlock: the person's own use does not depend on it. @param {string} id @param {{ vault: Vault }} s */
+  // ---- the connection key ----
+  // Items of kind "connection" (a member's app sign-ins) are sealed under a CONNECTION KEY of their own, not under the vault key. The connection key lives inside the vault (wrapped by the vault key,
+  // `ck.json`), and it alone is sealed for the server (people-seal.js). So a leak of the state folder yields connection tokens and never a password, a card or a note: the sealed key cannot
+  // decrypt any other item, which is a fact of the cryptography and not a check in code. Only the signed-in connect path and the hub's token tool write or read them (`service`).
+
+  /** The connection key, made the first time it is asked for with the vault key in hand. @param {string} id @param {import("node:crypto").KeyObject} pvk */
+  connectionKey(id, pvk) {
+    const file = path.join(this.folder(id), CK_FILE);
+    if (fs.existsSync(file)) {
+      const body = openItemV2(pvk, this.at(id, "ck"), JSON.parse(fs.readFileSync(file, "utf8")));
+      return keyObject(Buffer.from(body.fields.ck, "base64"));
+    }
+    const raw = crypto.randomBytes(32);
+    this.writeCk(id, pvk, raw);
+    return keyObject(raw);
+  }
+
+  /** @param {string} id @param {import("node:crypto").KeyObject} pvk @param {Buffer} raw */
+  writeCk(id, pvk, raw) {
+    const file = path.join(this.folder(id), CK_FILE), tmp = file + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(sealItemV2(pvk, this.at(id, "ck"), { meta: { name: "ck" }, fields: { ck: Buffer.from(raw).toString("base64") } })), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  }
+
+  /** Keep the sealed server copy equal to the connection key. A failure is logged and never stops the unlock: the person's own use does not depend on it. @param {string} id @param {{ vault: Vault }} s */
   seal(id, s) {
     if (!this.sealRoot || !s.vault.pvk) return;
-    try { sealMemberKey(this.sealRoot, id, s.vault.pvk); } catch (e) { this.log(`vault: could not seal the key of ${id}: ${/** @type {Error} */ (e).message}`); }
+    try { sealMemberKey(this.sealRoot, id, this.connectionKey(id, s.vault.pvk)); } catch (e) { this.log(`vault: could not seal the connection key of ${id}: ${/** @type {Error} */ (e).message}`); }
+  }
+
+  /** A forgotten password was reset: the connection items get a new key and the server's seal follows. @param {string} id @param {{ vault: Vault }} s */
+  rotateConnectionKey(id, s) {
+    const pvk = s.vault.pvk;
+    if (!pvk) return;
+    const old = this.connectionKey(id, pvk);
+    const items = this.allConnections(id, old);
+    const next = crypto.randomBytes(32);
+    const nextKey = keyObject(Buffer.from(next));
+    for (const it of items) this.writeConnection(id, it.fileId, { name: it.name, kind: "connection", description: it.description, updated: it.updated }, it.fields, nextKey);
+    this.writeCk(id, pvk, next);
+    this.seal(id, s);
   }
 
   /**
-   * The person's connection items for a service (the MCP hub's token tool), opened with the sealed server copy when nobody is unlocked. It reads and updates items of kind "connection" and nothing
-   * else, so the sealed copy reaches a connection's tokens and no password, card or note. Throws code "locked" when there is no seal and the person is not unlocked.
+   * The person's connection items for a service (the MCP hub's token tool, the connect path), opened with the connection key: the vault's when the person is unlocked, else the sealed server copy.
+   * It reads and writes connection items and nothing else, by construction: the key opens nothing more. Throws code "locked" when there is no seal and the person is not unlocked.
    * @param {string} id
    */
   service(id) {
@@ -177,33 +218,41 @@ export class PeopleVaults {
     const key = () => {
       const s = this.slot(id);
       this.expire(s);
-      if (s.vault.pvk) return s.vault.pvk;
+      if (s.vault.pvk) return this.connectionKey(id, s.vault.pvk);
       const k = this.sealRoot ? openMemberKey(this.sealRoot, id) : null;
       if (!k) throw locked();
       return k;
     };
-    const find = (/** @type {string} */ name) => {
-      const it = this.all(id, key()).find(i => i.name === name);
-      if (!it) throw new Error(`no item named ${name}`);
-      if (it.kind !== "connection") throw Object.assign(new Error(`${name} is not a connection`), { code: "not_found" });
-      return it;
-    };
+    const find = (/** @type {string} */ name) => this.allConnections(id, key()).find(i => i.name === name);
     return {
-      get: async (/** @type {string} */ name) => { const { fileId, ...rest } = find(name); void fileId; return rest; },
+      has: async (/** @type {string} */ name) => Boolean(find(name)),
+      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no item named ${name}`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
+      /** Make the connection, or replace its fields (a refresh merges: pass only what changed). */
+      put: async (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ fields) => {
+        if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
+        const k = key(), clean = PeopleVaults.clean(fields), it = this.allConnections(id, k).find(i => i.name === name);
+        if (it) { this.writeConnection(id, it.fileId, { name, kind: "connection", description: it.description, updated: this.clock() }, { ...it.fields, ...clean }, k); return { name, created: false }; }
+        if (this.allConnections(id, k).length >= MAX_ITEMS) throw new Error(`a vault holds up to ${MAX_ITEMS} connections`);
+        this.writeConnection(id, crypto.randomBytes(12).toString("hex"), { name, kind: "connection", description: String(description || "").slice(0, 500), updated: this.clock() }, clean, k);
+        return { name, created: true };
+      },
       update: async (/** @type {string} */ name, /** @type {any} */ fields) => {
-        const it = find(name);
-        this.write(id, it.fileId, { name, kind: it.kind, description: it.description, updated: this.clock() }, { ...it.fields, ...PeopleVaults.clean(fields) }, key());
+        const k = key(), it = this.allConnections(id, k).find(i => i.name === name);
+        if (!it) throw Object.assign(new Error(`no item named ${name}`), { code: "not_found" });
+        this.writeConnection(id, it.fileId, { name, kind: "connection", description: it.description, updated: this.clock() }, { ...it.fields, ...PeopleVaults.clean(fields) }, k);
       },
     };
   }
 
   itemDir(/** @type {string} */ id) { const d = path.join(this.folder(id), ITEMS); ensureDir(d); return d; }
+  connDir(/** @type {string} */ id) { const d = path.join(this.folder(id), CONN_ITEMS); ensureDir(d); return d; }
 
   at(/** @type {string} */ person, /** @type {string} */ fileId) { return { vault: "me:" + person, kv: KV, id: fileId, ver: 1, name: fileId }; }
+  atConn(/** @type {string} */ person, /** @type {string} */ fileId) { return { vault: "me-conn:" + person, kv: KV, id: fileId, ver: 1, name: fileId }; }
 
-  /** Every item the person can open: { fileId, name, kind, fields }. A file that does not open (another person's, or damaged) is skipped. @param {string} id */
-  all(id, /** @type {import("node:crypto").KeyObject} */ withKey = this.key(id)) {
-    const k = withKey;
+  /** Every ordinary item the person can open: { fileId, name, kind, fields }. A file that does not open (another person's, or damaged) is skipped, and so is anything of kind "connection": those live under their own key. @param {string} id */
+  all(id) {
+    const k = this.key(id);
     const dir = this.itemDir(id);
     const out = [];
     for (const f of fs.readdirSync(dir)) {
@@ -211,17 +260,40 @@ export class PeopleVaults {
       const fileId = f.slice(0, -5);
       try {
         const body = openItemV2(k, this.at(id, fileId), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+        if (String(body.meta.kind) === "connection") continue;
         out.push({ fileId, name: String(body.meta.name), kind: String(body.meta.kind), description: String(body.meta.description || ""), updated: Number(body.meta.updated), fields: body.fields });
       } catch { /* not this person's, or not whole: skipped, never read */ }
     }
     return out;
   }
 
-  write(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields, /** @type {import("node:crypto").KeyObject} */ withKey = this.key(id)) {
-    const k = withKey;
+  /** Every connection item, opened with the connection key. @param {string} id @param {import("node:crypto").KeyObject} ck */
+  allConnections(id, ck) {
+    const dir = this.connDir(id);
+    const out = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      const fileId = f.slice(0, -5);
+      try {
+        const body = openItemV2(ck, this.atConn(id, fileId), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+        out.push({ fileId, name: String(body.meta.name), kind: "connection", description: String(body.meta.description || ""), updated: Number(body.meta.updated), fields: body.fields });
+      } catch { /* not whole, or sealed under an older key: skipped */ }
+    }
+    return out;
+  }
+
+  write(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields) {
+    const k = this.key(id);
     const file = path.join(this.itemDir(id), fileId + ".json");
     const tmp = file + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(sealItemV2(k, this.at(id, fileId), { meta, fields })), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  }
+
+  writeConnection(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields, /** @type {import("node:crypto").KeyObject} */ ck) {
+    const file = path.join(this.connDir(id), fileId + ".json");
+    const tmp = file + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(sealItemV2(ck, this.atConn(id, fileId), { meta, fields })), { mode: 0o600 });
     fs.renameSync(tmp, file);
   }
 
@@ -244,16 +316,21 @@ export class PeopleVaults {
   async put(id, { name, kind = "secret", description = "", fields }) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KIND.test(String(kind))) throw new Error("a kind is lowercase letters, digits and dashes");
+    if (kind === "connection") throw Object.assign(new Error("a connection is made by signing in to an app (Connect), not typed in here"), { code: "denied" });
     const clean = PeopleVaults.clean(fields);
     const have = this.all(id);
-    if (have.some(i => i.name === name)) throw new Error(`${name} already exists: update it`);
+    if (have.some(i => i.name === name) || this.hasConnection(id, name)) throw new Error(`${name} already exists: update it`);
     if (have.length >= MAX_ITEMS) throw new Error(`a vault holds up to ${MAX_ITEMS} items`);
     this.write(id, crypto.randomBytes(12).toString("hex"), { name, kind, description: String(description).slice(0, 500), updated: this.clock() }, clean);
     return { name, kind, created: true };
   }
 
+  /** Whether a connection of this name exists, for a person who is unlocked. @param {string} id @param {string} name */
+  hasConnection(id, name) { return this.allConnections(id, this.connectionKey(id, this.key(id))).some(i => i.name === name); }
+
   /** @param {string} id @param {{ name: string, fields?: any, description?: string }} input */
   async update(id, { name, fields, description }) {
+    if (this.hasConnection(id, name)) throw Object.assign(new Error("a connection is changed by connecting again, not edited here"), { code: "denied" });
     const it = this.all(id).find(i => i.name === name);
     if (!it) throw new Error(`no item named ${name}`);
     const next = fields === undefined ? it.fields : { ...it.fields, ...PeopleVaults.clean(fields) };
@@ -261,26 +338,31 @@ export class PeopleVaults {
     return { name, kind: it.kind, created: false };
   }
 
-  /** @param {string} id @param {{ name: string }} input */
+  /** One item. A connection shows what it connects to and never a token: its secret fields are not returned to anyone, the person included. @param {string} id @param {{ name: string }} input */
   async get(id, { name }) {
     const it = this.all(id).find(i => i.name === name);
-    if (!it) throw new Error(`no item named ${name}`);
-    const { fileId, ...rest } = it; void fileId;
-    return rest;
+    if (it) { const { fileId, ...rest } = it; void fileId; return rest; }
+    const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
+    if (!c) throw new Error(`no item named ${name}`);
+    const { fileId, fields, ...rest } = c; void fileId;
+    return { ...rest, fields: Object.fromEntries(Object.entries(fields).filter(([k]) => CONNECTION_PUBLIC.has(k))) };
   }
 
   /** Names and kinds, never a value. @param {string} id @param {{ filter?: string }} [input] */
   async list(id, { filter } = {}) {
     const f = filter ? String(filter).toLowerCase() : "";
-    const items = this.all(id).filter(i => !f || i.name.toLowerCase().includes(f)).map(i => ({ name: i.name, kind: i.kind, description: i.description, fields: Object.keys(i.fields), updated: i.updated }));
+    const conns = this.allConnections(id, this.connectionKey(id, this.key(id)));
+    const items = [...this.all(id), ...conns].filter(i => !f || i.name.toLowerCase().includes(f)).map(i => ({ name: i.name, kind: i.kind, description: i.description, fields: Object.keys(i.fields), updated: i.updated }));
     return { items };
   }
 
   /** @param {string} id @param {{ name: string }} input */
   async remove(id, { name }) {
     const it = this.all(id).find(i => i.name === name);
-    if (!it) throw new Error(`no item named ${name}`);
-    fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true });
+    if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); return { removed: name }; }
+    const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
+    if (!c) throw new Error(`no item named ${name}`);
+    fs.rmSync(path.join(this.connDir(id), c.fileId + ".json"), { force: true });
     return { removed: name };
   }
 

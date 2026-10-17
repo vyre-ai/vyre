@@ -119,11 +119,17 @@ export function register({ ctx, people, tool }) {
       if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });
       if (typeof f.server_url !== "string" || !/^https:\/\//.test(f.server_url)) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
       const fields = { ...f, connected_by: id };
-      const have = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === input.name);
-      if (!have) return people.put(id, { name: String(input.name), kind: "connection", description: `connection to ${new URL(f.server_url).host}`, fields });
-      const cur = await people.get(id, { name: String(input.name) });
-      if (cur.kind !== "connection" || (cur.fields.connected_by && cur.fields.connected_by !== id)) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
-      return people.update(id, { name: String(input.name), fields });
+      const svc = people.service(id), name = String(input.name);
+      if (await svc.has(name)) {
+        const cur = await svc.get(name);
+        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+      } else {
+        // A name an ordinary item of hers already has is refused (checked when her vault is open; a sealed-only call cannot see ordinary items, which the connection key does not open).
+        let clash = false;
+        try { clash = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === name); } catch (e) { if (/** @type {any} */ (e).code !== "locked") throw e; }
+        if (clash) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+      }
+      return svc.put(name, `connection to ${new URL(f.server_url).host}`, fields);
     },
   });
 
