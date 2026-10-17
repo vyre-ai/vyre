@@ -49,6 +49,44 @@ test("a call with exactly Alice reads and removes her row; an agent behind it, B
   assert.equal(row.owner, ALICE, "the row is untouched");
 });
 
+import { ASKING } from "./hub.js";
+const CY2 = "per_cy000000000000000000000000", DAN = "per_dan0000000000000000000000";
+
+/** A Hub whose token asks are recorded: what `as` and level each request carried. */
+function tokenRig() {
+  /** @type {any[]} */ const asks = [];
+  const hub = Object.create(Hub.prototype);
+  hub.deps = { connectionToken: async (/** @type {any} */ c) => { await new Promise(r => setImmediate(r)); asks.push(c); return { access_token: "t", token_type: "Bearer" }; }, mayUseConnection: async () => true, item: async () => ({ state: "sending", via: "mcp:notion-alice", requester: CY2, agent: null }) };
+  hub.creds = { track() {} };
+  const row = { name: "notion-alice", owner: ALICE, connection: "notion-alice-auth", label: "notion" };
+  return { hub, row, asks };
+}
+
+test("the member a token is asked as is the one on THIS call: Cy's call and Dan's call right after it on the same row ask as Cy and as Dan, interleaved calls do not mix, and a call with no member or an agent gets no `as`", async () => {
+  const { hub, row, asks } = tokenRig();
+  const who = (/** @type {string} */ me, /** @type {any} */ agent = null) => ({ person: false, agent, thread: null, me: async () => me });
+  await ASKING.run({ who: who(CY2) }, () => hub.connectionHeaders(row));
+  await ASKING.run({ who: who(DAN) }, () => hub.connectionHeaders(row));
+  assert.deepEqual(asks.map(a => a.as), [CY2, DAN], "each call asks as its own member");
+  asks.length = 0;
+  await Promise.all([ASKING.run({ who: who(CY2) }, () => hub.connectionHeaders(row)), ASKING.run({ who: who(DAN) }, () => hub.connectionHeaders(row)), ASKING.run({ who: who(CY2) }, () => hub.connectionHeaders(row))]);
+  assert.deepEqual(asks.map(a => a.as).sort(), [CY2, CY2, DAN].sort(), "three calls in flight at once keep their own member");
+  asks.length = 0;
+  await hub.connectionHeaders(row);
+  await ASKING.run({ who: who("") }, () => hub.connectionHeaders(row));
+  await ASKING.run({ who: who(CY2, "juno") }, () => hub.connectionHeaders(row));
+  assert.ok(asks.length === 3 && asks.every(a => a.as === undefined), "outside any call, with no member, and with an agent behind the call, no `as` is sent");
+  assert.equal(ASKING.getStore(), undefined, "nothing of a call is left on the context after it");
+});
+
+test("a held call released by Ben is asked as the person who asked (Cy), not the releaser", async () => {
+  const { hub, row, asks } = tokenRig();
+  hub.row = () => row; hub.findTool = () => ({ tool: "send_message" }); hub.retarget = (/** @type {any} */ a) => a;
+  hub.run = async () => hub.connectionHeaders(row);
+  await ASKING.run({ who: { person: false, agent: null, thread: null, me: async () => ALICE } }, () => hub.release({ id: "i1", to: [], content: { server: "notion-alice", tool: "send_message", arguments: {} } }));
+  assert.deepEqual(asks.map(a => a.as), [CY2], "the requester, whoever releases");
+});
+
 test("a grantee's direct call of an outward tool is held (no token is asked for it); a read tool asks with write false; only a released item asks with write true, as its requester", async () => {
   const { hub, row, asks } = tokenRig();
   const who = { person: false, agent: null, thread: null, me: async () => CY2 };
