@@ -2359,9 +2359,9 @@ export class Switchboard {
    * longer be taken back.
    */
   turnEnded(id, st, project) {
-    st.turn = null;
+    const ran = Boolean(st.turn); st.turn = null;
     this.resumeTried.delete(id);
-    if (!this.live.has(id) || this.live.get(id) === st) this.turnAsker.delete(id);   // only the turn that is running now clears its asker: a stopped turn's late finish never wipes the next asker's
+    if (ran && (!this.live.has(id) || this.live.get(id) === st)) this.turnAsker.delete(id);   // only a turn that ran, and is the one running now, clears its asker: a stopped turn's late finish, or a launch with queued rows and no turn yet (resumeQueued), never wipes the asker of the turn about to be written
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
