@@ -457,7 +457,7 @@ export function createLentHome(o) {
     async adopt(i) {
       const session = String(i && i.session), person = String(i && i.person);
       if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
-      if (isGroup(i.chat)) throw err("conflict", "a chat with more than one person always runs on the server");
+      if (isGroup(i.chat)) throw err("conflict", "a chat with more than one person always runs on the server, so leave it there (runner.placement shows where it runs)");
       // A chat that came back from a computer (its row says server, and the server has carried it on) may go out again: it is adopted afresh, from the server's whole turns, as the person's own ask to run there.
       const had = book.get(session);
       if (had && had.person !== person) throw err("not_found", "not found");   // a chat that is another person's is not there for this one
