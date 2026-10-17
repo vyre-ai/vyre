@@ -194,7 +194,7 @@ What Vyre does with the account:
 
 ## Connect Microsoft 365 for the whole firm
 
-A firm that runs Microsoft 365 can give every member their own mail, calendar and OneDrive through one Azure app that the owner sets up once. The app acts as one mailbox at a time: the member's own work email, recorded by the owner. A member can never name another mailbox. Vyre reads mail, calendar and files. A member can also send an email or an invite from their own mailbox, and it goes out at once because it is their own send. An agent cannot send or invite from a member's mailbox yet: that will wait for the member's own approval once it is open.
+A firm that runs Microsoft 365 can give every member their own mail, calendar and OneDrive through one Azure app that the owner sets up once. The app acts as one mailbox at a time: the member's own work email, recorded by the owner. A member can never name another mailbox. Vyre reads mail, calendar and files. A member can also send an email or an invite from their own mailbox, and it goes out at once because it is their own send. When a member's agent sends or invites from that mailbox, the message is held at the member's own Gate, with the address it leaves from. Only that member sees it and approves it. The owner and the admins do not.
 
 The owner does this once, in Entra (entra.microsoft.com):
 
