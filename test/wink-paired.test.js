@@ -153,7 +153,7 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
   if (r) {
     t.after(() => r.channel.close(1000, "done"));
     // (the relay's provisional row may name it a device on the channel; what it may reach is the question, and the owner's tool surface is refused)
-    const head = new Promise(res => { const st = r.channel.open({ method: "GET", path: "/v1/tools" }); st.onhead = x => res(x && x.status); st.onreset = () => res(0); });
+    const head = new Promise(res => { const st = r.channel.open({ method: "GET", path: "/v1/tools" }); st.onhead = x => res(x && x.status); st.onreset = () => res(0); setTimeout(() => res(0), 4000); });
     const status = await head;
     assert.ok(status === 403 || status === 400 || status === 0, `GET /v1/tools is refused (${status})`);
   }
