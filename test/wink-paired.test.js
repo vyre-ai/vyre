@@ -145,7 +145,7 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
   // (presence.keys also lists the relay's provisional row for the pairing's own key; what matters is that the Wink record above holds no key and confirms nothing, and the sign-in and channel checks below)
   const links = linksFor(t, f);
   await assert.rejects(() => links.startPaired("srv"), "the device cannot sign in, so it cannot call any tool");
-  // and with no relay device row it cannot open a device channel either: an ordinary hello gets no device, and nothing a device could reach
+  // and as only a provisional relay row it cannot reach anything a device could: an ordinary hello gets nothing, and the owner's tool surface is refused
   const crypt = nodeCrypto();
   const k = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
   /** @type {any} */ let r = null;
@@ -202,11 +202,12 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   assert.equal(st.owned, true);
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
   assert.equal(st.device, "Alex's iPhone");
-  // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
+  // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: the relay's provisional row for the pairing may exist, but nothing was enrolled or given a session through it).
   // The relay's own provisional row from the pairing's hello may exist (it is not made by the name: the same row is there when the app sends none). What matters is what it is: not the owner's
   // paired device, not trusted, no presence key, no storage kind, and nothing was enrolled or given a session through it.
   const rows = ((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []);
   for (const row of rows) {
+    assert.equal(row.kind, "app", "the relay row is the provisional one (app), never a phone or a computer");
     assert.notEqual(row.ownerPaired, true, "a pick with no kind makes no owner-paired relay device");
     assert.notEqual(row.presence, true, "a pick with no kind enrols no presence key through the relay");
     assert.equal(row.storage, "unknown", "a pick with no kind has no key storage kind");
