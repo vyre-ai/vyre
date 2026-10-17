@@ -153,14 +153,15 @@ export async function listCaller(K, meta) {
 
 /**
  * The Spaces this home's kernel hosts that a person is in, as spaces.merge-list lists them ({ space, name, color, link }). The module's own table holds only the Spaces it made itself; a server's team Spaces are
- * the kernel's, so a module that asks "which Spaces is this person in" (Publish, the doors) must read them here. The home's own Space stays out: it is internal, as in spaces.list.
- * @param {any} K @param {string} person @returns {Promise<{ space: string, name: string | null, color: null, link: string | null }[]>}
+ * the kernel's, so a module that asks "which Spaces is this person in" (Publish, the doors) must read them here. The home's own Space stays out: it is internal, as in spaces.list. A caller that works IN the home's
+ * Space for its member (Publish, on a one-server install where the person's only Space is the home) asks with `home`: the home is then listed when, and only when, the person is a member of it.
+ * @param {any} K @param {string} person @param {{ home?: boolean }} [o] @returns {Promise<{ space: string, name: string | null, color: null, link: string | null }[]>}
  */
-export async function kernelTeamSpaces(K, person) {
+export async function kernelTeamSpaces(K, person, { home = false } = {}) {
   const out = [];
   if (!K || !K.spaces || typeof K.spaces.list !== "function" || typeof K.membership !== "function") return out;
-  for (const id of K.spaces.list()) {
-    if (id === K.space) continue;
+  for (const id of new Set([...(home === true && typeof K.space === "string" ? [K.space] : []), ...K.spaces.list()])) {
+    if (id === K.space && home !== true) continue;
     let m = null; try { const r = await K.membership(person, id); if (r && r.member === true) m = r; } catch { m = null; }
     if (!m) continue;
     const d = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null, host = d && d.name ? `${String(d.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null;

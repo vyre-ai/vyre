@@ -145,7 +145,7 @@ export default {
       // The spaces this person is in, from the spaces module's own member lists (spaces.merge-list), not from "who is this device": a server that hosts a team's space holds no identity of its own (the owner's
       // key lives in their app), and the person who is calling is the chain's person all the same.
       const person = String(first.actor.id);
-      const r = await call("spaces.merge-list", { person });
+      const r = await call("spaces.merge-list", { person, home: true });   // Publish works in the home's own Space for its member: on a one-server install that is the person's only Space
       if (r.missing) throw refuse("your Space is still being set up, try again in a moment. If you have not made one yet, create it first with spaces.create", "no_space");
       const list = /** @type {{ space: string, name: string }[]} */ ((r.data && Array.isArray(r.data.spaces)) ? r.data.spaces : []);
       if (!list.length) throw refuse("you are not a member of a space on this server", "forbidden");
