@@ -2273,7 +2273,7 @@ export class Switchboard {
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
-    this.live.delete(id);
+    this.live.delete(id); this.turnAsker.delete(id);   // the turn that was running is over (stopped or crashed too): nobody is its asker any more, so a stale asker never covers the next turn
     if (this.once.has(id) && !this.reverting.has(id)) {
       this.endHop(id, this.once.get(id).back);
       // said once, in words: that person's turn did not finish, and the chat is back on its usual account
@@ -2439,7 +2439,7 @@ export class Switchboard {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
-    const taken = rows.filter(r => mark.run(now, r.id).changes);
+    const taken = rows.filter(r => mark.run(now, r.id).changes);   if (taken.length && kt0 && kt0.chat) this.turnAsker.set(id, kt0.asker || null);   // a queued turn is its own asker's from the moment it is handed over, as a direct send is
     if (!taken.length) { this.drainDone(id, true, lock); return; }
     // The turn is announced to the stream (its member starts answering for this asker) only once the asker's own kernel session is open: a reply that opened before it would find none.
     const announce = () => { for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project); };
