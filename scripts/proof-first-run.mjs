@@ -53,7 +53,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -75,11 +75,18 @@ async function browserDriver() {
   const ctx = await browser.newContext({ viewport: { width: 520, height: 1000 }, serviceWorkers: "block" });
   /** @type {any} */ let page = null;
   const pageErrors = /** @type {string[]} */ ([]);
+  const consoleErrors = /** @type {string[]} */ ([]);
   const body = async () => (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
   const d = {
-    async open() { if (page) await page.close().catch(() => {}); page = await ctx.newPage(); page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200))); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
+    async open() {
+      if (page) await page.close().catch(() => {});
+      page = await ctx.newPage();
+      page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200)));
+      // A worker's error and a console error never reach pageerror: keep them, and print them when something fails.
+      page.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 300)); });
+      page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
-    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen says (start): ${b.slice(0, 200)} ... (end): ${b.slice(-700)}`); }); return body(); },
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | and starts: ${b.slice(0, 120)}`); }); return body(); },
     async click(/** @type {string} */ t) {
       const el = page.getByRole("button", { name: t }).or(page.getByRole("radio", { name: t })).or(page.getByRole("switch", { name: t })).or(page.getByText(t, { exact: true })).first();
       await el.click({ timeout: 15_000 });
@@ -88,6 +95,8 @@ async function browserDriver() {
     async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
     // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
     async reopen() { await d.open(); },
+    /** Does this browser verify Ed25519 with WebCrypto? The identity chain does (kernel/identity/chain.js verifySig), and a browser that cannot answers "the first device signs its own genesis" at Create. */
+    async ed25519() { return page.evaluate(async () => { try { const k = await crypto.subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]); return Boolean(k); } catch { return false; } }); },
     errors: () => pageErrors.filter((e) => !/color scheme|dark mode/i.test(e)),
     // A browser on a static file server has no daemon of any kind: nothing answers /v1 here.
     async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
@@ -116,6 +125,7 @@ async function macDriver() {
     async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
     async reopen() { need().stop(); await wait(1500); await start(); },
     errors: () => [],
+    async ed25519() { return true; }, // the Mac app's window is WebKit, which verifies Ed25519
     // The app is pointed at a socket that does not exist and its own home holds none: no vyred is running for this app, so its window is the bundled app and the first run is the in-page host's. (The server the
     // Mac installer makes runs a vyred of its own under launchd; that is the other machine's, in its own home.)
     async noVyred() {
@@ -145,6 +155,7 @@ try {
     await drv.open();
     const t = await drv.waitFor("Get started", 60_000);
     if (!t.includes("Create an identity") || !t.includes("Sign in")) throw new Error(`the first screen does not offer both: ${t.slice(0, 200)}`);
+    if (!(await drv.ed25519())) throw new Error("this browser has no Ed25519 WebCrypto (Chromium before 137), which the identity chain needs: use a newer pinned Playwright");
     await drv.shot("01-get-started");
   });
 
