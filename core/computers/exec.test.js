@@ -56,7 +56,7 @@ async function wire(/** @type {any} */ t, /** @type {any} */ exec) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const socket = path.join(dir, "agentd.sock"), tokenFile = path.join(dir, "token");
   fs.writeFileSync(tokenFile, "t".repeat(40), { mode: 0o400 });
-  const server = startAgentd({ socket, tokenFile, run: async () => {}, exec });
+  const server = startAgentd({ socket, tokenFile, relayPort: 0, run: async () => {}, exec });
   await new Promise(r => server.on("listening", () => r(null)));
   t.after(() => server.close());
   const ex = async (/** @type {string} */ input) => {
