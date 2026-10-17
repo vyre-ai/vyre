@@ -6,6 +6,7 @@
 import type { PairingSession } from "../api/pairing-session";
 import { macKeyAvailable } from "../identity/mac-key.ts";
 import { shell } from "../shell/shell.ts";
+import { trail } from "../host/trail.js";
 // A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
 import { withCoreProof } from "./core-proof.js";
 /** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */
@@ -163,7 +164,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macCapsuleSpki() }), signal: abort.signal,
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, // A page that holds its own identity and no daemon (the in-page host) signs its paired session start with the key it reports here, with no prompt: that is this page's own key, not the Capsule's
+    // (whose signatures are behind Touch ID). Offering the Capsule key would leave the session start signed by a key the server does not hold for it.
+    presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: extra && extra.identity ? null : await macCapsuleSpki() }), signal: abort.signal,
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
@@ -178,7 +181,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
-      try { console.info("vyre:stage step pair: adopted, opening the paired session"); } catch { /* no console */ }
+      trail("step pair: adopted, opening the paired session");
       // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
       const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
@@ -186,7 +189,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
       if (noSession) { const { usePeer } = await import("./peer"); usePeer(false); throw Object.assign(new Error("Paired, but this device has no sign-in with the server yet."), { code: "no_session" }); }
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
-      await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });
+      await openPairedSession(r).catch((e: Error) => { throw Object.assign(new Error(`Paired, but this browser could not sign in to the server: ${e.message}`), { code: (e as { code?: string }).code, name: e.name }); });
       void import("./space-list-app").then((m) => m.recordPaired({ relay: r.relay, route: r.route, box: r.box, name: r.name })).catch(() => {});
       // the Spaces of every server are asked again, so the switcher and the routing know the new one
       void import("./space-servers").then((m) => m.refreshSpaceServers()).catch(() => {});
@@ -224,13 +227,13 @@ export async function afterPaired(r: { relay: string; route: string; box: string
 
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
-  const { startPaired, channelCall } = await import("../auth/paired");
-  const { pairedKey } = await import("../auth/paired-key");
-  const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
-  const ch = await channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
+  // Each step has its own code, so a window that cannot open the paired session says which step (the first-run trail carries the code and the error's name, never its text).
+  const at = async <T>(code: string, f: () => Promise<T>): Promise<T> => { try { return await f(); } catch (e) { throw Object.assign(new Error((e as Error)?.message || code), { code, name: (e as { code?: string })?.code || (e as Error)?.name || "Error" }); } };
+  const { startPaired, channelCall, pairedKey, relayCrypto, relayKeyStore, about, deviceName } = await at("paired_load", async () => ({ ...(await import("../auth/paired")), ...(await import("../auth/paired-key")), ...(await import("../api/relay")) }));
+  const ch = await at("paired_channel", () => channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about }));
   try {
-    const key = await pairedKey();
-    const s = await startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() });
-    await key.keep(r.route, s.token);
+    const key = await at("paired_key", () => pairedKey());
+    const s = await at("paired_start", () => startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() }));
+    await at("paired_keep", () => key.keep(r.route, s.token));
   } finally { ch.close(); }
 }
