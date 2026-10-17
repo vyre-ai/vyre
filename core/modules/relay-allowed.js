@@ -2,6 +2,8 @@
 // The relay allow list: which tools a first-party module may ask for as the person whose call is running. Kept in its own file so
 // core/modules/index.js stays under its line budget. Changing it is a security change: sec53 reads every edit.
 
+import { FIRST_RUN_RELAY } from "./relay-context.js";
+
 export const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
   memory: ["spaces.storage."],
