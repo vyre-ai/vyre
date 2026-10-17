@@ -12,7 +12,7 @@ import { ConnectionTokens } from "../connection-token.js";
 import { openConnectionKey, wrapPath } from "../people-seal.js";
 import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
-import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
+import { register, ME_TOOLS, ME_MODULE_TOOLS, SHARED_ME_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
 
 const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
 const PW = "a long master password";
@@ -43,7 +43,7 @@ const conn = (/** @type {any} */ call, /** @type {string} */ name, /** @type {an
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
-  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS].sort());
+  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS].sort());
   for (const n of [...ME_TOOLS, ...ME_MODULE_TOOLS]) assert.ok(reg.has(n), `${n} is registered`);
 });
 

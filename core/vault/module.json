@@ -139,6 +139,8 @@
       { "name": "vault.me.put", "effect": "write", "reach": "person" },
       { "name": "vault.me.get", "effect": "read", "reach": "person" },
       { "name": "vault.me.list", "effect": "read", "reach": "person" },
+      { "name": "vault.me.shared.list", "effect": "read", "reach": "person" },
+      { "name": "vault.me.shared.request", "effect": "write", "reach": "person" },
       { "name": "vault.me.update", "effect": "write", "reach": "person" },
       { "name": "vault.me.store.get", "effect": "read", "reach": "anyone" },
       { "name": "vault.me.store.put", "effect": "write", "reach": "anyone" },
