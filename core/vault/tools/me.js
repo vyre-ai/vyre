@@ -135,10 +135,10 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   const CONNECTION_KINDS = ["oauth", "bearer", "api_key"];
   ctx.tool("vault.me.connect.put", {
     internal: true,
-    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors module; the person is the call's chain.",
+    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors and mcp modules (a token a member pastes for her own server); the person is the call's chain.",
     input: obj({ name: str, fields }, ["name", "fields"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-      if (String((meta && meta.caller) || "") !== "module:connectors") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      if (!["module:connectors", "module:mcp"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const id = await memberOf(ctx.kernel, meta);
       const f = input && input.fields;
       if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });

@@ -246,7 +246,8 @@ test("vault.me.connect.put: the connectors module stores a sign-in in the signin
   assert.equal((await call("vault.me.get", { name: "clio" }, EVE)).error.message, "no item named clio", "nothing lands in another person's vault");
   assert.equal((await put({ name: "clio", fields: { ...f, refresh_token: "R2" } }, BOB)).data.created, false, "a second sign-in updates it");
   assert.equal((await people.service(BOB).get("clio")).fields.refresh_token, "R2");
-  for (const caller of ["module:mcp", "module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.connect.put", { name: "x", fields: f }, BOB, { caller })).error?.code, "denied", caller);
+  for (const caller of ["module:files", "module:sessions", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.connect.put", { name: "x", fields: f }, BOB, { caller })).error?.code, "denied", caller);
+  assert.equal((await call("vault.me.connect.put", { name: "mine-her-mail-token", fields: { auth_kind: "bearer", token: "T", server_url: "https://mcp.example.com/mail" } }, BOB, { caller: "module:mcp" })).data.created, true, "the mcp module stores a token she pasted for her own server")
   assert.equal((await put({ name: "x", fields: { ...f, auth_kind: "magic" } }, BOB)).error.code, "bad_input");
   assert.equal((await put({ name: "x", fields: { ...f, server_url: "http://plain.example.test" } }, BOB)).error.code, "bad_input");
   await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
