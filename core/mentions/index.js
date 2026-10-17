@@ -121,14 +121,14 @@ export default {
     ctx.tool("mentions.resolve", {
       internal: true,
       description: "What one picked tag means for a thread: { kind, id, name, hint?, hosts?, note?, context?, grant? }. Only sessions and the assistant call it, from the person's own turn; the provider's resolve runs as that caller and makes the grant, and answers without a secret.",
-      input: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string", maxLength: 200 }, thread: { type: "string" }, said: { type: "string" } } },
+      input: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string", maxLength: 200 }, thread: { type: "string" }, said: { type: "string" }, asker: { type: "string", description: "the chat turn's asker (a per_ id): what the tag lends is for that person's turns only" } } },
       run: async (input, meta) => {
         const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
         if (!RESOLVERS.includes(String(meta.caller))) throw fail("denied", "only sessions and the assistant resolve a tag, from the person's own turn");
         const p = providers(ctx.modules.status()).find(x => x.kind === input.kind);
         if (!p) throw fail("no_such_kind", `no provider offers ${input.kind}`);
         let r;
-        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, relayOpts(meta.caller, meta) || undefined), 2000); }
+        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}), ...(input.asker && p.firstParty ? { asker: input.asker } : {}) }, relayOpts(meta.caller, meta) || undefined), 2000); }
         catch { throw fail("unavailable", `${p.kind} did not answer`); }
         const bad = !r || r.error || (r.data && r.data.error);
         if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);

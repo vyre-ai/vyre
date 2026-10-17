@@ -552,7 +552,7 @@ export default {
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
     internal("vault.master.install", "Install the held master key into this running vault. Drops any plaintext key file.", obj({}), () => installHeldKey(vault));
-    const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
+    const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p), call: (n, i) => ctx.call(n, i) });
     // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
     agentFillTools.register({ ctx, vault, said, tool });
     try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }

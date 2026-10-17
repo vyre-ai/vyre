@@ -14,6 +14,7 @@ function rig(calls) {
     deps: {
       call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
         calls.push(`${tool}:${input && (input.kind || input.id || input.q) || ""}`);
+        if (tool === "vault.me.mention.resolve") return { error: { code: "not_found", message: "not in their own vault" } };
         if (tool === "mentions.search") return { data: [{ kind: "vault", id: "owner-secret", name: "owner-secret" }] };
         return { data: { name: String(input.id), note: "ok", outside: true } };
       },
@@ -39,4 +40,46 @@ test("the owner's own turn still resolves chips and #Names", async () => {
   const heard = await Switchboard.prototype.ingress.call(sb, "t1", "use #owner-secret please", "deck", "u1", CHIPS, [], "deck", null, {});
   assert.ok(heard.some((/** @type {any} */ t) => t.kind === "vault"));
   assert.ok(calls.some(c => c.startsWith("mentions.search")));
+});
+
+test("a chat turn hears its picks as its asker: the daemon reads a record under the asker's chain, a member's turn skips what the owner's access would answer, and the words record no ask", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const sb = rig(calls);
+  /** @type {any[]} */ const asked = [];
+  sb.deps.recordTags = async (/** @type {any[]} */ chips, /** @type {any} */ turn) => { asked.push(turn); return { chips: chips.filter(c => c.kind !== "record"), tags: chips.filter(c => c.kind === "record").map(c => ({ kind: "record", id: c.id, name: "Jane", hint: null, hosts: [], note: "n", outside: true })) }; };
+  let heardActs = 0;
+  sb.hearActs = async () => { heardActs++; };
+  const heard = await Switchboard.prototype.ingress.call(sb, "t1", "use #owner-secret please", "deck", "u1", CHIPS, [], "module:stream", null, { memberTurn: true, asker: "per_bob" });
+  assert.deepEqual(heard.map((/** @type {any} */ t) => t.kind).sort(), ["account", "record"]);
+  assert.equal(asked[0].asker, "per_bob", "the picks are read for the asker");
+  assert.equal(heardActs, 0, "a chat turn's words are never heard as the owner's asks");
+  assert.equal(calls.some(c => /mentions\.search|vault\.mention|drive|github/.test(c)), false, calls.join(" "));
+});
+
+test("the owner's own words in a chat are heard for asks, as before; a member's are not", async () => {
+  for (const [memberTurn, expected] of [[false, 1], [true, 0]]) {
+    const sb = rig([]);
+    sb.deps.recordTags = async (/** @type {any[]} */ chips) => ({ chips, tags: [] });
+    /** @type {any[][]} */ const heard = [];
+    sb.hearActs = async (/** @type {any[]} */ ...a) => { heard.push(a); };
+    await Switchboard.prototype.ingress.call(sb, "t1", "email Dana", "deck", "u1", [], [], "module:stream", null, { memberTurn, asker: memberTurn ? "per_bob" : "per_owner" });
+    assert.equal(heard.length, expected, memberTurn ? "a member's chat words record no ask" : "the owner's chat words are heard");
+    if (!memberTurn) assert.equal(heard[0][5], "per_owner", "and the ask is recorded for the owner who said it, so no one else's turn rides it");
+  }
+});
+
+test("a member's #Name and vault chip are asked of THEIR vault for that asker, and the owner's vault tools are never called", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const sb = rig(calls);
+  sb.hearActs = async () => {};
+  sb.deps.recordTags = async (/** @type {any[]} */ chips) => ({ chips, tags: [] });
+  const inner = sb.deps.call;
+  sb.deps.call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (tool === "vault.me.mention.resolve") { calls.push(`me:${input.asker}:${input.id}`); return input.id === "my-login" ? { data: { name: "my-login", kind: "login", hint: "login", note: "Your own item. Tagging it does not hand it to an agent." } } : { error: { code: "not_found", message: "no" } }; }
+    return inner(tool, input);
+  };
+  const heard = await Switchboard.prototype.ingress.call(sb, "t1", "use #my-login and #owner-secret", "deck", "u1", [{ kind: "vault", id: "owner-secret" }], [], "module:stream", null, { memberTurn: true, asker: "per_bob" });
+  assert.deepEqual(heard.map((/** @type {any} */ t) => t.id), ["my-login"], "only the item in their own vault is a tag");
+  assert.ok(calls.some(c => c === "me:per_bob:my-login"), calls.join(" "));
+  assert.equal(calls.some(c => /^(vault\.mention|mentions\.)/.test(c)), false, "the owner's vault and the shared search are not asked: " + calls.join(" "));
 });
