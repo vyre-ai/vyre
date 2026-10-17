@@ -44,7 +44,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
 /** The two tools with which a member uses what the owner shared with her (registered in core/vault/request.js, beside vault.request, which they run through). */
-export const SHARED_ME_TOOLS = ["vault.me.shared.list", "vault.me.shared.request"];
+export const SHARED_ME_TOOLS = ["vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares"];
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
@@ -54,7 +54,7 @@ export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.le
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
-export function register({ ctx, people, tool }) {
+export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   /** @param {(id: string, input: any, meta: any) => any} fn */
   const mine = fn => async (/** @type {any} */ input, /** @type {any} */ meta) => fn(await memberOf(ctx.kernel, meta), input || {}, meta);
 
@@ -94,7 +94,7 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
   tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
   tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
-  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)),
+  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine(async (id, i) => { const conn = await people.service(id).has(String(i.name)).catch(() => false); const r = await people.remove(id, i); if (conn) await onRemoved(id, String(i.name)); return r; }),
     presence("Delete an item of your own vault", ({ name }) => `Delete ${String(name).slice(0, 64)} from your own vault`));
   // One field of one of the member's own items, handed to the module that uses it for her (files: her Dropbox token for a linked folder). Modules only (reach "modules", like vault.release), only the
   // module and item named here, and only for the one person in the call's chain: no `person` input, so the owner's vault and another member's are out of reach, and an agent's turn is refused.

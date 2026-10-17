@@ -78,6 +78,8 @@ export const PERSON_ONLY = new Map([
   ["vault.me.account.status", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["vault.me.account.unlock", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["vault.me.get", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
+  ["vault.me.connection.share", "a Vault tool: the person's own act; an agent never shares or reads a connection (the owner's ruling: an agent never sees a value)"],
+  ["vault.me.connection.shares", "a Vault tool: the person's own view of who holds a connection; an agent never reads the sharing of a Vault item"],
   ["vault.me.shared.list", "a Vault tool: the person's own view of what was shared with them; an agent asks for what it needs through vault.request and never sees a value"],
   ["vault.me.shared.request", "a Vault tool: the person's own use of a credential shared with them; an agent asks through vault.request and never sees a value"],
   ["vault.me.list", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],

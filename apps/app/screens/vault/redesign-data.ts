@@ -6,6 +6,8 @@ import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
+import type { Directory, Level, Share, Who } from "./ShareSheet";
+import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 
 export type Scope = "space" | "mine";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
@@ -28,12 +30,15 @@ export interface VaultData {
   /** Space: who the item is shared with and who could be picked (vault.access.get), and share or unshare (vault.access.set). */
   access?(item: VItem): Promise<{ rows: { who: string; level: "use" | "edit" }[]; people: { id: string; name: string }[] }>;
   setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
+  /** Space: who an item is shared with (people, groups and agents at Fill in, Read, Edit and rotate), the directory to pick from, and one change (vault.access.get and vault.access.set). */
+  sharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
 }
 
 export function sampleData(): VaultData {
   const items = [...SAMPLE_ITEMS];
+  const held = new Map<string, Share[]>();
   return {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false }),
@@ -46,6 +51,13 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
+    sharing: {
+      load: async (v) => ({ shares: (held.get(v.id) ?? v.shared.map((s) => ({ id: s.who, level: (s.level === "edit" ? "edit" : "use") as Level }))), dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME }),
+      set: async (v, w, level) => {
+        const cur = (held.get(v.id) ?? v.shared.map((s) => ({ id: s.who, level: (s.level === "edit" ? "edit" : "use") as Level }))).filter((x) => x.id !== w.id);
+        held.set(v.id, level ? [...cur, { id: w.id, level }] : cur);
+      },
+    },
   };
 }
 
@@ -110,6 +122,18 @@ export function realData(call: Call): VaultData {
       return { rows: r.access.map((a) => ({ who: a.subject, level: a.level })), people: r.people };
     },
     async setAccess(item, who, level) { await ask("vault.access.set", { name: item.id, kind: "person", subject: who, level }); },
+    sharing: {
+      async load(item) {
+        const r = await ask<{ access: { kind: Who["kind"] | "team"; subject: string; level: Level }[]; people: { id: string; name: string; role?: string }[]; teams?: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents?: { id: string; name: string }[] }>("vault.access.get", { name: item.id });
+        const dir: Directory = {
+          people: r.people.map((p) => ({ id: p.id, kind: "person", name: p.name, sub: p.role ?? "" })),
+          groups: (r.teams ?? []).map((t) => ({ id: t.id, kind: "group", name: t.name, people: t.people ?? [], agents: t.agents ?? [] })),
+          agents: (r.agents ?? []).map((a) => ({ id: a.id, kind: "agent", name: a.name })),
+        };
+        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null };
+      },
+      async set(item, w, level) { await ask("vault.access.set", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
+    },
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
   };
 }

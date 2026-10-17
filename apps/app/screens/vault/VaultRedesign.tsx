@@ -10,6 +10,7 @@ import type { Scope, VaultData } from "./redesign-data";
 import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import ImportPage from "./ImportPage";
+import { ItemSharing } from "./ItemSharing";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
@@ -42,7 +43,6 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   useEffect(() => { if (want.add) setAdding(true); }, [want.add]);
   const [addProblem, setAddProblem] = useState("");
   const [importing, setImporting] = useState(false);
-  const [acc, setAcc] = useState<{ rows: { who: string; level: Level }[]; people: { id: string; name: string }[] }>({ rows: [], people: [] });
 
   const load = useCallback(() => {
     setErr(""); setItems(null);
@@ -56,8 +56,6 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   useEffect(() => {
     setEvents([]);
     if (cur) data.events(scope, cur).then(setEvents).catch(() => setEvents([]));
-    setAcc({ rows: [], people: [] });
-    if (cur && data.access && scope === "space") data.access(cur).then(setAcc).catch(() => {});
   }, [cur?.id, scope, data]);
   const sum = summaryOf(items ? visible(items, scope) : []);
   const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
@@ -145,21 +143,9 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
         </Sec>
         <Sec title="Who has it">
-          {data.real ? (
-            <View className="gap-s2">
-              {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.name} dense title={u.name} sub="Can use, without seeing it" end={data.revokeModule ? <Button kind="holdText" size="sm" label="Remove" onPress={() => data.revokeModule!(cur, u.name).then(() => { showToast(`${u.name} no longer has ${cur.name}.`); load(); }).catch((e) => fail(e, "That did not work."))} /> : undefined} />)}</Card> : <Text tone="muted">Only you.</Text>}
-              {data.access ? <AccessList rows={acc.rows} candidates={acc.people.map((p) => p.id)} of={who}
-                onChange={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))}
-                onRemove={(w) => data.setAccess!(cur, w, null).then(() => { showToast(`${w} no longer has ${cur.name}.`); return data.access!(cur).then(setAcc); }).catch((e) => fail(e, "That did not work."))}
-                onAdd={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))} empty="Not shared with a person." /> : null}
-              {data.access ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
-            </View>
-          ) : (
-            <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
-              onChange={(w, l: Level) => setShare((xs) => share(xs, cur.id, w, l))} onRemove={(w) => { setShare((xs) => unshare(xs, cur.id, w)); showToast(`${w} no longer has ${cur.name}.`); }}
-              onAdd={(w, l: Level) => { setShare((xs) => share(xs, cur.id, w, l)); showToast(`${w} can now use ${cur.name}.`); }} />
+          {scope === "space" && data.sharing ? <ItemSharing data={data} item={cur} /> : (
+            <View className="gap-s2"><Text tone="muted">Only you. Your own vault is not shared.</Text></View>
           )}
-          {!data.real ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
         </Sec>
         <Sec title="Activity">
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}

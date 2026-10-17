@@ -34,7 +34,7 @@ export const NEEDS_PRESENCE = [
 const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
   "vault.pass.list", "vault.pass.revoke", "vault.grants.status", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.me.account.unlock", // mirrors vault.account.unlock: the password and Secret Key are the proof
   // mirror their owner tools: lock, status, list and grants.status are reads; the store tools are module plumbing for member-mcp (the body refuses non-person callers)
-  "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.unshare.agent", "vault.me.shares", "vault.me.shared.list", "vault.me.shared.request", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
+  "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.unshare.agent", "vault.me.shares", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
   "vault.history",
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
