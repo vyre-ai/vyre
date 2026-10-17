@@ -98,9 +98,8 @@ test("a withdrawal on the approver's hop beside the Flows service is refused: a 
   k.kernelFor({ name: "flows", needs: { kernel: { actions: ["tasks.withdraw"], mints: [] } } });
   const scribe = { kind: "agent", id: "scribe", space: S };
   await k.gateway.grants.addActor(owner, scribe, {});
-  const member = { kind: "person", id: "per_member", space: S };
-  await k.gateway.grants.addActor(owner, member, {});
-  const asMember = k.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: "per_member", path: "direct", session: "s" });
+  // a person who is not the owner holds no tasks.withdraw (no role carries it)
+  const asMember = k.chains.fromFacts({ kind: "invitee", person: "per_member", vouched: true });
   const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
   await assert.rejects(() => k.gateway.ask.withdraw(k.chains.forModule({ module: "flows", approver: asMember }), task.id, { reason: "due time" }), /./, "the approver hop holds no tasks.withdraw");
   await assert.rejects(() => k.gateway.ask.withdraw(asMember, task.id, { reason: "due time" }), /./, "a person alone is refused");
