@@ -537,7 +537,7 @@ shardTest("wink: a device.paired event alone registers no device (ring, code, ti
   const before = await paired();
   assert.deepEqual(before, [device]);
   for (const via of ["ring", "code", "ticket", "window", undefined]) {
-    w.d.events.emit("device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
+    w.d.events.emit("relay", "device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
   }
   await new Promise(r => setTimeout(r, 500));
   assert.deepEqual(await paired(), before, "no device row for any of them");
