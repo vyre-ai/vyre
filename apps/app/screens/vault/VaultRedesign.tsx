@@ -30,6 +30,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [items, setItems] = useState<VItem[] | null>(null);
   const [locked, setLocked] = useState(false);
   const [noAccount, setNoAccount] = useState(false);
+  const [noSpaceVault, setNoSpaceVault] = useState(false);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [del, setDel] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const load = useCallback(() => {
     setErr(""); setItems(null);
-    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); setNoAccount(Boolean(r.noAccount)); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
+    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); setNoAccount(Boolean(r.noAccount)); setNoSpaceVault(Boolean(r.noSpaceVault)); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
   }, [data, scope]);
   useEffect(load, [load]);
 
@@ -124,6 +125,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const list = err ? <ErrorState title="The vault did not answer" reason={err} retry={load} /> : items === null ? <LoadingState /> : (
     <View className="gap-s3">
+      {scope === "space" && noSpaceVault ? <Text tone="muted">Your vault opens the first time something is saved to it with Touch ID or a passkey.</Text> : null}
       {nav.kind !== "all" ? <View className="flex-row items-center justify-between gap-s2"><Text tone="label">{nav.kind === "group" ? nav.group : nav.kind === "expiring" ? "Expiring" : "Shared with me"}</Text><Button kind="ghost" size="sm" label="Show everything" onPress={() => setNav({ kind: "all" })} /></View> : null}
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (

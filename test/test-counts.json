@@ -567,7 +567,7 @@
  "core/wink/node/real.test.js": 1,
  "core/wink/node/relay-peer.test.js": 3,
  "core/wink/node/shim.test.js": 6,
- "core/wink/pairing.test.js": 46,
+ "core/wink/pairing.test.js": 47,
  "core/wink/reset.test.js": 16,
  "core/wink/storage/bridge.test.js": 18,
  "core/wink/storage/discover.test.js": 6,
@@ -1036,5 +1036,8 @@
  "web/js/person.test.js": 8,
  "web/js/trace.test.js": 2,
  "web/vendor/jsqr/jsqr.test.js": 2,
- "test/finish-owner.test.js": 1
+ "test/finish-owner.test.js": 1,
+ "core/vault/space-create-presence.test.js": 2,
+ "test/first-adopt.test.js": 1,
+ "apps/app/src/auth/token-origin.test.js": 1
 }

@@ -4,6 +4,7 @@ import type { SpacePorts } from "./host-core.js";
 import { parseWinkCode } from "../api/wink-code";
 import { relayUrl } from "../api/relay-url";
 import { serverSession, type PairIdentity } from "../real/pairing";
+import { trail } from "./trail.js";
 
 export async function spacePorts(): Promise<SpacePorts> {
   const client = await import("@vyre/relay-client/setup.js");
@@ -26,7 +27,7 @@ export async function spacePorts(): Promise<SpacePorts> {
       const { loadPairings } = await import("../api/relay");
       const before = new Set(Object.keys((await loadPairings()).items));
       const session = serverSession(code, undefined, { ...(ctx && ctx.pageKey ? { pageKey: ctx.pageKey } : {}), addAnother: true, identity: who as PairIdentity });
-      const step = (what: string) => { try { console.info(`vyre:stage step ${what}`); } catch { /* no console */ } };
+      const step = (what: string) => trail(`step ${what}`);
       step("pair: waiting for the three words");
       await session.ready!();
       step("pair: words seen, waiting for the server to record this identity");
