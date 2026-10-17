@@ -187,7 +187,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
-  run.catch((e: Error) => { failed = e; wake(); });
+  // A server that already knows who it pairs to (the app-led install: setup-offer names the identity) answers the first call with its owner and asks for no words, so the pairing can end without
+  // words ever showing: ready() must also come back when the pairing is over, or the screen waits for words that are never made.
+  run.then(() => wake(), (e: Error) => { failed = e; wake(); });
   return {
     kind: "watch",
     async ready() { await seen; if (failed) throw failed; },
