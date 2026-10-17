@@ -140,14 +140,16 @@ export function classify(tool, mode, alias) {
   const one = ws.length === 1;
   const writes = ws.some(w => WRITE_WORDS.includes(w)) || (one && WRITE_WORDS.some(w => w.length > 2 && flat.startsWith(w))) || WRITE_STEMS.some(s => flat.includes(s));
   const reads = ws.some(w => READ_VERBS.includes(w)) || (one && READ_VERBS.some(v => flat.startsWith(v)));
-  const hint = Boolean(tool.annotations && tool.annotations.readOnlyHint === true);
-  const kind = ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
+  // B7: the server's own annotations can only make a call stricter. destructiveHint is held and is a delete; readOnlyHint is
+  // never read as permission, because a server writes its own hint and a write with a plain name ("apply_changes") must stay held.
+  const destructive = Boolean(tool.annotations && tool.annotations.destructiveHint === true);
+  const kind = destructive || ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
     : ws.some(w => PAY_WORDS.includes(w)) || /payment|refund|purchase|transfer/.test(flat) ? "spend" : "send";
   if (mode === "off") return { outward: true, kind, off: true };
   if (sends(tool.name) || (alias && sends(alias.slice(alias.indexOf("__") + 2)))) return { outward: true, kind, off: false };
-  if (mode === "read") return { outward: false, kind, off: false };
+  if (mode === "read") return { outward: destructive, kind, off: false };
   if (mode === "write") return { outward: true, kind, off: false };
-  return { outward: !((reads || hint) && !writes), kind, off: false };
+  return { outward: destructive || !(reads && !writes), kind, off: false };
 }
 
 /** Where an outward call goes, and which argument said so. @param {any} args @param {string} server */
@@ -715,9 +717,11 @@ export class Hub {
 
   async hold(r, t, args, who, memo) {
     if (!this.deps.request) throw fail("failed", "the Gate is not running, so an outward call cannot be held");
-    const { to } = target(args, r.name);
+    const { to, key } = target(args, r.name);
     const project = who.thread ? await this.projectOf(who, memo) : null;
-    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
+    // B8: with no recipient argument, `to` is only the server's name for the person to see. That is not a destination, so the
+    // Gate must not match it to a standing permission or an intent (gate/index.js reads `unnamed`).
+    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, ...(key === null ? { unnamed: true } : {}), content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
       ...(who.thread ? { thread: who.thread } : {}), ...(project ? { project } : {}), ...(who.agent ? { agent: who.agent } : {}) });
     this.deps.emit("mcp.held", { server: r.name, tool: t.tool, id: held.id, kind: t.kind, agent: who.agent || null }, who.thread ? { thread: who.thread, ...(project ? { project } : {}) } : undefined);
     return { held: held.id, message: held.message };

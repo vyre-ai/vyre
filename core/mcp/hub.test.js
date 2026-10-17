@@ -17,8 +17,20 @@ test("classify: reads by verb or readOnlyHint, never with a send, write or delet
   for (const n of ["send_message", "create_issue", "delete_issue", "get_and_delete", "list_then_send", "sendmessage", "echo_env", "do_thing", "address_book_update"])
     assert.equal(out(n).outward, true, n);
   assert.equal(out("address_lookup").outward, false, "add inside a word is not a write");
-  assert.equal(out("summarize", { readOnlyHint: true }).outward, false, "the hint relaxes a name with no write word");
+  // B7 (sec53): a server's own hint never relaxes a name that says nothing. An unknown name stays
+  // outward whatever the server claims, so a write named "apply_changes" with readOnlyHint is held.
+  assert.equal(out("summarize", { readOnlyHint: true }).outward, true, "a hint alone does not make an unknown name a read");
+  assert.equal(out("apply_changes", { readOnlyHint: true }).outward, true, "the hint cannot relax an unknown write");
+  assert.equal(out("list_issues", { readOnlyHint: true }).outward, false, "a read verb with the hint is a read");
   assert.equal(out("post_update", { readOnlyHint: true }).outward, true, "the hint never relaxes a send");
+  // destructiveHint is the server saying the call deletes or overwrites: outward, kind delete, whatever the name.
+  assert.deepEqual(out("get_issue", { readOnlyHint: false, destructiveHint: true }), { outward: true, kind: "delete", off: false });
+  assert.deepEqual(out("list_issues", { destructiveHint: true }), { outward: true, kind: "delete", off: false }, "destructiveHint is never ignored");
+  assert.equal(out("list_issues", { readOnlyHint: true, destructiveHint: true }).outward, true, "read and destructive together is outward");
+  // The person's own read mode still turns a non-sending tool into a read, hint or no hint.
+  assert.equal(out("summarize", undefined, "read").outward, false, "the person's read mode wins for a tool that does not send");
+  assert.equal(out("list_issues", { destructiveHint: true }, "read").outward, true, "a read mode cannot unhold a destructive tool");
+  assert.equal(out("list_issues", { destructiveHint: true }, "off").off, true, "off still turns it off");
   assert.deepEqual(out("delete_issue"), { outward: true, kind: "delete", off: false });
   assert.equal(out("refund_payment").kind, "spend");
   assert.equal(out("send_message").kind, "send");
@@ -507,4 +519,26 @@ test("hub: a refused sign-in is reported once per failure, for an OAuth row with
   await tick();
   assert.deepEqual(asked, ["signed-auth"], "another failure, a bearer row and a row that is not there are not reported");
   await hub.stop();
+});
+
+test("B8: an outward MCP call with no named destination is held as unnamed, so no standing permission can match it", async () => {
+  const { hub, held } = fakeHub({ values: { tok: "fixture-abcdefghijklmnop-1234" } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
+  // "send_message" with no recipient argument: the destination would default to the server's own name.
+  const none = await hub.call({ server: "web", tool: "send_message", arguments: { text: "hi" } }, person);
+  assert.equal(held.get(none.held).unnamed, true, "no recipient named: never matched by a standing permission");
+  assert.deepEqual(held.get(none.held).to, ["web"], "the held item still shows where it goes");
+  // The same call with a real recipient is named, so an intent or a standing permission for that address can match it.
+  const named = await hub.call({ server: "web", tool: "send_message", arguments: { channel: "#legal", text: "hi" } }, person);
+  assert.notEqual(held.get(named.held).unnamed, true);
+  assert.deepEqual(held.get(named.held).to, ["#legal"]);
+});
+
+test("B8: a destructive MCP call is held as a delete, which no standing permission covers", async () => {
+  const { hub, held } = fakeHub({ values: { tok: "fixture-abcdefghijklmnop-1234" }, behave: {
+    tools: () => [{ name: "archive_matter", annotations: { destructiveHint: true } }],
+  } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
+  const r = await hub.call({ server: "web", tool: "archive_matter", arguments: { id: "m1" } }, person);
+  assert.equal(held.get(r.held).kind, "delete");
 });
