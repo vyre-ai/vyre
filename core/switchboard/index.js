@@ -979,6 +979,7 @@ export class Switchboard {
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (startedBy(o)) kept.person = startedBy(o);
+      this.deps.log(`threads: launch keeps ${Object.keys(kept).join(",") || "nothing"}; run_as is a ${typeof o.run_as}, purpose ${String(o.purpose)}`);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }

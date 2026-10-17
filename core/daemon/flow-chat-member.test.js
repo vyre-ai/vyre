@@ -66,7 +66,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
     const g = JSON.stringify({ thread: flat(th.thread), last: ((th.turns || th.items || th.messages || []).slice(-3)).map((/** @type {any} */ x) => flat(x)) });
     throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}; the daemon log (threads, sessions, switchboard, launch): ${logs.filter((l) => /threads|session|launch|account|switchboard|refus|spawn/i.test(l)).slice(-25).join(" || ")}`);
   });
-  assert.equal(s.runas, BEN, `the job acts as the member who wrote (the call: ${JSON.stringify(s)}; all calls: ${JSON.stringify(seen)}; launch lines: ${logs.filter((l) => /launch input|kernel session/.test(l)).join(" || ")})`);
+  assert.equal(s.runas, BEN, `the job acts as the member who wrote (the call: ${JSON.stringify(s)}; all calls: ${JSON.stringify(seen)}; launch lines: ${logs.filter((l) => /launch input|launch keeps|kernel session/.test(l)).join(" || ")})`);
   assert.notEqual(s.runas, OWNER, "never as the owner");
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
   assert.equal(row?.flow_origin?.flow, open, "the thread joins that Flow's chat");
