@@ -15114,6 +15114,7 @@ Tell the vendor to revoke a person's connection token (RFC 7009), if the connect
 - Input:
   - `connection` string, required
   - `owner` string, required
+  - `as` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.connection.token`
@@ -15123,6 +15124,7 @@ An access token for one person's app connection, for the MCP hub: { owner, conne
 - Input:
   - `connection` string, required
   - `owner` string, required
+  - `as` string
   - `write` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
