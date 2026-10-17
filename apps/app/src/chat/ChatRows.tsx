@@ -46,7 +46,7 @@ const S = StyleSheet.create({
 
 export const PERSON = "alex";
 export const ASSISTANT = "juno";
-const BODY_INDENT = 44;
+const BODY_INDENT = 0;
 const MAX = 760;
 
 function useRow(store: ChatStore, key: string) {
@@ -242,7 +242,12 @@ export function TurnChip({ it, ctx, session, defaultOpen = false }: { it: any; c
   return (
     <View>
       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+        {/* The line is metadata: plain small grey words, no fill. With changes to look at it is a quiet button. */}
+        {has ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`${it.line}. See the changes`} onPress={() => setOpen(true)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28 }}>
+            <Icon name="file" size={14} tone="label" /><Text size="caption" tone="label">{it.line}</Text>
+          </Pressable>
+        ) : <Text size="caption" tone="label">{it.line}</Text>}
         {it.vyreCalls >= 2 && ctx.onTurnIntoFlow ? <Button size="sm" kind="ghost" label="Turn this into a Flow" onPress={ctx.onTurnIntoFlow} /> : null}
       </View>
       {has ? (
