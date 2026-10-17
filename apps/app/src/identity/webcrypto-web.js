@@ -6,7 +6,10 @@ import { methods } from "./webcrypto-impl.js";
 
 const FALLBACK = Symbol("vyre.ed25519-fallback-key");
 const isEd = (/** @type {any} */ a) => String(typeof a === "string" ? a : a && a.name || "").toUpperCase() === "ED25519";
-const unsupported = (/** @type {any} */ e) => Boolean(e) && (e.name === "NotSupportedError" || e.name === "SyntaxError" || /not supported|unrecognized|unsupported|not implemented/i.test(String(e.message)));
+// A browser without Ed25519 refuses it as NotSupportedError, or (older Safari and others) as a SyntaxError or TypeError whose words say the algorithm is not known. A SyntaxError for any other reason is a real error of
+// a browser that does have Ed25519, and is thrown on, never answered by the fallback.
+const WORDS = /not supported|unrecognized|unsupported|not implemented/i;
+const unsupported = (/** @type {any} */ e) => Boolean(e) && (e.name === "NotSupportedError" || ((e.name === "SyntaxError" || e.name === "TypeError") && WORDS.test(String(e.message))));
 
 /** RFC 8032 section 7.1, test 1: a public key, the empty message and its signature. Known good. */
 export const VECTOR = Object.freeze({
@@ -32,7 +35,11 @@ export function installEd25519Fallback(g) {
     }
   };
   subtle.verify = async (/** @type {any} */ algo, /** @type {any} */ key, /** @type {any} */ sig, /** @type {any} */ msg) => {
-    if (key && key[FALLBACK]) return methods.verify(algo, key[FALLBACK], sig, msg);
+    if (key && key[FALLBACK]) {
+      // The key was made for Ed25519 only: any other algorithm named with it is refused the way a browser refuses a key used with the wrong algorithm.
+      if (!isEd(algo)) throw Object.assign(new Error("The key is not usable with that algorithm"), { name: "InvalidAccessError" });
+      return methods.verify(algo, key[FALLBACK], sig, msg);
+    }
     return nativeVerify(algo, key, sig, msg);
   };
   Object.defineProperty(subtle, "__vyreEd25519", { value: true });

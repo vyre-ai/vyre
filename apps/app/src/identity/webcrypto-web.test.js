@@ -67,6 +67,25 @@ test("the identity chain verifies a real genesis on a browser with no Ed25519 on
   } finally { if (globalSubtle) Object.defineProperty(globalThis, "crypto", globalSubtle); }
 });
 
+test("a browser that has Ed25519 and throws an unrelated SyntaxError is not answered by the fallback", async () => {
+  const real = crypto.webcrypto.subtle;
+  const g = { crypto: { subtle: { importKey: async () => { throw Object.assign(new Error("Invalid key data"), { name: "SyntaxError" }); }, verify: (...a) => real.verify(...a), digest: (...a) => real.digest(...a) } } };
+  installEd25519Fallback(g);
+  await assert.rejects(() => g.crypto.subtle.importKey("raw", new Uint8Array(32), { name: "Ed25519" }, false, ["verify"]), (e) => e.name === "SyntaxError" && e.message === "Invalid key data");
+  // and the words older browsers use for "no such algorithm" are still the fallback's
+  const old = { crypto: { subtle: { importKey: async () => { throw Object.assign(new Error("Unrecognized name."), { name: "SyntaxError" }); }, verify: async () => { throw new Error("no"); }, digest: (...a) => real.digest(...a) } } };
+  installEd25519Fallback(old);
+  assert.equal(await ed25519Works(old), true);
+});
+
+test("a fallback key used with another algorithm is refused, not verified by noble", async () => {
+  const g = oldBrowser();
+  installEd25519Fallback(g);
+  const { pub, sig } = sign(Buffer.from("m"));
+  const key = await g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  await assert.rejects(() => g.crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, sig, Buffer.from("m")), (e) => e.name === "InvalidAccessError");
+});
+
 test("the words for a browser that cannot be helped", () => {
   assert.equal(BROWSER_TOO_OLD, "This browser is too old for Vyre. Update it, or use the Vyre app.");
 });
