@@ -17,6 +17,7 @@
       "agents.context.list",
       "agents.vault.list",
       "agents.used",
+      "agents.level",
       "agents.access.get"
     ],
     "tools": [
@@ -206,6 +207,11 @@
       },
       {
         "name": "agents.used",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "agents.level",
         "reach": "person",
         "effect": "read"
       },

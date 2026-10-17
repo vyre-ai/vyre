@@ -111,6 +111,7 @@ function probeFor(tool, seed) {
     "agents.docs.get": { agent: "assistant" },
     "agents.vault.list": { agent: "assistant" },
     "agents.used": { agent: "assistant" },
+    "agents.level": { agent: "assistant" },
     "stream.read": {},
     "stream.catchup": {},
     "spaces.list": {},
