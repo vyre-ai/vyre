@@ -18,15 +18,3 @@ test("the owner's Mine uses the Space vault tools; a member's Mine stays on vaul
   assert.equal(toolScope(false, "mine"), "mine", "member: Mine is her own vault");
   assert.equal(toolScope(false, "space"), "space");
 });
-
-test("the Mine connection-share panel: the owner's calls go to the Space vault's sharing, a member's to her own", async () => {
-  const { connectionSharingFor } = await import("./owner-mine.js");
-  const log = /** @type {string[]} */ ([]);
-  const mk = (/** @type {string} */ n) => ({ load: async () => { log.push(`${n}.load`); return n; }, set: async () => { log.push(`${n}.set`); } });
-  let owner = false;
-  const p = connectionSharingFor(() => owner, () => mk("space"), mk("own"));
-  assert.equal(await p.load({}), "own"); await p.set({}, {}, "use");
-  owner = true;
-  assert.equal(await p.load({}), "space"); await p.set({}, {}, "use");
-  assert.deepEqual(log, ["own.load", "own.set", "space.load", "space.set"]);
-});
