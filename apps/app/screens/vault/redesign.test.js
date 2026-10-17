@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROVIDER_GROUP, ALL, inNav, navCounts, navEmpty, groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
+import { originOf, PROVIDER_GROUP, ALL, inNav, navCounts, navEmpty, groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
 
 const v = (o) => ({ id: "x", sp: "juniper", group: "Logins", name: "Gmail", detail: "a@b", secret: "s", usedBy: [], shared: [], lastUsedDays: 1, ...o });
 
@@ -97,4 +97,11 @@ test("an empty pick says why", () => {
   assert.equal(navEmpty({ kind: "group", group: "Messaging" }), "Nothing in Messaging yet.");
   assert.equal(navEmpty({ kind: "shared" }), "Nobody has shared an item with you.");
   assert.equal(navEmpty(ALL), "");
+});
+
+test("the Sites box saves a bare https origin and refuses the rest before any call", () => {
+  assert.equal(originOf("https://Example.com"), "https://example.com");
+  assert.equal(originOf("example.com"), "https://example.com");
+  assert.equal(originOf(" https://a.example:8443/ "), "https://a.example:8443");
+  for (const bad of ["http://example.com", "https://example.com/login", "https://example.com/?x=1", "https://user:pw@example.com", "https://user@example.com", "ftp://example.com", "javascript:alert(1)", "https://", "not a site", ""]) assert.throws(() => originOf(bad), bad);
 });

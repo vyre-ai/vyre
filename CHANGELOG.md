@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(app): saving a site on a login writes the merged origins to `urls` and leaves the login's own `url` alone. `originOf` (redesign.js) also refuses an address with a path, query or fragment; test added.
 - fix(app): the chat's "Add the site to this login" opens `/u/vault?item=<name>&site=1`, the member's own vault with that login selected. Mine now lists each login's saved sites and saves a new one (`vault.me.update` url, bare https origin only). The old link into the unrouted RealVault screen is removed.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).

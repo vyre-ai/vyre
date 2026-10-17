@@ -1,7 +1,7 @@
 // Where the redesigned Vault gets its items: the sample world, or the real tools. Space is the owner's vault (vault.list, vault.uses, vault.reveal, vault.put, vault.delete); Mine is the signed-in
 // member's own vault (vault.me.*). Nothing here holds a value: `read` fetches one at the click and the screen keeps it for the reveal time only.
 import type { Call } from "./source";
-import { daysLeftOf, groupOf, valueField, type VItem } from "./redesign.js";
+import { daysLeftOf, groupOf, originOf, valueField, type VItem } from "./redesign.js";
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
@@ -32,14 +32,6 @@ export interface VaultData {
   revokeModule?(item: VItem, who: string): Promise<void>;
   /** Mine only: save the site a login signs in to (vault.me.update merges the url field), so an agent can be lent it. Returns the bare origin saved. */
   addSite?(item: VItem, site: string): Promise<string>;
-}
-
-/** A site as the Vault saves it: a bare https origin. Anything else is refused here, before a call. */
-export function originOf(site: string): string {
-  let u: URL;
-  try { u = new URL(/^[a-z]+:\/\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); } catch { throw new Error("That is not a web address."); }
-  if (u.protocol !== "https:" || u.username || u.password) throw new Error("Use a secure address that starts with https.");
-  return u.origin;
 }
 
 export function sampleData(): VaultData {
@@ -109,7 +101,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
-    async addSite(item, site) { const o = originOf(site); await ask("vault.me.update", { name: item.id, fields: { url: [...(item.sites ?? []), o].join(" ") } }); return o; },
+    async addSite(item, site) { const o = originOf(site); await ask("vault.me.update", { name: item.id, fields: { urls: [...new Set([...(item.sites ?? []), o])].join(" ") } }); return o; },
     async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {

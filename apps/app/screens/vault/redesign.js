@@ -116,3 +116,12 @@ export function daysLeftOf(expires, now = Date.now()) {
 
 /** The field to reveal for an item: the secret-like one first. @param {string[]} fields */
 export const valueField = (fields) => ["secret", "value", "password", "token", "key", "api_key"].find((f) => fields.includes(f)) ?? fields[0] ?? "value";
+
+/** A site as the Vault saves it: a bare https origin. Anything else is refused here, before a call. @param {string} site */
+export function originOf(site) {
+  let u;
+  try { u = new URL(/^[a-z]+:\/\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); } catch { throw new Error("That is not a web address."); }
+  if (u.protocol !== "https:" || u.username || u.password) throw new Error("Use a secure address that starts with https.");
+  if (u.pathname !== "/" || u.search || u.hash) throw new Error("Use just the site, like https://example.com, with no page after it.");
+  return u.origin;
+}
