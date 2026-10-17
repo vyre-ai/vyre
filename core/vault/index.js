@@ -520,7 +520,7 @@ export default {
 
     account.register({ ctx, vault, tool });
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
-    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
+    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     meTools.register({ ctx, people, tool });
     sharingTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.

@@ -30,8 +30,8 @@ export class ConnectionTokens {
     if (c) return c;
     const people = this.people;
     c = new Credentials({
-      fetchItem: async (item, field) => { const it = await people.get(owner, { name: item }); return it.fields[field || "value"]; },
-      save: async (item, fields) => { await people.update(owner, { name: item, fields }); },
+      fetchItem: async (item, field) => { const it = await people.service(owner).get(item); return it.fields[field || "value"]; },
+      save: async (item, fields) => { await people.service(owner).update(item, fields); },
       now: this.now, ...(this.fetch ? { fetch: this.fetch } : {}),
     });
     this.creds.set(owner, c);
@@ -65,14 +65,13 @@ export class ConnectionTokens {
     const K0 = this.kernelOf();
     if (String(K0 && K0.owner) === owner) throw denied("the Space owner's connections are items of the owner's vault, not a member's");
     if (!(await this.allowed(owner, name, input.write === true, meta))) throw denied("this call may not use that connection");
-    // An unlocked vault, or "locked": the person opens it on a device of theirs. No fallback to another vault.
-    const it = await this.people.get(owner, { name });
-    if (it.kind !== "connection") throw Object.assign(new Error(`${name} is not a connection`), { code: "not_found" });
+    // The person's unlocked vault, else the sealed server copy of their key, else "locked". No fallback to another vault, and only connection items are ever opened this way.
+    const it = await this.people.service(owner).get(name);
     const f = it.fields;
     const num = (/** @type {any} */ v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
     if (f.auth_kind === "oauth") {
       const access_token = await this.credentials(owner).token({ type: "oauth", item: name });
-      const after = (await this.people.get(owner, { name })).fields;
+      const after = (await this.people.service(owner).get(name)).fields;
       return { access_token, token_type: "Bearer", expires_at: num(after.expires_at), resource: after.resource || f.resource || null };
     }
     // A pasted token (PAT, PIT, an agent key) is the value itself; it expires only when its owner replaces it.

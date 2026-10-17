@@ -8,6 +8,8 @@ import path from "node:path";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
+import { ConnectionTokens } from "../connection-token.js";
+import { openMemberKey, wrapPath } from "../people-seal.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
 import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
 
@@ -15,10 +17,10 @@ const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per
 const PW = "a long master password";
 const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: { kind, id } });
 
-function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}) {
+function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}, /** @type {any} */ peopleExtra = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF });
+  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, ...peopleExtra });
   t.after(() => people.close());
   const kernel = { owner: OWNER, space: "spc_aaaaaaaaaaaa", hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }), ...kernelExtra };
   const reg = /** @type {Map<string, any>} */ (new Map());
@@ -31,7 +33,7 @@ function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} *
     const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
-  return { call, reg, people };
+  return { call, reg, people, home };
 }
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
@@ -176,4 +178,51 @@ test("vault.connection.token: the hub gets a short-lived token for the owner's c
   // a locked vault answers locked, never a value
   people.lock(BOB);
   assert.equal((await hub({ owner: BOB, connection: "clio" }, BOB)).error.code, "locked");
+});
+
+test("sealed server copy: a connection keeps working while its owner is locked, the person's own vault does not, and no plaintext key is written", async t => {
+  const sealRoot = fs.mkdtempSync(path.join(SCRATCH, "vyre-seal-"));
+  t.after(() => fs.rmSync(sealRoot, { recursive: true, force: true }));
+  const { call, people, home } = rig(t, {}, { sealRoot });
+  const made = await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  await call("vault.me.put", { name: "clio", kind: "connection", fields: { auth_kind: "oauth", client_id: "c", token_uri: "https://auth.example.test/token", refresh_token: "REFRESH-OLD-0001", access_token: "ACCESS-OLD-0001-abcdefghij", expires_at: String(Date.now() - 1000), resource: "https://mcp.example.test/mcp" } }, BOB);
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob-private" } }, BOB);
+  await call("vault.me.put", { name: "evepit", kind: "connection", fields: { auth_kind: "bearer", token: "EVE-PIT-0001-abcdefghij" } }, EVE);
+  let posted = 0;
+  const fetch = async (/** @type {string} */ _u, /** @type {any} */ o) => { posted++; assert.match(String(o.body), /refresh_token=REFRESH-OLD-0001/); return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "ACCESS-NEW-0002-abcdefghij", refresh_token: "REFRESH-NEW-0002", expires_in: 3600 }) }; };
+  const tokens = new ConnectionTokens({ people, kernel: { owner: OWNER, space: "spc_aaaaaaaaaaaa", chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) }, fetch });
+  const asBob = { caller: "module:mcp", hops: [hop("person", BOB)] };
+  // nobody is unlocked now
+  people.lock(BOB); people.lock(EVE);
+  assert.equal((await call("vault.me.get", { name: "claude" }, BOB)).error.code, "locked", "her own vault still needs the master password");
+  assert.equal((await call("vault.me.get", { name: "clio" }, BOB)).error.code, "locked");
+  // the hub's token tool still refreshes through the sealed copy, and saves the rotated refresh token
+  const r = await tokens.token({ owner: BOB, connection: "clio" }, asBob);
+  assert.equal(r.access_token, "ACCESS-NEW-0002-abcdefghij"); assert.equal(posted, 1);
+  assert.ok(!JSON.stringify(r).includes("REFRESH"), "no refresh token leaves");
+  await call("vault.me.account.unlock", { password: PW, secretKey: made.data.secretKey }, BOB);
+  assert.equal((await call("vault.me.get", { name: "clio" }, BOB)).data.fields.refresh_token, "REFRESH-NEW-0002", "the rotation was saved to the item");
+  people.lock(BOB);
+  // only connection items open this way: a note or an AI sign-in is refused, a locked vault with no seal is locked
+  await assert.rejects(() => tokens.token({ owner: BOB, connection: "claude" }, asBob), { code: "not_found" });
+  await assert.rejects(() => people.service(BOB).get("claude"), { code: "not_found" });
+  // the seal is bound to the person: Bob's wrap moved to Eve's place opens nothing
+  const bobFile = wrapPath(sealRoot, BOB), eveFile = wrapPath(sealRoot, EVE);
+  assert.ok(fs.existsSync(bobFile) && fs.existsSync(eveFile));
+  assert.notEqual(openMemberKey(sealRoot, BOB), null);
+  const keep = fs.readFileSync(eveFile);
+  fs.copyFileSync(bobFile, eveFile);
+  assert.equal(openMemberKey(sealRoot, EVE), null, "a wrap moved to another person's place opens nothing");
+  fs.writeFileSync(eveFile, keep);
+  // no plaintext copy of any key under the state folder: scan every file for the raw key bytes of the unlocked vault
+  await call("vault.me.account.unlock", { password: PW, secretKey: made.data.secretKey }, BOB);
+  const dump = (/** @type {string} */ d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? dump(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const raw = people.slot(BOB).vault.pvk.export();
+  assert.equal(raw.length, 32);
+  for (const f of [...dump(sealRoot), ...dump(home)]) assert.ok(!fs.readFileSync(f).includes(raw), `${f} holds the raw key`);
+  // leaving the Space removes the seal
+  people.destroy(BOB);
+  assert.equal(openMemberKey(sealRoot, BOB), null);
+  await assert.rejects(() => tokens.token({ owner: BOB, connection: "clio" }, asBob), { code: "locked" });
 });

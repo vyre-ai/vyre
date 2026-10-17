@@ -15,6 +15,7 @@ import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, ensureMacColumns } from "./vault.js";
 import { ensureDir } from "./store.js";
 import { sealItemV2, openItemV2 } from "./crypto.js";
+import { sealMemberKey, openMemberKey, forgetMemberKey } from "./people-seal.js";
 
 export const PERSON_ID = /^per_[A-Za-z0-9_-]{1,64}$/;
 const NAME = /^[A-Za-z0-9._-]{1,128}$/;
@@ -30,8 +31,9 @@ export const IDLE_MS = 8 * 60 * 60 * 1000;
 const locked = () => Object.assign(new Error("your vault is locked: unlock it with your master password"), { code: "locked" });
 
 export class PeopleVaults {
-  /** @param {{ dir: string, config?: any, emit?: (t: string, p: object) => void, log?: (m: string) => void, testKdf?: any, clock?: () => number, idleMs?: number }} o */
-  constructor({ dir, config, emit = () => {}, log = () => {}, testKdf = null, clock = Date.now, idleMs = IDLE_MS }) {
+  /** @param {{ dir: string, sealRoot?: string | null, config?: any, emit?: (t: string, p: object) => void, log?: (m: string) => void, testKdf?: any, clock?: () => number, idleMs?: number }} o */
+  constructor({ dir, config, emit = () => {}, log = () => {}, testKdf = null, clock = Date.now, idleMs = IDLE_MS, sealRoot = null }) {
+    /** The Space's state folder, where the sealed server copies of members' keys are kept; null keeps none (tests, a build with no server). @type {string | null} */ this.sealRoot = sealRoot;
     this.dir = dir; this.config = config; this.emit = emit; this.log = log; this.testKdf = testKdf; this.clock = clock; this.idleMs = idleMs;
     /** @type {Map<string, { vault: Vault, db: any, last: number, sk: string | null, queue: Promise<any> }>} */ this.open = new Map();
   }
@@ -84,6 +86,7 @@ export class PeopleVaults {
       const s = this.slot(id);
       const r = await s.vault.createAccount({ password }, "person:" + id);
       s.last = this.clock();
+      this.seal(id, s);
       return { acct: r.acct, secretKey: r.secretKey };
     });
   }
@@ -97,6 +100,7 @@ export class PeopleVaults {
         if (!s.sk) throw new Error("unlocking needs your Secret Key, which your device holds: unlock from a device that has it");
         const r = await s.vault.unlockAccount({ password, method: "password" }, "person:" + id);
         s.last = this.clock();
+        this.seal(id, s);
         return { unlocked: true, acct: r.acct };
       } finally { s.sk = null; }
     });
@@ -110,6 +114,7 @@ export class PeopleVaults {
       try {
         const r = await (/** @type {any} */ (s.vault)).resetAccount(input, "person:" + id);
         s.last = this.clock();
+        this.seal(id, s);
         return r;
       } finally { s.sk = null; }
     });
@@ -130,6 +135,7 @@ export class PeopleVaults {
     const s = this.open.get(id);
     if (s) { try { s.vault.lockAccount("removed"); } catch {} try { s.db.close(); } catch {} this.open.delete(id); }
     fs.rmSync(f, { recursive: true, force: true });
+    if (this.sealRoot) forgetMemberKey(this.sealRoot, id);
     return { removed: true };
   }
 
@@ -155,13 +161,49 @@ export class PeopleVaults {
     return s.vault.pvk;
   }
 
+  /** Keep the sealed server copy equal to the unlocked key. A failure is logged and never stops the unlock: the person's own use does not depend on it. @param {string} id @param {{ vault: Vault }} s */
+  seal(id, s) {
+    if (!this.sealRoot || !s.vault.pvk) return;
+    try { sealMemberKey(this.sealRoot, id, s.vault.pvk); } catch (e) { this.log(`vault: could not seal the key of ${id}: ${/** @type {Error} */ (e).message}`); }
+  }
+
+  /**
+   * The person's connection items for a service (the MCP hub's token tool), opened with the sealed server copy when nobody is unlocked. It reads and updates items of kind "connection" and nothing
+   * else, so the sealed copy reaches a connection's tokens and no password, card or note. Throws code "locked" when there is no seal and the person is not unlocked.
+   * @param {string} id
+   */
+  service(id) {
+    PeopleVaults.check(id);
+    const key = () => {
+      const s = this.slot(id);
+      this.expire(s);
+      if (s.vault.pvk) return s.vault.pvk;
+      const k = this.sealRoot ? openMemberKey(this.sealRoot, id) : null;
+      if (!k) throw locked();
+      return k;
+    };
+    const find = (/** @type {string} */ name) => {
+      const it = this.all(id, key()).find(i => i.name === name);
+      if (!it) throw new Error(`no item named ${name}`);
+      if (it.kind !== "connection") throw Object.assign(new Error(`${name} is not a connection`), { code: "not_found" });
+      return it;
+    };
+    return {
+      get: async (/** @type {string} */ name) => { const { fileId, ...rest } = find(name); void fileId; return rest; },
+      update: async (/** @type {string} */ name, /** @type {any} */ fields) => {
+        const it = find(name);
+        this.write(id, it.fileId, { name, kind: it.kind, description: it.description, updated: this.clock() }, { ...it.fields, ...PeopleVaults.clean(fields) }, key());
+      },
+    };
+  }
+
   itemDir(/** @type {string} */ id) { const d = path.join(this.folder(id), ITEMS); ensureDir(d); return d; }
 
   at(/** @type {string} */ person, /** @type {string} */ fileId) { return { vault: "me:" + person, kv: KV, id: fileId, ver: 1, name: fileId }; }
 
   /** Every item the person can open: { fileId, name, kind, fields }. A file that does not open (another person's, or damaged) is skipped. @param {string} id */
-  all(id) {
-    const k = this.key(id);
+  all(id, /** @type {import("node:crypto").KeyObject} */ withKey = this.key(id)) {
+    const k = withKey;
     const dir = this.itemDir(id);
     const out = [];
     for (const f of fs.readdirSync(dir)) {
@@ -175,8 +217,8 @@ export class PeopleVaults {
     return out;
   }
 
-  write(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields) {
-    const k = this.key(id);
+  write(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields, /** @type {import("node:crypto").KeyObject} */ withKey = this.key(id)) {
+    const k = withKey;
     const file = path.join(this.itemDir(id), fileId + ".json");
     const tmp = file + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(sealItemV2(k, this.at(id, fileId), { meta, fields })), { mode: 0o600 });
