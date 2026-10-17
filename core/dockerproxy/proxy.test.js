@@ -562,3 +562,23 @@ test("dockerproxy: agentd's token tar goes only to agentd's directory, and only 
   const old = await proxy(t, stub);
   assert.equal((await old.call("PUT", `/v1.43/containers/kitfull0001/archive?path=${encodeURIComponent(AGENTD_TOKEN.dir)}`, tar, { "content-type": "application/x-tar" })).status, 403, "a policy with no agentd token file");
 });
+
+test("dockerproxy: the folder layout tar for an old state volume goes through at /var/lib/vyre and only as exactly the bytes policy makes; anything else is refused", async t => {
+  const { layoutTar, allowLayoutTar } = await import("../computers/driver/policy.js");
+  const layoutPolicy = { ...stub, allowLayoutTar };
+  const p = await proxy(t, layoutPolicy);
+  const put = (q, buf) => p.call("PUT", `/v1.43/containers/kitfull0001/archive?path=${encodeURIComponent(q)}`, buf, { "content-type": "application/x-tar" });
+  const tar = layoutTar();
+  assert.ok(tar.length < 256 * 1024, "within the proxy's body cap");
+  assert.equal((await put(BOOT.dir, tar)).status, 200);
+  assert.ok(p.seen.some(s => s.method === "PUT" && decodeURIComponent(s.url).endsWith(`path=${BOOT.dir}`)), "forwarded to /var/lib/vyre");
+  const flipped = Buffer.from(tar); flipped[0] ^= 1;
+  const owner = Buffer.from(tar); owner.write("0000000\0", 108, 8, "ascii");
+  for (const [what, buf] of [["a changed byte", flipped], ["another owner", owner], ["a longer tar", Buffer.concat([tar, Buffer.alloc(512)])], ["a shorter tar", tar.subarray(0, tar.length - 512)]]) {
+    assert.equal((await put(BOOT.dir, buf)).status, 403, what);
+  }
+  assert.equal((await put("/etc", tar)).status, 403, "any other directory");
+  assert.equal((await put("/var/lib/vyre/agents", tar)).status, 403, "even inside it");
+  const old = await proxy(t, stub);
+  assert.equal((await old.call("PUT", `/v1.43/containers/kitfull0001/archive?path=${encodeURIComponent(BOOT.dir)}`, tar, { "content-type": "application/x-tar" })).status, 403, "a policy with no layout");
+});

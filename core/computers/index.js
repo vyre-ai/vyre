@@ -23,6 +23,7 @@ import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-c
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
+import { updateComputers } from "./update.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -503,6 +504,16 @@ export default {
 
     tool("computers.handback.status", "After how many minutes without input a take-over hands the keyboard back to the agent (config computers.handbackIdleMin; 0 is off), the choices, and how many seconds before the holder is warned.",
       obj({}), async () => handback());
+
+    // Bring the computers to this Vyre's image and layout: after a Vyre update the image the release names differs, or the state volume's folders are from an older layout. Remaking keeps the volumes.
+    const remade = agent => { agentUsers.asleepAll(); cdpAdapter.drop(agent); };
+    const runUpdate = (/** @type {boolean} */ force) => updateComputers({ pool, log: ctx.log, onRemade: remade }, { force });
+    tool("computers.update", "Bring this Space's computers to the image and folder layout this Vyre expects: each one that is behind is stopped and made again from the configured image, keeping its volumes (logins, files, agents' homes). It runs by itself when Vyre starts; this asks for it now. The owner's, never an agent's.",
+      obj({ force: { type: "boolean", description: "remake every computer, even one that is current" } }), async (i, { caller }) => {
+        notAgent(caller, "which image the computers run");
+        if (!driver) throw new Error(NO_DRIVER);
+        return runUpdate(i.force === true);
+      }, { callers: PEOPLE });
 
     tool("computers.handback.set", "Set after how many minutes without input a take-over hands the keyboard back: 0 (off), 2, 5 or 15. The owner's to change, never an agent's; it applies at once, to a take-over already running too.",
       obj({ minutes: { type: "number", enum: [...IDLE_CHOICES] } }, ["minutes"]), async (i, { caller }) => {

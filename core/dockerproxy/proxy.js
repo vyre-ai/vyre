@@ -40,7 +40,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
 
-const MAX_BODY = 256 * 1024;
+const MAX_BODY = 256 * 1024; // the folder layout tar (policy.layoutTar) is about 200 KB: raise this with it
 // A list of every computer on the box; far more than any real one, and bounded all the same.
 const MAX_LIST = 16 * 1024 * 1024;
 const MAX_EVENT_STREAMS = 4;
@@ -356,7 +356,9 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
       const boot = policy.allowBootTar(buf);
       const agentTokens = typeof policy.allowAgentTokensTar === "function" ? policy.allowAgentTokensTar(buf) : { ok: false, why: "this policy has no agent-tokens file to allow" };
-      if (!boot.ok && !agentTokens.ok) refuse(`archive: ${boot.why}`);
+      // the state volume's folders for a volume made before the image had them: exactly the bytes policy.layoutTar() makes (directories only, fixed owners and modes)
+      const layout = typeof policy.allowLayoutTar === "function" ? policy.allowLayoutTar(buf) : { ok: false, why: "this policy has no folder layout to allow" };
+      if (!boot.ok && !agentTokens.ok && !layout.ok) refuse(`archive: ${boot.why}`);
     }
 
     if (name === "events") {

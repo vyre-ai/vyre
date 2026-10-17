@@ -16,6 +16,7 @@
 // waiting a minute; only index.js runs a real interval.
 
 import crypto from "node:crypto";
+import { LAYOUT_VERSION } from "./driver/policy.js";
 import net from "node:net";
 import { PORTS, SIZE } from "./driver/index.js";
 
@@ -63,6 +64,9 @@ export const MIGRATIONS = [
      agent_id TEXT PRIMARY KEY,
      generation INTEGER NOT NULL
    );`,
+  // The image a computer was made from and the layout of its state volume at the time (driver/policy.js LAYOUT_VERSION): computers.update recreates one that is behind. 1 = made before the agents' folders existed.
+  `ALTER TABLE computers_computers ADD COLUMN layout INTEGER NOT NULL DEFAULT 1;
+   ALTER TABLE computers_computers ADD COLUMN image TEXT;`,
 ];
 
 /** What a person may set a computer's limits to. */
@@ -409,7 +413,9 @@ export class Pool {
         volume: `${this.opts.prefix}-home-${agent}`,
         browserVolume: `${this.opts.prefix}-browser-${agent}`,
       });
-      this.set(agent, { container: id, state: "stopped" });
+      // A state volume made by an older image lacks the folders the agents live in; put them there before the first start (directories only, fixed owners; harmless on a volume that has them).
+      if (typeof d.migrateLayout === "function") await d.migrateLayout(id);
+      this.set(agent, { container: id, state: "stopped", layout: LAYOUT_VERSION, image: this.opts.image });
       this.emit("computer.created", { agent });
       this.log(`${agent}'s computer created`);
       st = { state: "exited", host: null };
@@ -582,6 +588,36 @@ export class Pool {
       this.log(`${agent}'s computer stopped`);
       return { stopped: true };
     });
+  }
+
+  /**
+   * Bring a computer to the image and layout this Vyre expects: stop it, remove the container (its volumes stay), and make it again from the configured image, which puts the state volume's
+   * folders right on the way. A computer that was running is running again after. Returns whether anything was done.
+   * @param {string} agent @param {{ force?: boolean }} [o]
+   * @returns {Promise<{ agent: string, updated: boolean, why?: string }>}
+   */
+  async update(agent, o = {}) {
+    if (!this.driver) throw new Error(NO_DRIVER);
+    const d = this.driver;
+    const r0 = this.row(agent);
+    if (!r0 || !r0.container) return { agent, updated: false, why: "no computer yet" };
+    const now = await d.inspect(r0.container);
+    if (now.state === "missing") return { agent, updated: false, why: "no computer yet" };
+    const have = typeof d.imageOf === "function" ? await d.imageOf(r0.container) : null;
+    const why = o.force ? "asked" : Number(r0.layout || 1) < LAYOUT_VERSION ? "its folders are from an older layout" : have && have !== this.opts.image ? `it runs ${have}, this Vyre uses ${this.opts.image}` : null;
+    if (!why) return { agent, updated: false };
+    const wasRunning = now.state === "running" || now.state === "paused";
+    await this.stop(agent);
+    await this.serial(agent, async () => {
+      const r = this.row(agent);
+      if (r && r.container) { await d.remove(String(r.container)); }
+      this.set(agent, { container: null, state: "none" });
+      this.hosts.delete(agent);
+      this.emit("computer.updated", { agent, why });
+      this.log(`${agent}'s computer is being remade: ${why}`);
+    });
+    if (wasRunning) await this.serial(agent, () => this.ensure(agent));
+    return { agent, updated: true, why };
   }
 
   /** Pause or resume the agent's hands. The container is untouched; this is about who acts. */

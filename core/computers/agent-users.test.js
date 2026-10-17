@@ -158,3 +158,14 @@ test("a Chrome ticket is registered for a live agent only, under that agent's ow
   await users.cdpTicket("ads", "t".repeat(32));
   assert.deepEqual(ran.filter(x => x.startsWith("cdp")), [`cdp ag20000 ${"t".repeat(32)}`]);
 });
+
+test("when the computer is remade every agent is asleep again, without asking the computer anything", async t => {
+  const { users, ran, events } = setup(t);
+  await users.add("ads", "Ads"); await users.add("kit", "Kit");
+  await users.wake("ads");
+  const before = ran.length;
+  users.asleepAll();
+  assert.deepEqual([users.status("ads").state, users.status("kit").state], ["asleep", "asleep"]);
+  assert.equal(ran.length, before, "nothing was run in the computer");
+  assert.ok(events.includes("computer.agent-asleep"));
+});

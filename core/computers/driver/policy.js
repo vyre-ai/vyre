@@ -411,6 +411,50 @@ export function allowAgentdTokenTar(buf) {
   return { ok: true };
 }
 
+// ---- the state volume's folders, for a volume made before they were in the image --------------
+//
+// A new volume copies the image's /var/lib/vyre, so a new computer has the agents' folders. A computer made by an older image has a volume without them, and the root is read-only and the
+// entrypoint has no CAP_CHOWN, so they are put there through the same archive-API PUT as .boot: directories only, each with the owner and mode the image gives it (the Dockerfile's loop). The tar
+// is built here from nothing but numbers, and the proxy lets through exactly these bytes and no other (allowLayoutTar), so a caller cannot choose a path, an owner or a mode.
+/** Bumped whenever the image's layout of /var/lib/vyre changes; a computer recorded with less is recreated by computers.update. */
+export const LAYOUT_VERSION = 2;
+export const LAYOUT = Object.freeze({ dir: "/var/lib/vyre", agents: 64, firstUid: 20000, browserOffset: 1000, vyre: 1001, agentctl: 1004 });
+
+/** @param {string} name @param {number} uid @param {number} gid @param {number} mode @returns {Buffer} a directory header */
+function dirHeader(name, uid, gid, mode) {
+  const h = Buffer.alloc(512);
+  h.write(`${name}/`, 0, 100, "ascii");
+  octal(h, 100, 8, mode); octal(h, 108, 8, uid); octal(h, 116, 8, gid); octal(h, 124, 12, 0); octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156); h.write("5", 156, 1, "ascii"); h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0; for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  return h;
+}
+
+/** The folders and their owners, as the Dockerfile makes them. @returns {Array<[string, number, number, number]>} [path, uid, gid, mode] */
+export function layoutEntries() {
+  const L = LAYOUT, out = /** @type {Array<[string, number, number, number]>} */ ([["agentd", L.agentctl, L.agentctl, 0o700]]);
+  for (const d of ["agents", "browsers", "x", "downloads"]) out.push([d, L.vyre, L.vyre, 0o711]);
+  for (let i = 0; i < L.agents; i++) {
+    const n = L.firstUid + i, b = n + L.browserOffset;
+    out.push([`agents/ag${n}`, n, n, 0o700], [`agents/ag${n}/home`, n, n, 0o700], [`browsers/agb${b}`, b, b, 0o700], [`browsers/agb${b}/profile`, b, b, 0o700],
+      [`x/ag${n}`, n, b, 0o2750], [`downloads/ag${n}`, b, n, 0o2750]);
+  }
+  return out;
+}
+
+/** @returns {Buffer} */
+export function layoutTar() {
+  return Buffer.concat([...layoutEntries().map(([name, uid, gid, mode]) => dirHeader(name, uid, gid, mode)), Buffer.alloc(1024)]);
+}
+
+let layoutCache = /** @type {Buffer | null} */ (null);
+/** Exactly the bytes layoutTar() makes. @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowLayoutTar(buf) {
+  layoutCache ??= layoutTar();
+  return Buffer.isBuffer(buf) && buf.length === layoutCache.length && buf.equals(layoutCache) ? { ok: true } : { ok: false, why: "not the computer's folder layout" };
+}
+
 // ---- a shared computer's per-agent identity, as a second file next to .boot ------------------
 //
 // AGENT_TOKENS_FILE (computerd/index.js's own identifyClient, agent-browsers.md level 2): one
