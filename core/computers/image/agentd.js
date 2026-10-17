@@ -7,7 +7,10 @@
 // without a container. `run` (given by the caller) executes one argv; agentd.test.js passes a recorder. The HTTP skin that vyred talks to
 // and the supervisor loop live in agentd-server.js (next to this file) and call these functions.
 //
-// Isolation per agent: uid and gid 20000+n, home /home/ag<id> mode 0700 (no other agent can list or read it), its own X display :N with
+// The image's root is read-only, so users cannot be added at run time: the image makes ag20000 to ag20063 when it is built (Dockerfile),
+// and "creating" an agent here only prepares its home. Removing one empties its home and leaves the user for the next agent.
+//
+// Isolation per agent: uid and gid 20000+n, home /home/ag<uid> mode 0700 (no other agent can list or read it), its own X display :N with
 // its own VNC password, Chrome under that uid with its own profile directory, tmux with its own socket in the home, address space and
 // process limits through prlimit, nice 5. Nothing here gives an agent a group of another agent or any admin right.
 
@@ -34,13 +37,11 @@ export function asAgent(u, lim = {}) {
     "--", "prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, "nice", "-n", "5"];
 }
 
-/** Make the agent's user and its private home. Idempotent: running it again changes nothing. @param {{ user: string, uid: number, display: number }} u */
+/** Prepare the agent's private home and run folder (the user itself is in the image). Idempotent. @param {{ user: string, uid: number, display: number }} u */
 export function planCreate(u) {
   check(u);
   const home = homeOf(u.user);
   return [
-    ["groupadd", "-g", String(u.uid), u.user],
-    ["useradd", "-M", "-u", String(u.uid), "-g", String(u.uid), "-s", "/bin/bash", "-d", home, u.user],
     ["mkdir", "-p", home, `${RUN}/${u.user}`],
     ["chown", `${u.uid}:${u.uid}`, home, `${RUN}/${u.user}`],
     ["chmod", "0700", home, `${RUN}/${u.user}`],
@@ -87,13 +88,12 @@ export function planWipeHome(u) {
   ];
 }
 
-/** Remove the user and its home. @param {{ user: string, uid: number, display: number }} u */
+/** Free the agent's place: stop everything of its uid and empty its home and run folder. The user stays in the image for the next agent. @param {{ user: string, uid: number, display: number }} u */
 export function planRemove(u) {
   check(u);
   return [
     ["pkill", "-KILL", "-u", String(u.uid)],
-    ["userdel", u.user],
-    ["rm", "-rf", "--one-file-system", homeOf(u.user), `${RUN}/${u.user}`],
+    ["find", homeOf(u.user), `${RUN}/${u.user}`, "-mindepth", "1", "-delete"],
   ];
 }
 
@@ -105,5 +105,5 @@ export async function execute(steps, run, o = {}) {
   }
 }
 
-/** Steps that are fine to fail: stopping what is not running, removing what is gone, making what exists. @param {string[]} argv */
-export const tolerant = argv => argv[0] === "pkill" || argv[0] === "userdel" || argv[0] === "groupadd" || argv[0] === "useradd";
+/** Steps that are fine to fail: stopping what is not running. @param {string[]} argv */
+export const tolerant = argv => argv[0] === "pkill";

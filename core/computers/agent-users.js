@@ -32,15 +32,15 @@ export const MIGRATIONS = [
 ];
 
 const AGENT_ID = /^[a-z][a-z0-9._-]{1,80}$/;
-/** The Linux user name for an agent: short, lower case, never a name the system already uses. */
-export const userNameOf = id => `ag${String(id).replace(/[^a-z0-9]/g, "").slice(0, 28)}`;
+/** The Linux user of a uid in the agent range. The image makes all of them at build time (MAX_AGENTS of them), because its root is read-only and cannot add users at run time. */
+export const userNameOf = uid => `ag${uid}`;
 
 /**
  * @typedef {{ createUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   removeUser(u: { agentId: string, user: string }): Promise<void>,
- *   startScreen(u: { agentId: string, user: string, display: number }): Promise<void>,
- *   stopScreen(u: { agentId: string, user: string, display: number }): Promise<void>,
- *   wipeHome(u: { agentId: string, user: string }): Promise<void> }} Ctl
+ *   removeUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void> }} Ctl
  */
 
 export class AgentUsers {
@@ -82,7 +82,7 @@ export class AgentUsers {
       while (used.has(uid)) uid++;
       const display = DISPLAY_BASE + (uid - UID_BASE);
       const at = this.now();
-      await this.ctl.createUser({ agentId: id, user: userNameOf(id), uid, display });
+      await this.ctl.createUser({ agentId: id, user: userNameOf(uid), uid, display });
       this.db.prepare("INSERT INTO computers_agent_users (agent_id, agent_name, uid, display, state, last_active, created) VALUES (?, ?, ?, ?, 'asleep', ?, ?)").run(id, String(name || id), uid, display, at, at);
       this.emit("computer.agent-added", { agent: id });
       return this.row(id);
@@ -97,7 +97,7 @@ export class AgentUsers {
       if (r.state === "live") { this.touchNow(id); return this.row(id); }
       this.set(id, { state: "waking", last_active: this.now() });
       this.emit("computer.agent-waking", { agent: id });
-      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(id), display: r.display }); }
+      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }); }
       catch (e) { this.set(id, { state: "asleep" }); throw e; }
       this.set(id, { state: "live", woke_at: this.now(), last_active: this.now() });
       this.emit("computer.agent-live", { agent: id });
@@ -115,7 +115,7 @@ export class AgentUsers {
     return this.serial(id, async () => {
       const r = this.row(id);
       if (!r || r.state === "asleep") return r;
-      await this.ctl.stopScreen({ agentId: id, user: userNameOf(id), display: r.display });
+      await this.ctl.stopScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
       this.set(id, { state: "asleep" });
       this.emit("computer.agent-asleep", { agent: id, why });
       return this.row(id);
@@ -139,7 +139,7 @@ export class AgentUsers {
     if (!r) throw new Error(`${id} has no place on this computer`);
     await this.sleep(id, "reset");
     return this.serial(id, async () => {
-      await this.ctl.wipeHome({ agentId: id, user: userNameOf(id) });
+      await this.ctl.wipeHome({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
       this.emit("computer.agent-reset", { agent: id });
       return this.row(id);
     });
@@ -150,7 +150,7 @@ export class AgentUsers {
     await this.sleep(id, "removed");
     return this.serial(id, async () => {
       if (!this.row(id)) return false;
-      await this.ctl.removeUser({ agentId: id, user: userNameOf(id) });
+      const r = this.row(id); await this.ctl.removeUser({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
       this.db.prepare("DELETE FROM computers_agent_users WHERE agent_id = ?").run(id);
       this.emit("computer.agent-removed", { agent: id });
       return true;

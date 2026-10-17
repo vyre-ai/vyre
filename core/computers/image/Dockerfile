@@ -59,6 +59,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-gi gir1.2-atspi-2.0 \
       chromium \
       imagemagick \
+      tmux bubblewrap procps util-linux \
       tini \
       fonts-liberation fonts-noto-color-emoji \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -124,6 +125,17 @@ RUN mkdir -p /etc/chromium/policies/managed \
     && python3 -c 'import json; json.load(open("/etc/chromium/policies/managed/vyre.json"))'
 
 # root-owned and read-only (the root filesystem is read-only too): neither user can change them.
+
+# The agents' users (owner decision, 18 Oct 2026: one computer per space, one Linux user per agent). The root is read-only at run time, so
+# the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /home/ag<uid>
+# (made 0700 by agentd when an agent is added). agentd (agentd.js) only prepares a home and starts the agent's screen; it never adds a user.
+RUN for n in $(seq 20000 20063); do \
+      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/home/ag$n" "ag$n"; \
+    done \
+    && mkdir -p /run/agents && chmod 0711 /run/agents
+COPY agentd.js agentd-server.js /opt/agentd/
+COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
+RUN chmod 0755 /usr/local/bin/agentd-vncpass
 COPY computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R a+rX,go-w /opt/computerd && chmod 0755 /usr/local/bin/entrypoint.sh /opt/computerd/atspi.py

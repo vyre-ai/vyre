@@ -40,7 +40,8 @@ test("each agent is its own user with its own uid and screen, made once and neve
   const again = await users.add("ads", "Ads (renamed)");
   assert.equal(again.uid, a.uid, "adding twice keeps the same user");
   assert.equal(ran.filter(x => x.startsWith("create")).length, 2, "the user was made once");
-  assert.notEqual(userNameOf("ads"), userNameOf("legal-help"));
+  assert.notEqual(userNameOf(a.uid), userNameOf(b.uid));
+  assert.equal(userNameOf(a.uid), "ag20000");
 });
 
 test("an agent id that is not an id is refused, and nothing is made", async t => {
@@ -100,8 +101,8 @@ test("reset empties one agent's home only, after closing its screen, and the use
   await users.reset("ads");
   const tail = ran.slice(ran.findIndex(x => x.startsWith("stop")));
   assert.deepEqual(tail.map(x => x.split(" ")[0]), ["stop", "wipe"], "the screen closes first");
-  assert.ok(tail.some(x => x === `wipe ${userNameOf("ads")}`));
-  assert.ok(!ran.some(x => x === `wipe ${userNameOf("kit")}`), "nobody else's home is wiped");
+  assert.ok(tail.some(x => x === `wipe ${userNameOf(UID_BASE)}`));
+  assert.ok(!ran.some(x => x === `wipe ${userNameOf(UID_BASE + 1)}`), "nobody else's home is wiped");
   assert.ok(users.row("ads"), "the user is still there");
   await assert.rejects(() => users.reset("ghost"), /no place on this computer/);
 });

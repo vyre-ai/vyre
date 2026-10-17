@@ -384,3 +384,20 @@ test("isolation: the agent is an untrusted X client: no cookie no display, and n
   const xterm = shAgent("pgrep -u 1000 -x xterm");
   assert.equal(xterm.code, 0, "the agent's xterm is not running under its untrusted cookie");
 });
+
+// ---- the agent users (owner decision, 18 Oct 2026): one computer, one Linux user per agent ----
+
+test("isolation (static): the image makes the 64 agent users itself, each in its own group only, and agentd never adds a user at run time", () => {
+  assert.match(DOCKERFILE, /for n in \$\(seq 20000 20063\)/);
+  assert.match(DOCKERFILE, /groupadd -g "\$n" "ag\$n" && useradd -M -u "\$n" -g "\$n" -s \/bin\/bash -d "\/home\/ag\$n" "ag\$n"/);
+  assert.doesNotMatch(DOCKERFILE.split("for n in $(seq 20000")[1].split("COPY agentd.js")[0], / -G /, "an agent user belongs to no other group");
+  assert.match(DOCKERFILE, /mkdir -p \/run\/agents && chmod 0711 \/run\/agents/);
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.doesNotMatch(agentd, /\[\s*"(useradd|groupadd|userdel|sudo|su)"/, "the root is read-only and no agent gets admin");
+});
+
+test("isolation (static): agentd starts nothing as root: every agent process goes through setpriv with no capabilities and no new privileges", () => {
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.match(agentd, /"--inh-caps=-all", "--no-new-privs"/);
+  assert.match(agentd, /"--clear-groups"/);
+});
