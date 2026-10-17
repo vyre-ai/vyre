@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.5.4
 
+- ci(relay-deploy): the relay/app dry run no longer greps wrangler's output for the Worker's name (a redirect Worker with no bindings does not print it, which failed the 0.5.4 deploy). It reads the name and route from relay/app/wrangler.toml, requires the upload size and wrangler's "--dry-run: exiting now" line, and fails if wrangler itself failed (pipefail).
 - release: 0.5.4 carries all of 0.5.3, which was tagged but never published because its first-run install proof ran in a Chromium 130 with no Ed25519 in WebCrypto; that was a bug in the proof, not in the app. The proof now uses a Chromium that has Ed25519, checks for it, waits longer for the identity with its timing, and the Mac proof presses the switch by its label. Version 0.5.4 in package.json, package-lock.json and the Claude Code plugin manifest (scripts/bump-version.mjs). The v0.5.3 tag stays. The first-run install proof (first-run-e2e.yml) no longer gates a release: release.yml has no first-run job and the release job does not need it; the workflow stays for running by hand. The app also retries while the directory briefly cannot confirm the server's key (apps/app/src/real/add-server.js): the add-a-server run waits for a server whose directory answers unavailable, decided by the error code, and stops at once on a real refusal.
 
 ## 0.5.3
