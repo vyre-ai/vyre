@@ -144,26 +144,13 @@ test("a team member refused at the owner's vault is told the true reason, not 't
   assert.match(m.putRefusal("denied", "x"), /This device may not add/, "another denial keeps its words");
 });
 
-test("Mine for the owner is the Space vault's own items through vault.* (vault.me.* refuses the owner); a member keeps vault.me.*", { skip: !strip }, async () => {
-  const { realData } = await import("./redesign-data.ts");
-  const refusal = { error: { code: "denied", message: "this is a member's own vault: it is for a signed-in member, and the owner uses the vault tools" } };
-  const mk = (/** @type {boolean} */ owner) => {
-    const { call, seen } = box();
-    return { seen, call: async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
-      if (tool.startsWith("vault.me.")) { seen.push({ tool, input }); return owner ? refusal : tool === "vault.me.account.status" ? { data: { account: true } } : tool === "vault.me.list" ? { data: { items: [{ name: "mine-login", kind: "login", description: "", fields: ["password"], updated: 1 }] } } : { data: {} }; }
-      return call(tool, input);
-    } };
-  };
-  const o = mk(true), od = realData(/** @type {any} */ (o.call));
-  const mine = await od.load("mine");
-  assert.deepEqual(mine.items.map((/** @type {any} */ i) => [i.id, i.sp]).sort(), [["Firm Visa", "mine"], ["Gmail", "mine"], ["Stripe", "mine"]], "the owner's Mine lists the vault.list items");
-  assert.equal(await od.read("mine", mine.items[0]), "fake-secret-value");
-  await od.add("mine", { tool: "vault.me.put", input: { name: "n", kind: "note", fields: { text: "x" } } });
-  await od.remove("mine", mine.items[0]);
-  assert.deepEqual(o.seen.filter((s) => /^vault\.(put|delete|reveal)$/.test(s.tool)).map((s) => s.tool), ["vault.reveal", "vault.put", "vault.delete"]);
-  const m = mk(false), md = realData(/** @type {any} */ (m.call));
-  const own = await md.load("mine");
-  assert.deepEqual(own.items.map((/** @type {any} */ i) => i.id), ["mine-login"]);
-  await md.add("mine", { tool: "vault.me.put", input: { name: "n", kind: "note", fields: {} } });
-  assert.ok(m.seen.some((s) => s.tool === "vault.me.put") && !m.seen.some((s) => s.tool === "vault.put"), "a member keeps vault.me.*");
+test("Mine for the owner calls the vault.* tools (vault.me.* refuses the owner); a member keeps vault.me.*", async () => {
+  const { ownerMine } = await import("./owner-mine.js");
+  const refusal = Object.assign(new Error("this is a member's own vault: it is for a signed-in member, and the owner uses the vault tools"), { code: "denied" });
+  const o = ownerMine(async () => { throw refusal; }), m = ownerMine(async () => ({ account: true }));
+  assert.equal(await o.isOwner(), true);
+  assert.deepEqual([await o.tool("vault.me.put"), await o.tool("vault.me.remove"), await o.tool("vault.me.get")], ["vault.put", "vault.delete", "vault.me.get"]);
+  assert.equal(await m.isOwner(), false);
+  assert.deepEqual([await m.tool("vault.me.put"), await m.tool("vault.me.remove")], ["vault.me.put", "vault.me.remove"]);
+  assert.equal(await ownerMine(async () => { throw Object.assign(new Error("locked"), { code: "locked" }); }).isOwner(), false, "any other refusal is not the owner");
 });

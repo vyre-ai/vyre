@@ -4,6 +4,7 @@ import type { Call } from "./source";
 import { daysLeftOf, groupOf, siteUpdate, valueField, type VItem } from "./redesign.js";
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
+import { ownerMine } from "./owner-mine.js";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 import type { Directory, Level, Share, Who } from "./ShareSheet";
@@ -106,9 +107,8 @@ export function realData(call: Call): VaultData {
     return null;
   }
   const fieldsOf: Record<string, string[]> = {};
-  // The owner has no member vault: vault.me.* refuses them ("the owner uses the vault tools"), so for the owner "Mine" is the Space vault's own items read through vault.* (found once, by that refusal).
-  let ownerMode: Promise<boolean> | null = null;
-  const isOwner = () => (ownerMode ??= ask("vault.me.account.status").then(() => false, (e: { code?: string; message?: string }) => e.code === "denied" && /owner uses the vault tools/.test(String(e.message))));
+  const mineOwner = ownerMine(ask);
+  const isOwner = mineOwner.isOwner;
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
     real: true,
@@ -146,8 +146,8 @@ export function realData(call: Call): VaultData {
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
     async addSite(item, site) { const u = siteUpdate(item, site); await ask("vault.me.update", u.input); return u.origin; },
-    async add(scope, req) { await ask(scope === "mine" && req.tool === "vault.me.put" && await isOwner() ? "vault.put" : req.tool, req.input); },
-    async remove(scope, item) { await ask(scope === "space" || await isOwner() ? "vault.delete" : "vault.me.remove", { name: item.id }); },
+    async add(scope, req) { await ask(scope === "mine" ? await mineOwner.tool(req.tool) : req.tool, req.input); },
+    async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : await mineOwner.tool("vault.me.remove"), { name: item.id }); },
     async events(scope, item) {
       if (scope !== "space") return [];
       const r = await ask<{ uses?: UseRow[] }>("vault.uses", { item: item.id, limit: 20 });
