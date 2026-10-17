@@ -473,9 +473,9 @@ export default {
       // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
       // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
       ctx.events.emit("device.paired", { id, name, kind, fingerprint: keyFingerprint(pub), via: String((match && match.via) || "ticket"), ...(match && match.gate ? { gate: match.gate } : {}), ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
-      // The scan-to-pair screen's own event (ADR 0045, the lead 28 Sep): only for a ticket
-      // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
-      // pairing a different device with the classic QR at the same time.
+      // The ticket pairing's own event (ADR 0045, the lead 28 Sep): only for a ticket pairing, so a screen
+      // waiting on its own pairing reacts to that and not to someone pairing a different device with the
+      // classic QR at the same time.
       if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
       // A device that asks (hello.enroll) is handed the one-time grant to enroll its passkey at the
       // box's own address: the same grant, and the same {grant, expires, rpId}, as the old setup claim

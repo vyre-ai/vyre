@@ -16,7 +16,7 @@ export function welcomeOf(st) {
   }
   const pr = d.pair;
   if (pr && pr.state === "todo") {
-    cards.push({ id: "pair", title: "Pair this server", body: "Scan its code or paste it in your Vyre app to reach it from your phone." });
+    cards.push({ id: "pair", title: "Pair this server", body: "Finish pairing in your browser. Then open Vyre on your phone and sign in with this server's address, your username and your master password." });
   }
   const h = d.history;
   if (h && h.state === "todo" && !h.running) {

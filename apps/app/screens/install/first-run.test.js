@@ -31,8 +31,10 @@ test("the welcome is one line and two actions", () => {
   assert.equal(backOf("welcome"), null);
 });
 
-test("a browser's pairing goes back to its own screen, and the not-set-up screen goes back to it", () => {
-  assert.equal(backOf("scanwords", { browser: true }), "browser");
+test("the not-set-up screen goes back to the browser screen, which goes back to nothing; no scan step is left", () => {
+  assert.equal(backOf("scanwords", { browser: true }), null, "there is no scan step any more");
+  assert.equal(backOf("scan"), null);
+  assert.equal(backOf("addphone"), null);
   assert.equal(backOf("nosetup"), "browser");
   assert.equal(backOf("browser"), null);
 });

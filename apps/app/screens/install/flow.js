@@ -39,20 +39,17 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, mycloud: null, choose: null, adding: "scan", browser: null, nosetup: "browser", novyre: "scan", addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", pick: "create", cmd: "create", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
+  welcome: null, mycloud: null, choose: null, browser: null, nosetup: "browser",
+  name: null, have: "name", recover: "have", recovery: null, spaces: null, create: "spaces", pick: "create", cmd: "create", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. */
 export function backOf(/** @type {string} */ step, /** @type {{ have?: boolean, welcome?: boolean, browser?: boolean, first?: boolean }} */ ctx = {}) {
-  // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
+  // First run: the welcome offers a new name or an existing one, so both go back to it.
   // The first run's two choices: Join a team and Add a server go back to them.
   if (ctx.first && (step === "join" || step === "mycloud")) return "choose";
   if (ctx.welcome && step === "name") return "welcome";
   if (ctx.welcome && step === "have") return "welcome";
-  if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
-  // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
-  if (step === "scan" && ctx.have) return "have";
   return BACK[step] ?? null;
 }
 
