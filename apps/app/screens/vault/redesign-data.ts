@@ -106,6 +106,9 @@ export function realData(call: Call): VaultData {
     return null;
   }
   const fieldsOf: Record<string, string[]> = {};
+  // The owner has no member vault: vault.me.* refuses them ("the owner uses the vault tools"), so for the owner "Mine" is the Space vault's own items read through vault.* (found once, by that refusal).
+  let ownerMode: Promise<boolean> | null = null;
+  const isOwner = () => (ownerMode ??= ask("vault.me.account.status").then(() => false, (e: { code?: string; message?: string }) => e.code === "denied" && /owner uses the vault tools/.test(String(e.message))));
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
     real: true,
@@ -114,6 +117,11 @@ export function realData(call: Call): VaultData {
         const r = await ask<{ items?: ListRow[]; locked?: boolean }>("vault.list");
         for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
         return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked), ...((await spaceVaultId()) === null ? {} : { noSpaceVault: true }) };
+      }
+      if (await isOwner()) {
+        const r = await ask<{ items?: ListRow[] }>("vault.list");
+        for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
+        return { items: (r.items ?? []).map((i) => ({ ...spaceItem(i), sp: "mine" as const })), locked: false };
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
@@ -129,7 +137,7 @@ export function realData(call: Call): VaultData {
       }
     },
     async read(scope, item) {
-      if (scope === "space") return String((await ask<{ value?: string }>("vault.reveal", { name: item.id, field: valueField(fieldsOf[item.id] ?? []) })).value ?? "");
+      if (scope === "space" || await isOwner()) return String((await ask<{ value?: string }>("vault.reveal", { name: item.id, field: valueField(fieldsOf[item.id] ?? []) })).value ?? "");
       const r = await ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id });
       return r.fields[valueField(Object.keys(r.fields))] ?? "";
     },
@@ -138,8 +146,8 @@ export function realData(call: Call): VaultData {
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
     async addSite(item, site) { const u = siteUpdate(item, site); await ask("vault.me.update", u.input); return u.origin; },
-    async add(_scope, req) { await ask(req.tool, req.input); },
-    async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
+    async add(scope, req) { await ask(scope === "mine" && req.tool === "vault.me.put" && await isOwner() ? "vault.put" : req.tool, req.input); },
+    async remove(scope, item) { await ask(scope === "space" || await isOwner() ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
       if (scope !== "space") return [];
       const r = await ask<{ uses?: UseRow[] }>("vault.uses", { item: item.id, limit: 20 });

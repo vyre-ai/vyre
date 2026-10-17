@@ -143,3 +143,27 @@ test("a team member refused at the owner's vault is told the true reason, not 't
   assert.match(h.shareRefusal("denied", M), want);
   assert.match(m.putRefusal("denied", "x"), /This device may not add/, "another denial keeps its words");
 });
+
+test("Mine for the owner is the Space vault's own items through vault.* (vault.me.* refuses the owner); a member keeps vault.me.*", { skip: !strip }, async () => {
+  const { realData } = await import("./redesign-data.ts");
+  const refusal = { error: { code: "denied", message: "this is a member's own vault: it is for a signed-in member, and the owner uses the vault tools" } };
+  const mk = (/** @type {boolean} */ owner) => {
+    const { call, seen } = box();
+    return { seen, call: async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+      if (tool.startsWith("vault.me.")) { seen.push({ tool, input }); return owner ? refusal : tool === "vault.me.account.status" ? { data: { account: true } } : tool === "vault.me.list" ? { data: { items: [{ name: "mine-login", kind: "login", description: "", fields: ["password"], updated: 1 }] } } : { data: {} }; }
+      return call(tool, input);
+    } };
+  };
+  const o = mk(true), od = realData(/** @type {any} */ (o.call));
+  const mine = await od.load("mine");
+  assert.deepEqual(mine.items.map((/** @type {any} */ i) => [i.id, i.sp]).sort(), [["Firm Visa", "mine"], ["Gmail", "mine"], ["Stripe", "mine"]], "the owner's Mine lists the vault.list items");
+  assert.equal(await od.read("mine", mine.items[0]), "fake-secret-value");
+  await od.add("mine", { tool: "vault.me.put", input: { name: "n", kind: "note", fields: { text: "x" } } });
+  await od.remove("mine", mine.items[0]);
+  assert.deepEqual(o.seen.filter((s) => /^vault\.(put|delete|reveal)$/.test(s.tool)).map((s) => s.tool), ["vault.reveal", "vault.put", "vault.delete"]);
+  const m = mk(false), md = realData(/** @type {any} */ (m.call));
+  const own = await md.load("mine");
+  assert.deepEqual(own.items.map((/** @type {any} */ i) => i.id), ["mine-login"]);
+  await md.add("mine", { tool: "vault.me.put", input: { name: "n", kind: "note", fields: {} } });
+  assert.ok(m.seen.some((s) => s.tool === "vault.me.put") && !m.seen.some((s) => s.tool === "vault.put"), "a member keeps vault.me.*");
+});
