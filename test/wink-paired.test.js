@@ -141,8 +141,23 @@ shardTest("a pick with no deviceKind makes a device row named as given and nothi
   assert.ok(!rec || (!rec.key && rec.confirmed !== true), "no presence key and no confirmed record");
   const live = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
   assert.equal((live.sessions || live).filter((/** @type {any} */ x) => x.paired).length, 0, "no paired session");
+  // no presence key was enrolled for it (the list the onboard module reads as the person)
+  const keys = (await w.d.registry.call("presence.keys", {}, "cli", PROOF)).data;
+  assert.ok(!JSON.stringify(keys ?? null).includes(done.device), "no presence key for the device");
   const links = linksFor(t, f);
   await assert.rejects(() => links.startPaired("srv"), "the device cannot sign in, so it cannot call any tool");
+  // and with no relay device row it cannot open a device channel either: an ordinary hello gets no device, and nothing a device could reach
+  const crypt = nodeCrypto();
+  const k = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
+  /** @type {any} */ let r = null;
+  try { r = await openChannel({ relay: w.status.url, route: done.route, box: Buffer.from(done.box, "base64url"), keys: k, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }); } catch { r = null; }
+  if (r) {
+    t.after(() => r.channel.close(1000, "done"));
+    assert.equal(r.reply && r.reply.device, undefined, "an ordinary hello makes it no device");
+    const head = new Promise(res => { const st = r.channel.open({ method: "GET", path: "/v1/tools" }); st.onhead = x => res(x && x.status); st.onreset = () => res(0); });
+    const status = await head;
+    assert.ok(status === 403 || status === 400 || status === 0, `GET /v1/tools is refused (${status})`);
+  }
 });
 
 shardTest("a pick with deviceKind phone still records the phone by name (the kind-less pick above is the only new case)", async t => {
