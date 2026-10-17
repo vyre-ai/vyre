@@ -134,7 +134,7 @@ try {
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
-      if (got.missing) { row.status = "missing"; row.rules.push("the fixture did not render"); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
+      if (got.missing) { row.status = "missing"; const why = errors.length ? `: ${errors.slice(0, 2).join(" | ").slice(0, 300)}` : ""; row.rules.push(`the fixture did not render${why}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}${why}`); continue; }
       const { after } = got;
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
