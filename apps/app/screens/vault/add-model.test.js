@@ -15,7 +15,8 @@ test("every provider in the catalog has a row and a group, so a new provider can
 
 test("the picker groups are the list's groups, in its order, with Import last", () => {
   const names = pickerGroups(entriesFor("space")).map((g) => g.name);
-  assert.deepEqual(names, [...GROUPS, "Import"]);
+  // "Apps you connected" is where a member's connected apps sit in the list; nothing is added to it from the Add sheet, so the picker has no such group
+  assert.deepEqual(names, [...GROUPS.filter((g) => g !== "Apps you connected"), "Import"]);
   assert.deepEqual(pickerGroups(entriesFor("space")).find((g) => g.name === "AI models").items.map((e) => e.id), ["anthropic", "claude-setup-token", "openai", "deepgram", "elevenlabs"]);
 });
 

@@ -6,7 +6,7 @@ import http from "node:http";
 import fs from "node:fs";
 import { SOCKET, TOKEN_FILE } from "./agentd-main.js";
 
-const ACTION = /^(create|start|stop|wipe|remove)$/;
+const ACTION = /^(create|start|stop|wipe|remove|ticket|terminals|exec)$/;
 
 /** @param {{ socket: string, token: string, action: string, body: string }} o @returns {Promise<{ status: number, text: string }>} */
 export function callAgentd(o) {

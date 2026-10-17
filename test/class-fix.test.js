@@ -43,7 +43,7 @@ test("secret field names are defined once, in lib/secret-keys.js", () => {
   assert.deepEqual(findInSource(copies, allowed), [], "Tests and CI rule 15: a second secret-name list. Add the name to lib/secret-keys.js");
   const own = [/function nameIsSecret\b/];
   assert.deepEqual(findInSource(own, allowed), [], "nameIsSecret is lib/secret-keys.js");
-  for (const rel of ["kernel/flows/runner.js", "apps/app/screens/flows/run-model.ts", "lib/siteops/redact.js", "lib/siteops/learn.js", "kernel/bus.js"]) {
+  for (const rel of ["kernel/flows/runner-faults.js", "apps/app/screens/flows/run-model.ts", "lib/siteops/redact.js", "lib/siteops/learn.js", "kernel/bus.js"]) {
     assert.match(fs.readFileSync(path.join(ROOT, rel), "utf8"), /secret-keys\.js/, `${rel} reads the shared list`);
   }
 });

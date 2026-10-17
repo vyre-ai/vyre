@@ -639,10 +639,11 @@ const RELAY_ALLOWED = Object.freeze({
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
   // a team member's own MCP servers (mcp.mine.*) live in the member's own vault store: the mcp module asks it as the member, and the vault tool resolves the person from the relayed claim
-  mcp: ["vault.me.store.", "vault.me.who"],   // vault.me.who: whose call is this, for the connect tools (core/mcp/index.js); connectors asks the same through core/connectors/who.js
-  connectors: ["vault.me.who"],
+  mcp: ["vault.me.store.", "vault.me.who"],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
+  // a connection a person makes: the connectors module asks vault.me.who for the person it connects for (core/connectors/who.js), as that person's call
+  connectors: ["vault.me.who"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send

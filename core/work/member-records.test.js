@@ -141,7 +141,7 @@ test("the audit is a row of the member door: an admin and the owner read it as t
   assert.ok(change, "the admin sees the change");
   assert.equal(change.who, `person:${ANA}`, "and who made it");
   assert.ok((await w.as(w.OWNER, "records.audit", { type: "contact" })).changes.some((/** @type {any} */ x) => x.record === made.urn), "the owner too");
-  assert.equal((await w.as(ZED, "records.audit", { person: ANA, type: "contact", limit: 1 })).changes.length, 1, "the filters pass");
+  assert.equal((await w.as(ZED, "records.audit", { changed_by: ANA, type: "contact", limit: 1 })).changes.length, 1, "the filters pass");
   // a plain member, and Ana who made the record, are refused in words
   assert.equal(await code(w.as(BEN, "records.audit", { type: "contact" })), "not_allowed", "a member is refused");
   assert.equal(await code(w.as(ANA, "records.audit", {})), "not_allowed", "even for a record she made herself");

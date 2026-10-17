@@ -283,7 +283,7 @@ test("update: the folders an old volume gets include the browser folders, with t
   const e = new Map(layoutEntries().map(x => [x[0], x.slice(1)]));
   assert.deepEqual(e.get("browsers/agb21000"), [21000, 21000, 0o700]);
   assert.deepEqual(e.get("browsers/agb21000/profile"), [21000, 21000, 0o700]);
-  assert.deepEqual(e.get("x/ag20000"), [20000, 21000, 0o2750], "the X cookie folder: the agent owns it, its browser reads it");
+  assert.deepEqual(e.get("x/ag20000"), [21000, 20000, 0o2750], "the untrusted cookie folder: the screen's owner (the browser uid) writes it, the agent reads it");
   assert.deepEqual(e.get("downloads/ag20000"), [21000, 20000, 0o2750], "downloads: the browser writes, the agent reads");
   assert.deepEqual(e.get("agents/ag20063/home"), [20063, 20063, 0o700]);
   const docker = fs.readFileSync(new URL("./image/Dockerfile", import.meta.url), "utf8");
