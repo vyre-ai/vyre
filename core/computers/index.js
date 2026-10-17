@@ -22,7 +22,7 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
-import { ComputerUpdater, assertOwner, trackTurns, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, trackTurns, sleepAgentsWhenStopped, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { makeAgentRun } from "./agent-run.js";
@@ -304,7 +304,7 @@ export default {
     const turnsRunning = trackTurns(ctx.events.on);
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
     // The computer died or was stopped while vyred runs: its screens went with it.
-    const offStopped = ctx.events.on("computer.stopped", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) agentUsers.asleepAll(); });
+    const offStopped = sleepAgentsWhenStopped(ctx.events.on, agentUsers);
     const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
       obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });

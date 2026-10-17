@@ -67,6 +67,14 @@ export function trackTurns(on) {
   return { size: () => running.size, stop: () => { for (const off of offs) if (typeof off === "function") off(); } };
 }
 
+/**
+ * When the Space's computer stops or dies, no agent's screen is up: every agent reads asleep. Other computers' events are ignored.
+ * @param {(pattern: string, fn: (e: any) => void) => () => void} on ctx.events.on @param {{ asleepAll: () => void }} users
+ */
+export function sleepAgentsWhenStopped(on, users) {
+  return on("computer.stopped", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) users.asleepAll(); });
+}
+
 export class ComputerUpdater {
   /** @param {Deps} d */
   constructor(d) {

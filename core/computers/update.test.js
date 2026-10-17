@@ -9,7 +9,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Pool, MIGRATIONS } from "./pool.js";
 import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
-import { ComputerUpdater, assertOwner, trackTurns, LAYOUT, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, trackTurns, sleepAgentsWhenStopped, LAYOUT, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import { FakeDriver } from "./driver/fake.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { tempHome } from "../../test/helpers.js";
@@ -376,4 +376,18 @@ test("reconcile: when the computer is gone after a restart, every agent reads as
   assert.equal(w.pool.row(SHARED_COMPUTER_ID).container, null);
   w.users.asleepAll();
   assert.ok(w.users.list().every(r => r.state === "asleep"));
+});
+
+test("when the Space's computer stops, every agent reads asleep; another computer stopping changes nothing", async t => {
+  const w = await world(t);
+  await w.users.wake("ads"); await w.users.wake("intake");
+  /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
+  const off = sleepAgentsWhenStopped((p, fn) => { handlers.set(p, fn); return () => handlers.delete(p); }, w.users);
+  const fire = (/** @type {string} */ agent) => /** @type {any} */ (handlers.get("computer.stopped"))({ type: "computer.stopped", payload: { agent } });
+  fire("kit");
+  assert.deepEqual(w.users.list().map(r => r.state), ["live", "live"], "an agent's own desktop computer stopping is not the Space's");
+  fire(SHARED_COMPUTER_ID);
+  assert.deepEqual(w.users.list().map(r => r.state), ["asleep", "asleep"]);
+  off();
+  assert.equal(handlers.size, 0);
 });
