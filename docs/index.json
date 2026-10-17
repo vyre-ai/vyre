@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1892,"event":539,"config":311,"env":298,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1892,"event":540,"config":311,"env":298,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1166,6 +1166,7 @@
     {"kind":"tool","name":"microsoft.release","definedIn":"core/microsoft/index.js","page":"reference/tools.md#microsoftrelease","module":"microsoft","mentions":[]},
     {"kind":"tool","name":"microsoft.remove","definedIn":"core/microsoft/index.js","page":"reference/tools.md#microsoftremove","module":"microsoft","mentions":[]},
     {"kind":"event","name":"microsoft.removed","definedIn":"core/microsoft/index.js","page":"reference/events.md#microsoft","module":"microsoft","mentions":[]},
+    {"kind":"event","name":"microsoft.sent","definedIn":"core/microsoft/index.js","page":"reference/events.md#microsoft","module":"microsoft","mentions":[]},
     {"kind":"event","name":"mode.changed","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[{"page":"adr/0030-sessions.md","line":137,"anchor":"1-the-session-and-event-model"}]},
     {"kind":"event","name":"mode.defaulted","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
     {"kind":"event","name":"model.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
