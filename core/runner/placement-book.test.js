@@ -166,3 +166,31 @@ test("the owners and the sessions the server owes a continuation survive a resta
     assert.equal(old.get("old")?.where, "mac"); assert.equal(old.ownerOf("old"), "per_z");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("a computer that comes and goes moves a session once, and the session never returns to it unless its own person says so", () => {
+  const c = clock(), said = /** @type {any[]} */ ([]);
+  const b = createPlacementBook({ now: c.now, emit: (type, p) => said.push([type, p.to, p.reason]) });
+  const first = b.lend({ session: "s1", chat: "chat_x", ...who });
+  assert.equal(b.beat({ session: "s1", epoch: first.epoch, device: "dev_mac" }).ok, true);
+  // the lid shuts and opens every 10 seconds for five minutes: the book is told each time
+  for (let n = 0; n < 30; n++) {
+    c.tick(5_000);
+    b.toServer("s1", "lid-closed", { auto: true });
+    b.clear("dev_mac");
+    c.tick(5_000);
+    assert.throws(() => b.lend({ session: "s1", ...who }), e => /** @type {any} */ (e).code === "conflict", "the computer cannot take it back by itself");
+    assert.throws(() => b.lend({ session: "s1", person: "per_b", device: "dev_b" }), e => /** @type {any} */ (e).code === "not_found", "nor can anyone else");
+  }
+  assert.deepEqual(said, [["thread.moved", "server", "lid-closed"]], "one move, said once");
+  assert.equal(b.get("s1")?.where, "server");
+  assert.equal(b.get("s1")?.offer, "mac", "offered back, never moved back");
+  // the person says so: it goes out once, and a computer that flaps again moves it at most once per cooldown
+  b.bringBack("s1", "per_a");
+  b.lend({ session: "s1", ...who });
+  assert.equal(b.toServer("s1", "asleep", { auto: true }).changed, true);
+  b.bringBack("s1", "per_a"); b.lend({ session: "s1", ...who });
+  c.tick(1_000);
+  assert.equal(b.toServer("s1", "asleep", { auto: true }).why, "cooldown", "a second automatic move inside the cooldown is held back");
+  c.tick(COOLDOWN_MS);
+  assert.equal(b.toServer("s1", "asleep", { auto: true }).changed, true);
+});

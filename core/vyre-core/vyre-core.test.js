@@ -60,9 +60,9 @@ test("vyre-core: the owner's uid is answered, by the kernel's word; any other ui
 
 test("vyre-core: /v1/peer is core's own verdict on its own connection", async t => {
   const seen = [];
-  const c = await core(t, { peerCred: async () => ({ pid: 4242, uid }), personOf: pid => { seen.push(pid); return { person: false, why: "inside a Claude session" }; } });
+  const c = await core(t, { peerCred: async () => ({ pid: 4242, uid }), personOf: pid => { seen.push(pid); return { person: false, why: "inside a coding-agent session" }; } });
   const r = await coreCall({ socket: c.socket, method: "GET", path: "/v1/peer" });
-  assert.deepEqual(r.data, { pid: 4242, uid, person: false, why: "inside a Claude session" });
+  assert.deepEqual(r.data, { pid: 4242, uid, person: false, why: "inside a coding-agent session" });
   assert.deepEqual(seen, [4242], "judged from the pid core read, never one the client sent");
 });
 

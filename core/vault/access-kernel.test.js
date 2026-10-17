@@ -44,3 +44,18 @@ test("a grant to project:<id> names a project record that exists", { timeout: 12
   await assert.rejects(() => give("project:nope"), { code: "bad_input" });
   assert.equal((await give(`project:${proj.id}`)).status, "active");
 });
+
+test("personMay: only the vault's handle answers whether a member may use a credential, and only allow or deny", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const h = d.kernel.kernelFor(VAULT), owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const vid = await h.vault.personalVault();
+  const res = `vyre://${space}/vault/${vid}/connection/harlow-drive`;
+  assert.equal(await h.vault.personMay(owner, "vault.call", res), true, "the owner holds it");
+  assert.equal(await h.vault.personMay("per_nobody1234567890abcdefgh", "vault.call", res), false, "a stranger does not");
+  await assert.rejects(() => h.vault.personMay(owner, "records.update", res), { code: "bad_input" }, "only the use of a credential is asked");
+  for (const m of [{ name: "mail", needs: { kernel: { reach: true } } }, { name: "flows", needs: { kernel: { reach: true } } }, { name: "sessions", needs: { kernel: {} } }]) {
+    const other = d.kernel.kernelFor(m);
+    assert.equal(other.vault, undefined, `${m.name} has no vault handle`);
+    assert.equal(other.personMay, undefined, `${m.name} cannot ask`);
+  }
+});

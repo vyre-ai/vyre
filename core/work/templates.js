@@ -229,7 +229,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
 }
 
 const obj = (/** @type {any} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"];
 
 /**
  * The tools, over a Templates made by createTemplates. Every one runs under the caller's own kernel chain (`chainOf`), which decides what it reaches.

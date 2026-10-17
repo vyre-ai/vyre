@@ -86,7 +86,11 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     if (done.data.kind === "plugin" && mcpAdd) {
       const p = JSON.parse(String(done.data.body));
       for (const m of p.mcp || []) {
-        try { await mcpAdd({ name: `p-${p.name}-${m.name}`.slice(0, 32), transport: m.transport, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) }); connections.push(`p-${p.name}-${m.name}`.slice(0, 32)); }
+        try {
+          const auth = m.connection ? { type: "bearer", item: `conn-${m.connection}` } : { type: "none" };
+          await mcpAdd({ name: `p-${p.name}-${m.name}`.slice(0, 32), transport: m.transport, auth, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) });
+          connections.push(`p-${p.name}-${m.name}`.slice(0, 32));
+        }
         catch (e) { log(`skills: could not add the Connection for ${p.name}/${m.name}: ${/** @type {Error} */ (e).message}`); }
       }
     }
@@ -144,5 +148,20 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     if (!rec) throw fail("not_found", `no version ${version} of ${name}`);
     return rec;
   }
-  return { draft, draftFor, approve, applyApproval, rollback, versions, approved, get, history, ownerOfLevel, mayApprove };
+  /** Turn down a draft: retired, by its proposer or someone who could approve it. @param {any} chain @param {{ name: string, level: string, scope?: string, version: number }} i */
+  async function decline(chain, i) {
+    const person = chain && chain.hops && chain.hops.length === 1 && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor : null;
+    if (!person) throw fail("not_allowed", "turning down a draft is a person's own");
+    const scope = i.level === "space" ? "" : i.level === "personal" ? String(i.scope || person.id) : String(i.scope ?? "");
+    const have = await history(String(i.name), String(i.level), scope);
+    const rec = have.find((/** @type {any} */ r) => r.data.version === Number(i.version));
+    if (!rec) throw fail("not_found", `no version ${i.version} of ${i.name}`);
+    if (rec.data.state !== "draft") throw fail("bad_state", `version ${i.version} is a ${rec.data.state}, not a draft`);
+    const proposer = String(rec.data.proposer || "");
+    const mine = proposer === `person:${person.id}`;
+    if (!mine && !(await mayApprove(person, rec.data.level, scope, rec.data.owner || null))) throw fail("not_allowed", "only the proposer or the level's owner turns a draft down");
+    await kernel().records.update(svc(), TYPE, rec.id, { state: "retired", note: mine ? "declined by proposer" : "declined by approver" }, rec.version);
+    return shape({ ...rec, data: { ...rec.data, state: "retired" } });
+  }
+  return { draft, draftFor, approve, applyApproval, rollback, decline, versions, approved, get, history, ownerOfLevel, mayApprove };
 }

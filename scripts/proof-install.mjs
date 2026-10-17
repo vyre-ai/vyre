@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/proof-install.mjs: the install and pairing walk, end to end, printing one line per step (PASS, FAIL with the reason, or SKIP when an earlier step it needs failed).
+// scripts/proof-install.mjs: the update proof (and the live walk), printing one line per step; the first run's own walk is scripts/proof-first-run.mjs. Before: the install and pairing walk, printing one line per step (PASS, FAIL with the reason, or SKIP when an earlier step it needs failed).
 //
 //   node scripts/proof-install.mjs [--server daemon|installer|mac] [--store records|plain|both] [--out DIR] [--live-relay]
 //   --update (with --server installer) installs the OLD release (v0.2.11), pairs the app, and updates it to this checkout from the app (update.apply); see walk.mjs updateSteps
@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRun } from "./lib/proof/run.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
-import { walk, walkTerminal, walkUpdate } from "./lib/proof/walk.mjs";
+import { walkUpdate } from "./lib/proof/walk.mjs";
 import { buildUpdateReleases } from "./lib/proof/update-releases.mjs";
 
 const argv = process.argv.slice(2);
@@ -30,6 +30,7 @@ const out = path.resolve(take("--out", path.join(os.tmpdir(), `proof-install-${p
 if (!["daemon", "installer", "mac"].includes(server)) { console.error("proof-install: --server is daemon, installer or mac"); process.exit(64); }
 if (!["records", "plain", "both"].includes(storeArg)) { console.error("proof-install: --store is records, plain or both"); process.exit(64); }
 const updateProof = argv.includes("--update");
+if (!updateProof && !live) { console.error("proof-install: only the update proof is left here (--update --server installer); the first run is proved by scripts/proof-first-run.mjs"); process.exit(64); }
 if (updateProof && server !== "installer") { console.error("proof-install: --update needs --server installer"); process.exit(64); }
 const stores = /** @type {("records" | "plain")[]} */ (updateProof ? ["plain"] : storeArg === "both" ? ["records", "plain"] : [storeArg]);
 
@@ -56,7 +57,6 @@ try {
     });
   }
   if (update) await walkUpdate({ run, ins, out, update });
-  if (!updateProof) { for (const store of stores) await walk({ run, ins, server, store, out, inCI }); await walkTerminal({ run, ins, server, out }); }
   if (update) await update.stop();
 } finally {
   code = run.finish();

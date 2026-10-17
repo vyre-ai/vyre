@@ -59,13 +59,38 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
+test("windows authenticode: a signed installer is verified, and a missing secret still skips", () => {
+  const ps1 = fs.readFileSync(path.join(REPO, "scripts/windows-authenticode.ps1"), "utf8");
+  const signAt = ps1.indexOf("sign /fd SHA256");
+  const verifyAt = ps1.indexOf("Get-AuthenticodeSignature");
+  assert.ok(signAt > 0 && verifyAt > signAt, "verify runs after sign");
+  assert.match(ps1, /Status -ne "Valid"/);
+  assert.match(ps1, /the signature does not verify/);
+  assert.match(ps1, /Write-Status "unsigned"/);
+  const skip = ps1.indexOf("Write-Status \"unsigned\"");
+  assert.ok(skip > 0 && skip < signAt, "a missing secret leaves the installer unsigned and does not verify");
+});
+
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/lumen-win\.yml/);
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android\]/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android, first-run\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
+});
+
+test("release.yml: the new first run is proved end to end in this run, and a release is not published unless that job succeeded", () => {
+  assert.match(yml, /\n  first-run:\n    needs: \[prepare\]\n[^\n]*\n    uses: \.\/\.github\/workflows\/first-run-e2e\.yml/);
+  const release = yml.slice(yml.indexOf("\n  release:\n"), yml.indexOf("\n    runs-on:", yml.indexOf("\n  release:\n")));
+  assert.match(release, /needs\.first-run\.result == 'success'/, "a skipped or failed first run blocks the release (no 'skipped' escape)");
+  assert.ok(!/first-run\.result == 'skipped'/.test(release));
+  const e2e = fs.readFileSync(path.join(REPO, ".github/workflows/first-run-e2e.yml"), "utf8");
+  for (const must of ["scripts/proof-first-run.mjs --client browser --server installer", "scripts/proof-first-run.mjs --client mac-app --server mac --app /Applications/Vyre.app", "hdiutil attach", "install-box.sh"]) {
+    assert.ok(e2e.includes(must), `the e2e runs: ${must}`);
+  }
+  const script = fs.readFileSync(path.join(REPO, "scripts/proof-first-run.mjs"), "utf8");
+  for (const must of ["Get started", "Create your identity", "Save your recovery key", "Show the command", "spaces.owner.status", "Welcome back", "startInstallerServer", "startMacServer", "Not your server?"]) assert.ok(script.includes(must), `the proof walks: ${must}`);
 });
 
 test("release.yml: the Vyre Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {

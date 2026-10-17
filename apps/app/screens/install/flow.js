@@ -46,7 +46,7 @@ export const BACK = {
 /** Where Back goes from a step. */
 export function backOf(/** @type {string} */ step, /** @type {{ have?: boolean, welcome?: boolean, browser?: boolean, first?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
-  // The first run's three choices: Join a team and Add a server go back to them.
+  // The first run's two choices: Join a team and Add a server go back to them.
   if (ctx.first && (step === "join" || step === "mycloud")) return "choose";
   if (ctx.welcome && step === "name") return "welcome";
   if (ctx.welcome && step === "have") return "welcome";

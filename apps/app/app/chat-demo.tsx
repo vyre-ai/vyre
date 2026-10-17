@@ -39,8 +39,8 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
       <ChatScreen
         sessionId={sample ?? "demo"}
         onBack={() => router.back()}
-        title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : group ? "Northwind lease, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}
-        about={group ? { record: { title: "Northwind Bakery, lease dispute", type: "Matter" }, space: "Juniper Studio", sealed: 2, runsOn: "server" } : undefined}
+        title={sample === "demo-three" ? "Which term is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : group ? "Northwind supply contract, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}
+        about={group ? { record: { title: "Northwind Bakery, supplier dispute", type: "Project" }, space: "Juniper Studio", sealed: 2, runsOn: "server" } : undefined}
         initialAbout={q.about === "1"}
         showSealedNote={q.note === "0" ? false : undefined}
         source={source}

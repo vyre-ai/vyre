@@ -233,8 +233,11 @@ class VyreSignerModule : Module() {
             // onAuthenticationFailed: one unrecognised finger; the prompt stays up for another try.
           },
         )
+        // The prompt is the app's words for what is signed (sign-summary.js): its first line is the title, the rest (a yes-moment's fields) the description, so no line is cut off.
+        val said = (options.prompt ?: "Confirm it is you").split("\n", limit = 2)
         val info = BiometricPrompt.PromptInfo.Builder()
-          .setTitle(options.prompt ?: "Confirm it is you")
+          .setTitle(said[0])
+          .apply { if (said.size > 1 && said[1].isNotBlank()) setDescription(said[1]) }
           .setNegativeButtonText("Cancel")
           .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
           .build()

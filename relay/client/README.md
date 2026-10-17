@@ -85,7 +85,7 @@ survive a reconnect: open a new one on close.
 
 ## Paths
 
-`createPaths({ paths: [{ kind: "direct", base: "https://<box>.<tailnet>.ts.net" }, { kind: "relay", ...box, keyStore, crypto }] })`
+`createPaths({ paths: [{ kind: "direct", base: "https://<box>.<space>.wink.example" }, { kind: "relay", ...box, keyStore, crypto }] })`
 gives the same `fetch`, `events` and `socket`, plus `current`. Direct is used once it answers a
 probe within 1.5 s; a transport error moves to the relay at once (the request keeps its key); on
 the relay, the better path is probed every 60 s while visible and the connection moves back.

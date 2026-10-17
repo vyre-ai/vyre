@@ -281,7 +281,7 @@ test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address,
 
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#live"`, "the how-will-vyre-run step");
-    await page.run(`document.querySelector('input[name="live"][value="solo"]').click()`);
+    await page.run(`document.querySelector('input[name="live"][value="server"]').click()`);
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#claude"`, "Claude sign-in, straight through, no pairing at all");
 

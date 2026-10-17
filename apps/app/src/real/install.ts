@@ -116,8 +116,8 @@ export const listSpaces = () => tool<any[]>("spaces.list");
 export const saveSetup = (space: string, setup: Record<string, unknown> | null) => tool("spaces.setup.save", { space, setup });
 export const claimSetup = (space: string) => tool<{ space: string; setup: any; moved?: boolean }>("spaces.setup.claim", { space });
 // A device that keeps the person's name itself (this app, with or without a server) joins from here: its name's key is in this app, and a server holds no identity to accept for it (join-team.ts).
-export const previewInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.previewTeamInvite(link) : tool<any>("spaces.invites.preview", { link }); };
-export const acceptInvite = async (link: string) => { const t = await import("./team-join"); return (await t.holdsName()) ? t.acceptTeamInvite(link) : tool<any>("spaces.invites.accept", { link }); };
+export const previewInvite = async (link: string) => tool<any>("onboard.join.read", { link });
+export const acceptInvite = async (link: string) => tool<any>("onboard.space.join", { link });
 
 /** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
 export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {
@@ -142,10 +142,10 @@ export async function proposeKitFor(space: string, id: string): Promise<{ ok: bo
  * ONE SPACE PER SERVER: make the paired server's OWN Space the team's (nameServerOwnSpace: spaces.name-here, the directory record for the existing id), keep its root public key beside it, and answer
  * the id. Nothing is hosted. Refusals keep their codes: store_unavailable (the server cannot run the record store, Twenty; its plain words are shown), server_too_old, on_phone (a browser), the directory's own.
  */
-export async function makeServerSpace(slug: string, displayName: string, server?: { key: string; route: { relay: string; route: string; box: string } | null }): Promise<string> {
+export async function makeServerSpace(slug: string, displayName: string, server?: { key: string; route: { relay: string; route: string; box: string } | null }, identity?: import("./claim-space").ClaimIdentity): Promise<string> {
   const { nameServerOwnSpace } = await import("./claim-space");
   const { keepRootPublic } = await import("../state/space-roots");
-  const made = await nameServerOwnSpace({ name: slug, displayName, ...(server ? { server } : {}) });
+  const made = await nameServerOwnSpace({ name: slug, displayName, ...(server ? { server } : {}), ...(identity ? { identity } : {}) });
   await keepRootPublic(made.space, made.rootPublic);
   return made.space;
 }

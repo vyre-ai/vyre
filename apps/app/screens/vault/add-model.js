@@ -28,7 +28,6 @@ const PICK = /** @type {Record<string, { label: string, blurb: string, icon: str
   "github-oauth": { label: "GitHub (sign in)", blurb: "Connect GitHub without making a token.", icon: "term", words: "git device", slug: "github" },
   dropbox: { label: "Dropbox", blurb: "Let files and agents read your Dropbox with an access token.", icon: "file", words: "files storage cloud", slug: "dropbox" },
   cloudflare: { label: "Cloudflare", blurb: "Manage DNS and sites on your domains.", icon: "server", words: "dns domain" },
-  tailscale: { label: "Tailscale", blurb: "Join machines to your private network.", icon: "devices", words: "vpn network" },
   "mcp-bearer": { label: "MCP server token", blurb: "Let Vyre call a tool server that asks for a bearer token.", icon: "link", words: "mcp bearer tools", slug: "mcp-server" },
   telegram: { label: "Telegram bot", blurb: "Message people and groups from a bot.", icon: "chat", words: "bot botfather chat" },
 });
