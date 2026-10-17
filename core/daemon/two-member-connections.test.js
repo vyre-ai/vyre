@@ -40,7 +40,7 @@ async function rig(t) {
   const who = { owner: OWNER, ben: BEN, cy: CY };
   /** a person's own surface: the person is the kernel's, the input names nobody */
   const as = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
-    d.registry.call(tool, input, w === "owner" ? "cli" : "device:abcdefghijklmnop", { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
+    d.registry.call(tool, input, w === "owner" ? "cli" : (tool.startsWith("mcp.") ? "module:connectors" : "device:abcdefghijklmnop"), { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
   /** a call carrying a token the kernel never issued */
   const forged = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: "forged-token-that-the-kernel-never-issued", person: { id: "ps-ben", kind: "passkey" } });
   /** Ben's assistant: an agent in Ben's turn */

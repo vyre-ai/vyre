@@ -35,7 +35,7 @@ test("a member removing their connection sends the vendor's revoke to the vendor
   const chain = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
   await K.gateway.grants.setRole(chain(OWNER), { person: BEN, role: "member" }, { presence: proof() });
   const ben = (await K.surfaces.open(chain(BEN), {})).token, owner = (await K.surfaces.open(chain(OWNER), {})).token;
-  const asBen = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: ben, person: { id: "ps-ben", kind: "passkey" } });
+  const asBen = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool.startsWith("mcp.") ? "module:connectors" : "device:abcdefghijklmnop", { token: ben, person: { id: "ps-ben", kind: "passkey" } });   // the door keeps mcp.* to the owner: a member reaches her hub row through the module that makes her connections
   const asOwner = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", { token: owner });
   const step = (/** @type {string} */ name, /** @type {any} */ ok) => assert.ok(ok, name);
 
@@ -70,7 +70,7 @@ test("a member removing a connection whose vendor named no revocation address is
   const chain = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
   await K.gateway.grants.setRole(chain(OWNER), { person: BEN, role: "member" }, { presence: proof() });
   const ben = (await K.surfaces.open(chain(BEN), {})).token;
-  const asBen = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: ben, person: { id: "ps-ben", kind: "passkey" } });
+  const asBen = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool.startsWith("mcp.") ? "module:connectors" : "device:abcdefghijklmnop", { token: ben, person: { id: "ps-ben", kind: "passkey" } });   // the door keeps mcp.* to the owner: a member reaches her hub row through the module that makes her connections
   assert.ok((await asBen("vault.me.account.create", { password: PW })).data);
   const s = await asBen("connectors.connect", { preset: "fakevendor" });
   assert.equal(s.data?.step, "open", JSON.stringify(s.error || s.data));
