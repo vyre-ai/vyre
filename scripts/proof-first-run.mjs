@@ -15,6 +15,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRun } from "./lib/proof/run.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
@@ -124,7 +125,8 @@ async function macDriver() {
   if (!fs.existsSync(bin)) throw new Error(`no app at ${appPath}`);
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-first-run-"));
   /** @type {MacPage | null} */ let page = null;
-  const start = async () => { page?.stop(); page = new MacPage(bin, { VYRE_HOME: home, VYRE_SOCKET: path.join(home, "no-vyred.sock"), VYRE_NO_DIALOGS: "1" }); await page.started(60_000); await page.open(); };
+  const hookStages = () => need().evaluate(() => { const w = /** @type {any} */ (window); if (w.__vyreStages) return true; w.__vyreStages = []; const f = console.info.bind(console); console.info = (...a) => { try { const s = String(a[0]); if (s.startsWith("vyre:stage ")) w.__vyreStages.push(new Date().toISOString().slice(11, 19) + " " + s.slice(11)); } catch {} f(...a); }; return true; }).catch(() => false);
+  const start = async () => { page?.stop(); page = new MacPage(bin, { VYRE_HOME: home, VYRE_SOCKET: path.join(home, "no-vyred.sock"), VYRE_NO_DIALOGS: "1" }); await page.started(60_000); await page.open(); await hookStages(); };
   const need = () => /** @type {MacPage} */ (page);
   return {
     open: start,
@@ -135,8 +137,10 @@ async function macDriver() {
         // What to read when the app does not get where it should: a picture, whether this window can open a socket to the relay at all, and the end of the screen.
         await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
         const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
+        const fetched = await need().evaluate(async (/** @type {string} */ url) => { try { await fetch(url.replace(/^ws/, "http") + "/", { mode: "no-cors", cache: "no-store" }); return "reachable"; } catch (x) { return "blocked: " + x; } }, `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
+        const stages = await need().evaluate(() => (/** @type {any} */ (window).__vyreStages || []).join("; ")).catch(() => "");
         const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
-        throw new Error(`${e.message} | this window to the relay: ${probe} | the screen ends: ${body.slice(-300)}`);
+        throw new Error(`${e.message} | stages: ${stages || "none seen"} | window fetch to the relay (http, same port): ${fetched} | window WebSocket to /v1/diag: ${probe} | the screen ends: ${body.slice(-300)}`);
       }
     },
     async click(t) {
@@ -163,6 +167,16 @@ async function macDriver() {
     },
     async stop() { page?.stop(); },
   };
+}
+
+/** What the server itself logged about the pairing, for a failed wait: its own log lines that mention the relay, the setup, the pairing, the owner or the directory (never a code: the server never logs one). */
+function serverPairingLines() {
+  try {
+    let text = "";
+    if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "tail -n 600 ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8" }).stdout || "");
+    else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8").split("\n").slice(-600).join("\n") + "\n"; }
+    return text.split("\n").filter((l) => /wink|relay|pair|owner|adopt|setup|ticket|directory|confirm/i.test(l) && !/module .* running|apiVersion/.test(l)).slice(-30).map((l) => l.slice(0, 220)).join(" || ");
+  } catch (e) { return `no server log (${/** @type {Error} */ (e).message})`; }
 }
 
 const cleanups = /** @type {(() => Promise<any> | any)[]} */ ([]);
@@ -239,7 +253,10 @@ try {
   }, { needs: [S("create a space: the screen shows one install command with a one-time code")] });
 
   await run.step(S("the server pairs to the creator, the screen names it, and the app reaches Ready"), async () => {
-    const t = await drv.waitFor("Your space is online", 300_000);
+    // The installer builds the box image on the runner (minutes) before the server can answer, then the pairing itself: the wait is for the whole of that.
+    /** @type {string} */ let t;
+    try { t = await drv.waitFor("Your space is online", 900_000); }
+    catch (e) { const lines = serverPairingLines(); console.log(`  server pairing log: ${lines}`); throw new Error(`${/** @type {Error} */ (e).message} | server pairing log: ${lines}`); }
     await drv.shot("04-space-online");
     if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
