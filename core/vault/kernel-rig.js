@@ -29,7 +29,7 @@ export async function kernelRig(o = {}) {
   const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true, ...(o.taskOpen === false ? {} : { taskOpen: o.taskOpen || (() => true) }), approverHolds: (/** @type {string} */ p, /** @type {string} */ a, /** @type {string} */ r) => K.vault.personMay(p, a, r) });
   await gs.bootstrap({ owner: OWNER });
   // the vault module's right to make grants for others, as its manifest declares it (core/vault/module.json needs.kernel.mints)
-  await gs.installModule("vault", { actions: [], mints: [{ prefix: "vault", actions: ["vault.use", "vault.edit", "vault.fill"] }] });
+  await gs.installModule("vault", { actions: [], mints: [{ prefix: "vault", actions: ["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.rotate"] }] });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {
     space: SPACE, owner: OWNER, grants: gw.grants, authorize: gw.authorize,
