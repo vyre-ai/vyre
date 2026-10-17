@@ -227,7 +227,7 @@ test("tagging a login in a chat lends it to that chat's agent for that chat only
   const lent = await M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-1"] });
   const ref = lent.shared.ref;
   assert.equal(lent.notice, NOTICE);
-  assert.ok(lent.shared.expires - w.rig.clock() <= 3_600_000 + 60_000, "short by default: the end call is the normal end, the clock the backstop");
+  assert.ok(lent.shared.expires - w.rig.clock() <= 1_800_000 + 60_000, "30 minutes by default: the end call is the normal end, the clock the backstop");
   await stops(w.fill(ref, "juno", ORIGIN, "chat-1"));
   await denied(w.fill(ref, "juno", ORIGIN, "chat-2"));
   await denied(w.fill(ref, "juno", ORIGIN));
@@ -270,7 +270,8 @@ test("a loan is a member's own login, for one chat, short, and the same checks a
   await assert.rejects(M.shareAs(BEN, { ...ok, sessions: [] }), /one chat/);
   await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["a", "b"] }), /one chat/);
   await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["bad chat!"] }), /one chat/);
-  await assert.rejects(M.shareAs(BEN, { ...ok, expires: w.rig.clock() + 2 * 86_400_000 }), /within a day/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, expires: w.rig.clock() + 2 * 3_600_000 }), /within an hour/);
+  await M.shareAs(BEN, { ...ok, sessions: ["chat-9"], expires: w.rig.clock() + 3_000_000 });   // 50 minutes is allowed
   await assert.rejects(M.shareAs(BEN, { ...ok, item: "a-note" }), /only a login/);
   await assert.rejects(M.shareAs(BEN, { ...ok, agent: "assistant" }), /default assistant/);
   w.setLocked(true);
@@ -279,4 +280,30 @@ test("a loan is a member's own login, for one chat, short, and the same checks a
   // an agent she does not instruct herself is fine for a loan: it is that chat's agent and the grant holds in that chat only
   w.setLocked(false);
   await M.shareAs(BEN, { ...ok, agent: "team" });
+});
+
+test("a loan follows the login like a share: a refresh that fails, a login that vanishes or a locked vault deletes it with its grant", async t => {
+  const w = await world(t);
+  const loan = async (chat = "chat-1") => (await w.M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: [chat] })).shared.ref;
+  const count = () => Number(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n);
+  const grants = async () => (await w.rig.K.mint.list({ source: "vault:member-share:" })).length;
+  // a refresh that throws
+  const ref = await loan();
+  const real = w.v.access.members.people.lent;
+  w.v.access.members.people.lent = () => ({ put: async () => { throw new Error("disk full"); }, remove: real(BEN).remove, get: real(BEN).get });
+  w.items.get(BEN).get(LABEL).fields.password = "fixture-NEW-password-0123456789abcdef";
+  await assert.rejects(w.M.changed(BEN, LABEL), /disk full/);
+  w.v.access.members.people.lent = real;
+  assert.equal(count(), 0); assert.equal(await grants(), 0); assert.ok(!w.lentStore.get(BEN).has(ref));
+  // a locked vault at the change
+  await loan("chat-2");
+  w.setLocked(true);
+  await assert.rejects(w.M.changed(BEN, LABEL), e => e.code === "locked");
+  w.setLocked(false);
+  assert.equal(count(), 0); assert.equal(await grants(), 0);
+  // a login that vanishes, with a loan and an ordinary share both on it
+  await loan("chat-3"); await w.share();
+  w.items.get(BEN).delete(LABEL);
+  await w.M.changed(BEN, LABEL);
+  assert.equal(count(), 0); assert.equal(await grants(), 0); assert.equal(w.lentStore.get(BEN).size, 0);
 });

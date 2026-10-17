@@ -14,7 +14,7 @@ import { memberOf } from "./tools/me.js";
 import { MemberCopies } from "./member-copies.js";
 
 export const SOURCE = "vault:member-share";
-const DAY = 86_400_000, HOUR = 3_600_000;
+const DAY = 86_400_000, HOUR = 3_600_000, HALF_HOUR = 1_800_000;
 const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
 export const NOTICE = "Your agent can use this login while you're away.";
 
@@ -59,8 +59,8 @@ export class MemberShare {
     if (!this.people) throw bad("the member vaults are not running", "unavailable");
     const origin = exactOrigin(i.origin);
     if (!origin) throw bad("name the site the agent may sign in to, as an address such as https://app.example.com");
-    const expires = i.expires === undefined ? now + (thread ? HOUR : 7 * DAY) : Number(i.expires);
-    if (!(expires > now) || expires > now + (thread ? DAY : 366 * DAY)) throw bad(thread ? "a loan to a chat ends within a day" : "a share ends in the future and within a year");
+    const expires = i.expires === undefined ? now + (thread ? HALF_HOUR : 7 * DAY) : Number(i.expires);
+    if (!(expires > now) || expires > now + (thread ? HOUR : 366 * DAY)) throw bad(thread ? "a loan to a chat ends within an hour" : "a share ends in the future and within a year");
     const agent = String(i.agent || "").toLowerCase();
     if (!agent || agent === "assistant") throw bad("name one of your agents; the default assistant takes no shared login", "bad_input");
     // A share is only to an agent she may instruct herself (she made it, or was given Can use or Can edit): a login put into an agent others also instruct is filled for whoever instructs it. A loan to a chat is only to
