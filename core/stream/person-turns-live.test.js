@@ -533,10 +533,9 @@ test("lent key: with two members in one chat, the second asker's process is hand
   try { await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000); }
   catch (e) {
     // what actually happened, before the timeout hides it: which key went to which process, who lent what, and what the thread says
-    const th = (r.b.reg.deps.db.prepare("SELECT id FROM threads_threads LIMIT 5").all ? [] : []);
     const evs = await r.b.reg.call("threads.get", { thread: kitThreadOf(r), limit: 100 }, "cli").then((/** @type {any} */ x) => (x.data && x.data.events || []).map((/** @type {any} */ ev) => `${ev.type}:${String(ev.payload && (ev.payload.text || ev.payload.error || ev.payload.reason || ev.payload.via) || "").slice(0, 120)}`)).catch((/** @type {any} */ x) => [String(x)]);
     console.log("[lentkey-diag]", JSON.stringify({ launches: r.launches(), lends: r.lends, answers: r.answers(), events: evs, framesTail: textOf(r.watch.frames).slice(-400) }));
-    void th; throw e;
+    throw e;
   }
   const first = r.launches();
   assert.equal(first.length, 1, "one process, carol's");
