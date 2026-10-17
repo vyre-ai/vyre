@@ -52,7 +52,7 @@ export class ConnectionTokens {
     if (as !== undefined) {
       if (typeof as !== "string" || !PERSON.test(as) || String(K.owner) === as) return false;   // a named person is a member of the Space, never the Space owner and never a stored or made-up value
       if (as === owner) return true;
-      try { return Boolean(K.vault && typeof K.vault.personMay === "function" && await K.vault.personMay(as, write ? "vault.call" : "vault.read", connectionUrn(K.space, owner, name))); } catch { return false; }
+      try { return Boolean(K.vault && typeof K.vault.personMay === "function" && await K.vault.personMay(as, write ? "vault.call" : "vault.read", connectionUrn(K.space, owner, name), write)); } catch { return false; }
     }
     let chain;
     try { chain = await K.chain(meta || {}); } catch { return false; }

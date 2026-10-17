@@ -18,8 +18,8 @@ export function registerGroups({ tool, spaceOf, gate, kernelHandle, kctxOf, refu
     const c = String(/** @type {any} */ (e).code || "");
     if (c === "needs_presence") return refuse("This change needs your approval on your device.", "needs_presence");
     if (c === "not_allowed") return refuse("Only an owner or an admin can make or change a group.", "forbidden");
-    if (c === "exists") return refuse("A group with that name already exists.", "exists");
-    if (c === "not_found") return refuse("There is no such group.", "not_found");
+    if (c === "exists") return refuse("A group with that name already exists: choose another name, or change that group by its id.", "exists");
+    if (c === "not_found") return refuse("There is no such group: check the id against the space's groups, or ask an owner or an admin.", "not_found");
     if (c === "bad_input") return refuse(String(/** @type {any} */ (e).message || "That is not a valid group."), "bad_input");
     return e;
   };

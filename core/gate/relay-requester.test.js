@@ -91,3 +91,19 @@ test("mcp: a member's server calls are hers alone: she cannot update or remove t
   assert.ok(bare.error, JSON.stringify(bare));
   assert.deepEqual(await rows(), ["issues"]);
 });
+
+test("vault: `as` on the connection token and revoke from any caller but the MCP hub is refused: a person, an agent and another module get no token and no revoke", { timeout: 240_000 }, async t => {
+  const w = await world(t);
+  const input = { owner: BEN, connection: "notion-ben-auth", as: BEN };
+  for (const tool of ["vault.connection.token", "vault.connection.revoke"]) {
+    const asBen = await w.as(BEN, tool, input);
+    assert.ok(asBen.error, `${tool}: a person is refused: ${JSON.stringify(asBen)}`);
+    const asOwner = await w.as(w.OWNER, tool, input);
+    assert.ok(asOwner.error, `${tool}: the owner is refused: ${JSON.stringify(asOwner)}`);
+    const agent = await w.agentTurn(tool, input);
+    assert.ok(agent.error, `${tool}: an agent is refused: ${JSON.stringify(agent)}`);
+    const module = await w.d.registry.call(tool, input, "module:connectors");
+    assert.ok(module.error, `${tool}: another module is refused: ${JSON.stringify(module)}`);
+    for (const r of [asBen, asOwner, agent, module]) assert.ok(!/access_token/.test(JSON.stringify(r)), `${tool}: no token in any answer`);
+  }
+});

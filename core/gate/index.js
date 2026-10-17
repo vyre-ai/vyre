@@ -446,7 +446,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission: ask the owner or an admin which one you mean, or take its id from the standing permissions on your Gate screen"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };

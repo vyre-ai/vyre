@@ -66,7 +66,7 @@ export class Access {
       if (as !== undefined) {
         if (typeof as !== "string" || !as) return false;
         if (owner && as === String(owner)) return true;
-        return Boolean(await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : await this.urn(String(connection))));
+        return Boolean(await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : await this.urn(String(connection)), level === "call"));   // at call level a grantee at Fill in "holds" it: the outward call is held at the Gate for the yes
       }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
