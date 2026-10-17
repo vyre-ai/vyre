@@ -13,6 +13,8 @@ const hintOf = (/** @type {any} */ i) => `${i.kind}${i.description ? " · " + St
 
 const TURN_MS = 30 * 60_000;
 /** What can be lent to an agent for a turn: a login (the copy-and-grant of member-share.js) and an app connection (a connection share). Anything else is not lent. */
+import { requireYes } from "../mention-yes.js";
+
 const LENDABLE = new Set(["login", "connection", "api-credential"]);
 
 /**
@@ -59,12 +61,13 @@ export function register({ ctx, people, internal, define, now = Date.now, lend =
   const def = define || ((/** @type {string} */ n, /** @type {any} */ d) => ctx.tool(n, d));
   def("vault.me.mention.lend", {
     internal: true,
-    description: "A member tagged one of her own items in a chat: lend it to that chat's agent at Fill in for this turn only. { asker, id, thread, agent, origin? } -> { lent, name, agent, until }. Switchboard only (module:threads); asks for her presence; the agent never sees the value.",
-    input: obj({ asker: str, id: str, thread: str, agent: str, origin: str }, ["asker", "id", "thread", "agent"]),
+    description: "A member tagged one of her own items in a chat: lend it to that chat's agent at Fill in for this turn only. { asker, id, thread, agent, origin?, yes } -> { lent, name, agent, until }. Switchboard only (module:threads); needs her signed yes (input.yes, bound to these fields, single use); the agent never sees the value.",
+    input: obj({ asker: str, id: str, thread: str, agent: str, origin: str, yes: str }, ["asker", "id", "thread", "agent", "yes"]),
     presence: { summary: async (/** @type {any} */ i) => `Let ${String((i && i.agent) || "the agent").slice(0, 40)} use ${JSON.stringify(String((i && i.id) || "").slice(0, 60))} for this turn, without seeing it` },
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       const owner = await asker(input, meta);
       const thread = threadOk(input.thread), agent = agentName(input.agent), expires = now() + TURN_MS;
+      await requireYes(ctx, owner, input);   // her one yes, spent here: after this nothing below refuses on presence
       let items;
       try { items = (await people.list(owner, {})).items; } catch (e) { throw locked(e); }
       const it = items.find((/** @type {any} */ i) => i.name === String(input.id));
