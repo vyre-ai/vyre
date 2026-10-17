@@ -37,6 +37,7 @@
       { "name": "vault.lock", "effect": "write", "reach": "person" },
       { "name": "vault.identity", "effect": "read", "reach": "anyone" },
       { "name": "vault.mcp.status", "reach": "modules" },
+      { "name": "vault.connection.may", "effect": "read", "reach": "modules" },
       { "name": "vault.connections.lend", "effect": "write", "reach": "modules" },
       { "name": "vault.connections.end", "effect": "write", "reach": "modules" },
       { "name": "vault.mcp.base", "effect": "write", "reach": "modules" },

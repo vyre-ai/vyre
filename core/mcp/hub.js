@@ -401,6 +401,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
+ *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call" }, who: Who) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
 
@@ -614,6 +615,8 @@ export class Hub {
    * @param {any} r @param {Who} who @param {{ agentProjects?: any, project?: any }} memo
    */
   async inScope(r, who, memo) {
+    // A person's connection has no scope list: whoever may use it is whoever the Vault says holds its item (a grant), the person who made it included. Neither the person shortcut nor a #tag reaches it.
+    if (r.owner) return this.mayUse(r, who, "read");
     if (who.person) return true;
     // A #tag in the person's own turn: this thread (or one it came from) may use this server, whatever its scope says.
     if (who.thread && this.threadGrants.has(r.name)) {
@@ -637,6 +640,16 @@ export class Hub {
     if (projects === "*") return true;
     const project = await this.projectOf(who, memo);
     return Boolean(project && projects.includes(project));
+  }
+
+  /**
+   * Whether the verified caller holds a person's connection at this level: "read" (see it, run its read tools) or "call" (run an outward tool, which is still held at the Gate). The Vault answers from the kernel
+   * with the call's own chain; no answer, an error or a hub with no way to ask is no.
+   * @param {any} r @param {Who} who @param {"read"|"call"} level
+   */
+  async mayUse(r, who, level) {
+    if (typeof this.deps.mayUseConnection !== "function") return false;
+    try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level }, who)) === true; } catch { return false; }
   }
 
   async projectOf(who, memo) {
@@ -708,6 +721,7 @@ export class Hub {
       t = this.findTool(this.must(r.name), tool);
     }
     if (!t) throw fail("not_found", `${r.name} has no tool ${String(tool).slice(0, 80)} that is on`);
+    if (r.owner && (t.outward || input.hold === true) && !(await this.mayUse(r, who, "call"))) throw fail("denied", `${t.tool} on ${r.name} sends or changes something, and you may only read through this connection`);
     if (t.outward) return this.hold(r, t, args, who, memo);
     if (input.hold === true) return this.hold(r, { ...t, kind: t.kind || "send" }, args, who, memo);
     return this.run(r.name, t.tool, args, { agent: who.agent });

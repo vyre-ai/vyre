@@ -203,6 +203,27 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
 });
 
+test("a connection may be used by the caller's own chain at the level the kernel gives it: read to see, call to send; another owner's address and bad input are no", async t => {
+  const { cred, give, v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  await cred("clio-token");
+  await v.access.convertScopes();
+  const ben = { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } };
+  const may = (who, level, over = {}) => v.access.mayUseConnection({ connection: "clio-token", level, ...over }, { chain: who });
+  assert.equal(await may(rig.owner(), "call"), true, "the owner of the vault holds their own item");
+  assert.equal(await may(rig.person("per_ben"), "read"), false, "a member with no grant holds nothing");
+  const g = await give("clio-token", ben, { actions: ["vault.read"] });
+  assert.equal(await may(rig.person("per_ben"), "read"), true, "read to see it");
+  assert.equal(await may(rig.person("per_ben"), "call"), false, "read does not reach an outward tool");
+  assert.equal(await may(rig.person("per_cy"), "read"), false, "another member is untouched");
+  await rig.gw.grants.revoke(rig.owner(), g.id, "no longer", { presence: { n: 1 } });
+  assert.equal(await may(rig.person("per_ben"), "read"), false, "revoked: the next question is no");
+  await give("clio-token", ben, { actions: ["vault.read", "vault.call"] });
+  assert.equal(await may(rig.person("per_ben"), "call"), true);
+  assert.equal(await may(rig.person("per_ben"), "admin"), false, "an unknown level is no");
+  assert.equal(await may(rig.person("per_ben"), "read", { connection: "../x" }), false, "a bad item name is no");
+  assert.equal(await may(rig.person("per_ben"), "read", { owner: "per_cy" }), false, "a member's own vault has no address yet: no, never the owner's item");
+});
+
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
   const { cred, ask, give, agent, net, GET, v } = await mk(t);
   await cred("graph-api");

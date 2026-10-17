@@ -36,6 +36,31 @@ export class Access {
     return `vyre://${K.space}/vault/${this.vid}/item/${name}`;
   }
 
+  /**
+   * The address of a person's connection item: the Space owner's (no `owner`) lives in the owner's personal vault. A member's own vault has no address yet, so another owner is not found and nothing is allowed.
+   * @param {string | undefined | null} owner @param {string} connection @returns {Promise<string | null>}
+   */
+  async connectionAddress(owner, connection) {
+    if (owner || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return null;
+    return this.urn(String(connection));
+  }
+
+  /**
+   * Whether the verified caller of this turn may use a connection at a level: the kernel's answer for the caller's own chain on the item's address (`vault.read` to see it and run read tools, `vault.call` for
+   * an outward tool). Allow or not; an unknown item, a missing kernel or any error is not.
+   * @param {{ owner?: string, connection: string, level: string }} i @param {any} meta
+   */
+  async mayUseConnection({ owner, connection, level }, meta) {
+    try {
+      const K = this.need();
+      if (level !== "read" && level !== "call") return false;
+      const resource = await this.connectionAddress(owner, connection);
+      if (!resource) return false;
+      const chain = await K.chain(meta);
+      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource })).effect === "allow";
+    } catch { return false; }
+  }
+
   /** An agent's stable id (the kernel's grants name it, never the name), or null for an agent that does not exist. @param {string} name */
   async uidOf(name) {
     const r = await this.ctx.call("agents.uid", { name: String(name).toLowerCase() });

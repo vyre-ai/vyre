@@ -76,6 +76,8 @@ export default {
         const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
         return a ? a.projects : [];
       },
+      // A person's connection is used by whoever the Vault says holds its item; the call inherits the turn's chain, so the Vault reads the caller from the kernel.
+      mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
         return (t.data && t.data.thread && t.data.thread.project) || null;
