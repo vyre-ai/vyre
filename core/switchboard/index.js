@@ -4044,8 +4044,7 @@ export default {
       let v = a.person ? await memberKey(ctx, a) : launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;   // a person's key is lent from their own vault for this turn, never read from the home's (member-key.js)
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
-      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
-      // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
+      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was checked when the account was made (https, or this machine), and it is the account's, not the thread's.
       const own = {};
       // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
       if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });
