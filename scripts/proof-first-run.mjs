@@ -142,7 +142,7 @@ async function macDriver() {
         await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
         const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
         const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
-        const stages = await need().evaluate(() => (/** @type {any} */ (window).__vyreStages || []).join("; ")).catch(() => "");
+        const stages = await need().evaluate(() => ((/** @type {any} */ (window).__vyreTrail || []).concat(/** @type {any} */ (window).__vyreStages || [])).join("; ")).catch(() => "");
         throw new Error(`${e.message} | stages: ${stages || "none seen"} | this window to the relay: ${probe} | the screen starts: ${body.slice(0, 300)} | the screen ends: ${body.slice(-300)}`);
       }
     },
@@ -173,11 +173,17 @@ async function macDriver() {
 }
 
 /** The server's own log for a failed wait: every warn line in full with the 20 lines before it, then the last 40 lines that mention the relay, the setup, the pairing, the owner or the directory (never a code: the server never logs one). */
+/** The end of the server's own log, from the container or the Mac server's proof home. */
+function serverLogText() {
+  let text = "";
+  if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "cat ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout || "");
+  else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8") + "\n"; }
+  return text;
+}
+
 function serverLogForFailure() {
   try {
-    let text = "";
-    if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "tail -n 800 ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8" }).stdout || "");
-    else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8").split("\n").slice(-800).join("\n") + "\n"; }
+    const text = serverLogText().split("\n").slice(-800).join("\n");
     const all = text.split("\n").filter((l) => l.trim());
     const out = /** @type {string[]} */ ([]);
     all.forEach((l, i) => { if (/\bwarn:/.test(l) && /\[spaces\]/.test(l)) out.push(`-- warn at line ${i}`, ...all.slice(Math.max(0, i - 20), i + 1)); });
@@ -269,14 +275,17 @@ try {
     await drv.click("Continue");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
-    if (!/owner/i.test(ready)) throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`);
+    // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
+    await until(async () => /owner/i.test(await drv.text()), 30_000, "Ready listing the space with the owner role").catch(() => { throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`); });
     await drv.click("Open Vyre");
     await until(async () => !(await drv.text()).includes("You're in"), 30_000, "Open Vyre leaving the first run");
   }, { needs: [S("the real installer runs the command on a server")] });
 
   await run.step(S("the server names this identity its owner"), async () => {
-    const owner = await srv.operator("spaces.owner.status", {});
-    if (!owner || owner.identity !== personId) throw new Error(`the server's owner is ${JSON.stringify(owner)}, not ${personId}`);
+    // The kernel logs who it took as owner ("the owner is now the claimed identity <id>"); no server tool names the owner to an operator, and the id is not a secret.
+    const log = serverLogText();
+    const claimed = [...log.matchAll(/the owner is now the claimed identity (per_[a-z2-7]+)/g)].map((m) => m[1]);
+    if (!claimed.length || claimed[claimed.length - 1] !== personId) throw new Error(`the server's kernel took ${claimed.length ? claimed[claimed.length - 1] : "no identity"} as owner, not ${personId}`);
   }, { needs: [S("the server pairs to the creator, the screen names it, and the app reaches Ready")] });
 
   await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {

@@ -11,6 +11,7 @@ import { fromSeed } from "../identity/keys.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
+import { trail } from "./trail.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
@@ -50,7 +51,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 let lastTrace = "";
 /** What a server answers when an act needs the person's own approval. */
 const PRESENCE_CODES = ["presence_required"];
-const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; try { if (typeof console !== "undefined") console.info(`vyre:stage step ${line}`); } catch { /* no console */ } };
+const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; trail(`step ${line}`); };
 
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -264,6 +265,9 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
+    // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.
+    "identity.vault.install": async () => ({ installed: false, reason: "no_vault" }),
+
     "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
     // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
@@ -391,7 +395,7 @@ export function createHost(o) {
       const run = createAddServer({
         client: ports.client, relay: ports.relay, autoPair: true,
         // The stages of this run, one line each (no code, no key): what a failed first run needs in order to say where it stopped.
-        onChange: (s) => { if (typeof console !== "undefined") console.info(`vyre:stage ${s.stage}${s.error ? ` ${s.error.code}` : ""}`); },
+        onChange: (s) => { trail(`${s.stage}${s.error ? ` ${s.error.code}` : ""}`); },
         issue: async () => {
           const setupKey = await ports.createSetupKey();
           const secret = random(16);

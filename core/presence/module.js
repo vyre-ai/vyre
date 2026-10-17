@@ -291,7 +291,7 @@ export default {
         const peer = meta.peer;
         const device = peer && peer.kind === "device" ? nodeOf(meta) : null;
         const refuse = () => Object.assign(new Error("This device could not sign in. If it lost its session, it signs in again with its own key. If the owner removed it, pair it again from the owner's device."), { code: "denied" });
-        if (!device) throw refuse();
+        if (!device) { ctx.log(`presence: a paired-session start came from a channel that is not a paired device (${peer ? String(peer.kind) : "no peer"})`); throw refuse(); }
         const wr = await ctx.call("wink.device.record", { id: device }).catch(() => null);
         // the enclave key counts only while it still stands on the identity's directory list (a revoked phone's entry no longer does): wink checks it, cached for 10 minutes
         const live = typeof input.esig === "string" ? await ctx.call("wink.device.enclave-live", { device }).catch(() => null) : null;
@@ -302,6 +302,7 @@ export default {
         const s0 = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: enclaveStands && wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
         const s = s0;
         if ("refused" in s) {
+          ctx.log(`presence: ${device} could not start its paired session (${people.holdsGrant(device) ? "its grant is there, so the signature was wrong" : "no grant for it"})`);
           if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
