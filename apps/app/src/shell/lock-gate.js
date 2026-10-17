@@ -81,6 +81,15 @@ export function createIdleLock(o) {
   };
 }
 
+/**
+ * Is this page exempt from the cover? Only the proof fixtures of a build made for the proof (EXPO_PUBLIC_VYRE_PROOF=1, a build-time constant a release never has): the two-server proof stubs every tool call to
+ * fail, and a fail-closed cover would sit over the page it is meant to drive. A release build returns false for every path.
+ * @param {{ proofBuild: boolean, path: string }} o
+ */
+export function coverExempt({ proofBuild, path }) {
+  return proofBuild === true && /^\/two-servers-proof(\/|$)/.test(path);
+}
+
 /** Codes that mean "this build has no identity tool at all", which is no lock, as against a daemon that did not answer. */
 const NO_IDENTITY_TOOL = new Set(["no_such_tool", "not_found", "undeclared"]);
 /** What identity.status gave when it failed: a build with no identity tool is `null` (nothing to lock), anything else cannot be told from a locked vault, so it is `{ unreachable: true }`. @param {any} e */
