@@ -132,7 +132,6 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
 // ---- gated pairings finish: the typed code, the QR, a --pair-to server and a phone (the Mac and Windows apps, the iPhone and Android app all use these client calls) ----
 
 /** The release defaults: the typed code is on. */
-const typedOn = t => { const saved = process.env.VYRE_WINK_TYPED_CODE; process.env.VYRE_WINK_TYPED_CODE = "1"; t.after(() => { if (saved === undefined) delete process.env.VYRE_WINK_TYPED_CODE; else process.env.VYRE_WINK_TYPED_CODE = saved; }); };
 const devKey = (storage = "software") => { const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }); return { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage }; };
 const setup = async (t, kernel = true) => {
   const ident = await standinIdentity(t);
@@ -172,7 +171,6 @@ test("a device the box does not know is refused with words a client can tell fro
 });
 
 test("long code -> words -> adopt, real daemon and relay, typed code on (the release default): the app's pairServer finishes and the same key store reconnects as the paired device", async t => {
-  typedOn(t);
   const { ident, w } = await setup(t);
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const ks = keystore(t);
