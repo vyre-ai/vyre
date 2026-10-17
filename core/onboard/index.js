@@ -117,7 +117,7 @@ export default {
      * a fresh home with neither is not owned.
      */
     const isOwned = async () => {
-      if (config.isServer(ctx.config.machine)) return Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
+      if (config.isServer(ctx.config.machine)) return Boolean(net().ownerSeen) || Boolean(await ctx.call("wink.server.owned", {}).then((/** @type {any} */ r) => Boolean(r && (r.owned === true || (r.data && r.data.owned === true)))).catch(() => false));
       const id = await ctx.call("spaces.identity.id", {}).catch(() => null);
       return Boolean(id && (id.id || (id.data && id.data.id)));
     };
