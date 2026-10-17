@@ -196,6 +196,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
+      try { console.info("vyre:stage step pair: adopted, opening the paired session"); } catch { /* no console */ }
       // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
       const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
