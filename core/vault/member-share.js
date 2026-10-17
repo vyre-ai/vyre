@@ -29,6 +29,10 @@ export class MemberShare {
   async grant(c) {
     const K = this.K;
     await K.mint.end({ source: `${SOURCE}:${c.ref}`, reason: "shared again" });
+    await K.mint.end({ source: `${SOURCE}:${c.ref}:member`, reason: "shared again" });
+    // Her own side of the share: a chain of [the member, the agent] holds only what BOTH hold, and nothing yet lets a member use a resource of her own vault by being its owner, so the share also gives HER the same
+    // Fill in on the copy's address (this one address, this one site, until the same end). It is what the kernel evaluates for the member when it is asked about her agent, and it ends with the agent's grant.
+    await K.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: c.owner, space: K.space } }, actions: ["vault.fill"], resource: { prefix: connectionUrn(K.space, c.owner, c.ref) }, conditions: { where: { origins: [c.origin] }, when: { expires: c.expires } }, source: `${SOURCE}:${c.ref}:member`, reason: "a member shared a login with her agent" });
     return K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: c.uid, space: K.space } }, actions: ["vault.fill"], resource: { prefix: connectionUrn(K.space, c.owner, c.ref) }, conditions: { where: { origins: [c.origin] }, when: { expires: c.expires } }, source: `${SOURCE}:${c.ref}`, reason: "a member shared a login with this agent" });
   }
 
@@ -75,6 +79,7 @@ export class MemberShare {
     const rows = this.copies.match(q);
     for (const r of rows) {
       try { await this.K.mint.end({ source: `${SOURCE}:${r.ref}`, reason: why }); } catch { /* an older end already took it */ }
+      try { await this.K.mint.end({ source: `${SOURCE}:${r.ref}:member`, reason: why }); } catch { /* an older end already took it */ }
       await this.copies.remove(r.ref);
       this.access.v.audit("member-unshare", r.ref, `person:${q.owner}`, true, `agent:${r.agent}`, { origin: r.origin, why });
       this.access.v.emit("vault.member-unshared", { ref: r.ref, agent: r.agent, origin: r.origin, why });

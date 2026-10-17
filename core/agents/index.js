@@ -890,13 +890,13 @@ export default {
       run: async (i, meta0) => {
         const { caller } = meta0;
         if (!isPerson(caller)) throw Object.assign(new Error("only a person writes in a Flow's chat"), { code: "denied" });
+        const as = { as: String(caller) };
         const a = must(i.agent);
         if (config && (await config.levelOf(meta0, a)) === "none") throw Object.assign(new Error(`${a.name} is not shared with you. Ask its owner for Can use.`), { code: "denied" });
         const text = String(i.text || "").trim().slice(0, 4000);
         if (!text) throw Object.assign(new Error("write something to ask"), { code: "bad_input" });
         const forPerson = (await personOf(meta0)) || undefined;
         // the Flow and its runs, read as the person: no access to the Flow, no wake
-        const as = { as: String(caller) };
         const d = await ctx.call("flows.describe", { id: String(i.flow) }, as);
         if (d.error) throw Object.assign(new Error(d.error.message || "that Flow cannot be read"), { code: d.error.code === "not_found" ? "not_found" : "denied" });
         // the runs of THIS Flow, read as the person; a run she names must be one of them (so a run id of another Flow, or one she may not inspect, wakes nothing)

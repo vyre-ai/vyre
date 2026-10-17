@@ -37,7 +37,7 @@
       { "name": "flows.from-chat", "effect": "write", "reach": "anyone" },
       { "name": "flows.connections", "effect": "read", "reach": "anyone" },
       { "name": "flows.attention", "effect": "read", "reach": "anyone" },
-      { "name": "flows.settle", "effect": "write", "reach": "person" },
+      { "name": "flows.settle", "effect": "write", "reach": "anyone" },
       { "name": "flows.advance", "effect": "write", "reach": "person" },
       { "name": "flows.patch", "effect": "write", "reach": "anyone" },
       { "name": "flows.test.save", "effect": "write", "reach": "anyone" },

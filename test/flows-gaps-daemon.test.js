@@ -210,11 +210,11 @@ test("one person, two Spaces: the AI daily budget and the context budget are eac
   assert.ok(fh && fh !== host && firm.space !== d.kernel.id.space);
   const home = host.flows.tools, other = fh.flows.tools;
   assert.equal((await home["flows.budget"](host.personChain(), {})).tokens_per_day, 200_000, "the default");
-  await home["flows.budget"](host.personChain(), { tokens_per_day: 111, context_tokens: 2000 });
-  await other["flows.budget"](fh.personChain(), { tokens_per_day: 222_000, context_tokens: 3000 });
+  await home["flows.budget.set"](host.personChain(), { tokens_per_day: 111, context_tokens: 2000 });
+  await other["flows.budget.set"](fh.personChain(), { tokens_per_day: 222_000, context_tokens: 3000 });
   const a = await home["flows.budget"](host.personChain(), {}), b = await other["flows.budget"](fh.personChain(), {});
   assert.deepEqual([a.tokens_per_day, a.context_tokens], [111, 2000]);
   assert.deepEqual([b.tokens_per_day, b.context_tokens], [222_000, 3000]);
-  await other["flows.budget"](fh.personChain(), { tokens_per_day: 0 });
+  await other["flows.budget.set"](fh.personChain(), { tokens_per_day: 0 });
   assert.equal((await home["flows.budget"](host.personChain(), {})).tokens_per_day, 111, "turning AI off in one Space leaves the other");
 });

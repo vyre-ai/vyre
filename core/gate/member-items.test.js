@@ -34,7 +34,7 @@ async function rig(t) {
   for (const p of [BEN, CY]) await K.gateway.grants.setRole(chain(OWNER), { person: p, role: "member" }, { presence: proof() });
   const ownerTok = (await K.surfaces.open(chain(OWNER), {})).token;
   const uid = (await d.registry.call("agents.create", { name: "juno", kind: "agent" }, "cli", { token: ownerTok })).data.uid;
-  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "deck", { token: (await K.surfaces.open(chain(person), {})).token });
+  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool === "gate.revise" ? "device" : "deck", { token: (await K.surfaces.open(chain(person), {})).token });
   // A member's agent reaches the Gate through a module's tool (mail.send, microsoft.mail.send ...), which files the request in the agent's own turn: the door keeps gate.request itself to the owner, and a module call is not at
   // the door. The courier stands in for that module with the agent's token, so the Gate sees the same verified chain.
   const agentOf = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
@@ -135,7 +135,7 @@ test("the Gate's events for a member's item carry no destination, preview or rea
 test("a member who leaves takes their held items with them: they are rejected, and the owner's and another member's are untouched", { timeout: 120_000 }, async t => {
   const { d, as, agentOf, OWNER } = await rig(t);
   const bens = (await agentOf(BEN, "gate.request", ASK)).data.id, cys = (await agentOf(CY, "gate.request", ASK)).data.id, mine = (await as(OWNER, "gate.request", ASK)).data.id;
-  d.registry.deps.events.emit("member.removed", { person: BEN });
+  d.registry.deps.events.emit("kernel", "member.removed", { person: BEN });
   const state = (/** @type {string} */ id) => d.registry.deps.db.prepare("SELECT state, error FROM gate_items WHERE id = ?").get(id);
   assert.deepEqual({ ...state(bens) }, { state: "rejected", error: "the member left" });
   assert.equal(state(cys).state, "held"); assert.equal(state(mine).state, "held");
