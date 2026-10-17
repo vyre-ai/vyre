@@ -68,20 +68,20 @@ jobs:
         run: |
           have=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName') || { echo "could not list the releases; refusing to sign without knowing"; exit 1; }
           if printf '%s\n' "$have" | grep -Fxq "$TAG"; then echo "$TAG already has a release (published or draft); a moved tag is never signed. Make a new tag."; exit 1; fi
-      - name: The tag's commit is on main or the 0.2 stage line, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
+      - name: The tag's commit is on main, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
         id: lin
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch --no-tags origin main work/stage-0.2
-          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2; then
-            echo "the tag's commit is on main or work/stage-0.2"
+          git fetch --no-tags origin main
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "the tag's commit is on main"
           else
             # a patch release: the newest published stable release is its ancestor, the tag is that release's next patch, and the commit is on hotfix/<tag>
             git fetch --no-tags origin "+refs/heads/hotfix/$GITHUB_REF_NAME:refs/remotes/origin/hotfix/$GITHUB_REF_NAME" || true
             node scripts/check-release-lineage.mjs "$GITHUB_SHA" "$GITHUB_REF_NAME" \
-              || { echo "the tag's commit is not on main or work/stage-0.2 and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
+              || { echo "the tag's commit is not on main and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
             echo "patch=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Version, channel, notes
