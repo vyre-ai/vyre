@@ -4043,7 +4043,7 @@ export default {
       if (!mayReadHomeVault(a)) throw Object.assign(new Error(`${a.label} is not kept in its owner's own vault, so no turn can use it. Add it again from the account's owner.`), { code: "denied" });
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
-      let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
+      let v = launcherProvider && !a.person && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
       // A member's own key or token is in THEIR vault and is lent for their own turn only: the vault finds the person from this turn's verified chain, and refuses an account that is not theirs or a locked vault.
       if (v === undefined && a.person && a.kind !== "login" && a.own_vault) {
         const lent = await ctx.call("vault.me.lend", { account: String(a.id) });
