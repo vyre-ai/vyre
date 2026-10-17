@@ -12,10 +12,11 @@ import { qr, terminal } from "./qr.js";
 const hash = m => crypto.createHash("sha256").update(m.map(r => r.map(b => (b ? "1" : "0")).join("")).join("\n")).digest("hex").slice(0, 16);
 
 test("qr: a box address matches the encoder this file was checked against, and a relay pair URL fits", () => {
-  // The same matrix the previous, independently checked encoder gave for this address.
+  // The matrix an independent encoder (segno 1.6.6, its byte-aligned padding byte removed as in core/vault/qr.test.js) gives for this address at mask 5, the mask this encoder picks:
+  // regenerated 18 Oct 2026 when the fixture host changed from a Tailscale name to tail0000.wink.example. Hashing the independent encoder's modules gives the same value.
   const short = qr("https://vyre.tail0000.wink.example/");
   assert.equal(short.length, 29, "version 3");
-  assert.equal(hash(short), "523a8700eb6d9c56");
+  assert.equal(hash(short), "4c98c805a86898c8");
   // A pair URL with a 64-character box name is about 260 characters: past version 10's 213 bytes.
   const pair = "https://vyre.run/pair#" + "x".repeat(240);
   assert.equal(qr(pair).length, 65, "version 12");
