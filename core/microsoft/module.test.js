@@ -234,5 +234,11 @@ test("microsoft.accounts as a member: only their own provisioned account, the ap
   assert.deepEqual(await s.member("microsoft.accounts"), []);
   await addFirm(s);
   assert.deepEqual((await s.owner("microsoft.accounts")).map(a => [a.name, a.domain, a.item]), [["firm", "firm.test", "m365-key"]], "the owner still sees the firm app, as before");
-  await assert.rejects(s.cli("microsoft.accounts"), e => e.code === "denied" || /person|owner/.test(e.message), "a call with no person behind it is not a member");
+  // a call with no person behind it: the owner's own socket (cli, local, capsule: only the owner's Linux user can open it, the existing owner surface) gets the firm app, as before; a module, a stream or any other
+  // caller with no person gets nothing and is refused, never a broader answer than a member gets
+  assert.deepEqual((await s.cli("microsoft.accounts")).map(a => a.name), ["firm"], "the owner's own socket, as before");
+  for (const caller of ["module:files", "module:threads", "device:abcdef", "mcp", "mcp:agent:kit"]) {
+    s.people.chain = [];
+    await assert.rejects(s.tools.get("microsoft.accounts").run({}, { caller }), e => e.code === "denied", caller);
+  }
 });
