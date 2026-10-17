@@ -1,7 +1,7 @@
 // @ts-check
 // me-mention: a member's own #item chip in a chat turn. In a group chat the turn arrives with an asker (a person the kernel has already checked is in the chat), and the Switchboard resolves the chips for THAT
 // person: the answer comes from her own vault only, never the owner's, and is a name, a kind and a note, never a value. Her vault needs her unlock (people.js keeps the lease per person); a locked one says so
-// in words the chat can show. Only the Switchboard asks (the person is its to name, and is checked here to be a member and not the owner). This is the picker and the chip; what a chip LETS an agent do with
+// in words the chat can show. Only the Switchboard asks, and its module is named `threads`, so its caller label is module:threads and nothing broader (the person is its to name, and is checked here to be a member and not the owner). This is the picker and the chip; what a chip LETS an agent do with
 // her item in that turn is a separate step (the owner's # tag records a use; hers will use the lend path), and nothing here grants it.
 
 const PERSON = /^per_[A-Za-z0-9_-]{1,64}$/;
@@ -15,7 +15,7 @@ const hintOf = (/** @type {any} */ i) => `${i.kind}${i.description ? " · " + St
 export function register({ ctx, people, internal }) {
   /** The asker, once she is a member and not the owner; the caller must be the Switchboard. @param {any} input @param {any} meta */
   const asker = async (input, meta) => {
-    if (String((meta && meta.caller) || "") !== "module:switchboard") throw denied("only the Switchboard resolves a member's chip");
+    if (String((meta && meta.caller) || "") !== "module:threads") throw denied("only the Switchboard (the threads module) resolves a member's chip");
     const id = String((input && input.asker) || "");
     if (!PERSON.test(id)) throw bad("name the person who asked");
     if (String(ctx.kernel && ctx.kernel.owner) === id) throw denied("the owner's chips are the owner's vault");
@@ -39,6 +39,6 @@ export function register({ ctx, people, internal }) {
       try { items = (await people.list(id, {})).items; } catch (e) { throw locked(e); }
       const it = items.find((/** @type {any} */ i) => i.name === String(input.id));
       if (!it) throw Object.assign(new Error(`no item of yours named ${String(input.id).slice(0, 60)}`), { code: "not_found" });
-      return { id: it.name, name: it.name, kind: it.kind, hint: hintOf(it), note: "It is yours, and the chat sees only its name. It is not given to an agent by tagging it." };
+      return { id: it.name, name: it.name, kind: it.kind, hint: hintOf(it), note: "Only its name is shown in the chat, never the value." };
     });
 }

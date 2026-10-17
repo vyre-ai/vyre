@@ -15,7 +15,7 @@ function rig() {
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = { kernel: { owner: OWNER, grants: { members: { list: async () => [{ person: BOB }, { person: EVE }] } }, chain: async () => ({ hops: [] }) } };
   register({ ctx, people: /** @type {any} */ (people), internal: (n, _d, _i, run) => reg.set(n, { run }) });
-  const ask = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:switchboard") => reg.get(tool).run(input, { caller });
+  const ask = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:threads") => reg.get(tool).run(input, { caller });
   return { ask, locked, reg };
 }
 
@@ -40,9 +40,9 @@ test("a locked vault answers in plain words the chat can show", async () => {
   await assert.rejects(ask("vault.me.mention.resolve", { asker: BOB, id: "passport", thread: "t" }), { code: "locked" });
 });
 
-test("only the Switchboard asks, and only about a member: not the owner, not a stranger, not another module or a model", async () => {
+test("only the Switchboard (module:threads) asks, no other module, and only about a member: not the owner, not a stranger, not another module or a model", async () => {
   const { ask } = rig();
-  for (const caller of ["module:sessions", "module:files", "cli", "mcp", "mcp:agent:kit", "device:abcdef"]) await assert.rejects(ask("vault.me.mention.search", { asker: BOB }, caller), { code: "denied" }, caller);
+  for (const caller of ["module:switchboard", "module:sessions", "module:assistant", "module:mentions", "module:files", "module:threadsx", "cli", "mcp", "mcp:agent:kit", "device:abcdef"]) await assert.rejects(ask("vault.me.mention.search", { asker: BOB }, caller), { code: "denied" }, caller);
   await assert.rejects(ask("vault.me.mention.search", { asker: OWNER }), { code: "denied" }, "the owner's chips are the owner's vault");
   await assert.rejects(ask("vault.me.mention.search", { asker: "per_stranger" }), { code: "denied" });
   await assert.rejects(ask("vault.me.mention.search", { asker: "bob" }), { code: "bad_input" });
