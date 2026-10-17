@@ -20,6 +20,11 @@ test("it installs the version the computer image pins, read from that Dockerfile
   assert.match(yml, /VYRE_CLAUDE_BIN=/);
 });
 
+test("a push starts it only when a file the proof depends on changed", () => {
+  const push = yml.slice(yml.indexOf("\n  push:\n"), yml.indexOf("\n  pull_request:\n"));
+  assert.match(push, /\n    paths:\n      - "core\/sessions\/\*\*"/, "the push trigger has a path filter");
+});
+
 test("it holds no secret, no environment and only read access", () => {
   assert.ok(!/secrets\.|environment:|id-token|contents: write/.test(yml));
   assert.match(yml, /\npermissions:\n  contents: read\n/);
