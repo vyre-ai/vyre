@@ -56,13 +56,13 @@ export async function openSpace(input) {
   return { ok: true, id: "fr_sample", spaceId: row.id, role: "owner", kind: input.kind, command: "curl -fsSL vyre.run/i | sh", expiresAt: new Date(Date.now() + 1_800_000).toISOString() };
 }
 
-/** @param {string} id */
 /** @param {string} space */
 export async function removeSpace(space) {
   mock.spaces = mock.spaces.filter((s) => s.id !== space && s.name !== space);
   return { ok: true };
 }
 
+/** @param {string} id */
 export async function pollSpace(id) {
   return { ok: true, id, online: false, expired: false };
 }

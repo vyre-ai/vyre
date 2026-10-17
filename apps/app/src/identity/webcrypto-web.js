@@ -30,7 +30,7 @@ export function installEd25519Fallback(g) {
   if (!subtle || subtle.__vyreEd25519) return Boolean(subtle);
   const nativeImport = subtle.importKey.bind(subtle), nativeVerify = subtle.verify.bind(subtle);
   /** The public key's bytes beside a key the browser imported (only after it passed the check), so a verify of a key made earlier can still be answered if needed. */
-  const state = { /** @type {"pending" | "native ok" | "fallback chosen"} */ mode: "pending", /** @type {Promise<boolean> | null} */ test: null };
+  const state = /** @type {{ mode: "pending" | "native ok" | "fallback chosen", test: Promise<boolean> | null }} */ ({ mode: "pending", test: null });
   // A copy of the bytes, never a view of the caller's buffer: the caller may overwrite or reuse it after the import (the fallback's key keeps what it is given).
   const own = (/** @type {any} */ data) => (data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)) : data);
   /** True when the browser's own Ed25519 failed the check. Runs the check once. */
