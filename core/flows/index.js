@@ -5,6 +5,7 @@
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { COVERED } from "../../lib/covered.js";
+import { holdFields } from "../../lib/hold-fields.js";
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS } from "./member.js";
@@ -146,8 +147,11 @@ export default {
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
           // The person's yes to this very call: the registry sets the mark only on the call it just redeemed an approval card for (lib/covered.js), never from anything a client sends.
+          // Three things must hold, none of them the mark alone (sec53): it names this tool; its digest is the digest of THIS call's input, so a yes for one run or action never covers another; and the
+          // person the call runs as is the Space's owner, because the card is answered on the owner's own phone and the answerer is not on the mark. A member's assistant's settle is never run on that yes.
           const covered = meta && meta[COVERED];
-          const approved = name === "flows.settle" && covered && covered.tool === "flows.settle";
+          const me = chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.kind === "person" ? String(chain.hops[0].actor.id) : "";
+          const approved = name === "flows.settle" && Boolean(covered) && covered.tool === "flows.settle" && covered.input_sha256 === holdFields(input || {}).input_sha256 && Boolean(me) && typeof f.roleOf === "function" && f.roleOf(me) === "owner";
           return f.flows.tools[INNER(name)](chain, rest, approved ? { approved: true } : undefined);
         },
       });
