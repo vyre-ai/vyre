@@ -15,7 +15,7 @@ import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, ensureMacColumns } from "./vault.js";
 import { ensureDir } from "./store.js";
 import { sealItemV2, openItemV2, keyObject } from "./crypto.js";
-import { sealMemberKey, openMemberKey, forgetMemberKey } from "./people-seal.js";
+import { sealConnectionKey, openConnectionKey, forgetConnectionKey } from "./people-seal.js";
 
 export const PERSON_ID = /^per_[A-Za-z0-9_-]{1,64}$/;
 const NAME = /^[A-Za-z0-9._-]{1,128}$/;
@@ -139,7 +139,7 @@ export class PeopleVaults {
     const s = this.open.get(id);
     if (s) { try { s.vault.lockAccount("removed"); } catch {} try { s.db.close(); } catch {} this.open.delete(id); }
     fs.rmSync(f, { recursive: true, force: true });
-    if (this.sealRoot) forgetMemberKey(this.sealRoot, id);
+    if (this.sealRoot) forgetConnectionKey(this.sealRoot, id);
     return { removed: true };
   }
 
@@ -192,7 +192,7 @@ export class PeopleVaults {
   /** Keep the sealed server copy equal to the connection key. A failure is logged and never stops the unlock: the person's own use does not depend on it. @param {string} id @param {{ vault: Vault }} s */
   seal(id, s) {
     if (!this.sealRoot || !s.vault.pvk) return;
-    try { sealMemberKey(this.sealRoot, id, this.connectionKey(id, s.vault.pvk)); } catch (e) { this.log(`vault: could not seal the connection key of ${id}: ${/** @type {Error} */ (e).message}`); }
+    try { sealConnectionKey(this.sealRoot, id, this.connectionKey(id, s.vault.pvk)); } catch (e) { this.log(`vault: could not seal the connection key of ${id}: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** A forgotten password was reset: the connection items get a new key and the server's seal follows. @param {string} id @param {{ vault: Vault }} s */
@@ -219,7 +219,7 @@ export class PeopleVaults {
       const s = this.slot(id);
       this.expire(s);
       if (s.vault.pvk) return this.connectionKey(id, s.vault.pvk);
-      const k = this.sealRoot ? openMemberKey(this.sealRoot, id) : null;
+      const k = this.sealRoot ? openConnectionKey(this.sealRoot, id) : null;
       if (!k) throw locked();
       return k;
     };
