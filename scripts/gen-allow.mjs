@@ -266,6 +266,7 @@ export const DECLARED_SINCE = Object.freeze({
   "google.test": "e3cd9b295@27 Sep 2026",
   "google.drive.read": "a92b5741e@13 Oct 2026",
   "google.drive.search": "a92b5741e@13 Oct 2026",
+  "microsoft.accounts": "abd2b4892@17 Oct 2026",
   "microsoft.calendar.list": "5a247f8d1@13 Oct 2026",
   "microsoft.drive.read": "5a247f8d1@13 Oct 2026",
   "microsoft.drive.search": "5a247f8d1@13 Oct 2026",

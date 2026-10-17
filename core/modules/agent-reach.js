@@ -111,7 +111,6 @@ export const PERSON_ONLY = new Map([
   ["vault.vaults.list", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["microsoft.add", "connects a Microsoft account: the person's own act"],
   ["microsoft.remove", "removes a Microsoft account: the person's own act"],
-  ["microsoft.accounts", "lists the Microsoft accounts the person connected: the person's own view of their connections"],
   ["microsoft.check", "walks the firm Microsoft 365 setup: the owner's own check of the tenant, never an agent's"],
   ["microsoft.members.email", "sets which Microsoft account sends a member's mail: the person's own act on the account"],
   ["google.members.email", "sets which Google account sends a member's mail: the person's own act on the account"],
