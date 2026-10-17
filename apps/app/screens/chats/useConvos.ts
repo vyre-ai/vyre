@@ -6,7 +6,7 @@ import { agentRow, visibleAgents } from "../agents/home-model.js";
 import { teammates } from "../teammates/teammates";
 import type { ChatRow } from "./chats-model.js";
 
-type AgentItem = { name: string; role: string; projects: string[]; status: string };
+type AgentItem = { name: string; role: string; projects: string[]; status: string; look: string };
 type Person = { id: string; name: string; role?: string };
 
 /** The Chat screen's one list: the chats you can see, plus the agents and teammates you can start one with. If the box does not answer for agents or teammates, the chats still show. */
@@ -26,7 +26,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
         const names = slugs.length ? await teammates.names(slugs).catch(() => ({} as Record<string, string>)) : {};
         const who: any[] = await Promise.resolve(st.actors()).catch(() => []);
         if (!live) return;
-        setAgents(rows.map((r) => ({ name: r.name, role: r.role, status: r.status, projects: ids(r.name).map((s) => names[s] || s) })));
+        setAgents(rows.map((r) => ({ name: r.name, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), projects: ids(r.name).map((s) => names[s] || s) })));
         setPeople(who.filter((w) => w.family === "person" && w.name && String(w.id) !== me).map((w) => ({ id: String(w.id), name: String(w.name), role: w.role ? String(w.role) : undefined })));
       } catch { /* the chats still show */ }
     })();

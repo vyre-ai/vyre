@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { NewAgentDialog, showToast } from "@vyre/ui";
+import { NewAgentDialog, lookSeed, showToast } from "@vyre/ui";
 import type { NewAgentValues } from "@vyre/ui";
 import { agent } from "../assistants/agent";
 import { NEW_FORM, createInput } from "../assistants/agent-model.ts";
@@ -9,7 +9,7 @@ import { refresh } from "../../src/state/live";
 
 const START: NewAgentValues = { name: "", shape: 0, color: 0, job: "", projects: [], runsOn: "subscription", budget: "" };
 
-/** New agent, opened from the + menu: a dialog over the Chat list. Create makes the agent and opens a chat with it. The look (shape and colour) is chosen here and drawn from its seed; the box does not keep it yet (team/BACKLOG.md). */
+/** New agent, opened from the + menu: a dialog over the Chat list. Create makes the agent and opens a chat with it. The look (shape and colour) goes with it as `look`, which the agents module keeps. */
 export function NewAgentFlow({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [v, setV] = useState<NewAgentValues>(START);
@@ -21,7 +21,7 @@ export function NewAgentFlow({ open, onClose }: { open: boolean; onClose: () => 
     const r = createInput({ ...NEW_FORM, name: v.name, instructions: v.job, projects: v.projects, runsOn: v.runsOn, budget: v.budget, hasProjects: (projects ?? []).length > 0 });
     if ("problem" in r) { setProblem(r.problem); return; }
     setBusy(true); setProblem("");
-    agent.create(r.input as Record<string, unknown> & { name: string }).then(async ({ made }) => {
+    agent.create({ ...(r.input as Record<string, unknown> & { name: string }), look: lookSeed(v.shape, v.color) }).then(async ({ made }) => {
       onClose(); setV(START);
       const c = await startChat({ people: [], agents: [made.name] });
       void refresh();

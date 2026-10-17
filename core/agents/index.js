@@ -80,6 +80,8 @@ const MIGRATIONS = [
   // A wake whose job failed or stopped short: the claim is kept (failed = 1) so a retry may take it again, at most once more.
   `ALTER TABLE agents_wakes ADD COLUMN tries INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE agents_wakes ADD COLUMN failed INTEGER NOT NULL DEFAULT 0`,
+  // How the agent is drawn: a shape and a colour ("s3~c5"), chosen when it is made and changed from its Details. Empty: drawn from its name.
+  `ALTER TABLE agents_agents ADD COLUMN look TEXT`,
 ];
 
 /**
@@ -175,7 +177,7 @@ export default {
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), look: r.look == null ? null : String(r.look), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -395,8 +397,11 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
+
+    const LOOK = /^s[0-7]~c[0-7]$/;
+    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7)"); };
 
     const checkProjects = p => {
       if (p === undefined) return;
@@ -488,7 +493,7 @@ export default {
       return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
     };
     /** What a member sees of an agent: who it is and whether it is busy. Never its instructions, tools, projects, computer, credentials' mode, thread or uid. @param {any} r */
-    const rosterRow = r => ({ id: r.id, name: r.name, kind: r.kind, ...(r.role ? { role: r.role } : {}), model: r.model, status: r.status });
+    const rosterRow = r => ({ id: r.id, name: r.name, kind: r.kind, ...(r.look ? { look: r.look } : {}), ...(r.role ? { role: r.role } : {}), model: r.model, status: r.status });
     /** The person on the call's chain, or null (the owner's surfaces, a call whose chain cannot be read). @param {any} meta @returns {Promise<string | null>} */
     const chainPerson = async meta => { if (!K) return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
     /** May this call change or stop this agent: the owner, an admin and the owner's surfaces always; a member only an agent she made (the row's owner is its maker). @param {any} meta @param {any} a */
@@ -607,7 +612,7 @@ export default {
         guard(caller, "list agents");
         const full = await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -631,6 +636,7 @@ export default {
         if (String(i.name).trim().toLowerCase() === "assistant" && kind !== "assistant") throw new Error("assistant is the name of your assistant: pick another name for this agent");
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
+        checkLook(i.look);
         await clamp(meta, i);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
@@ -642,6 +648,7 @@ export default {
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
+        if (i.look) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look, i.name);
         await mirror.schedule();
         const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
         return note ? { ...get(i.name), note } : get(i.name);
@@ -671,6 +678,7 @@ export default {
         // A built-in agent keeps its shape: only its words, model and effort change.
         if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
+        checkLook(i.look);
         await clamp(meta, { projects: i.projects, computer: i.computer, auth: i.auth, personal: i.personal });
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
@@ -679,6 +687,7 @@ export default {
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
+        if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look || null, a.name);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)

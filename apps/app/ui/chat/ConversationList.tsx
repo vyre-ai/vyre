@@ -21,7 +21,7 @@ export type { Convo };
 
 /** The face in front of a row, in a 32 box. */
 function Face({ c }: { c: Convo }) {
-  if (c.kind === "agent") return <Avatar of={markRef("agent", c.title, c.agent)} size={32} />;
+  if (c.kind === "agent") return <Avatar of={markRef("agent", c.title, c.agent, c.look || undefined)} size={32} />;
   if (c.kind === "person") return <Avatar of={markRef("person", c.title, c.person)} size={32} />;
   if (c.kind === "group") return <AvatarStack of={c.names.map((n) => markRef("person", n))} size={24} max={2} />;
   const lone = c.names[0];

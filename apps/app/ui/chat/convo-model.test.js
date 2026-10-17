@@ -74,3 +74,9 @@ test("a row carries one dot: needs-you wins over unread; the preview is the last
   assert.equal(by.B.dot, "unread");
   assert.equal(by.C.dot, "");
 });
+
+test("an agent row carries the look the agent was given, and none when it has none", () => {
+  const items = convosFrom({ chats: [], agents: [agent({ name: "rex", look: "s3~c5" }), agent({ name: "kit" })], people: [] });
+  assert.equal(items.find((i) => i.title === "rex").look, "s3~c5");
+  assert.equal(items.find((i) => i.title === "kit").look, "");
+});

@@ -21,20 +21,12 @@ import { SHAPES, lookSeed } from "./agent-look.js";
 
 export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string };
 
-export function NewAgentDialog({ open, onClose, values, onChange, projects, busy, problem, onCreate }: {
-  open: boolean; onClose: () => void; values: NewAgentValues; onChange: (v: Partial<NewAgentValues>) => void;
-  /** The projects it could work in; null while they load. */ projects: readonly { slug: string; name: string }[] | null;
-  busy?: boolean; problem?: string; onCreate: () => void;
-}) {
+/** The grid of eight shapes and the row of eight colours that make an agent's look. Used by the New agent dialog and by an agent's Details. */
+export function AgentLookPicker({ shape, color: col, onChange }: { shape: number; color: number; onChange: (p: { shape?: number; color?: number }) => void }) {
   const { color } = useUiTheme();
-  const [more, setMore] = useState(false);
-  const seed = lookSeed(values.shape, values.color);
-  const toggle = (slug: string) => onChange({ projects: values.projects.includes(slug) ? values.projects.filter((s) => s !== slug) : [...values.projects, slug] });
+  const values = { shape, color: col };
   return (
-    <Sheet open={open} onClose={onClose} title="New agent">
-      <View style={{ gap: 20 }}>
-        <View style={{ alignItems: "center", paddingTop: 4 }}><Avatar of={markRef("agent", values.name || "agent", undefined, seed)} size={56} /></View>
-        <Field label="Name your agent" value={values.name} onChangeText={(name) => onChange({ name })} placeholder="for example rex" help="Lowercase, one word. It signs its chats with it." />
+    <View style={{ gap: 20 }}>
         <View accessibilityLabel="Shape" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
           {SHAPES.map((_, i) => (
             <Pressable key={i} accessibilityRole="radio" accessibilityLabel={`Shape ${i + 1}`} accessibilityState={{ selected: values.shape === i }} onPress={() => onChange({ shape: i })}
@@ -51,6 +43,25 @@ export function NewAgentDialog({ open, onClose, values, onChange, projects, busy
             </Pressable>
           ))}
         </View>
+    </View>
+  );
+}
+
+export function NewAgentDialog({ open, onClose, values, onChange, projects, busy, problem, onCreate }: {
+  open: boolean; onClose: () => void; values: NewAgentValues; onChange: (v: Partial<NewAgentValues>) => void;
+  /** The projects it could work in; null while they load. */ projects: readonly { slug: string; name: string }[] | null;
+  busy?: boolean; problem?: string; onCreate: () => void;
+}) {
+  const { color } = useUiTheme();
+  const [more, setMore] = useState(false);
+  const seed = lookSeed(values.shape, values.color);
+  const toggle = (slug: string) => onChange({ projects: values.projects.includes(slug) ? values.projects.filter((s) => s !== slug) : [...values.projects, slug] });
+  return (
+    <Sheet open={open} onClose={onClose} title="New agent">
+      <View style={{ gap: 20 }}>
+        <View style={{ alignItems: "center", paddingTop: 4 }}><Avatar of={markRef("agent", values.name || "agent", undefined, seed)} size={56} /></View>
+        <Field label="Name your agent" value={values.name} onChangeText={(name) => onChange({ name })} placeholder="for example rex" help="Lowercase, one word. It signs its chats with it." />
+        <AgentLookPicker shape={values.shape} color={values.color} onChange={(p) => onChange(p)} />
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36 }}>
           <Text medium tone="muted">More options</Text>
           <Icon name={more ? "chevron-up" : "chevron-down"} size={16} tone="label" />
