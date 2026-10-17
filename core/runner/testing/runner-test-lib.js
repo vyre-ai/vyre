@@ -3,12 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import crypto from "node:crypto";
-import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
-import { createRunner } from "./runner.js";
-import { unavailable } from "./sandbox.js";
-import { workspaceUnavailable, fscryptSupported } from "./workspace.js";
-import { fakeSpace } from "./testing/fake-space.js";
-import { HARNESS_MARK } from "./pipe-home.js";
+import { SCRATCH, runnerScratch } from "../../../test/scratch.mjs";
+import { createRunner } from "../runner.js";
+import { unavailable } from "../sandbox.js";
+import { workspaceUnavailable, fscryptSupported } from "../workspace.js";
+import { fakeSpace } from "./fake-space.js";
+import { HARNESS_MARK } from "../pipe-home.js";
 
 export const PLUGIN_FLAG = `--${"plugin-dir"}`;
 export const SKIP = unavailable() || workspaceUnavailable() || "";
@@ -47,7 +47,7 @@ export async function upstream() {
 
 export async function rig(t, over = {}) {
   const base = tmp(); const agentDir = tmp(); const outsideDir = tmp();
-  fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
+  fs.copyFileSync(new URL("./fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
   fs.writeFileSync(path.join(outsideDir, "private.txt"), "OUTSIDE-PRIVATE-FILE");
   const up = await upstream();
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });

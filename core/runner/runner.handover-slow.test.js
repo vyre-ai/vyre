@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { plan, seatbeltProfile } from "./sandbox.js";
-import { rig, waitFor, SKIP, sleep, procState, LINUX, PLUGIN_FLAG, HARNESS_MARK, SCRATCH, rm } from "./runner-test-lib.js";
+import { rig, waitFor, SKIP, sleep, procState, LINUX, PLUGIN_FLAG, HARNESS_MARK, SCRATCH, rm } from "./testing/runner-test-lib.js";
 
 test("runner: a server that never answers a hand-over leaves the session running, not frozen for ever", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
   const r = await rig(t, { requestServer: () => new Promise(() => {}), handoverMs: 400 });
