@@ -132,6 +132,26 @@ shardTest("a browser whose identity is a passkey pairs a fresh server: the owner
   assert.equal(st.owner_proof, "passkey");
 });
 
+shardTest("a pick with no deviceKind makes a device row named as given and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
+  const f = await pairFreshServer(t, { kind: "" });
+  const { w, done } = f;
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "Alex's iPhone", "the device is recorded under the name it gave");
+  assert.equal(await deviceRow(w, done.device), undefined, "no relay device row");
+  const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
+  assert.ok(!rec || (!rec.key && rec.confirmed !== true), "no presence key and no confirmed record");
+  const live = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
+  assert.equal((live.sessions || live).filter((/** @type {any} */ x) => x.paired).length, 0, "no paired session");
+  const links = linksFor(t, f);
+  await assert.rejects(() => links.startPaired("srv"), "the device cannot sign in, so it cannot call any tool");
+});
+
+shardTest("a pick with deviceKind phone still records the phone by name (the kind-less pick above is the only new case)", async t => {
+  const f = await pairFreshServer(t, { kind: "phone" });
+  const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true);
+  assert.equal(st.device, "Alex's iPhone");
+});
+
 shardTest("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
   const w = await world(t);
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
@@ -154,6 +174,8 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   assert.equal(st.owned, true);
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
   assert.equal(st.device, "Alex's iPhone");
+  // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
+  assert.equal(((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "a pick with no kind makes no relay device row");
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
 });
