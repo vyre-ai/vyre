@@ -28,6 +28,11 @@ const FIX = JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures;
 const ids = Object.keys(FIX).filter((id) => !only.length || only.includes(id));
 const SURFACES = [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }].filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
 const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
+// The references are kept under 12 MB (--budget-mb). The update of 17 Oct 2026 drew 14.6 MB, so the paper-theme picture of the heaviest families is not kept: their dark picture still covers every screen once, and
+// a change that only shows in paper is caught on the families that keep both. Dropped, biggest first (size of the paper pictures of the three surfaces together): setup-type-editing 0.46 MB, setup-field-seal 0.33,
+// design-changes 0.33, setup-field-link 0.32, setup-field-choice 0.31, setup-field-errors 0.30, setup-field-access 0.29, record-page 0.26, setup-field-new 0.25, markdown 0.21, assistant-access 0.20 (3.3 MB in all).
+// A family leaves this list only by making room elsewhere. An --update removes the paper references of these families.
+const PAPER_SKIP = new Set(["setup-type-editing", "setup-field-seal", "design-changes", "setup-field-link", "setup-field-choice", "setup-field-errors", "setup-field-access", "record-page", "setup-field-new", "markdown", "assistant-access"]);
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
@@ -131,6 +136,7 @@ try {
     const cur = await open(s, t);
     for (const id of ids) {
       if (!FIX[id]?.screens?.[s.form]) continue;
+      if (t.name === "paper" && PAPER_SKIP.has(id)) { const old = path.join(refs, id, `${s.name}-paper.png`); if (update && fs.existsSync(old)) fs.rmSync(old); continue; }
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
