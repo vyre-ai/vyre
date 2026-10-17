@@ -151,7 +151,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, kernelSealer = null } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, kernelSealer = null, seam = null } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -160,7 +160,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const w = await world(t, { kernel: true, realPresence, kernelSealer });
+  const w = await world(t, { kernel: true, realPresence, kernelSealer, ...(seam ? { seam } : {}) });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
@@ -524,13 +524,13 @@ shardTest("after the adopter lets a server go, its device is dropped at the rela
 shardTest("invitee channels: 40 strangers holding channels never take the slots the owner's paired phone needs, and an idle invitee channel is closed", async t => {
   process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const w = await world(t, { kernel: true, seam: { inviteeIdleMs: 600 } });
+  // the owner's phone is a CONFIRMED device (it signed in and the pick at the server named it); a bare ticket pairing is a stranger's key and makes no device
+  const f = await pairFreshServer(t, { seam: { inviteeIdleMs: 600 } });
+  const w = f.w;
   const crypt = nodeCrypto();
-  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
-  const ksPhone = keystore(t);
-  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ksPhone });
-  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
-  const route = offer.route, box = Buffer.from(offer.box);
+  const ksPhone = f.ks;
+  const paired = f.done;
+  const route = paired.route, box = Buffer.from(paired.box, "base64url");
   const held = [];
   let refused = 0, admitted = 0;
   for (let i = 0; i < 40; i++) {
@@ -546,7 +546,7 @@ shardTest("invitee channels: 40 strangers holding channels never take the slots 
   assert.ok(stillOpen <= 8, `the invitee pool is 8 (${stillOpen} of ${admitted} held open)`);
   void refused;
   // the owner's paired phone still connects while all of them are held
-  const conn = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's phone", crypto: crypt, keyStore: ksPhone, WebSocket: globalThis.WebSocket });
+  const conn = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: crypt, keyStore: ksPhone, WebSocket: globalThis.WebSocket });
   t.after(() => conn.close());
   await Promise.race([conn.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error("the paired phone could not connect")), 8000))]);
   // idle ones are closed by the box (no stream opened inside the idle window)
