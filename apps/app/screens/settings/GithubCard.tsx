@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Banner, Button, Card, Row, Text, showToast } from "@vyre/ui";
 import { Group } from "../places/Frame";
 import { dayOf } from "../../src/time/show.js";
-import { changeGithubDevice, githubAccount, githubDevices, linkGithub, signInWithGithub, type GithubDevice } from "../onboard/real-github";
+import { changeGithubDevice, githubAccount, githubDevices, linkGithub, signInWithGithub, type GithubDevice } from "../../src/real/github";
 
 /** Settings > Account: link or unlink GitHub. GitHub proves who you are on a new device; the master password still opens your vault. Unlinking deletes the stored copy of your key at once. */
 export function GithubCard() {

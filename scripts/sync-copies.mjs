@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEST = "local/hands-chrome-mac/extension/shared/sk";
-const SOURCES = ["lib/credential-shapes.js", "lib/site-knowledge.js"];
+const SOURCES = ["lib/credential-shapes.js", "lib/secret-keys.js", "lib/site-knowledge.js"];
 // lib/siteops/*.js (the learned website operations, ported methods and the one learner) is pure and runs in the extension too: it is copied, one folder down, beside the site-knowledge copy that
 // imports its spec, and the files the extension imports at its old paths (apilearn.js, redact.js) are generated from it as well, so one learner serves both.
 const SITEOPS = [
@@ -35,6 +35,8 @@ export function generatedFiles() {
   // The phone app's bundle cannot import from lib/ either: its redactor (screens/connections/model.ts) reads this copy of the table, so it hides every shape the table knows, not a short list of its own.
   const shapes = fs.readFileSync(path.join(ROOT, "lib/credential-shapes.js"), "utf8");
   out["apps/app/src/store-core/credential-shapes.js"] = `// GENERATED from lib/credential-shapes.js by scripts/sync-copies.mjs (the app's bundle cannot import from lib/). Do not edit here: change the original and run the script.\n${shapes}`;
+  const secretKeys = fs.readFileSync(path.join(ROOT, "lib/secret-keys.js"), "utf8");
+  out["apps/app/src/store-core/secret-keys.js"] = `// GENERATED from lib/secret-keys.js by scripts/sync-copies.mjs (the app's bundle cannot import from lib/). Do not edit here: change the original and run the script.\n${secretKeys}`;
   const bytes = fs.readFileSync(path.join(ROOT, "lib/bytes.js"), "utf8");
   out["relay/client/bytes.js"] = `// GENERATED from lib/bytes.js by scripts/sync-copies.mjs (the Windows capsule ships relay/client/*.js on its own, so this folder cannot import from lib/). Do not edit here.\n${bytes}`;
   const ws = fs.readFileSync(path.join(ROOT, "lib/ws.js"), "utf8");

@@ -22,11 +22,14 @@ import { CALLS } from "../../kernel/remote/wire.js";
  */
 export const MEMBER_TOOLS = Object.freeze({
   // a member's own skills (core/skills/member-ops.js): her personal skill is drafted and approved by her alone; a draft at a higher level waits for its owner; kind "skill" only
+  "skills.browse": { tool: "skills.serve", call: "browse", keys: ["level", "name", "scope", "state", "limit"], types: ["skill"] },
   "skills.list": { tool: "skills.serve", call: "list", keys: ["level"], types: ["skill"] },
   "skills.get": { tool: "skills.serve", call: "get", keys: ["id"], types: ["skill"] },
   "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
   "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
-  "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
+  "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version", "ack"], types: ["skill"] },
+  "skills.decline": { tool: "skills.serve-write", call: "decline", keys: ["name", "level", "scope", "version"], types: ["skill"] },
+  "skills.rollback": { tool: "skills.serve-write", call: "rollback", keys: ["name", "level", "scope", "to", "ack"], types: ["skill"] },
   // a member's daily work on the team's records and tasks, the app Store's own calls (same names, same input keys): her chain decides every record and task; the kept record types are refused in the tool and by the gateway
   "records.me": { tool: "records.serve", call: "me", keys: [], types: [] },
   "records.actors": { tool: "records.serve", call: "actors", keys: [], types: [] },

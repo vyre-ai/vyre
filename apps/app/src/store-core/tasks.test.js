@@ -175,7 +175,7 @@ test("dependencies: a waiting task becomes ready when what it depends on is done
 });
 
 test("stages: done when the required tasks are done, then the record moves on by itself", () => {
-  const stages = ["Intake", "Engagement", "Closed"];
+  const stages = ["Intake", "Kickoff", "Closed"];
   /** @param {string} id @param {string} state @param {Partial<any>} [o] */
   const t = (id, state, o = {}) => task({ id, state, stage: "Intake", ...o });
   const optional = { ext: { required: false } };
@@ -186,7 +186,7 @@ test("stages: done when the required tasks are done, then the record moves on by
   assert.equal(stageDone([t("a", "done"), t("b", "skipped")], "Intake"), true);
   assert.deepEqual(stageProgress([t("a", "done"), t("b", "working"), t("c", "working", optional)], "Intake"), { done: 1, total: 2 });
   assert.deepEqual(advanceStage(stages, "Intake", [t("a", "working")]), { moved: false, stage: "Intake" });
-  assert.deepEqual(advanceStage(stages, "Intake", [t("a", "done")]), { moved: true, stage: "Engagement", from: "Intake" });
+  assert.deepEqual(advanceStage(stages, "Intake", [t("a", "done")]), { moved: true, stage: "Kickoff", from: "Intake" });
   assert.deepEqual(advanceStage(stages, "Closed", [t("a", "done", { stage: "Closed" })]), { moved: false, stage: "Closed" }, "the last stage stays");
   assert.deepEqual(advanceStage(stages, undefined, []), { moved: false, stage: undefined });
 });

@@ -48,6 +48,10 @@ export type ComposerProps = {
   onCancelEdit?: () => void;
   /** A command the screen answers itself (/move opens the chat panel on its project page): true when it did, and nothing is sent. */
   onLocalCommand?: (name: string) => boolean;
+  /** Plus-menu shortcuts the screen handles (export, memory, roll, later, find). */
+  onMenuCapability?: (id: "export" | "memory" | "roll" | "later" | "find") => void;
+  /** Opens the Answering / model picker when the person picks /model locally. */
+  localNudge?: "model" | null;
   onAttachFile?: () => void;
   /** Files in the Vyre space the person can attach by picking from a list (the structured Files layout); with `onAttachVyreFile` this makes "From Vyre Files". */
   vyreFiles?: readonly { id: string; name: string; path: string }[];
@@ -133,6 +137,12 @@ export function ChatComposer(p: ComposerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
   useEffect(() => { if (p.draftKey) writeDraft(p.draftKey, text); }, [p.draftKey, text]);
+  useEffect(() => {
+    if (p.localNudge === "model") {
+      openPop("answering");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.localNudge]);
   const files = p.attachments?.filter((a) => a.state === "ready").length ?? 0;
   const intent = sendIntent({ text, attachments: files, state: p.state });
   const working = busyState(p.state);
@@ -168,6 +178,13 @@ export function ChatComposer(p: ComposerProps) {
       if (working) {
         rows.push({ key: "steer", group: "While it works", label: "Send now, steering the reply", leading: <Icon name="bolt" size={18} />, checked: mode === "steer", hint: "Enter", run: () => { setMode("steer"); closePop(); } });
         rows.push({ key: "queue", group: "While it works", label: "Queue for the end of the turn", leading: <Icon name="clock" size={18} />, checked: mode === "queue", hint: "Alt Enter", run: () => { setMode("queue"); closePop(); } });
+      }
+      if (p.onMenuCapability) {
+        rows.push({ key: "export", group: "Chat", label: "Export conversation", leading: <Icon name="download" size={18} />, run: () => { closePop(); p.onMenuCapability?.("export"); } });
+        rows.push({ key: "memory", group: "Chat", label: "Memory", leading: <Icon name="memory" size={18} />, run: () => { closePop(); p.onMenuCapability?.("memory"); } });
+        rows.push({ key: "roll", group: "Chat", label: "Roll context", leading: <Icon name="refresh" size={18} />, run: () => { closePop(); p.onMenuCapability?.("roll"); } });
+        rows.push({ key: "later", group: "Chat", label: "Schedule follow-up", leading: <Icon name="clock" size={18} />, hint: "/later", run: () => { closePop(); p.onMenuCapability?.("later"); } });
+        rows.push({ key: "find", group: "Chat", label: "Find in conversation", leading: <Icon name="search" size={18} />, hint: "Cmd F", run: () => { closePop(); p.onMenuCapability?.("find"); } });
       }
       return rows;
     }

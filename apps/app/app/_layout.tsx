@@ -15,6 +15,7 @@ import { PerfBadge } from "../src/perf/PerfBadge";
 import { usePerfOverlay } from "../src/perf/usePerfOverlay";
 import { startPwa } from "../src/pwa/pwa";
 import { SetupGate } from "../src/shell/SetupGate";
+import { UnlockGate } from "../src/shell/UnlockGate";
 import { listenCommands } from "../src/shell/shell";
 import { startGlass } from "../src/state/glass";
 import { startLive } from "../src/state/live";
@@ -47,9 +48,11 @@ function Shell() {
     <View style={[styles.fill, { backgroundColor: color.bg }]}>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <OfflineBar />
-      <SetupGate>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />
-      </SetupGate>
+      <UnlockGate>
+        <SetupGate>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />
+        </SetupGate>
+      </UnlockGate>
       <UndoToast />
       <PerfBadge />
     </View>

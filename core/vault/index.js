@@ -50,6 +50,7 @@ import * as requestTools from "./request.js";
 export { presence };
 import * as shareTools from "./tools/share.js";
 import * as mcpTools from "./tools/mcp.js";
+import * as browserProfileTools from "./tools/browser-profile.js";
 import { PassMcp } from "./passmcp.js";
 import { listenMcp } from "./passmcp-listener.js";
 import * as vaultsTools from "./tools/vaults.js";
@@ -61,6 +62,9 @@ import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 import * as autobackup from "./autobackup.js";
+import { registerSpaceTools } from "./space-tools.js";
+import { installHeldKey } from "./master-root.js";
+import { pumpRetries } from "../../kernel/identity/space-vault.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -92,7 +96,11 @@ export default {
     // The vault is the owner's: every tool it registers is refused for a call made for any other person (core/vault/member-gate.js).
     const ctx = gateTools(ctx0);
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
-    if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+    if (coreHolder.link && typeof coreHolder.link.call === "function") {
+      const fwd = await startForwarder(ctx, /** @type {any} */ (coreHolder.link));
+      registerSpaceTools(ctx);
+      return fwd;
+    }
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
@@ -108,6 +116,8 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    try { pumpRetries(path.join(ctx.paths.root, "identity", "space-vaults")); }
+    catch (e) { ctx.log(`vault: a space vault rotation is still waiting to retry: ${/** @type {Error} */ (e).message}`); }
     // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
     // The older credential scopes become grants once (agents start after the vault: until they answer it is tried again at the first model call).
     if (vault.access) vault.access.convertScopes(true).catch(e => ctx.log(`vault: credential scopes were not converted yet: ${/** @type {Error} */ (e).message}`));
@@ -115,10 +125,8 @@ export default {
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      // The caller's identity on this listener is whatever the request carries and the pass binds to (the holder's device key). The old modes that took a login from a
-      // VPN's `whois` answer or a proxy header are retired with that VPN (removal plan, step 4): a pass binds to the device key and the signed envelope.
-      if (vault.relayGrants === "require") ctx.log("vault: vault.relay.grants is require, which needs a network policy that no longer exists, so every relayed request is refused; switch it off");
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
+      // The caller on this listener is whoever signed the request: a pass binds to the holder's identity key and the signed, single-use, audience-bound envelope (vault.onRelay).
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0),
         onRelay: async (env, meta) => {
           return vault.onRelay(env, meta);
         },
@@ -465,7 +473,7 @@ export default {
 
     // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
     // callers only: an agent caller has no business mapping who can reach what.
-    tool("vault.grants.status", [...SURFACES, "mcp"], "Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.",
+    tool("vault.grants.status", [...SURFACES, "mcp"], "Who holds a live pass, and for which items and in which mode. Reads names only, never a value.",
       obj({}), async (_input, { caller }) => {
         if (/(?:^|[\s:])agent:/.test(String(caller))) throw new Error("vault.grants.status is for the owner, not an agent");
         return vault.grantsStatus();
@@ -535,6 +543,7 @@ export default {
     // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
+    internal("vault.master.install", "Install the held master key into this running vault. Drops any plaintext key file.", obj({}), () => installHeldKey(vault));
     const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
     // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
     agentFillTools.register({ ctx, vault, said, tool });
@@ -550,6 +559,7 @@ export default {
     let mcpListener = null;
     vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
     mcpTools.register({ vault, tool, internal });
+    browserProfileTools.register({ people, vault, internal });
     if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
       mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
       vault.mcp.listener = mcpListener;
@@ -576,6 +586,8 @@ export default {
         // ask, so config is the person's standing answer (ADR 0028).
         breach: { enabled: opts.breach === "ask", fetch: httpFetch },
         connections: conns.connections });
+
+    registerSpaceTools(ctx);
 
     return {
       ssh: cli.ssh,

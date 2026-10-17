@@ -34,7 +34,7 @@ export const viewDefs = {
     dashboard: { widgets: [
       { kind: "sum", field: "fee", where: "stage != Closed" },
       { kind: "countBy", field: "stage" },
-      { kind: "funnel", field: "stage", where: "Intake..Signing" },
+      { kind: "funnel", field: "stage", where: "Intake..Review" },
       { kind: "recent" },
     ] },
   },

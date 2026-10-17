@@ -32,6 +32,7 @@
       { "name": "flows.access.get", "effect": "read", "reach": "person" },
       { "name": "flows.access.set", "effect": "write", "reach": "person" },
       { "name": "flows.cheatsheet", "effect": "read", "reach": "anyone" },
+      { "name": "flows.actions", "effect": "read", "reach": "anyone" },
       { "name": "flows.from-chat", "effect": "write", "reach": "anyone" },
       { "name": "flows.connections", "effect": "read", "reach": "anyone" },
       { "name": "flows.attention", "effect": "read", "reach": "anyone" },
