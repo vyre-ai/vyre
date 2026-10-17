@@ -512,7 +512,7 @@ export default {
     /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
     const pendingPairs = new Map();
     /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
-    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING);
+    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING, liveSeam("buildRoot"));   // buildRoot: a test seam (seams, by home) that makes the build a release or a development one
     /** @type {Map<string, any>} */
     const pendingHandlers = new Map();
     const pendingHandler = gate => {

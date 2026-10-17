@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- test(relay): with VYRE_TEST_UNGATED_RING=1 a development build pairs a ring redeemer in one step and a release build, or a tree carrying a release signature, keeps the ring gated (a waiting pairing, no device row, no device.paired), proven on a real vyred and relay (test/relay-ring-switch.test.js). The relay reads its build root through the existing test seam (`buildRoot`) so a test can be a packaged build; production passes none.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).
