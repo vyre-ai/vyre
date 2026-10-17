@@ -151,7 +151,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ROLLOVER_LINK` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_ROLLOVER_SHEET` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
-| `VYRE_SEAL_DEV` | Not described yet. | `core/cli/commands/up.js`, `core/vault/request.js` |
+| `VYRE_SEAL_DEV` | Not described yet. | `core/cli/commands/up.js`, `core/vault/request.js`, `core/vault/tools/me.js` |
 | `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/cli/commands/up.js`, `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
 | `VYRE_SEAL_UNATTESTED` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
