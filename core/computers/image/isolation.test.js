@@ -29,10 +29,12 @@ const HERE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DOCKERFILE = fs.readFileSync(path.join(HERE_DIR, "Dockerfile"), "utf8");
 const ENTRYPOINT = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
 
-test("isolation (static): Chrome's managed download policy points at browser's own folder, not the agent's home", () => {
-  assert.match(DOCKERFILE, /"DownloadDirectory": "\/var\/lib\/vyre\/browser\/downloads"/,
-    "the managed policy still sends downloads to the agent's home (MEDIUM 2, reviewer 28 Sep)");
+test("isolation (static): Chrome's downloads go to a folder of the browser uid's, set per agent by the holder, never to the agent's home", () => {
+  // the managed policy names no folder (one folder per agent cannot be a static policy); the holder writes each agent's own into its profile
+  assert.doesNotMatch(DOCKERFILE, /"DownloadDirectory"/, "no static download folder in the managed policy");
   assert.doesNotMatch(DOCKERFILE, /"DownloadDirectory": "\/home\/agent/, "downloads point back at the agent's home");
+  const holder = fs.readFileSync(path.join(HERE_DIR, "agentd-chrome.py"), "utf8");
+  assert.match(holder, /^DOWNLOADS = "\/var\/lib\/vyre\/downloads\/ag%d" % N$/m, "the agent's folder is built from its uid, in the browser's downloads tree");
 });
 
 test("isolation (static): the agent can reach browser's downloads folder despite /var/lib/vyre being locked down", () => {

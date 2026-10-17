@@ -89,12 +89,12 @@ export function createPrivateRows(d) {
 
 /**
  * A page of the rows a reader may see, from a source that cannot tell: pages are cut to the rows `ok` allows, and a cursor is given only when a row she may read is still ahead (it would otherwise count the others).
- * @param {{ page: { cursor?: string } }} spec @param {(page: any) => Promise<{ rows: any[], next_cursor?: string }>} fetch @param {(row: any) => Promise<boolean>} ok
+ * @param {{ page: { cursor?: string } }} spec @param {(page: any) => Promise<{ rows: any[], next_cursor?: string }>} getPage @param {(row: any) => Promise<boolean>} ok
  */
-export async function visiblePage(spec, fetch, ok) {
+export async function visiblePage(spec, getPage, ok) {
   let cursor = spec.page.cursor, rows = /** @type {any[]} */ ([]), next;
   for (let pages = 0; pages < 10; pages++) {
-    const p = await fetch({ ...spec.page, ...(cursor ? { cursor } : {}) });
+    const p = await getPage({ ...spec.page, ...(cursor ? { cursor } : {}) });
     rows = []; for (const x of p.rows) if (await ok(x)) rows.push(x);
     next = p.next_cursor;
     if (rows.length || !next) break;
@@ -102,7 +102,7 @@ export async function visiblePage(spec, fetch, ok) {
   }
   let more = false;
   for (let ahead = 0; next && !more && ahead < 10; ahead++) {
-    const p = await fetch({ ...spec.page, cursor: next });
+    const p = await getPage({ ...spec.page, cursor: next });
     for (const x of p.rows) if (await ok(x)) { more = true; break; }
     if (!more) next = p.next_cursor;
   }

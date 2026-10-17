@@ -161,7 +161,7 @@ export default {
     };
 
     ctx.tool("microsoft.mail.send", {
-      description: "Send an email from your own Microsoft 365 mailbox, as you: { to: [addresses], cc?: [addresses], subject, body (plain text) }. It goes out at once, because it is your own send; an agent's or a model's send is held at your Gate until you approve it (or a standing permission you gave covers it), and nothing is sent before.",
+      description: "Send an email from your own Microsoft 365 mailbox: { to, cc?, subject, body }. An agent's send is held at your Gate.",
       input: obj({ to: { type: "array", items: str }, cc: { type: "array", items: str }, subject: str, body: str }, ["to", "subject", "body"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
         const own = await ownAct(meta);
@@ -171,7 +171,7 @@ export default {
         if (!subject || subject.length > 255 || /[\r\n]/.test(subject)) throw fail("the subject is one line, up to 255 characters");
         if (!body || body.length > 100_000) throw fail("the body is up to 100,000 characters");
         const acct = await first(meta);
-        if (!own) { const h = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); if (h.state === "sent") return { sent: true, from: acct.mailbox, to, subject, covered_by: h.by }; const id = h.id; return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
+        if (!own) { const h = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); if (h.state === "sent") return { sent: true, from: acct.mailbox, to, subject, covered_by: h.by }; const id = h.id; return { held: id, ...(h.error ? { error: h.error } : {}), message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
         const out = await g.mailSend(acct, { to, cc, subject, body });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
         return out;
@@ -179,7 +179,7 @@ export default {
     });
 
     ctx.tool("microsoft.calendar.create", {
-      description: "Put an event on your own Microsoft 365 calendar: { title, start, end (ISO times), time_zone? (IANA, default UTC), where?, description?, attendees?: [addresses] }. Microsoft mails the invite to each attendee at once, because it is your own act; an agent's or a model's invite with guests is held at your Gate until you approve it (or a standing permission covers it); an agent's event with no guests is not made.",
+      description: "Put an event on your own Microsoft 365 calendar: { title, start, end, attendees? }. An agent's invite is held at your Gate.",
       input: obj({ title: str, start: str, end: str, time_zone: str, where: str, description: str, attendees: { type: "array", items: str } }, ["title", "start", "end"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
         const own = await ownAct(meta);
@@ -196,7 +196,7 @@ export default {
           const h = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input, meta);
           if (h.state === "sent") return { created: true, attendees, covered_by: h.by };
           const id = h.id;
-          return { held: id, message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
+          return { held: id, ...(h.error ? { error: h.error } : {}), message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
         }
         const out = await g.eventCreate(acct, { title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}), attendees });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: attendees.length ? "invite" : "event" });

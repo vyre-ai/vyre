@@ -176,7 +176,7 @@ export function createFlowsHost(o) {
           const ride = opts.ride, row = ride ? await gw.ask.get(flowsChain(), String(opts.approval)).catch(() => null) : null, form = row && row.state === "done" && row.outcome === "approved" ? row.form : null;
           const rides = ride && form && form.kind === "held_act" && form.run === ride.run && form.step === ride.with && Array.isArray(form.rides) && form.rides.some((/** @type {any} */ r) => r.step === ride.step && r.action === action && r.resource === resource);
           if (standingReceipts.has(String(opts.approval))) { standingReceipts.delete(String(opts.approval)); } else if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
-            throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
+            throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call. If anything in it changed after the question was answered (a file, for one), nothing was sent: run the Flow again and approve the new question.`), { code: "denied" });
           }
         }
         const session = await k.surfaces.open(personChain(person.actor.id), { ttl_ms: 60_000 });

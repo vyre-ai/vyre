@@ -28,6 +28,7 @@ const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narro
   [/^github\.repo\.create$/, "owner", "target", "the GitHub account or organisation the repo is made under, not a Vyre person"],
   [/^publish\.create$/, "approver", "designation", "who should approve, not who created it; created_by is the caller's chain"],
   [/^threads\.(start|send)$/, "asker", "caller", "first-party stream only: core/stream sets it from the chat's own kernel session; a plain caller's value is not read as the person"],
+  [/^mail\.(send|compose)$/, "by", "caller", "ignored: the session's agent is stamped from the verified chain and naming another agent in `by` does not borrow its standing permission (core/gate/standing-mail.test.js)"],
   [/^gate\./, "by", "caller", "the caller's label is stamped; a `by` sent is not read (core/gate/module.test.js proves it)"],
   [/^planner\./, "as", "narrowing", "only a person's own label may send it (the Mac forwards an agent's call to the box), and it only makes the call LESS than the person: a named non-person source, never another person (core/planner who())"],
   [/^stream\./, "as", "shim", "read only when the kernel is off (the legacy-label shim); with the kernel on the chain's person wins (core/stream/group.js personOf)"],

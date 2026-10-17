@@ -11,7 +11,7 @@ import { lentSpawnFor } from "../../lib/lent-placement.js";
 import { launch } from "../runner/sandbox.js";
 import { ACCOUNT_ENV, CREDENTIAL_VARS } from "../../lib/credential-env.js";
 
-const KEY = "sk-ant-oat01-lent-key-0123456789abcdef";
+const KEY = "fixture-lent-key-0123456789abcdef";
 // every variable a provider's key can ride in (lib/credential-env.js, the list accountEnv and spawn.js both read), and the two that name a descriptor
 const NAMES = [...CREDENTIAL_VARS, "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"];
 const env = () => ({ PATH: "/usr/bin:/bin", VYRE_API_BASE_URL: "https://api.example.test/v1", VYRE_API_MODEL: "m", ...Object.fromEntries(NAMES.map((n, i) => [n, `${KEY}-${i}`])) });

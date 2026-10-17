@@ -110,6 +110,7 @@ export function createRunner(o) {
   /** @type {{ swap: boolean, hibernation: boolean, line: string }} */ let swap = { swap: false, hibernation: false, line: "" };
   let winPrep = null;   // what prepare() touched on Windows, for cleanup at revoke
   let pending = null;   // a retry timer while the workspace could not be closed yet
+  let chaseId = 0;      // which closing the chase belongs to: a newer opening or a lease taken again ends the old chase, whether or not its timer has fired
   const workOf = m => path.join(m, "work");
   const stateOf = m => path.join(m, "state");
 
@@ -125,10 +126,10 @@ export function createRunner(o) {
   /** Keep trying in the background while it is still mounted, so a held file cannot leave it readable for ever. */
   function chase(what) {
     if (pending) return;
-    const g = gen;
+    const id = ++chaseId;
     const step = async () => {
       pending = null;
-      if (gen !== g) return;   // the workspace was opened again since: this closing is over
+      if (chaseId !== id) return;   // the workspace was opened again, or the lease taken again, since: this closing is over
       if (!driver.isMounted(dir)) { mnt = null; await settled(what); return; }
       try { await driver.unmount(dir); } catch {}
       if (!driver.isMounted(dir)) { mnt = null; await settled(what); return; }
@@ -137,7 +138,7 @@ export function createRunner(o) {
     pending = (o.setTimer || setTimeout)(step, 2000); pending.unref?.();
   }
   /** A newer opening supersedes a background chase of an older closing: the chase must not unmount the workspace that has just been opened again. */
-  const stopChase = () => { if (pending) { try { clearTimeout(pending); } catch { /* a seam timer */ } pending = null; } };
+  const stopChase = () => { chaseId++; if (pending) { try { clearTimeout(pending); } catch { /* a seam timer */ } pending = null; } };
   async function settled(what) {
     if (what === "revoked") { await destroyHard(); return; }
     emit({ type: "locked", why: what });

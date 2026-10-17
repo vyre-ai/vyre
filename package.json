@@ -116,6 +116,7 @@
     "!**/testing.js",
     "!**/testing/**",
     "!harness/member-relay-harness.js",
+    "!kernel/flows/safety-net.js",
     "apps/app/src/chat/core/commands.js",
     "apps/app/src/chat/core/match.js",
     "packages/module-sdk/testing.js"

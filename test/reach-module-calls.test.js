@@ -44,8 +44,12 @@ function relayAllowed() {
   const src = fs.readFileSync(path.join(root, "core", "modules", "index.js"), "utf8");
   const block = /const RELAY_ALLOWED = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(src);
   /** @type {Record<string, string[]>} */ const out = {};
-  if (!block) return out;
-  for (const m of block[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1]);
+  const read = (/** @type {string} */ text) => { for (const m of text.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...(out[m[1]] || []), ...[...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1])]; };
+  if (block) read(block[1]);
+  // the first-run entries live in core/modules/relay-context.js and are spread into RELAY_ALLOWED (...FIRST_RUN_RELAY)
+  const ctxSrc = fs.readFileSync(path.join(root, "core", "modules", "relay-context.js"), "utf8");
+  const first = /export const FIRST_RUN_RELAY = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(ctxSrc);
+  if (first && /\.\.\.FIRST_RUN_RELAY/.test(src)) read(first[1]);
   return out;
 }
 const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ src, /** @type {number} */ at) =>

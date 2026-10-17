@@ -30,6 +30,7 @@ export const PERSON_ONLY = new Map([
   ["assistant.access.restore", "turns tools or areas back on for the person's own assistant: the person's own yes, never the assistant's (G23)"],
   ["work.project.level", "sets a person's level on a project (lead, contributor, viewer): a project Lead's or staff's own act on the team's seats, never an assistant's"],
   ["agents.flow-say", "writes in a Flow's chat as the person and wakes the Flow's agent for them, with the person's own grants: the person's own voice; an assistant that wants an agent to act gives it a task as itself"],
+  ["flows.settle", "retries, skips or stops a run that needs attention, in the person's own name: only a person does it, and an assistant tells them in the chat"],
   ["agents.docs.get", "reads another agent's instructions: the person's own view; an agent gets its own instructions and context at session start, never through a tool"],
   ["agents.docs.set", "writes an agent's instructions: the person's own act; an agent never edits any agent's words (a model proposes through flows.propose)"],
   ["agents.context.list", "lists an agent's context files and links: the person's own view; an agent gets its own context at session start"],
@@ -58,6 +59,7 @@ export const PERSON_ONLY = new Map([
   ["github.session.undo", "rewrites a session's history by undoing its last change: the person's own act on their own work"],
   ["github.session.redo", "rewrites a session's history by redoing a change: the person's own act on their own work"],
   ["mcp.restart", "restarts an MCP server: the person's own act on their own machine"],
+  ["mcp.repin", "accepts the new text of a server's tools after the person reviewed it: the person's own act, never an assistant's"],
   ["releases.cert", "makes a release signing certificate: the person's own act, never an agent's"],
   ["releases.sign", "signs a release: the person's own act, never an agent's"],
   ["google.remove", "removes a Google account: the person's own act"],
@@ -109,7 +111,7 @@ export const PERSON_ONLY = new Map([
   ["vault.vaults.list", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["microsoft.add", "connects a Microsoft account: the person's own act"],
   ["microsoft.remove", "removes a Microsoft account: the person's own act"],
-  ["microsoft.accounts", "lists the Microsoft accounts the person connected: the person's own view of their connections"],
+  ["microsoft.check", "walks the firm Microsoft 365 setup: the owner's own check of the tenant, never an agent's"],
   ["microsoft.members.email", "sets which Microsoft account sends a member's mail: the person's own act on the account"],
   ["google.members.email", "sets which Google account sends a member's mail: the person's own act on the account"],
   ["vault.access.get", "reads who holds access to the Vault: the person's own view; an agent never sees a value"],
@@ -294,6 +296,7 @@ export const PERSON_ONLY = new Map([
   ["computers.member.dispose", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.remove", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.rotate", "needs the person's Face ID or presence: who may use a computer"],
+  ["computers.exec", "runs a command as an agent's own Linux user on its computer: the person's own act, needing the right to edit the agent"],
   ["computers.update", "controls the person's own machine: replaces the agent computer with one on this version of Vyre, keeping the agents' files"],
   ["computers.update.status", "reads the person's own machine: whether the agent computer matches this version of Vyre"],
   ["computers.resume", "controls the person's own machine"],
@@ -671,7 +674,6 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
-  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],

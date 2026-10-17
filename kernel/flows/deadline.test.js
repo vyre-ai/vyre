@@ -94,7 +94,9 @@ test("past the due time the task is withdrawn: skipped and marked, and a late ha
   const t = await w.kernel.tasksApi.get(w.kernel.sysChain(), task);
   assert.equal(t.state, "skipped");
   assert.equal(t.withdrawn.reason, "timeout");
-  await assert.rejects(() => w.kernel.completeTask(task), /./, "no late hand-in");
+  // the test kernel's completeTask only moves a ready or working task, so on a withdrawn one it changes nothing and says so
+  assert.equal((await w.kernel.completeTask(task)).state, "skipped", "no late hand-in: the task stays skipped");
+  await assert.rejects(() => w.kernel.tasksApi.complete(w.kernel.as({ kind: "agent", id: "research" }), task, { note: "done", sources: ["https://example.test/a"] }), /./, "the kernel refuses a late hand-in");
   await assert.rejects(() => w.kernel.tasksApi.start(w.kernel.as({ kind: "agent", id: "research" }), task), /./, "no late start");
   await assert.rejects(() => w.kernel.tasksApi.reopen(w.kernel.as(ALEX), task), /withdrawn/, "a person cannot reopen it either");
 });

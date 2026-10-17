@@ -471,7 +471,8 @@ test("events: a consumer that unsubscribes while the pump has handed the loop ba
   let failed = false;
   l2.subscribe("flows", { type: "contact.*" }, e => { const t = Date.now(); while (Date.now() - t < 3); if (e.seq === 30 && !failed) { failed = true; throw new Error("down"); } got.push(e.seq); });
   for (let i = 0; i < 40; i++) l2.append(person(), ev());
-  await new Promise(r => setTimeout(r, 60));
+  // the handler spends 3 ms an event, so event 30 is reached after about 90 ms on an idle machine and later on a busy one: wait for it, not for a fixed time
+  for (let waited = 0; !failed && waited < 3000; waited += 10) await new Promise(r => setTimeout(r, 10));
   assert.equal(failed, true);
   assert.ok(!got.includes(30), "the failed event is not counted as handled");
   assert.equal(l2.cursor("flows"), 29, "the cursor stays before the event that threw, as it does with no hand-back");
