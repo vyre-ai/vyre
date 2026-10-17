@@ -125,6 +125,8 @@ export default {
     /** The kernel's answer to "may this verified agent do this by itself": { grant } or null. A person's own call, a model slot and the default assistant never match. */
     const standingCover = async (input, meta, agentName) => {
       try {
+        // B8: a call that names no destination (an MCP tool with no recipient argument) never matches a standing permission.
+        if (input.unnamed === true) return null;
         if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
         let to = gate.recipients(input);
         if ((!to || !to.length) && String(input.kind) === "send") {
@@ -140,6 +142,7 @@ export default {
     };
     const said = async (input, thread, agent) => {
       try {
+        if (input.unnamed === true) return null;
         const to = gate.recipients(input);
         if (!to || !to.length) return null;
         let lineage = [];

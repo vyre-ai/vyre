@@ -717,9 +717,11 @@ export class Hub {
 
   async hold(r, t, args, who, memo) {
     if (!this.deps.request) throw fail("failed", "the Gate is not running, so an outward call cannot be held");
-    const { to } = target(args, r.name);
+    const { to, key } = target(args, r.name);
     const project = who.thread ? await this.projectOf(who, memo) : null;
-    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
+    // B8: with no recipient argument, `to` is only the server's name for the person to see. That is not a destination, so the
+    // Gate must not match it to a standing permission or an intent (gate/index.js reads `unnamed`).
+    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, ...(key === null ? { unnamed: true } : {}), content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
       ...(who.thread ? { thread: who.thread } : {}), ...(project ? { project } : {}), ...(who.agent ? { agent: who.agent } : {}) });
     this.deps.emit("mcp.held", { server: r.name, tool: t.tool, id: held.id, kind: t.kind, agent: who.agent || null }, who.thread ? { thread: who.thread, ...(project ? { project } : {}) } : undefined);
     return { held: held.id, message: held.message };
