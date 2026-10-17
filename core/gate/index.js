@@ -380,7 +380,8 @@ export default {
           const [, , agentName, by] = String(g.source).split(":");
           if (!staff && by !== me) continue;
           const c = g.conditions || {};
-          out.push({ id: g.id, agent: agentName, by, resource: g.resource.prefix, to: c.to, ...(c.rate ? { daily_cap: c.rate.n } : {}), ...(c.max_amount ? { max_amount: c.max_amount, daily_amount: c.daily_amount } : {}), ...(c.when && c.when.expires ? { expires: c.when.expires } : {}), use: gate.standingUse(g.id) });
+          const [kind, via] = String(g.resource.prefix).split("/outbox/")[1]?.split("/") || [];
+          out.push({ id: g.id, agent: agentName, by, kind: kind || null, via: via || null, resource: g.resource.prefix, to: c.to, ...(c.rate ? { daily_cap: c.rate.n } : {}), ...(c.max_amount ? { max_amount: c.max_amount, daily_amount: c.daily_amount, currency: c.currency } : {}), ...(c.when && c.when.expires ? { expires: c.when.expires } : {}), use: gate.standingUse(g.id) });
         }
         return { permissions: out };
       },
