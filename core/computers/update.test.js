@@ -345,18 +345,21 @@ test("update: after 30 minutes the automatic run updates anyway and says what it
 
 // ---- the global "any agent busy" signal ---------------------------------------------------
 
-test("update: turns in progress are counted from the thread events, across threads", () => {
+test("update: turns in progress are counted from the switchboard's events, across threads", () => {
   /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
   const on = (/** @type {string} */ p, /** @type {(e: any) => void} */ fn) => { handlers.set(p, fn); return () => { handlers.delete(p); }; };
   const turns = trackTurns(on);
-  const send = (/** @type {string} */ p, /** @type {string} */ thread) => /** @type {any} */ (handlers.get(p))({ payload: { thread } });
+  // the shape the switchboard emits: the thread is on the event, the rest in the payload
+  const fire = (/** @type {string} */ p, /** @type {string} */ thread, payload = {}) => /** @type {any} */ (handlers.get(p))({ type: p, thread, payload });
   assert.equal(turns.size(), 0);
-  send("thread.sent", "a"); send("thread.sent", "b"); send("thread.sent", "a");
+  fire("thread.sent", "a", { text: "hi" }); fire("thread.sent", "b", { text: "yo" }); fire("thread.sent", "a", { via: "steer" });
   assert.equal(turns.size(), 2, "two threads, whatever the number of sends");
-  send("thread.finished", "a");
+  fire("thread.sent", "c", { via: "restored" });
+  assert.equal(turns.size(), 2, "a message put back after a restart is not a turn running");
+  fire("thread.finished", "a", { ok: true });
   assert.equal(turns.size(), 1);
-  send("thread.finished", "b");
-  assert.equal(turns.size(), 0);
+  fire("thread.stopped", "b", { code: null, reason: "stopped" });
+  assert.equal(turns.size(), 0, "a stopped thread is no longer mid-turn");
   turns.stop();
   assert.equal(handlers.size, 0, "the listeners are removed on stop");
 });

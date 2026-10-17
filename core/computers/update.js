@@ -51,14 +51,19 @@ export async function assertOwner(kernel, meta) {
 }
 
 /**
- * The global "any agent mid-turn" signal: the switchboard's own events, kept as a set of thread ids. A turn that never reports its end stays in the set, which is why the automatic update caps its wait.
+ * The global "any agent mid-turn" signal: the switchboard's own events (thread.sent starts a turn; thread.finished or thread.stopped ends it), kept as a set of thread ids. A turn that never reports its end stays in the set, which is why the automatic update caps its wait.
  * @param {(pattern: string, fn: (e: any) => void) => () => void} on ctx.events.on
  * @returns {{ size: () => number, stop: () => void }}
  */
 export function trackTurns(on) {
   const running = new Set();
-  const idOf = (/** @type {any} */ e) => { const p = e && e.payload; const t = p && (p.thread || p.id); return t ? String(t) : null; };
-  const offs = [on("thread.sent", e => { const t = idOf(e); if (t) running.add(t); }), on("thread.finished", e => { const t = idOf(e); if (t) running.delete(t); })];
+  // The thread id rides on the event itself (the switchboard emits type, payload, thread, project), not in the payload. A message put back after a restart ("restored") is not a turn running.
+  const idOf = (/** @type {any} */ e) => (e && e.thread) ? String(e.thread) : null;
+  const end = (/** @type {any} */ e) => { const t = idOf(e); if (t) running.delete(t); };
+  const offs = [
+    on("thread.sent", e => { const t = idOf(e); if (t && !(e.payload && e.payload.via === "restored")) running.add(t); }),
+    on("thread.finished", end), on("thread.stopped", end),
+  ];
   return { size: () => running.size, stop: () => { for (const off of offs) if (typeof off === "function") off(); } };
 }
 
