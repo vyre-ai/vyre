@@ -71,7 +71,6 @@ const ALLOWED = new Map([
   ["relay/client/bytes.js", "generated from lib/bytes.js (scripts/sync-copies.mjs)"],
   ["names/worker/index.js", "a Cloudflare Worker: another runtime; the corpus above holds it to lib/bytes.js"],
   ["relay/worker/index.js", "a Cloudflare Worker: another runtime; the corpus above holds it to lib/bytes.js"],
-  ["relay/client/code.js", "the pairing code's own alphabet (Crockford-style, 32 symbols with no I, L, O or U)"],
   ["kernel/core/canonical.js", "the one canonical JSON"],
   ["kernel/seal/wire.js", "the sealing protocol's reference form, which the sealing process, the kernel and the signers agree on byte for byte; the corpus above holds every other copy to it"],
   ["core/presence/index.js", "the presence input hash, which skips functions and toJSON values by design; apps/app/src/auth/person.ts is its phone half and core/wink/devicekey.js its software-key half (corpus above)"],

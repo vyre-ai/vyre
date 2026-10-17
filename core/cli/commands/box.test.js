@@ -178,7 +178,8 @@ test("box add --yes: installs, saves the box, and says it is not paired yet and 
   assert.equal(code, 0, text);
   assert.match(r.read("installer.log"), /^--yes --version \S+$/m, "the installer was copied over and run with --yes and the version");
   assert.match(text, /installed and not paired yet/);
-  assert.match(text, /vyre call wink\.server\.code/);
+  assert.match(text, /Create a space and run the install command/);
+  assert.doesNotMatch(text, /wink\.server\.code/, "no typed code is shown or asked for");
   assert.equal(r.read("opened"), "", "no browser is opened: a server has no first-run page");
   assert.doesNotMatch(ssh(r), /-O forward/, "no tunnel to a loopback page");
   assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");

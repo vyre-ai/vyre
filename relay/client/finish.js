@@ -1,10 +1,10 @@
 // @ts-check
 // finish: the last step of a pairing whose ticket the box GATED (X-1): the device redeemed it and is a waiting pairing, not yet a device, until it finishes over its own channel. Which
 // tool finishes it depends on the gate the box names in its reply (`gate`): a server's ticket ends with wink.server.adopt (the app says who will own the server and proves it, and the
-// person at the server says yes), a phone's or a computer's with wink.phone.wait (the person on the showing device says yes). This file is the one place that does either, for the QR and long
-// code (serverpair.js, phonepair.js) and for the typed code (join.js) alike; before it the typed code redeemed the ticket and stopped, and the waiting pairing was dropped.
+// person at the server says yes), a device's waiting pairing (the person on the showing device says yes). This file is the one place that does either, for the QR and long
+// code (serverpair.js) and for the typed code (join.js) alike; before it the typed code redeemed the ticket and stopped, and the waiting pairing was dropped.
 //
-// Both resolve what the pairing then holds, or reject with an Error whose `code` is one of the codes serverpair.js and phonepair.js list.
+// Both resolve what the pairing then holds, or reject with an Error whose `code` is one of the codes serverpair.js lists.
 import { connect } from "./client.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
 
@@ -76,48 +76,6 @@ export async function adoptServer(paired, o) {
       const r = await adopt({ ...base, pairing: { commit, ...mark, reveal: na } });
       if (r.status === 200 && r.body && r.body.data && r.body.data.owner) return done(r.body.data);
       if (!(r.status === 200 && r.body && r.body.data && r.body.data.pending)) return refuse(r);
-      await new Promise(res => setTimeout(res, pollMs));
-    }
-  } catch (e) { stop(); throw e; }
-}
-
-/**
- * A phone's or computer's waiting pairing: wink.phone.wait. The first call carries the pairing's commit and this device's name (and, for a device joining a person's identity, its key entry); the other device
- * answers with its nonce; this device reveals its own, both derive the same three words, and the person at the other device says yes (a typed code's ack is that yes already).
- * @param {{ box: string, device: string, route: string, name?: string }} paired
- * @param {{ relay: string, ticket: string, deviceName?: string, entry?: any, crypto?: any, keyStore?: any, WebSocket?: any, onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
- * @returns {Promise<{ paired: true, enrolled: boolean, reason?: string, relay: string, route: string, box: string, device: string, name: string, identity?: { id: string, vyre?: string } }>}
- */
-export async function waitPhone(paired, o) {
-  const deviceName = o.deviceName || "a device";
-  const conn = connect({ relay: o.relay, route: paired.route, box: paired.box, name: deviceName, crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket });
-  const stop = () => { try { conn.close(); } catch { /* closed */ } };
-  /** @param {any} input */
-  const wait = async input => {
-    const r = await callPending(conn, "wink.phone.wait", input);
-    if (r.status === 200 && r.body && r.body.data) return r.body.data;
-    const code = r.body && r.body.error && r.body.error.code;
-    throw fail(code === "denied" ? "denied" : code === "expired" ? "expired" : "unreachable", String((r.body && r.body.error && r.body.error.message) || "The other device refused."));
-  };
-  try {
-    const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(o.ticket);
-    const base = { commit, tag, name: deviceName.slice(0, 64), ...(o.entry ? { entry: o.entry } : {}) };
-    const first = await wait(base);
-    const nb = String(first && first.nb || "");
-    if (!nb) throw fail("unreachable", "The other device did not start the pairing.");
-    const words = await pairWords(String(paired.box), String(paired.device), { ticket: o.ticket, nonceA: na, nonceB: nb });
-    if (o.onWords) o.onWords(words);
-    const deadline = Date.now() + (o.timeoutMs ?? 5 * 60_000);
-    const pollMs = o.pollMs ?? 1000;
-    for (;;) {
-      if (o.signal && o.signal.aborted) throw fail("cancelled", "Adding this device was cancelled.");
-      if (Date.now() > deadline) throw fail("expired", "Nobody answered at the other device in time.");
-      const r = await wait({ ...base, reveal: na });
-      // the other device derives the same three words only after the reveal: a different set means someone sits between the two
-      if (r.words && String(r.words) !== words) throw fail("denied", "The words did not match, so nothing was added. Start again from the other device.");
-      if (r.state === "yes") { stop(); return { paired: true, enrolled: r.enrolled !== false, ...(r.enrolled === false && r.reason ? { reason: String(r.reason) } : {}), relay: o.relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name || "", ...(r.identity && typeof r.identity.id === "string" ? { identity: { id: String(r.identity.id), ...(typeof r.identity.vyre === "string" ? { vyre: r.identity.vyre } : {}) } } : {}) }; }
-      if (r.state === "no") throw fail("denied", "The other device said no, so nothing was added.");
-      if (r.state === "expired") throw fail("expired", "Nobody answered at the other device in time.");
       await new Promise(res => setTimeout(res, pollMs));
     }
   } catch (e) { stop(); throw e; }

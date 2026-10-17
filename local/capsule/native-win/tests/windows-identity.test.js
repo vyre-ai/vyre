@@ -101,20 +101,6 @@ test("the TPM key signs only bytes the shell can summarise, behind the shell's o
   assert.match(read("../app/src/main.rs"), /store=\{store\} key/, "a software key is not reported as a TPM key");
 });
 
-test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_CODE=0 at compile time turns it off (the user's ruling of 5 Oct)", () => {
-  const rs = read("../app/src/main.rs");
-  assert.match(rs, /const TYPED_CODE: bool = !env_is_zero\(option_env!\("VYRE_TYPED_CODE"\)\);/, "on unless the build says exactly 0");
-  const cmd = /async fn finish_typed_pair\([\s\S]*?\n}\n/.exec(rs)[0];
-  assert.ok(cmd.indexOf("if !TYPED_CODE") > -1 && cmd.indexOf("if !TYPED_CODE") < cmd.indexOf("pin_from_offer"), "the command refuses only when the build turned it off");
-  assert.match(rs, /StateOut \{ typed_code: TYPED_CODE,/, "the page is told");
-  const html = read("../app/ui/first-run.html");
-  assert.match(html, /<section id="typed">/, "the typed path shows by default");
-  assert.ok(!/<section id="typed" hidden>/.test(html));
-  assert.match(read("../app/ui/first-run.js"), /s\.typed_code === false\) document\.getElementById\("typed"\)\.hidden = true/, "hidden only when the shell says it was built off");
-  const wf = readFileSync(new URL("../../../../.github/workflows/lumen-win.yml", import.meta.url), "utf8");
-  assert.ok(!/VYRE_TYPED_CODE\s*[:=]\s*["']?0/.test(wf), "no workflow sets it to 0");
-});
-
 test("the bundled app page (its own origin, served by the shell) gets the identity commands too, and only from itself", () => {
   const cap = JSON.parse(read("../app/capabilities/main-identity-bundled.json"));
   assert.deepEqual(cap.windows, ["main"]);

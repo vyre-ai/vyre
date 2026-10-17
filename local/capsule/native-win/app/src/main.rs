@@ -98,24 +98,9 @@ struct Live {
     hotkey: Mutex<String>,
 }
 
-/// The short typed code (WINK-NNPP-PPPP) ships in release builds (the user's ruling of 5 Oct; the lead corrected an earlier reading). It is on unless a build sets VYRE_TYPED_CODE=0 at compile time,
-/// which hides the bundled first-run page's typed path and makes `finish_typed_pair` refuse.
-/// Whether a build-time switch says exactly "0". Compared byte by byte: stable Rust cannot match a `str` in a constant.
-const fn env_is_zero(v: Option<&str>) -> bool {
-    match v {
-        Some(s) => {
-            let b = s.as_bytes();
-            b.len() == 1 && b[0] == b'0'
-        }
-        None => false,
-    }
-}
-const TYPED_CODE: bool = !env_is_zero(option_env!("VYRE_TYPED_CODE"));
-
 #[derive(Serialize)]
 struct StateOut {
     paired: bool,
-    typed_code: bool,
     address: Option<String>,
     hotkey: String,
 }
@@ -241,7 +226,7 @@ fn bind_hotkey(app: &AppHandle) -> String {
 #[tauri::command]
 fn get_state(app: AppHandle, live: State<Live>) -> StateOut {
     let pin = pinned(&app);
-    StateOut { typed_code: TYPED_CODE, paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
+    StateOut { paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
 }
 
 // Commands that build a window are async: a synchronous command runs on the main thread, and creating a
@@ -370,24 +355,6 @@ fn unmount_drive(letter: String) -> Result<(), String> {
     let b = letter.as_bytes();
     if b.len() != 2 || !b[0].is_ascii_alphabetic() || b[1] != b':' { return Err("That is not a drive letter.".into()); }
     net_use(&drive::unmap_args(&letter.to_ascii_uppercase())).map(|_| ())
-}
-
-/// A pairing made with the typed code another device showed (relay/client/join.js, the ack typed back there is the person's yes): keep it as the device-first pairing does, pinned to the
-/// box's own address. Only the bundled first-run page may call this; the address is checked by `pin_from_offer`.
-#[tauri::command]
-async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Option<String>, handle: Option<String>) -> Result<(), String> {
-    if !TYPED_CODE { return Err("Pairing by a typed code is off in this build. Open your Vyre by its address and pair there.".into()); }
-    // The address the pairing named, held to the rules for what the shell may pin (shell::pin_from_offer): on vyre.run it must be exactly the box's own handle's address.
-    let choice = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "The pairing gave no address this app can open.")?;
-    let pin = Pinned::parse(&choice.address).ok_or("The pairing gave no address this app can open.")?;
-    if !link.is_object() { return Err("The pairing was not complete.".into()); }
-    let path = record_path(&app).ok_or("No place to save on this computer.")?;
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&path, serde_json::json!({ "address": pin.origin(), "link": link }).to_string()).map_err(|e| e.to_string())?;
-    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
-    ensure_link_window(&app);
-    show_panel(&app, "/quick");
-    Ok(())
 }
 
 /// The identity key's and the TPM key's commands are the main panel's only ones, and only from the pinned origin: the capability lets the panel call them, and this refuses any other page
@@ -693,7 +660,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, identity_public, identity_sign, identity_has, identity_forget, setup_finished, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });

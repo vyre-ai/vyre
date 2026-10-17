@@ -457,7 +457,7 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   }
 });
 
-test("daemon: Wink's relay client (web/js/pair-ticket.js's ../../relay/client/*.js imports) is served from relay/client, and the pages' CSP allows the relay it needs", { timeout: 20_000 }, async t => {
+test("daemon: the pre-app pages' relay client (their ../../relay/client/*.js imports) is served from relay/client, and the pages' CSP allows the relay it needs", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], relay: { url: "wss://relay.example.com" } }));
   const d = await start({ root, log: () => {} });
@@ -485,8 +485,8 @@ test("daemon: Wink's relay client (web/js/pair-ticket.js's ../../relay/client/*.
   // the real file.
   const nodeOnly = /** @type {any} */ (await get("/relay/client/nodecrypto.js"));
   assert.notEqual(nodeOnly.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", "nodecrypto.js"), "utf8"));
-  // The pre-app pages carry the same connect-src fix (the device page's own fetch/WebSocket to the relay runs from here, not from /relay/client/*.js).
-  const page = /** @type {any} */ (await get("/onboard/device"));
+  // The pre-app pages carry the same connect-src fix (a page's own fetch/WebSocket to the relay runs from here, not from /relay/client/*.js).
+  const page = /** @type {any} */ (await get("/onboard"));
   assert.ok(page.headers["content-security-policy"].includes("wss://relay.vyre.run"));
 });
 

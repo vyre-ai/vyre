@@ -143,7 +143,7 @@ test("up on a Mac: a box named in config is never sent anything by starting; an 
   const quiet = fakes(t, { answering: [BOX], tty: false, tools });
   assert.equal(await up([], quiet.deps), 0);
   assert.deepEqual(quiet.calls.map(c => c[0]), ["wink.server.home", "capsule"]);
-  assert.match(quiet.text(), /not paired with \S+ yet\..*wink\.server\.code.*vyre link pair <code>/);
+  assert.match(quiet.text(), /not paired with \S+ yet\..*vyre link pair \S+.*vyre link approve <code>/);
   t.mock.restoreAll();
   // On a terminal nothing is asked either: there is no request to send, only a code to give.
   const tty = fakes(t, { answering: [BOX], answers: ["y"], tools });
@@ -176,11 +176,11 @@ test("up on a Mac: a temp or dev home never talks to a real box unless told to",
 test("up on a server: no link and no browser; unpaired it says how to pair, paired it names the space", async t => {
   world(t, running([]));
   config.save({ role: "box" });
-  // no terminal: it says how to pair (on a terminal it runs the installer's pairing, pair-here.js, which has its own tests)
+  // it says how to pair: the install command from the app, which carries the pair code (a terminal shows no code and asks nothing)
   const f = fakes(t, { tty: false, tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
   f.deps.platform = "linux";
   assert.equal(await up([], f.deps), 0);
-  assert.match(f.text(), /not paired yet\. Pair this server from your Vyre app: run vyre call wink\.server\.code/);
+  assert.match(f.text(), /not paired yet\. In the Vyre app choose Create a space.*install command/);
   assert.ok(!f.calls.some(c => c[0] === "onboard.link"), "no onboarding link is asked for");
   assert.deepEqual(f.opened, [], "nothing is opened");
   t.mock.restoreAll();
@@ -258,7 +258,8 @@ test("up on a Mac: an unpaired box is told how to pair, sends nothing, then open
   const r = await runMac("https://alex.vyre.run", { explicit: true });
   assert.equal(r.code, 0);
   assert.deepEqual(r.calls.map(c => c[0]), ["wink.server.home", "capsule"]);
-  assert.match(r.text, /vyre link pair <code>/);
+  assert.match(r.text, /vyre link pair \S+/);
+  assert.match(r.text, /vyre link approve <code>/);
 });
 
 test("up on a Mac: on a terminal the status line is offered before the Capsule; without one it is not", async () => {
@@ -341,7 +342,8 @@ test("up on a Mac, the very first time: the welcome, the three choices, and choi
   assert.ok(text.indexOf("Vyre is installed") < text.indexOf("Where should Vyre run?"), "the welcome comes first");
   assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a box/);
   assert.match(text, /Saved https:\/\/vyre\.example-tail\.ts\.net\. To pair this Mac with it/);
-  assert.match(text, /vyre link pair <code>/);
+  assert.match(text, /vyre link pair \S+/);
+  assert.match(text, /vyre link approve <code>/);
   assert.doesNotMatch(text, /vyred running ·/, "a first run gets the welcome, not a status line");
   assert.deepEqual(f.opened, [], "nothing is opened in a browser");
 });

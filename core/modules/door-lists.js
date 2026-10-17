@@ -10,6 +10,8 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A person's own sign-ins on a new device (core/identity/signins.js): every person sees, vouches for and signs out their own, for the person the kernel chain says the call is, never an input.
+  "identity.signin.ack", "identity.signin.revoke", "identity.signins.pending",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
@@ -34,8 +36,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
-  "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.computer.add", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
-  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
+  "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
+  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", 
   "onboard.setup", "onboard.skip", "onboard.status", "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll", "onboard.windows", "onboard.you",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
   "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
@@ -62,7 +64,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "threads.watch",
   "views.list",
   "wink.install.complete", "wink.install.issue", "wink.install.status",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
+  "wink.server.adopt", "wink.server.pair.answer",
   "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
   "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
@@ -107,7 +109,6 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "context.now", "context.report",
   "design.catalogue", "design.css", "design.css.propose", "design.css.status", "design.css.verify", "design.decide", "design.proposals", "design.propose",
   "design.screen.remove", "design.screens", "design.validate",
-  "devices.signin",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
   "documents.signing.remind", "documents.signing.waiting", "documents.template.add",
@@ -178,8 +179,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "recall.setup", "recall.status", "recall.thread", "recall.transcript", "recall.turn", "recall.unwatch", "recall.watch",
   "records.define", "records.dev-seed", "records.forget", "records.reveal", "records.sees-as",
   "relay.devices.ask-trust", "relay.devices.list", "relay.devices.mark", "relay.devices.path", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust",
-  "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", "relay.pair.window.close", "relay.pair.window.confirm",
-  "relay.pair.window.open", "relay.pair.window.ping", "relay.pair.window.reject", "relay.pair.window.renew", "relay.setup.status", "relay.status", "relay.web.pin",
+  "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", 
+  "relay.setup.status", "relay.status", "relay.web.pin",
   "relay.web.release",
   "releases.cert", "releases.sign",
   "rules.accept", "rules.define", "rules.disable", "rules.dismiss", "rules.enable", "rules.propose", "rules.remove",
@@ -232,9 +233,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "waiting.count", "waiting.list",
   "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
   "watchers.run", "watchers.test",
-  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.code.status", "wink.decline", "wink.device.key",
-  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open", "wink.phone.scan",
-  "wink.relay.apply", "wink.remove", "wink.server.code", "wink.server.confirm", "wink.server.pairing", "wink.server.probe", "wink.server.release",
+  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.decline", "wink.device.key",
+  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", 
+  "wink.relay.apply", "wink.remove", "wink.server.code", "wink.server.pairing", "wink.server.probe", "wink.server.release",
   "wink.server.reset.begin", "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge",
   "wink.storage.bridge.accept", "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick",
   "wink.storage.remove", "wink.storage.status",
@@ -292,8 +293,6 @@ export const MEMBER_OUTWARD = Object.freeze({
   "onboard.space.open": "the person's yes: opening her Space is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.space.current": "the person's yes: naming which Space she is in is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.member.link": "the person's yes: linking her member identity is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.computer.add": "the person's yes: adding a computer is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.phone.add": "the person's yes: adding her phone is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.windows": "the person's yes: finishing Windows setup is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "identity.vault.install": "the person's yes: installing her vault on this device is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "spaces.pair.install": "the owner's yes: pairing a server install is the owner's Space act; an assistant's request lands as a held card in the owner's approvals, her own call from her device needs only her when she is the owner.",
@@ -343,7 +342,7 @@ export const GROUP_OF = Object.freeze(new Map(Object.entries(TOOL_GROUPS).flatMa
  */
 export const GUEST_MAY = Object.freeze(new Set([
   "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
+  "wink.server.adopt", "wink.server.pair.answer",
   "records.get", "records.list", "records.me", "records.types",
   "roles.tools",
   "spaces.list",

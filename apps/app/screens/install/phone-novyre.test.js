@@ -5,21 +5,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CAMERA_SCAN, DRAWN_CODE_SCAN, NO_VYRE, deviceKind, offersNoVyre } from "./first-run.js";
+import { NO_VYRE, deviceKind, offersNoVyre } from "./first-run.js";
 import { backOf } from "./flow.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(join(here, p), "utf8");
-
-test("RC1 pairing offers no camera view: the flag is off and PairEntry reads it before it asks for the camera or draws one", () => {
-  assert.equal(CAMERA_SCAN, false);
-  const src = read("../devices/PairParts.tsx");
-  assert.match(src, /import \{ CAMERA_SCAN \} from "\.\.\/install\/first-run\.js"/);
-  assert.match(src, /if \(CAMERA_SCAN && canScanLive\) requestCamera\(\)/);
-  assert.match(src, /\{CAMERA_SCAN && canScanLive && ScanCamera && cam\?\.state === "granted"/);
-  // the permission line is only drawn for a camera that was asked for
-  assert.doesNotMatch(src, /\) : cam && cam\.state !== "granted"/);
-});
 
 test("I don't have Vyre running yet is a phone's connect-step action only", () => {
   assert.equal(offersNoVyre(deviceKind("ios", false), false), true);
@@ -35,12 +25,3 @@ test("the share text is the setup link and no install command; Back from the ste
   assert.equal(backOf("novyre"), "scan");
 });
 
-test("TypeCode offers Scan the code on a phone, and a code the camera reads goes through the typed code's own pairing", () => {
-  const src = read("../devices/TypeCode.tsx");
-  assert.match(src, /const canScan = DRAWN_CODE_SCAN && canReadDrawnCode;/);
-  assert.match(src, /label="Scan the code"/);
-  assert.match(src, /const code = avatarBytesToCode\(e\.ticket\);/);
-  assert.match(src, /setText\(code\); void go\(code\);/);
-  assert.equal(DRAWN_CODE_SCAN, true);
-  assert.equal(CAMERA_SCAN, false, "the old QR camera view in PairEntry stays off: no plain QR");
-});

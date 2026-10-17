@@ -15,9 +15,9 @@ A person is a permanent identity id plus a signed, chained list of the keys that
 ## What a person sees
 
 - First run shows "Sign in to Vyre" with the lead "Your name is how Vyre knows you on every device." The choices are "I already have a name" ("Sign in on this device. You approve it from a device you already use.") and "I am new to Vyre" ("Pick a name and save your recovery kit.").
-- Sign in by name opens "Approve on your other device". The other device asks "Sign in on this device" and shows three words. The person checks they match and taps Approve. A second button reads "Use my recovery kit instead". Refusals come in plain words: nobody approved in 2 minutes, the other device said no, or too many requests for that name.
+- Signing in on a new device takes the space address, the username and the master password, or GitHub and then the master password. Your other devices show that a new device signed in.
 - First run is Identity, a space, then Ready, on the web and in both apps (`apps/app/screens/first-run/FirstRun.tsx`). GitHub is optional on the identity screen and does not unlock the vault.
-- Settings, Devices has the sub line "Each device joins each space on its own.", the button **Add a device** and a switch **Make it faster** for direct connections between your devices. Each row shows a mark, the name, a kind (Phone, Server or Computer), the last time seen and the spaces it reaches.
+- Settings, Devices has the sub line "Each device joins each space on its own." and a switch **Make it faster** for direct connections between your devices. Each row shows a mark, the name, a kind (Phone, Server or Computer), the last time seen and the spaces it reaches.
 - A device page offers "Share this computer" (**Allow with Face ID**, **Stop sharing**), a per-space **Add** and a "Remove" group. A removed device shows "That device is not here".
 - Every person, device and space has a generated mark drawn from a seed, so one name draws one picture on every screen (`apps/app/ui/marks/source.js`). A device mark also shows its kind.
 
@@ -31,9 +31,7 @@ A person is a permanent identity id plus a signed, chained list of the keys that
 
 **Directory.** The name directory (`names/`, `core/names/`, client `lib/identity/directory.js`) stores the chain. A name belongs to an identity or a Space, and never to a server. It emits name.claimed, name.moved and name.released.
 
-**Pairing.** `wink.phone.open` shows a code on the device that holds the name. The new device redeems it over the relay (`relay/client/phonepair.js`), and on the person's yes the holding device writes the new key onto the chain. The new device keeps the name only after it reads the list and finds its own key (`apps/app/src/identity/add-device.ts`; errors `bad_code`, `taken`, `denied`, `expired`, `not_enrolled`, `not_listed`). Servers pair through `wink.pair.server`, `wink.server.code` and `wink.server.confirm`. Events include wink.code-opened, wink.pair-done, wink.signin-asked, wink.enrolled and wink.pair-failed.
-
-**Sign in by name.** The new device asks the relay for the name. The server holding that identity hears relay.signin-asked (`core/wink/index.js`), and a device already on the list is asked to approve under a presence proof (`kernel/remote/proof.js`).
+**Pairing.** Servers pair through `wink.pair.server` and `wink.server.code`, from the install line's pair code. A person signs in on another device with the space address, the username and the master password, or with GitHub and the master password; nothing is added from one device to another. Events include wink.pair-done and wink.pair-failed.
 
 **Terminal sign-in.** `signin.ask` asks the owner's phone and `signin.answer` takes the yes with a presence proof. The terminal then holds a person session until it signs out or sits unused for 30 days (`core/signin/module.json`).
 

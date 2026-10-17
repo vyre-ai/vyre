@@ -1,13 +1,12 @@
 // What a scanned code is, in plain terms (pure; scan.ts and scan.web.ts feed it). A Wink code today
-// is the long pairing code (`vyre://wink/2?t=...`) or a short typed code. The old offer (`https://vyre.run/pair#...`)
+// is the long pairing code (`vyre://wink/2?t=...`). The old offer (`https://vyre.run/pair#...`)
 // is refused: it comes back as `other` carrying the refusal sentence. Anything else the camera reads is handed back
 // as text, never acted on.
 
 import { parseWinkCode } from "../api/wink-code.ts";
 
 export type ScannedCode =
-  | { kind: "wink"; ticket: string; relay: string; for: "server" | "phone" }
-  | { kind: "typed"; code: string }
+  | { kind: "wink"; ticket: string; relay: string; for: "server" }
   | { kind: "other"; text: string };
 
 /** The longest text kept from a code we do not know; a QR can hold far more than a person needs to see. */
@@ -20,7 +19,6 @@ export function readCode(text: string | null | undefined): ScannedCode | null {
   if (!raw) return null;
   const w = parseWinkCode(raw);
   if (!w.ok && w.reason === "old_offer") return { kind: "other", text: w.say };
-  if (w.ok && w.kind === "typed") return { kind: "typed", code: w.code };
   if (w.ok) return { kind: "wink", ticket: w.ticket, relay: w.relay, for: w.for };
   // A one-time-code address is read whole: a Google Authenticator export is far longer than the text kept from other codes, and a cut one imports nothing.
   if (/^otpauth(-migration)?:\/\//i.test(raw)) return { kind: "other", text: raw.slice(0, MAX_OTP) };

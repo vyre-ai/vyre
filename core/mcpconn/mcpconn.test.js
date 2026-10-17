@@ -151,7 +151,7 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.ok(n >= 20, "most representatives exist: " + n);
   // the allowlist is the first wall and the deny-list the second: no tool that can run code, drive a screen, install or make a key passes, however it is named
   const { hostedKeyMay } = await import("../modules/agent-reach.js");
-  for (const tool of ["identity.create", "spaces.members.add", "spaces.invites.create", "spaces.owner.transfer", "vault.space.put", "devices.signin"]) assert.equal(hostedKeyMay(tool), true, `${tool} is on the hosted gate`);
+  for (const tool of ["identity.create", "spaces.members.add", "spaces.invites.create", "spaces.owner.transfer", "vault.space.put"]) assert.equal(hostedKeyMay(tool), true, `${tool} is on the hosted gate`);
   for (const tool of ["identity.unlock", "vault.space.use", "vault.put"]) assert.equal(hostedKeyMay(tool), false, `${tool} stays off the hosted gate`);
   const proposed = await d.registry.call("spaces.members.add", { space: "spc_juniper", person: "per_bbbbbbbbbbbbbbbbbbbbbbbbbb", role: "member" }, "mcp", markViaMcp({}, "mcn_x", true));
   assert.equal(proposed.error && proposed.error.code, "held_for_approval", "a hosted key proposes a member and the person's yes applies: " + JSON.stringify(proposed).slice(0, 180));

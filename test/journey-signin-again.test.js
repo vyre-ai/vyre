@@ -13,7 +13,7 @@ import { tempHome, present } from "./helpers.js";
 import { fakeExtension, until } from "../local/hands-chrome-mac/fake-extension.js";
 import { learnOperation } from "../lib/siteops/learn.js";
 import * as F from "../lib/siteops/fixtures.js";
-import { afterCheck, signinCards } from "../apps/app/src/real/signin-again.js";
+import { afterCheck, deviceCards, DEVICE_CALLS, signinCards } from "../apps/app/src/real/signin-again.js";
 
 const ORIGIN = "https://app.example.com";
 const read = () => learnOperation({ name: "searchPeople", exchanges: F.pageRest("alpha corp"), exchanges2: F.pageRest("beta works"), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], storage: F.restStorage, trigger: { url: `${ORIGIN}/search?q={query}` } }).operation;
@@ -83,18 +83,21 @@ test("the app runs only the buttons it knows: a tool or a route the box names th
   assert.equal(afterCheck({ light: "green" }), "");
 });
 
-test("a sign-in on a new device is a card whose two buttons the app runs, each with the device id and nothing else; a tool named with the wrong key is left out", () => {
-  const items = { items: [{ id: "signins:abcd1234abcd1234", kind: "signin", title: "Signed in on Kit's laptop", at: 5, answers: [
-    { label: "Not me, sign it out", tool: "identity.signin.revoke", input: { device: "abcd1234abcd1234", session: "leak" } },
-    { label: "It was me", tool: "identity.signin.ack", input: { device: "abcd1234abcd1234" } },
-    { label: "Wrong key", tool: "identity.signin.revoke", input: { id: "abcd1234abcd1234" } },
-    { label: "Connector tool with a device", tool: "connectors.connection.check", input: { device: "abcd1234abcd1234" } },
-    { label: "Not a device id", tool: "identity.signin.ack", input: { device: "../x" } },
-  ] }] };
-  const [c] = signinCards(items);
-  assert.deepEqual(c.buttons, [
-    { label: "Not me, sign it out", tool: "identity.signin.revoke", input: { device: "abcd1234abcd1234" } },
-    { label: "It was me", tool: "identity.signin.ack", input: { device: "abcd1234abcd1234" } },
+test("a sign-in on a new device is a card named by the device, with a button that signs it out and one that says it was them, each carrying only the device id; a malformed id makes no card", () => {
+  const cards = deviceCards({ devices: [
+    { device: "bbbb2222bbbb2222", label: "  Kit's   phone ", at: 9, session: "leak" },
+    { device: "abcd1234abcd1234", label: "", at: 5 },
+    { device: "../../x", label: "bad id" },
+    { device: "short", label: "short" },
+    null,
+  ] });
+  assert.deepEqual(cards.map((c) => [c.id, c.title, c.at]), [["signins:abcd1234abcd1234", "Signed in on a new device", 5], ["signins:bbbb2222bbbb2222", "Signed in on Kit's phone", 9]], "oldest first, a name or a plain stand-in");
+  assert.deepEqual(cards[1].buttons, [
+    { label: "Not me, sign it out", tool: DEVICE_CALLS.revoke, input: { device: "bbbb2222bbbb2222" } },
+    { label: "It was me", tool: DEVICE_CALLS.ack, input: { device: "bbbb2222bbbb2222" } },
   ]);
-  assert.equal(c.title, "Signed in on Kit's laptop");
+  assert.ok(!JSON.stringify(cards).includes("leak"), "nothing but the label, the device id and the time rides on a card");
+  assert.deepEqual(deviceCards(undefined), []);
+  assert.deepEqual(deviceCards({ devices: "x" }), []);
+  assert.equal(DEVICE_CALLS.revoke, "identity.signin.revoke");
 });

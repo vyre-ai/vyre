@@ -242,7 +242,7 @@ test("phone add --android --usb: downloads, checks, installs with adb -r, then s
   const lines = capture(t);
   assert.equal(await android({}, { base: srv.base }), 0);
   const text = lines.join("\n");
-  assert.match(text, /Found Pixel 8 over USB\n\s+Installing Vyre 0\.14\.2 \(adb, no store needed\)\n\s+Open Vyre on the phone and sign in with your name; approve it from a device you already use: Devices, Add a device/);
+  assert.match(text, /Found Pixel 8 over USB\n\s+Installing Vyre 0\.14\.2 \(adb, no store needed\)\n\s+Open Vyre on the phone and sign in with your space address, your username and your master password/);
   const argv = adb.argv();
   const install = argv.find(a => a.includes("install"));
   assert.deepEqual(install?.slice(0, 4), ["-s", "1A2B3C4D", "install", "-r"]);
@@ -263,17 +263,17 @@ test("phone add --android --usb: --json is one object that says to sign in", asy
   assert.equal(await android({}, { ...deps, target: fakeTarget(false) }), 0, "a Mac: installs");
   const v = JSON.parse(lines.at(-1));
   assert.deepEqual([v.installed, v.version, v.phone.model, v.phone.via], [true, "0.14.2", "Pixel 8", "usb"]);
-  assert.match(v.pair, /sign in with your name/);
+  assert.match(v.pair, /sign in with your space address/);
   assert.ok(adb.argv().some(a => a.includes("install")));
   assert.ok(!adb.argv().some(a => a.includes("am")), "nothing is opened on the phone");
 });
 
-test("phone add (no --android): refuses with words and names Devices, Add a device", async t => {
+test("phone add (no --android): refuses with words and names signing in", async t => {
   const lines = capture(t);
   assert.equal(await phone.run(["add"]), 1);
   const text = lines.join("\n");
   assert.match(text, /not added from here any more/);
-  assert.match(text, /Devices, Add a device/);
+  assert.match(text, /master password/);
   lines.length = 0;
   assert.equal(await phone.run(["pair"]), 1, "the old verb name refuses the same way");
 });

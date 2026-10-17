@@ -13,7 +13,7 @@ release's loader step are removed (team/BACKLOG.md).
 | `worker.js`, `wrangler.toml` | The redirect Worker and the kill-switch `/sw.js`. |
 | `manifest.js` | The signed manifest: canonical JSON of every file's SRI hash, Ed25519-signed. Shared with `release.js` and `relay/web`. |
 | `release.js` | Seal a build and verify a sealed folder. |
-| `pair/` | The page at `vyre.run/pair` that the old pairing QR opened. That code is gone: the page says so and names the next step (Devices, Add a device, on a device already in use). It makes no request. The docs site publishes it. |
+| `pair/` | The page at `vyre.run/pair` that the old pairing QR opened. That code is gone: the page says so and names the next step (sign in with the space address, username and master password). It makes no request. The docs site publishes it. |
 | `loader/`, `sw.js`, `testing/` | The old phone loader. Not served any more. |
 
 Tests: `node --test relay/app/*.test.js`.

@@ -701,10 +701,6 @@
    "class": "held",
    "why": "outward: the registry holds it as a card for the person's yes; it makes an invite link"
   },
-  "onboard.phone.add": {
-   "class": "held",
-   "why": "outward: the registry holds it as a card for the person's yes; it adds a phone"
-  },
   "onboard.space.join": {
    "class": "held",
    "why": "outward: the registry holds it as a card for the person's yes; it joins a space"
@@ -792,10 +788,6 @@
   "wink.pair.server": {
    "class": "held",
    "why": "bad_input until a real server pairing payload; held or refused once input is valid"
-  },
-  "wink.phone.open": {
-   "class": "held",
-   "why": "bad_input until a real phone pairing payload; held or refused once input is valid"
   },
   "wink.access": {
    "class": "held",

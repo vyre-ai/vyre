@@ -16,8 +16,6 @@ import * as C from "../../../../kernel/identity/chain.js";
 import { codeLooksRight, codeSigner, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
 import * as webStore from "./store.ts";
-import type { PairingSession } from "../api/pairing-session";
-import type { WinkCode } from "../api/wink-code";
 
 // Which store holds the identity. Node tests and the web take the web store (the explicit file: Node cannot resolve "./store" to a platform file); on the phone Metro resolves "./store" to
 // store.native.ts, and restore-wire.ts hands that one over at start, so a recovery on a phone reads and writes the Keychain, not IndexedDB.
@@ -117,13 +115,4 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
     if (!landed) { if (landed === false) await forgetIdentity().catch(() => {}); throw e; }
   }
   return { name, id: state.id };
-}
-
-/**
- * This phone's half of "Add this phone from another device": the existing device shows a code (wink.phone.open); this phone redeems it, shows the three words, and when the person at
- * the other device says yes that device appends this phone's key to the identity's list. NOT BUILT: it needs the phone-side client of the relay (the counterpart of relay/client/serverpair.js,
- * which tailnet owns) and the list change signed by the existing device; asked of tailnet in CHAT.md. Until then it refuses with the code `not_built`.
- */
-export function addThisDevice(_code: Extract<WinkCode, { ok: true }>, _o: { deviceLabel: string }): PairingSession {
-  throw Object.assign(new Error("Adding this device from another device is not built yet."), { code: "not_built" });
 }
