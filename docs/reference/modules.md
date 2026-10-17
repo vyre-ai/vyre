@@ -18,10 +18,10 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 39 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 43 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 15 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
@@ -36,17 +36,16 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 37 | 22 | cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 41 | 15 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
-| [`devices`](#devices) | `core/devices` | `box`, `local` | 1 | 0 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 50 | 0 | none |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 16 | 6 | capsule, cli, deck |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 51 | 0 | none |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
@@ -55,21 +54,21 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`identity`](#identity) | `core/identity` | `box`, `local` | 9 | 0 | cli |
+| [`identity`](#identity) | `core/identity` | `box`, `local` | 14 | 3 | cli |
 | [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
-| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 13 | 9 | cli, deck |
+| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 16 | 11 | cli, deck |
 | [`mcpconn`](#mcpconn) | `core/mcpconn` | `box`, `local` | 9 | 3 | cli |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
-| [`microsoft`](#microsoft) | `core/microsoft` | `box`, `local` | 9 | 2 | none |
+| [`microsoft`](#microsoft) | `core/microsoft` | `box`, `local` | 13 | 2 | none |
 | [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 34 | 3 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 32 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
@@ -80,21 +79,21 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 27 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 26 | capsule, cli, deck |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 28 | 0 | cli |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 32 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 25 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 42 | 9 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 43 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 17 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 122 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 127 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
@@ -104,18 +103,18 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 79 | 42 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 80 | 42 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 192 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 220 | 60 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 72 | 36 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 60 | 25 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 80 | 0 | cli |
 
 ## about
@@ -134,7 +133,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [39](tools.md#agents), 11 of them only for other modules
+- Tools: [43](tools.md#agents), 13 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
@@ -177,7 +176,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#approvals), 4 of them only for other modules
+- Tools: [15](tools.md#approvals), 5 of them only for other modules
 - Emits: [1 events](events.md#approvals)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -329,6 +328,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Emits: [2 events](events.md#comms)
 - Shows on: no surface
 - Needs credentials: `[object Object]`, `[object Object]`
+- Needs kernel: `{"actions":["drive.read"],"prefixes":["file/*"]}`
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`
 
@@ -349,19 +349,19 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [31](tools.md#computers), 8 of them only for other modules
-- Emits: [21 events](events.md#computers)
+- Tools: [37](tools.md#computers), 8 of them only for other modules
+- Emits: [22 events](events.md#computers)
 - Shows on: cli, deck
-- Streams: `glass`, `browser-glass`
-- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`, `vyre-agent-browser-profile-key`
+- Streams: `glass`, `browser-glass`, `terminal`
+- Needs vault: `vyre-shared-computer-member-key`, `vyre-agent-browser-profile-key`
 
 ## connectors
 
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [40](tools.md#connectors), 3 of them only for other modules
-- Emits: [14 events](events.md#connectors)
+- Tools: [41](tools.md#connectors), 4 of them only for other modules
+- Emits: [15 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
 
@@ -385,17 +385,6 @@ The design language's keeper: the block catalogue and a screen checker for anyon
 - Requires: none
 - Tools: [11](tools.md#design)
 - Emits: [3 events](events.md#design)
-- Shows on: cli
-
-## devices
-
-Sign a computer in with the space server, the username and the master password.
-
-- Folder: `core/devices`, version 0.5.3
-- Runs on: `box`, `local`
-- Requires: none
-- Tools: [1](tools.md#devices)
-- Emits: no events
 - Shows on: cli
 
 ## docs
@@ -453,18 +442,18 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [50](tools.md#flows), 1 of them only for other modules
+- Tools: [51](tools.md#flows), 1 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"task","actions":["tasks.read","tasks.work"]},{"prefix":"flow-act","actions":["flows.act-standing"]},{"prefix":"flow","actions":["flows.run","flows.define"]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work","tasks.withdraw"],"prefixes":["*"],"mints":[{"prefix":"task","actions":["tasks.read","tasks.work"]},{"prefix":"flow-act","actions":["flows.act-standing"]},{"prefix":"flow","actions":["flows.run","flows.define"]}]}`
 
 ## gate
 
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#gate), 2 of them only for other modules
+- Tools: [18](tools.md#gate), 4 of them only for other modules
 - Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"actions":[],"mints":[{"prefix":"outbox","actions":["gate.act-standing"]}]}`
@@ -513,6 +502,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Tools: [25](tools.md#google), 3 of them only for other modules
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":["drive.read"],"prefixes":["file/*"]}`
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -567,8 +557,8 @@ The username, the master password and the recovery key.
 - Folder: `core/identity`, version 0.5.3
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#identity)
-- Emits: no events
+- Tools: [14](tools.md#identity), 2 of them only for other modules
+- Emits: [3 events](events.md#identity)
 - Shows on: cli
 - Needs tools: `spaces.identity.create`, `spaces.identity.self`, `spaces.identity.device`, `spaces.identity.published-key`, `vault.master.install`
 
@@ -615,6 +605,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [4 events](events.md#mail)
 - Shows on: capsule, deck
 - Needs credentials: `[object Object]`, `[object Object]`
+- Needs kernel: `{"actions":["drive.read"],"prefixes":["file/*"]}`
 - Needs vault: `per-connection`
 
 ## mcp
@@ -622,8 +613,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [13](tools.md#mcp), 2 of them only for other modules
-- Emits: [9 events](events.md#mcp)
+- Tools: [16](tools.md#mcp), 3 of them only for other modules
+- Emits: [11 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -666,8 +657,8 @@ The # tag: one picker over everything the person may mention, from the modules t
 
 - Folder: `core/microsoft`, version 0.1.0
 - Runs on: `box`, `local`
-- Requires: `vault`
-- Tools: [9](tools.md#microsoft)
+- Requires: `vault`, `gate`
+- Tools: [13](tools.md#microsoft), 1 of them only for other modules
 - Emits: [2 events](events.md#microsoft)
 - Shows on: no surface
 - Needs vault: `per-connection`
@@ -722,7 +713,7 @@ The built-in network as the person sees it: whether this machine is signed in, p
 - Folder: `core/onboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [34](tools.md#onboard)
+- Tools: [32](tools.md#onboard)
 - Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 
@@ -847,7 +838,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [27](tools.md#records), 4 of them only for other modules
+- Tools: [28](tools.md#records), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`
@@ -860,8 +851,8 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [42](tools.md#relay), 15 of them only for other modules
-- Emits: [26 events](events.md#relay)
+- Tools: [32](tools.md#relay), 11 of them only for other modules
+- Emits: [21 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -908,7 +899,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`, `box`
 - Requires: none
-- Tools: [24](tools.md#runner), 3 of them only for other modules
+- Tools: [25](tools.md#runner), 4 of them only for other modules
 - Emits: [10 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
@@ -931,7 +922,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [42](tools.md#sessions), 13 of them only for other modules
+- Tools: [43](tools.md#sessions), 14 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -1017,7 +1008,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [122](tools.md#spaces), 36 of them only for other modules
+- Tools: [127](tools.md#spaces), 37 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
@@ -1130,10 +1121,10 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [79](tools.md#threads), 32 of them only for other modules
+- Tools: [80](tools.md#threads), 33 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`
+- Needs daemon: `kernelSession`, `turnRecordTags`, `chatFor`, `sandbox`, `credentials`, `listModels`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -1176,10 +1167,10 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [192](tools.md#vault), 27 of them only for other modules
-- Emits: [59 events](events.md#vault)
+- Tools: [220](tools.md#vault), 36 of them only for other modules
+- Emits: [60 events](events.md#vault)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`
+- Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.fill","vault.totp","vault.read","vault.call","vault.reveal","vault.edit","vault.rotate"]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## views
@@ -1257,14 +1248,14 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 
 ## wink
 
-Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.
+Pairing as grants: every way in is a Wink. Devices (computer, server, storage) belong to the identity, never to a space. Pair a server, invite a person, offer compute, see and remove what was given.
 
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [72](tools.md#wink), 15 of them only for other modules
-- Emits: [36 events](events.md#wink)
-- Listens for: `relay.code-asked`, `relay.signin-asked`, `relay.connected`, `name.claimed`, `relay.invite-redeemed`, `device.paired`, `device.removed`
+- Tools: [60](tools.md#wink), 14 of them only for other modules
+- Emits: [25 events](events.md#wink)
+- Listens for: `relay.connected`, `name.claimed`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs daemon: `dataStores`
 - Needs kernel: `{"mints":[{"prefix":"member/*","actions":["member.act"]},{"prefix":"node/*","actions":["node.host"]},{"prefix":"storage/*","actions":["storage.hold"]}]}`

@@ -85,7 +85,7 @@ In the order `vyre help` lists them.
 | [`vyre reboot`](#vyre-reboot) | restart this computer the planned way (FileVault Macs come back by themselves) |
 | [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
 | [`vyre signout`](#vyre-signout) | sign this terminal out |
-| [`vyre space`](#vyre-space) | this server's space: its details, its setup code, and which space this terminal acts in |
+| [`vyre space`](#vyre-space) | this server's space: its details, where it is set up from, and which space this terminal acts in |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -652,7 +652,7 @@ vyre phone add --android --usb      the native app over a cable: downloads the A
   vyre phone remove <id>...           forget a notification device, or remove a passkey (asks you first)
   vyre phone test [id]                send a test notification to every device, or one
 
-  A phone joins by signing in with your name and being approved on a device you already use: Devices, Add a device.
+  A phone joins by signing in with your space address, your username and your master password.
   The old pairing code is gone, so add installs the app and says so; it pairs nothing.
 
 ### vyre relay
@@ -697,7 +697,7 @@ vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <wo
 Free a server that still belongs to an app you no longer have.
 
 ```
-vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]
+vyre wink reset --begin | --confirm <code>
 ```
 
 vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.
@@ -846,13 +846,13 @@ vyre signout [--json]
 
 ### vyre space
 
-This server's space: its details, its setup code, and which space this terminal acts in.
+This server's space: its details, where it is set up from, and which space this terminal acts in.
 
 ```
 vyre space [up | use <name> | use --clear | add-agent <space> <agent>] [--json]
 ```
 
-`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` shows the code that sets it up from the Vyre app (again, any time). `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.
+`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` says where a server that is not set up yet is set up from: the install command in the Vyre app. `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.
 
 ### vyre tips
 

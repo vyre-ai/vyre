@@ -189,7 +189,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WINK_FORWARDER_BIN` | Not described yet. | `core/wink/netd.js` |
 | `VYRE_WINK_NET` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js`, `core/wink/netd.js` |
-| `VYRE_WINK_TYPED_CODE` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
