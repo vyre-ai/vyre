@@ -91,7 +91,8 @@ export default {
       revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
       mayUseConnection: async c => {
         // Asked as the person on this call when there is one (a member's connect reaches here through a module hop that carries no token of its own); a call with no person asks as the hub, as before.
-        let r = await ctx.call("vault.connection.may", c, { relay: true }).catch(() => null);
+        let r = await ctx.call("vault.connection.may", c, { relay: true }).catch(e => ({ error: { message: String(e && e.message) } }));
+        console.error("DBG relayed may", JSON.stringify(r).slice(0, 300));
         if (!r || r.error) r = await ctx.call("vault.connection.may", c);
         return Boolean(r && r.data && r.data.allow === true);
       },
