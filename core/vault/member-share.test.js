@@ -15,7 +15,6 @@ import { Access } from "./access.js";
 import { kernelRig } from "./kernel-rig.js";
 import { SaidIntents } from "./said.js";
 import { agentFill } from "./agent-fill.js";
-import { MemberCopies } from "./member-copies.js";
 import { NOTICE } from "./member-share.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -118,8 +117,9 @@ test("the agent's fill needs the grant every time: another agent, another site, 
   const exp = (await w.share({ expires: w.rig.clock() + 5_000 })).shared.ref;
   const real = w.v.clock; w.v.clock = () => real() + 3_600_000;
   for (let i = 0; i < 6000; i++) w.rig.clock();
-  await denied(w.fill(exp), /no login|not lent|no such/).catch(async () => assert.rejects(w.fill(exp)));
-  assert.ok(!w.db.prepare("SELECT 1 FROM vault_member_copies WHERE ref = ?").get(exp) || true);
+  await assert.rejects(w.fill(exp), e => /** @type {any} */ (e).code === "not_found", "an expired share is no login at all");
+  assert.ok(!w.db.prepare("SELECT 1 FROM vault_member_copies WHERE ref = ?").get(exp), "and its copy was deleted when it was found out");
+  assert.ok(!fs.existsSync(path.join(w.home, "vault", "member-copies", exp + ".bin")));
   w.v.clock = real;
 });
 
@@ -165,5 +165,4 @@ test("a share is Ben's alone: Cy cannot list, end or use it, and sharing twice i
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 1);
   assert.equal((await w.share()).shared.ref, ref, "the same share again is the same copy");
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 1);
-  assert.ok(new MemberCopies({ db: w.db, dir: path.join(w.home, "vault"), key: () => w.v.key(), clock: w.rig.clock }));
 });
