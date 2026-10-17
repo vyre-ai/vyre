@@ -8,10 +8,10 @@ import { register } from "./provisioned.js";
 
 const BOB = "per_bob", OWNER = "per_owner";
 
-function rig(accounts) {
+function rig(accounts, microsoft) {
   const reg = /** @type {Map<string, any>} */ (new Map());
   const calls = /** @type {any[]} */ ([]);
-  const ctx = { kernel: { owner: OWNER, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) }, call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return t === "google.accounts" ? accounts : { error: { code: "no_such_tool" } }; } };
+  const ctx = { kernel: { owner: OWNER, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) }, call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return t === "google.accounts" ? accounts : t === "microsoft.accounts" ? (microsoft || { data: [] }) : { error: { code: "no_such_tool" } }; } };
   register({ ctx, tool: (n, callers, d, i, run) => reg.set(n, { callers, run }) });
   const as = (/** @type {string | null} */ who, extra = {}) => reg.get("vault.me.provisioned").run({}, { caller: "device:abcdefghijklmnop", hops: who ? [{ actor: { kind: "person", id: who } }] : [], ...extra });
   return { as, calls, reg };
@@ -41,4 +41,12 @@ test("two members each see only their own address, and the firm key's own accoun
   ] };
   assert.deepEqual((await rig(all).as(BOB)).accounts.map((/** @type {any} */ a) => a.account), ["bob@juniperstudio.example.com"]);
   assert.deepEqual((await rig(all).as("per_eve")).accounts.map((/** @type {any} */ a) => a.account), ["eve@juniperstudio.example.com"]);
+});
+
+test("her Microsoft 365 account is listed too, from the firm app's own answer for her: the address and the app, nothing else", async () => {
+  const r = await rig({ data: [] }, { data: [{ app: "Juniper firm app", email: "bob@juniperstudio.example.com", domain: "juniperstudio.example.com" }] }).as(BOB);
+  assert.deepEqual(r.accounts, [{ app: "Microsoft 365", account: "bob@juniperstudio.example.com" }], "the firm app's name and its domain are not shown");
+  const both = await rig({ data: [{ name: "firm-m1", email: "bob@juniperstudio.example.com", member: BOB }] }, { data: [{ app: "Juniper firm app", email: "bob@juniperstudio.example.com" }] }).as(BOB);
+  assert.deepEqual(both.accounts.map((/** @type {any} */ a) => a.app).sort(), ["Google Workspace", "Microsoft 365"]);
+  assert.deepEqual((await rig({ data: [] }, { error: { code: "no_account" } }).as(BOB)).accounts, [], "no firm app for her is not an error");
 });
