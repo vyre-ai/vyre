@@ -102,7 +102,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).
 - Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.
 - `ask` goes to `person:<id>` or `role:<name>`, never an agent. Its `form` is 1 to 20 fields `{name, label?, kind: text|number|date|choice|boolean|file, required?, choices?}` (`choices`: 2 to 20 texts, only for kind choice).
-- Email: `tools_call comms.email {to, subject, text, replyTo, from}`; held for a yes.
+- Email: `tools_call comms.email {to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.
 - A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
 ## If it can fail
@@ -114,8 +114,8 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 ## Expressions
 - Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for the time functions), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].
 - An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.
-- Text with values is one expression: `"Hi " + text(trigger.after.name) + " at " + format(trigger.after.starts_at, "weekdaytime", tz)`. A missing value is empty text; a sealed field prints its placeholder.
-- Times: `format(t, "weekdaytime", tz)`; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, "time", tz, -1, "day")` moves first. `addtime(t, 2, "hours", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving). Use one call; they nest only two deep.
+- Text with values is one expression: `"Hi " + text(trigger.after.name) + " at " + format(trigger.after.starts_at, "weekdaytime", tz)`. A missing value is empty text; a sealed field prints its placeholder. The builder writes it from "Hi {name}".
+- Times: `format(t, "weekdaytime", tz)` prints "Sat 31 Oct, 9:00 am"; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, "time", tz, -1, "day")` moves first. `addtime(t, 2, "hours", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving). Use one call; they nest only two deep.
 - Functions: first, date, datetime, addtime, format, len, lower, upper, trim, startsWith, endsWith, coalesce, round, floor, min, max, number, text, isnull, days, hours, minutes. Nothing else is callable.
 
 ## Limits
