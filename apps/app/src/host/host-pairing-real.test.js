@@ -1,6 +1,8 @@
 // @ts-check
 // The positive path of "Create a space" in a page with no daemon, with nothing faked that matters: a real relay and a real names directory (the stand-ins every proof uses), a real server (a vyred in this process,
 // started the way the installer leaves one, with the line's one-time code), the real setup channel and the real pairing (relay/client/serverpair.js, the call the app's own pairing makes), and the real directory claim.
+// NOT exercised here: the owner's signed proof. The server's own tools are called as its operator (server.operator, the lenient stand-in presence), so `spaces.name-here` skips the owner-only check the real path makes.
+// That check is held by test/one-space-name.test.js (a member and the owner's assistant are refused with `forbidden`). This file proves the positive half only.
 // It proves that onboard.space.poll says online:true only after a really paired server, and that the directory then holds the space's name. It runs the whole sequence in one process, so a stall shows as the stage it
 // stops at (the poll's own answer), not as a screen that never changes.
 import "../../../../scripts/mac-test-guard.mjs";
@@ -41,6 +43,7 @@ test("a really paired server makes the poll say online, and the directory then h
   /** @type {any} */ let server = null;
   t.after(async () => { if (server) await server.stop(); });
   /** The server's own tools, as its operator (the paired owner's signed session is the same registry behind the relay). */
+  // (Operator calls: see the header; the owner-only refusal is test/one-space-name.test.js.)
   const onServer = async (/** @type {string} */ name, /** @type {any} */ input) => server.operator(name, input);
 
   /** @type {any} */ const ports = {
