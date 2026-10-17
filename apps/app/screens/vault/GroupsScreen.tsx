@@ -17,7 +17,7 @@ export function GroupsScreen() {
   const [world, setWorld] = useState<{ groups: Who[]; people: Who[]; agents: Who[] } | null>(null);
   const [err, setErr] = useState("");
   const data: GroupsData = useMemo(() => {
-    if (!MOCK) return realGroups(space);
+    if (!MOCK) return realGroups(space ?? "");
     let groups = [...GROUPS0];
     return {
       load: async () => ({ groups, people: PEOPLE, agents: AGENTS }),
