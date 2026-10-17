@@ -360,7 +360,7 @@ AGENTD_DIR="${VYRE_HOME}/agentd"
 if [ -f "${AGENTD_DIR}/token" ]; then
   log "starting agentd"
   setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid -- \
-    env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" AGENTD_SOCKET="${AGENTD_DIR}/agentd.sock" AGENTD_TOKEN_FILE="${AGENTD_DIR}/token" \
+    env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
     node /opt/agentd/agentd-main.js &
 fi
 

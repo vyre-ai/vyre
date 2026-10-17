@@ -4,6 +4,7 @@
 
 import http from "node:http";
 import fs from "node:fs";
+import { SOCKET, TOKEN_FILE } from "./agentd-main.js";
 
 const ACTION = /^(create|start|stop|wipe|remove)$/;
 
@@ -24,7 +25,7 @@ export async function main() {
   const raw = await new Promise(r => { let b = ""; process.stdin.on("data", c => { b += c; if (b.length > 16 * 1024) process.exit(2); }); process.stdin.on("end", () => r(b)); });
   /** @type {any} */ let req;
   try { req = JSON.parse(String(raw)); } catch { process.stderr.write("the request is not JSON\n"); process.exit(2); }
-  const res = await callAgentd({ socket: process.env.AGENTD_SOCKET || "/var/lib/vyre/agentd/agentd.sock", token: fs.readFileSync(process.env.AGENTD_TOKEN_FILE || "/var/lib/vyre/agentd/token", "utf8").trim(),
+  const res = await callAgentd({ socket: SOCKET, token: fs.readFileSync(TOKEN_FILE, "utf8").trim(),
     action: String(req && req.action || ""), body: JSON.stringify(req && req.body || {}) });
   process.stdout.write(res.text);
   process.exit(res.status >= 200 && res.status < 300 ? 0 : 1);

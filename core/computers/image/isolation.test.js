@@ -410,3 +410,9 @@ test("isolation (static): agentd has no TCP listener: it listens on a unix socke
   assert.doesNotMatch(main + server, /listen\(\s*(\d+|process\.env\.[A-Z_]*PORT)|0\.0\.0\.0|127\.0\.0\.1/, "no port, no address");
   assert.match(fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8"), /"-rfbport", "-1", "-rfbunixpath"/);
 });
+
+test("isolation (static): no environment variable can redirect agentd or its client, and agentd starts as agentctl with only setuid and setgid", () => {
+  for (const f of ["agentd-main.js", "agentd-client.js", "agentd-server.js"]) assert.doesNotMatch(fs.readFileSync(path.join(HERE_DIR, f), "utf8"), /process\.env/, f);
+  assert.match(ENTRYPOINT, /setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=\+setuid,\+setgid --ambient-caps=\+setuid,\+setgid --bounding-set=-all,\+setuid,\+setgid/);
+  assert.match(DOCKERFILE, /groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s \/usr\/sbin\/nologin/);
+});

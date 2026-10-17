@@ -6,8 +6,9 @@
 import fs from "node:fs";
 import { createAgentd } from "./agentd-server.js";
 
-const SOCKET = process.env.AGENTD_SOCKET || "/var/lib/vyre/agentd/agentd.sock";
-const TOKEN_FILE = process.env.AGENTD_TOKEN_FILE || "/var/lib/vyre/agentd/token";
+// Constants, not environment: no variable can redirect agentd or its client. Tests pass their own paths as arguments.
+export const SOCKET = "/var/lib/vyre/agentd/agentd.sock";
+export const TOKEN_FILE = "/var/lib/vyre/agentd/token";
 
 /** @param {{ socket?: string, tokenFile?: string, run?: (argv: string[]) => Promise<void> }} [o] */
 export function startAgentd(o = {}) {
