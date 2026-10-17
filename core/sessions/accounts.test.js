@@ -207,3 +207,14 @@ test("accounts: an agent's job never resolves to a member's own key or token, an
   assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true }).id, own.id, "a job on his behalf runs on the agent's own access");
   assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: bob.id }), /no account/, "and cannot name it");
 });
+
+test("accounts: a job a member asked for may name that member's own login, and no one else's, and never their key or token", async () => {
+  const a = fresh();
+  const login = await a.add({ provider: "claude", label: "Bob login", kind: "login", person: "per_bob" });
+  const eve = await a.add({ provider: "claude", label: "Eve login", kind: "login", person: "per_eve" });
+  const token = await a.add({ provider: "codex", label: "Bob token", kind: "setup-token", vault_item: "bob-codex", person: "per_bob" });
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true, account: login.id }).id, login.id, "his own login serves a job he asked for");
+  assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: eve.id }), /no account/, "not another person's");
+  assert.throws(() => a.resolve({ provider: "claude", job: true, account: login.id }), /no account/, "and a job with no person named cannot name it");
+  assert.throws(() => a.resolve({ provider: "codex", person: "per_bob", job: true, account: token.id }), /no account/, "a token is never chosen for a job");
+});

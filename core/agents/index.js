@@ -916,7 +916,9 @@ export default {
           `They write:\n${text}`,
         ].filter(Boolean).join("\n\n");
         const flowOrigin = { flow: String(i.flow).slice(0, 80), run: run || `chat-${Date.now()}`, step: "", flow_name: String(i.flow).slice(0, 80) };
-        const t = await launch(a, { prompt, job: true, ...(forPerson ? { forPerson, runAs: forPerson } : {}), flowOrigin });
+        // A member runs it on their own AI sign-in, as in any chat with an agent (the agent gate refuses the owner's for them); the owner and a person with none of their own use the agent's, as before.
+        const own = forPerson ? await ownAccount(a, forPerson) : null;
+        const t = await launch(a, { prompt, job: true, ...(forPerson ? { forPerson, runAs: forPerson } : {}), ...(own ? { own } : {}), flowOrigin });
         return { agent: a.name, thread: t.id, run: flowOrigin.run };
       },
     });
