@@ -110,7 +110,7 @@ export function createChainBuilder(cfg) {
         if (typeof f.agent === "string" && f.agent.startsWith("model:")) return refuse("an agent session is not a model slot");
         const who = f.person ?? cfg.owner;
         if (who !== cfg.owner && !isMember(who)) return refuse("the session's person is not a member");
-        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
+        return make([hop("person", who, "session", { session: f.session }), hop("agent", f.agent, "session", { session: f.session, ...(typeof f.thread === "string" && f.thread ? { thread: f.thread } : {}) })], base(), { ...(f.from_token === true ? { delegated: true } : {}), ...(roomOf(f) ? { room: roomOf(f) } : {}) });
       }
       case "model_slot": {
         // A model slot (the Switchboard's): the person's chain plus an agent hop `model:<provider>/<model>#<n>`. It acts as the person, narrowed by whatever the Switchboard weakened the session to, and holds nothing of its own.

@@ -17,6 +17,7 @@ import { TASK } from "../../records/core-types.js";
 /** The fields a task's own calls set (and `records.update` routes through `tasks.edit`); every other field of the type is the person's, custom, and plain. */
 const TASK_PERSON_FIELDS = Object.freeze(["title", "note", "due", "parent", "project"]);
 import { createMemoryStore } from "../store/memory.js";
+import { requestedFor } from "../../lib/chain-person.js";
 
 /** The actions task calls register with the authorizer (contract 6.1). */
 export const TASK_ACTIONS = Object.freeze([
@@ -390,7 +391,7 @@ export function createTasks(cfg) {
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
         ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
-        state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }),
+        state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }), ...(requestedFor(chain) ? { requested_for: requestedFor(chain) } : {}),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
       });

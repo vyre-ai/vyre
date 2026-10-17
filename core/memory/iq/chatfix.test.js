@@ -65,6 +65,8 @@ test("groundedAnswer: only a reply that repeats one of memory's stored answers",
   assert.equal(groundedAnswer(db, "Now: Netlify (since 21 Aug). Before: Vercel (11 Aug).", NOW + 2 * 3_600_000), null, "an hour later it is stale");
 });
 
+/** The project each thread is in, as the Switchboard recorded it (threads.get): the only project memory.heard files a lesson under. */
+const THREAD_PROJECTS = /** @type {Record<string, string>} */ ({});
 async function world(t, turns = {}) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
@@ -73,7 +75,7 @@ async function world(t, turns = {}) {
   const ctx = {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async (tool, input) => tool === "threads.said" ? (turns[`${input.thread}#${input.seq}`] ? { data: turns[`${input.thread}#${input.seq}`] } : { error: { code: "not_found", message: "no such turn" } })
+    call: async (tool, input) => tool === "threads.get" ? { data: { thread: { id: input.thread, project: THREAD_PROJECTS[input.thread] || null } } } : tool === "threads.said" ? (turns[`${input.thread}#${input.seq}`] ? { data: turns[`${input.thread}#${input.seq}`] } : { error: { code: "not_found", message: "no such turn" } })
       : tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS }),
     tool: (name, def) => tools.set(name, def),
     iqRunner: null, memoryRunner: null,
@@ -132,14 +134,15 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   };
   const { call } = await world(t, turns);
   const a = (await call("memory.ask", { question: Q }, "deck")).data;
-  const heard = (seq, extra = {}, object = "Render", caller = "mcp") => call("memory.heard", { answer: a.answer_id, action: "replace", object, from_turn: { seq }, ...extra }, caller, { thread: THREAD });
+  THREAD_PROJECTS[THREAD] = "harlow"; THREAD_PROJECTS["t-northwind"] = "northwind";
+  const heard = (seq, extra = {}, object = "Render", caller = "mcp", thread = THREAD) => call("memory.heard", { answer: a.answer_id, action: "replace", object, from_turn: { seq }, ...extra }, caller, { thread });
   // The person's own tools are not this door, and an agent's own turn does not apply.
   assert.equal((await call("memory.heard", { answer: a.answer_id, action: "replace", object: "Render", from_turn: { seq: 3 } }, "deck")).code, "denied");
   const plain = await heard(4, {}, "Fly");
   assert.match(plain.data.suggestion.why, /not the person's own words/);
-  assert.equal(plain.data.filed, undefined, "no project named: nothing filed");
-  // juno reaches only harlow: her attempt is a suggestion and, naming harlow, is filed as hers.
-  const tool = await heard(4, { project: "harlow" }, "Fly", JUNO);
+  assert.equal(plain.data.filed, undefined, "a plain session of no agent files nothing");
+  // juno reaches only harlow: her attempt is a suggestion and, in a chat that is in harlow, is filed as hers.
+  const tool = await heard(4, {}, "Fly", JUNO);
   assert.equal(tool.data.applied, false);
   assert.ok(tool.data.filed?.id, JSON.stringify(tool.data));
   const filed = (await call("memory.writes", { project: "harlow" }, JUNO)).data.writes;
@@ -148,11 +151,15 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   assert.match(filed[0].text, /an agent reports the person corrected/);
   // Not applied: the person's answer stands.
   assert.match((await call("memory.ask", { question: Q }, "deck")).data.answer, /^Now: Netlify/);
-  // An agent granted no project of that name files nothing, and still suggests.
-  const no = await heard(4, { project: "northwind" }, "Fly", JUNO);
+  // An agent granted no access to the chat's project files nothing, and still suggests.
+  const no = await heard(4, {}, "Fly", JUNO, "t-northwind");
   assert.equal(no.data.filed, null);
+  // Naming a project of its own does not move the lesson: the chat's project is the only one (juno names northwind in a chat that is in harlow, and it is filed in harlow).
+  const named = await heard(4, { project: "northwind", room: "northwind" }, "Fly", JUNO);
+  assert.equal(named.data.filed?.project, "harlow", JSON.stringify(named.data));
+  assert.equal((await call("memory.writes", { project: "northwind" }, "deck")).data.writes.length, 0, "nothing reached the project the agent named");
   // The person's typed turn applies at once, as theirs, with its source and the decision updated.
-  const ok = await heard(3, { project: "harlow" });
+  const ok = await heard(3, {});
   assert.equal(ok.data.applied, true, JSON.stringify(ok));
   // The applied correction is also a lesson: filed in the project the chat is in, with the chat and the turn it came from.
   assert.ok(ok.data.filed?.id, JSON.stringify(ok.data));

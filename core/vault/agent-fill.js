@@ -58,7 +58,7 @@ export async function agentFill(deps, q) {
   if (!hosts.includes(origin)) return refuse("origin not on the login", `${row.name} is not for ${origin}; it is for ${hosts.join(", ") || "no site yet"}`, "denied", origin);
 
   // Lent to this agent at this origin: a grant, or a tag the person typed in this conversation.
-  let lent = copy ? copy.agent === q.agent && await vault.access.allowedCopy(copy, origin).catch(() => false) : vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(() => false) : false;
+  let lent = copy ? copy.agent === q.agent && await vault.access.allowedCopy(copy, origin, q.thread).catch(() => false) : vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(() => false) : false;
   if (!lent && !copy && q.thread && deps.said) lent = Boolean(await deps.said.match({ kind: "use", to: [row.name], hosts: [origin] }, { thread: q.thread, lineage: q.lineage || [] }).catch(() => null));
   if (!lent) return refuse("not lent", `${row.name} is not lent to ${q.agent} for ${origin} in this conversation: type # and pick the login, or the person lends it with vault.agent.grant`, "denied", origin);
 
