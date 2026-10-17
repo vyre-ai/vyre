@@ -520,6 +520,7 @@ export const OPEN = new Set([
   "records.forget.propose",
   "records.sees-as",
   "records.events",
+  "records.audit",
   "roles.catalogue",
   "roles.list",
   "roles.get",
