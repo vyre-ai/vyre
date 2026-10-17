@@ -129,7 +129,16 @@ async function macDriver() {
   return {
     open: start,
     text: () => need().text(),
-    async waitFor(t, ms = 30_000) { return need().waitFor(t, ms); },
+    async waitFor(t, ms = 30_000) {
+      try { return await need().waitFor(t, ms); }
+      catch (e) {
+        // What to read when the app does not get where it should: a picture, whether this window can open a socket to the relay at all, and the end of the screen.
+        await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
+        const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
+        const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
+        throw new Error(`${e.message} | this window to the relay: ${probe} | the screen ends: ${body.slice(-300)}`);
+      }
+    },
     async click(t) {
       // A control with its own label (a switch: its words are beside it, the press is on the switch itself) is found by that label first; a choice or a button by its text.
       try { await need().clickAria(t, 2_000); } catch { await need().click(t, 20_000); }
