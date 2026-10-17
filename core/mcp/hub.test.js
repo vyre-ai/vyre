@@ -666,43 +666,38 @@ test("hub pin: a person's own connection is approved by that person only, the Sp
   await hub.stop();
 });
 
-// ---- R11 (team/0.6/DESIGN-vault-references.md, section 3d): a reference in an MCP entry is kept literal and expanded only when the server starts or dials ----
+// ---- R11 (team/0.6/DESIGN-vault-references.md, sections 3d and 3g): a reference in an MCP entry is kept literal and expanded only when the server starts or dials ----
+// The contract is resolveReference({ ref, destination, chain, point }) -> { decision: "fill", handle } | { decision: "needs_approval", card } | { decision: "refused", code, message }.
+// handle.use(async value => ...) is the only way to the value. A needs_approval answer means the entry does not start.
 
 const refScan = text => {
   const out = [];
-  const re = /#Vault\.([A-Za-z0-9][A-Za-z0-9_-]*)/g;
-  for (const m of String(text).matchAll(re)) out.push({ start: m.index, end: m.index + m[0].length, text: m[0], name: m[1], tail: "" });
+  for (const m of String(text).matchAll(/#Vault\.([A-Za-z0-9][A-Za-z0-9_-]*)/g)) out.push({ start: m.index, end: m.index + m[0].length, text: m[0], name: m[1], tail: "" });
   return out;
 };
+const fillWith = (value, asked) => ({
+  resolveReference: async q => { asked.push(q); return { decision: "fill", handle: { use: async fn => fn(value) } }; },
+});
 
 test("R11: an MCP entry keeps its reference in the saved row, and a stdio server gets the value only when it starts", async () => {
-  const fills = [];
-  const references = {
-    scan: refScan,
-    resolveRef: async () => ({ address: "vault:tracker", version: 1, field: "value", kind: "api-key" }),
-    fill: async (point, resolved, destination) => { fills.push({ point, destination }); return { value: "fixture-acct-1234567890" }; },
-  };
-  const { hub, db, opened } = fakeHub({ references });
+  const asked = [];
+  const { hub, db, opened } = fakeHub({ references: { scan: refScan, ...fillWith("fixture-acct-1234567890", asked) } });
   await hub.add({ name: "ledger", transport: "stdio", command: "node", args: ["server.js"], vars: { LEDGER_ACCOUNT: "#Vault.Tracker" } });
   // The saved row holds the reference, never the value.
   const row = db.prepare("SELECT vars FROM mcp_servers WHERE name = ?").get("ledger");
   assert.ok(row.vars.includes("#Vault.Tracker"), "the saved entry keeps the reference");
   assert.ok(!row.vars.includes("fixture-acct"), "the saved entry never holds the value");
-  // Nothing starts until a call, and the call expands the reference for the child's environment only.
+  // Nothing starts until a call; the call resolves the reference for a command destination and the child gets the value.
   assert.equal(opened.length, 0, "no spawn at add");
   await hub.call({ server: "ledger", tool: "list_issues" }, person);
-  const child = opened.at(-1);
-  assert.equal(child.opts.env.LEDGER_ACCOUNT, "fixture-acct-1234567890");
-  assert.equal(fills.length, 1);
-  assert.equal(fills[0].point, "command", "a stdio server is a command destination (raw mode, allow-listed)");
+  assert.equal(opened.at(-1).opts.env.LEDGER_ACCOUNT, "fixture-acct-1234567890");
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].point, "command", "a stdio server is a command destination (raw mode, allow-listed)");
+  assert.equal(asked[0].destination.kind, "command");
 });
 
-test("R11: a held reference does not start the server, and the call says it waits for the approver", async () => {
-  const references = {
-    scan: refScan,
-    resolveRef: async () => ({ address: "vault:tracker", version: 1, field: "value", kind: "api-key" }),
-    fill: async () => ({ held: { card: "card-1", secret: "Tracker", destination: "ledger", approver: "Alex" } }),
-  };
+test("R11: a reference that needs approval does not start the server, and the call says it waits for the approver", async () => {
+  const references = { scan: refScan, resolveReference: async () => ({ decision: "needs_approval", card: { id: "card-1", approver: "Alex" } }) };
   const { hub, opened } = fakeHub({ references });
   await hub.add({ name: "ledger", transport: "stdio", command: "node", args: ["server.js"], vars: { LEDGER_ACCOUNT: "#Vault.Tracker" } });
   await assert.rejects(hub.call({ server: "ledger", tool: "list_issues" }, person), /approver/);
@@ -710,15 +705,12 @@ test("R11: a held reference does not start the server, and the call says it wait
 });
 
 test("R11: an http entry expands a reference in a header per request, and the saved row keeps it", async () => {
-  const references = {
-    scan: refScan,
-    resolveRef: async () => ({ address: "vault:tracker", version: 1, field: "value", kind: "api-key" }),
-    fill: async () => ({ value: "fixture-acct-1234567890" }),
-  };
-  const { hub, db, opened } = fakeHub({ references });
+  const asked = [];
+  const { hub, db, opened } = fakeHub({ references: { scan: refScan, ...fillWith("fixture-acct-1234567890", asked) } });
   await hub.add({ name: "ledger", transport: "http", url: "https://mcp.ledger.example/mcp", headers: { "x-account": "#Vault.Tracker" } });
   assert.ok(db.prepare("SELECT headers FROM mcp_servers WHERE name = ?").get("ledger").headers.includes("#Vault.Tracker"));
   await hub.call({ server: "ledger", tool: "list_issues" }, person);
   const h = await opened.at(-1).opts.headers();
   assert.equal(h["x-account"], "fixture-acct-1234567890");
+  assert.equal(asked.at(-1).destination.kind, "mcp", "an http server is an mcp destination: its origin");
 });
