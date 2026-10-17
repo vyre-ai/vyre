@@ -203,7 +203,17 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
   assert.equal(st.device, "Alex's iPhone");
   // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
-  assert.equal(((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "a pick with no kind makes no relay device row");
+  // The relay's own provisional row from the pairing's hello may exist (it is not made by the name: the same row is there when the app sends none). What matters is what it is: not the owner's
+  // paired device, not trusted, no presence key, no storage kind, and nothing was enrolled or given a session through it.
+  const rows = ((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []);
+  for (const row of rows) {
+    assert.notEqual(row.ownerPaired, true, "a pick with no kind makes no owner-paired relay device");
+    assert.notEqual(row.presence, true, "a pick with no kind enrols no presence key through the relay");
+    assert.equal(row.storage, "unknown", "a pick with no kind has no key storage kind");
+    const raw = /** @type {any} */ (w.d.registry.deps.db.prepare("SELECT trusted FROM relay_devices WHERE id = ?").get(row.id));
+    assert.ok(!raw || !raw.trusted, "a pick with no kind makes no trusted relay device");
+    assert.equal((await w.d.registry.call("wink.device.record", { id: row.id }, "module:presence")).data?.confirmed === true && (await w.d.registry.call("wink.device.record", { id: row.id }, "module:presence")).data?.key != null, false, "no confirmed record with a key");
+  }
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
 });
