@@ -5,7 +5,7 @@ import { daysLeftOf, groupOf, siteUpdate, valueField, type VItem } from "./redes
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
-import { isOwnerRefusal, toolScope } from "./owner-mine.js";
+import { connectionSharingFor, isOwnerRefusal, toolScope } from "./owner-mine.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
@@ -163,10 +163,8 @@ export function realData(call: Call): VaultData {
       async list() { const r = await ask<{ vaults: { id: string; name: string; personal: boolean; shared: number }[] }>("vault.named.list"); return r.vaults.filter((v) => !v.personal).map((v) => ({ id: v.id, name: v.name, sub: v.shared ? `Shared with ${v.shared} ${v.shared === 1 ? "holder" : "holders"}` : "Only you" })); },
       async move(item, vault) { await ask("vault.named.move", { item: item.id, vault }); },
     },
-    connectionSharing: {
+    connectionSharing: connectionSharingFor(() => owner, () => data.sharing!, {
       async load(item) {
-        // the owner's connections are items of the Space vault, shared the way those are (vault.access.*): vault.me.connection.* refuses the owner
-        if (owner) return data.sharing!.load(item);
         const [sh, dr, me] = await Promise.all([
           ask<{ shares: { kind: Who["kind"] | "team"; subject: string; level: Level }[] }>("vault.me.connection.shares", { name: item.id }),
           ask<{ people: { id: string; name: string; role?: string }[]; groups: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents: { id: string; name: string; instructors?: string[] }[] }>("vault.me.connection.directory"),
@@ -180,8 +178,8 @@ export function realData(call: Call): VaultData {
         const f = me.fields ?? {};
         return { shares: sh.shares.map((s) => ({ id: s.subject, level: s.level })), dir, me: null, info: { account: f.server_url ? new URL(f.server_url).host : "", how: f.connected_by ? "You connected it" : "" } };
       },
-      async set(item, w, level) { if (owner) return data.sharing!.set(item, w as never, level); await ask("vault.me.connection.share", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
-    },
+      async set(item, w, level) { await ask("vault.me.connection.share", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
+    }),
     sharing: {
       async load(item) {
         const r = await ask<{ access: { kind: Who["kind"] | "team"; subject: string; level: Level }[]; people: { id: string; name: string; role?: string }[]; teams?: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents?: { id: string; name: string }[] }>("vault.access.get", { name: item.id });
