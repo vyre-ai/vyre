@@ -421,3 +421,131 @@ shardTest("relay.devices.clear-leftover refuses for itself when the server is ow
   assert.equal(lines.length, 1, `one log line for twelve identical refusals (${lines.length})`);
 });
 
+/** Pairs one computer through the pairing window (the owner's screen opens it and confirms it) and returns its device id. */
+async function pairComputer(t, w) {
+  const open = (await w.call("relay.pair.window.open", {})).data;
+  const redeem = pairTicket(fromBase64url(open.ticket), { relay: w.status.url, name: "Sam's laptop", crypto: nodeCrypto(), keyStore: keystore(t), timeout: 20_000 });
+  redeem.catch(() => {});
+  const pending = await until(() => w.events.find(e => e[0] === "pairing.requested"));
+  assert.equal((await w.call("relay.pair.window.confirm", { window: open.window, device: pending[1].device })).data?.confirmed, true);
+  const r = await redeem;
+  assert.ok(r.device);
+  await until(() => w.events.find(e => e[0] === "device.paired"));
+  await until(async () => (await w.call("wink.access")).data.devices.some(d => d.id === r.device));
+  return r.device;
+}
+
+/** A phone-like device paired through the window on a kernel box, with a person session started from its own key; the owner's confirming key may be a real enrolled one. */
+async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = null) {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = shared || await world(t, { kernel: true });
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ks = keystore(t);
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const open = (await w.call("relay.pair.window.open", {})).data;
+  const redeem = pairTicket(fromBase64url(open.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, timeout: 20_000 });
+  redeem.catch(() => {});
+  const pending = await until(() => w.events.find(e => e[0] === "pairing.requested"));
+  let ownerKey = null;
+  if (confirmWithRealKey) {
+    const ok = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    ownerKey = (await w.d.registry.call("presence.enroll", { kind: "device", name: "Alex's Mac", public_key: ok.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }, "cli", PROOF)).data.id;
+    assert.ok(ownerKey, "an owner key is enrolled");
+  }
+  assert.equal((await w.call("relay.pair.window.confirm", { window: open.window, device: pending[1].device }, SCREEN, ownerKey ? { ...A, proof: { method: "passkey", key: ownerKey } } : A)).data?.confirmed, true);
+  const paired = await redeem;
+  await until(async () => relayHas(w, paired.device));
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = (await over(c, "presence.person.pair-challenge", {})).body.data.challenge;
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ch}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  const sessionId = started.body.data.id;
+  const live = async () => { const x = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; return (x.sessions || x).some(y => y.id === sessionId); };
+  assert.equal(await live(), true);
+  return { w, paired, sessionId, live, ownerKey };
+}
+
+shardTest("wink: sharing a computer is a node.host grant with limits, and only for a computer that is paired", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("wink.share", { device: "nopenopenopenope" })).error?.code, "not_found");
+  const r = { paired: { device: await pairComputer(t, w) } };
+  // With the kernel the member's side of the compute offer is bound to the computer's own key (the Identity stud's device key a full pairing records); a window pairing records none, so it is set here.
+  w.d.registry.deps.db.prepare("UPDATE wink_devices SET node_key = ? WHERE id = ?").run(crypto.randomBytes(32).toString("base64url"), r.paired.device);
+  const shared = await w.call("wink.share", { device: r.paired.device, cpu: 0.25, hours_day: 4, awake: true, on_power: true });
+  assert.ok(shared.data?.grant, JSON.stringify(shared.error));
+  const g = (await w.call("wink.access")).data.grants.find(x => x.source === "wink:W4");
+  assert.ok(g);
+  assert.ok(g.resource.endsWith(`/node/${r.paired.device}`));
+  assert.ok(w.events.some(e => e[0] === "wink.shared"));
+  // Sharing is the two sides of the compute offer, not only a grant: the computer now offers compute and its owner accepts, so the runner may lease it for the personal space.
+  assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
+  const dev = (await w.call("wink.access")).data.devices.find(x => x.id === r.paired.device);
+  assert.equal(dev.offers.compute, true);
+});
+
+shardTest("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
+  const w = await world(t);
+  const r = { paired: { device: await pairComputer(t, w) } };
+  const dev = (await w.call("wink.access")).data.devices[0];
+  const out = await w.call("wink.remove", { device: dev.id });
+  assert.ok(out.data?.removed, JSON.stringify(out.error));
+  assert.match(out.data.prompt, /stop reaching your server at once/);
+  assert.equal((await w.call("wink.access")).data.devices.length, 0);
+  assert.equal(typeof out.data.closed, "boolean", "it says whether the connections were closed");
+  assert.ok(w.events.some(e => e[0] === "wink.removed" && e[1].device === r.paired.device));
+  assert.equal((await w.call("wink.remove", { device: dev.id })).error?.code, "not_found");
+  // relay.devices.remove is the person's own tool: the surface that asked closes the connections with it.
+  if (!out.data.closed) await w.d.registry.call("relay.devices.remove", { id: dev.id }, "cli", PROOF);
+  const left = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === r.paired.device);
+  assert.ok(!left, "the device is gone");
+});
+
+shardTest("wink.relay.apply: the owner's app signs the instruction, the box checks it; no presence is asked on the box (lead ruling 3 Oct)", async t => {
+  const w = await world(t);
+  const device = await pairComputer(t, w);
+  const box = (await w.d.registry.call("relay.route.id", {}, "module:wink", {})).data.route;
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const sign = (i, key = privateKey) => crypto.sign(null, Buffer.from(`vyre-wink-instruction-v1\n${i.box}\n${i.action}\n${i.url || ""}\n${i.ts}\n${i.nonce}`), key).toString("base64url");
+  const make = (o = {}) => { const i = { v: 1, action: "relay.enable", url: w.url, box, device, ts: Date.now(), nonce: crypto.randomBytes(12).toString("base64url"), ...o }; return { ...i, sig: o.sig || sign(i) }; };
+  const apply = i => w.call("wink.relay.apply", i, "cli", {});
+  // no key registered yet: refused, whoever signed
+  assert.match((await apply(make())).error?.message || "", /refused/);
+  // registering the key is the owner's own act and needs presence
+  const spki = publicKey.export({ type: "spki", format: "der" }).toString("base64url");
+  assert.equal((await w.call("wink.device.key", { device, key: spki }, SCREEN, { peer: A.peer, person: A.person })).error?.code, "presence_required");
+  assert.equal((await w.call("wink.device.key", { device, key: spki })).data?.device, device);
+  const good = make();
+  const r = await apply(good);
+  // The signature checked out and the box asked the relay to switch on through relay.apply (the wink module's own door).
+  assert.ok(r.data?.applied === true, JSON.stringify(r.error));
+  assert.match((await apply(good)).error?.message || "", /already used/);
+  for (const [why, i, re] of [
+    ["another box", make({ box: "someone-else" }), /another box/],
+    ["a stale time", make({ ts: Date.now() - 5 * 60_000 }), /too old/],
+    ["a bad url", make({ url: "http://x" }), /ws:\/\/|wss:\/\//],
+    ["an unknown device", make({ device: "ghost" }), /not a device of the owner/],
+    ["a tampered url", { ...make(), url: "wss://evil.test" }, /signature/],
+    ["another key", make({ sig: sign({ box, action: "relay.enable", url: w.url, ts: 1, nonce: "x" }, crypto.generateKeyPairSync("ed25519").privateKey) }), /signature/],
+  ]) assert.match((await apply(i)).error?.message || "", re, why);
+  // an agent never applies one, even with a good signature
+  assert.equal((await w.call("wink.relay.apply", make(), "tailnet:agent:juno", {})).error?.code, "denied");
+});
+
+shardTest("paired session ends, on the real kernel: a revoked session id is gone at once", async t => {
+  const { w, sessionId, live } = await pairedOnKernel(t);
+  assert.equal((await w.d.registry.call("presence.person.revoke", { id: sessionId }, "cli", PROOF)).data.revoked, sessionId);
+  assert.equal(await live(), false, "a revoked session is gone from presence, so the daemon verifies nothing for it");
+});
+
+shardTest("paired session ends, on the real kernel: sign-out-everywhere (wink asks presence to end every paired session) ends the session, and only module:wink may ask", async t => {
+  const a = await pairedOnKernel(t);
+  assert.ok((await a.w.d.registry.call("presence.person.end-paired", {}, "cli", PROOF)).error, "only module:wink may end paired sessions");
+  assert.equal(await a.live(), true, "a refused end changed nothing");
+  const ended = await a.w.d.registry.call("presence.person.end-paired", {}, "module:wink");
+  assert.ok(ended.data.ended >= 1, JSON.stringify(ended));
+  assert.equal(await a.live(), false, "after sign-out-everywhere the session is gone");
+});
