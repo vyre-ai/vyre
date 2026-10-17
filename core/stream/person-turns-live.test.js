@@ -485,7 +485,6 @@ test("review D: an asker who left the chat while their message waited gets no tu
 // ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
 // The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
 // vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
-const kitThreadOf = (/** @type {any} */ r) => kitThread(r.b, r.chat.id);
 const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
 
 /** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
@@ -532,15 +531,7 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
 test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000 }, async t => {
   const r = await lentKeyChat(t);
   await r.say("carol", "carol first");
-  try { await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000); }
-  catch (e) {
-    // what actually happened, before the timeout hides it: which key went to which process, who lent what, and what the thread says
-    const evs = await r.b.reg.call("threads.get", { thread: kitThreadOf(r), limit: 100 }, "cli").then((/** @type {any} */ x) => (x.data && x.data.events || []).map((/** @type {any} */ ev) => `${ev.type}:${String(ev.payload && (ev.payload.text || ev.payload.error || ev.payload.reason || ev.payload.via) || "").slice(0, 120)}`)).catch((/** @type {any} */ x) => [String(x)]);
-    const dbq = (/** @type {string} */ q) => { try { return r.b.reg.deps.db.prepare(q).all(); } catch (x) { return String(x); } };
-    console.log("[lentkey-diag2]", JSON.stringify({ inbox: dbq("SELECT thread, via, text, delivered_at FROM threads_inbox LIMIT 10"), runs: dbq("SELECT * FROM threads_runs LIMIT 5"), threads: dbq("SELECT id, status, account FROM threads_threads2 LIMIT 5"), accounts: dbq("SELECT id, kind, person, signed_in_at, vault_item FROM sessions_accounts"), tables: dbq("SELECT name FROM sqlite_master WHERE name LIKE 'threads%'") }));
-    console.log("[lentkey-diag]", JSON.stringify({ launches: r.launches(), lends: r.lends, answers: r.answers(), events: evs, framesTail: textOf(r.watch.frames).slice(-400) }));
-    throw e;
-  }
+  await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
   const first = r.launches();
   assert.equal(first.length, 1, "one process, carol's");
   assert.equal(first[0].credSha, sha16(r.KC), "carol's key went to carol's process on its descriptor");
