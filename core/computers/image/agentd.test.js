@@ -27,7 +27,7 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
     assert.ok(argv[0].startsWith("/") && argv.every((a, i) => i === 0 || !/^(setpriv|prlimit|nice|env)$/.test(a)), "no binary is looked up by PATH");
   }
   const env = asAgent(U, {}, { DISPLAY: ":20" }).join(" ");
-  assert.match(env, /\/usr\/bin\/env -i HOME=\/home\/ag20000 USER=ag20000 LOGNAME=ag20000 PATH=\/usr\/local\/bin:\/usr\/bin:\/bin LANG=C\.UTF-8 DISPLAY=:20$/);
+  assert.match(env, /\/usr\/bin\/env -i HOME=\/var\/lib\/vyre\/agents\/ag20000\/home USER=ag20000 LOGNAME=ag20000 PATH=\/usr\/local\/bin:\/usr\/bin:\/bin LANG=C\.UTF-8 DISPLAY=:20$/);
 });
 
 test("the screen is the browser uid's: its own display on a unix socket (no TCP port), its password a file in the browser's folder, never on the command line; the agent gets only an untrusted cookie", () => {
