@@ -34,6 +34,8 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
+import * as connectionShareTools from "./tools/connection-share.js";
+import * as namedTools from "./tools/named.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -243,13 +245,13 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
+      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind, thread }) => {
         const r = cli.list(vault.list(input), input);
         // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
         const model = isAsker(caller);   // the one predicate for "this caller is a model" (asker.js): list, item and the request cap agree
         if (!model || !r || !Array.isArray(r.items)) return r;
         if (vault.access && vault.access.K) {
-          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
+          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)), thread);
           return { ...r, items: mine };
         }
         // SHIM(no kernel): the older rule, an agent sees what is granted to its project.
@@ -523,18 +525,20 @@ export default {
     account.register({ ctx, vault, tool });
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
-    meTools.register({ ctx, people, tool });
+    const connShare = connectionShareTools.register({ ctx, people, tool });
+    meTools.register({ ctx, people, tool, onRemoved: connShare.onRemoved });
     // A login a member shares with an agent (member-share.js): their vault opens it, the share tools keep a copy for the agent's Chrome, and the copy follows the login: changed, removed or the member gone, it is refreshed or deleted.
     vault.access.members.people = people;
     people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
     memberShareTools.register({ access: vault.access, tool });
     setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
+    namedTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
-      ctx.events.on("member.removed", (/** @type {any} */ e) => { try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
-      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
+      ctx.events.on("member.removed", (/** @type {any} */ e) => { connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
       for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
     } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.

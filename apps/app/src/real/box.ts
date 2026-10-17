@@ -20,6 +20,7 @@ import { loadIdentity } from "../identity/store";
 import { useSpaces } from "../../screens/shell/state";
 import { mockTools } from "./mock-templates";
 import { mockAgentTools } from "./mock-agents";
+import { mockComputerTools } from "./mock-computers";
 import { mockAgentMemoryTools } from "./mock-agent-memory";
 import { mockAgentWorkTools } from "./mock-agent-work";
 import { mockDocumentTools } from "./mock-documents";
@@ -61,6 +62,7 @@ export type ToolOptions = { server?: string };
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
   if (MOCK && mockAgentMemoryTools[name]) return mockAgentMemoryTools[name](given) as T; // the agent page's Memory pane (mock-agent-memory.ts)
+  if (MOCK && mockComputerTools[name]) return mockComputerTools[name](given) as T; // an agent's computer and a chat's background tasks (mock-computers.ts)
   if (MOCK && mockAgentTools[name]) return mockAgentTools[name](given) as T; // and the agent page's (mock-agents.ts)
   if (MOCK && mockAgentWorkTools[name]) return mockAgentWorkTools[name](given) as T; // an agent's Work list (mock-agent-work.ts)
   if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)

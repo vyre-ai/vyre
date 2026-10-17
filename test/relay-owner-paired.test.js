@@ -65,19 +65,11 @@ const check = async (/** @type {any} */ w, /** @type {string} */ id, /** @type {
   assert.equal(s.body.includes(`SECRET-${path}`), owner, `${path}: the whole stream for the owner's device, the cut stream for the other`);
 };
 
-test("pairing paths: the first device, a confirmed window and a gated ring leave the owner's device the owner's; an ungated ticket a module minted do not", { timeout: 150_000 }, async t => {
+test("pairing paths: the first device and a gated ring leave the owner's device the owner's; an ungated ticket a module minted do not", { timeout: 150_000 }, async t => {
   const w = await world(t);
   // a ring ticket the owner minted with presence (one step in a test)
   const first = await w.ringed();
   await check(w, first.device, true, "first");
-  // the window: the redeemer is enrolled only after the screen confirms this exact phone
-  const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" } };
-  const events = []; w.d.events.on("pairing.*", (/** @type {any} */ e) => events.push([e.type, e.payload]));
-  const open = (await w.d.registry.call("relay.pair.window.open", {}, SCREEN, A)).data;
-  const redeem = pairTicket(fromBase64url(open.ticket), { relay: (await w.d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: w.keys(), timeout: 20_000 });
-  const pending = await new Promise(res => { const iv = setInterval(() => { const e = events.find(x => x[0] === "pairing.requested"); if (e) { clearInterval(iv); res(e[1]); } }, 100); });
-  assert.equal((await w.d.registry.call("relay.pair.window.confirm", { window: open.window, device: /** @type {any} */ (pending).device }, SCREEN, { ...A, proof: undefined })).data.confirmed, true);
-  await check(w, (await redeem).device, true, "window");
   // an ungated ticket a module minted: nobody was present for it
   const minted = (await w.d.registry.call("relay.ticket.mint", {}, "module:wink")).data;
   const viaModule = await pairTicket(fromBase64url(minted.ticket), { relay: (await w.d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Handed-out phone", crypto: nodeCrypto(), keyStore: w.keys(), timeout: 20_000 });

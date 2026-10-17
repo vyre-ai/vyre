@@ -169,7 +169,8 @@ export function createGroup(viewer) {
   /** @param {string} message */ const keyOf = (message) => msgs.get(message)?.key;
   /** Names the app learned from elsewhere (work.chat.get and the space's actors), keyed like `person:<id>`: a frame that only carries an id never overrides them. @type {Map<string, string>} */
   const learned = new Map();
-  const names = () => ({ ...Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name])), ...Object.fromEntries(learned) });
+  // A name is found by the author as the frame wrote it (`model:codex/gpt-5#1`) and by family and id; what was learned from elsewhere wins.
+  const names = () => ({ ...Object.fromEntries([...people.values()].map((p) => [p.id, p.name])), ...Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name])), ...Object.fromEntries(learned) });
 
   function divider() {
     if (dividerCache && dividerCache.rev === rev) return dividerCache.v;

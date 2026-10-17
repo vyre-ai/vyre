@@ -18,7 +18,6 @@ import { createChainAdmit, createRateGate } from "./chain-admit.js";
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
-import { within } from "../../lib/within.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
@@ -28,8 +27,8 @@ import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
 import { peersFor, inviteesFor, serversFor, homesFor } from "./peers.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
-import { agentClaim, ownerDevice } from "../modules/index.js";
-import { loadKeys, keyHandle } from "./keys.js";
+import { agentClaim } from "../modules/index.js";
+import { keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
@@ -43,7 +42,7 @@ const DAY = 24 * 60 * 60_000;
 export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|relay\.setup\.claim$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
 /** The next step every refusal of the old pairing code names. */
-const ADD_A_DEVICE = "Pair this device again from your app: Devices, Add a device.";
+const ADD_A_DEVICE = "Sign in on the device again with your space address, your username and your master password.";
 
 export const MIGRATIONS = [
   `CREATE TABLE relay_devices (
@@ -253,9 +252,6 @@ export default {
         WebSocket: seam.WebSocket, log: m => ctx.log(m),
         // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
         ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
-        // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
-        onsignin: m => { try { ctx.events.emit("relay.signin-asked", m); } catch {} },
-        oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
           try { ctx.events.emit(s === "connected" ? "relay.connected" : "relay.disconnected", s === "connected" ? {} : { why: why || "" }); } catch {}
         },
@@ -347,11 +343,7 @@ export default {
         // A gated ticket (X-1, 4 Oct 2026) makes NOTHING until the module that gates it says yes: no device row, no presence key and no bridge session, only a waiting
         // pairing that may reach the one tool its own pairing needs. The ticket is spent either way.
         if (match.gate) return holdPending(pub, id, name, hello, match);
-        // A ticket from a pairing window enrols nothing until the screen that opened it confirms this exact phone.
-        if (match.window) await holdForConfirm(match.window, pub, name);
-        const reply = await enrol(pub, id, name, hello, match);
-        if (match.window) await closeWindow("completed");
-        return reply;
+        return enrol(pub, id, name, hello, match);
       }
       const waiting = pendingPairs.get(id);
       if (waiting) {
@@ -507,12 +499,12 @@ export default {
     // after the person has picked the right words), and only then does `enrol` run: the row, the presence key, the notice. A no, a timeout, or relay.devices.drop makes the waiting pairing
     // vanish: its channels are closed, a reconnect is refused ("not a paired device"), and the ticket, taken at redemption, stays spent.
     const PENDING_MS = seam.pendingMs || 5 * 60_000, PENDING_MAX = 8, PENDING_GRACE_MS = 10_000;
-    /** The one tool a waiting pairing may call, by what its ticket was for. A phone and a ring phone ask about the computer's question; a server's scanner completes its own adoption. */
-    const PENDING_TOOLS = Object.freeze({ phone: ["wink.phone.wait"], ring: ["wink.phone.wait"], server: ["wink.server.adopt"] });
+    /** The one tool a waiting pairing may call, by what its ticket was for. A server's scanner completes its own adoption. */
+    const PENDING_TOOLS = Object.freeze({ server: ["wink.server.adopt"] });
     /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
     const pendingPairs = new Map();
     /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
-    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING);
+    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING, liveSeam("buildRoot"));   // buildRoot: a test seam (seams, by home) that makes the build a release or a development one
     /** @type {Map<string, any>} */
     const pendingHandlers = new Map();
     const pendingHandler = gate => {
@@ -875,7 +867,7 @@ export default {
 
     // The classic bearer code (relay.pair.start, relay.pair.first, and relay.join to redeem one) is gone (owner's ruling, 13 Oct 2026): a code any holder could redeem made a device nobody confirmed. The names stay
     // registered so an older CLI, app or script that still calls one hears why and what to do instead, not "no such tool". Nothing is made or enrolled.
-    const classicGone = (/** @type {string} */ what) => fail("gone", `${what} is gone: a code anyone could hold made devices nobody confirmed. A device now joins by signing in with the person's name and approving on another device, or with a space code and the same words. ${ADD_A_DEVICE}`);
+    const classicGone = (/** @type {string} */ what) => fail("gone", `${what} is gone: a code anyone could hold made devices nobody confirmed. A device now joins by signing in. ${ADD_A_DEVICE}`);
     ctx.tool("relay.pair.start", {
       description: "Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj(),
@@ -956,38 +948,6 @@ export default {
         return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
       },
     });
-    ctx.tool("relay.signin.watch", {
-      internal: true,
-      description: "Serve a name's sign-in requests: the locator derived from the name (relay/client/signin.js signinLoc). The relay hands each request for it to this box as the relay.signin-asked event { loc, s }, and tells a device that asks nothing about whether any box does. Modules only.",
-      input: obj({ loc: str, on: { type: "boolean" } }, ["loc"]),
-      run: async input => {
-        const loc = String(input.loc);
-        if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
-        // A watch only listens: it never turns the relay on or starts its link. With the relay off there is nothing to watch on; the wink module asks again when relay.connected fires.
-        if (!settings().enabled || !link) return { watching: false, supported: false };
-        if (input.on === false) link.signinUnwatch(loc); else link.signinWatch(loc);
-        return { watching: input.on !== false, supported: link.signins() };
-      },
-    });
-    ctx.tool("relay.code.alloc", {
-      internal: true,
-      description: "Ask the relay for a free typed-code rendezvous for this box (5 minutes, one at a time). Answers { rv, exp }, or null when the relay is busy, away or has no typed codes. Modules only.",
-      input: obj(),
-      run: async () => { await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink(); if (link) await link.ready(); return (link && link.codes() ? await link.codeAlloc() : null); },
-    });
-    ctx.tool("relay.code.release", {
-      internal: true,
-      description: "Give the typed-code rendezvous back. Modules only.",
-      input: obj(),
-      run: async () => { link?.codeRelease(); return { released: true }; },
-    });
-    ctx.tool("relay.code.reply", {
-      internal: true,
-      description: "Answer a typed code's message (the relay.code-asked event): q is its id, m the reply in base64url, or none to refuse. Modules only.",
-      input: obj({ q: str, m: str }, ["q"]),
-      run: async input => { link?.codeReply(String(input.q), typeof input.m === "string" ? input.m : null); return { sent: true }; },
-    });
-
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ seed: str }),
@@ -1016,150 +976,6 @@ export default {
         if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module confirms a waiting pairing");
         const k = await pendingConfirm(String(input.id), { trusted: input.trusted === true });
         return { paired: true, id: String(input.id), ...(k || {}) };
-      },
-    });
-
-    // ---- the pairing window: one proof opens up to 10 minutes of renewing the Wink code, then the screen confirms the phone ----
-    //
-    // Opening needs the person's proof once. After that the open screen renews the code (each renewal withdraws the
-    // previous ticket at the relay first, so at most one is ever live) without a new prompt, but only the same screen
-    // (same caller and node), only while it keeps pinging, and only up to the limits below. When a phone redeems, nothing is
-    // enrolled until the screen confirms that phone by its fingerprint. All in memory: a restart ends the window.
-    const WINDOW_MS = 10 * 60_000, PING_EVERY = 15_000, SILENCE_MS = 30_000, RENEW_EVERY = 15_000, RENEW_MAX = 40, CONFIRM_MS = 60_000;
-    /** @type {null | { id: string, who: string, closesAt: number, lastPing: number, lastRenew: number, renewals: number, live: { loc: string, key: string } | null, pending: null | { device: string, resolve: (ok: boolean) => void }, purpose: string, boxName: string }} */
-    let pairWindow = null;
-    /** @type {any} */
-    let windowTimer = null;
-    /** Who opened it: the caller, the node, and the person session. A renewal must come from all three. Opening needs a proof, and a proof from
-     * an owner's device needs a person session, so the session part is never empty for an open window (a test pins it). */
-    const windowWho = meta => `${String((meta && meta.caller) || "")}|${(meta && meta.peer && (meta.peer.stableId || meta.peer.node)) || ""}|${(meta && meta.person && meta.person.id) || ""}`;
-    /** The window's screen: the owner's own device or browser, never a terminal, an agent or a module. */
-    const screenOnly = (meta, what) => {
-      const c = String((meta && meta.caller) || "");
-      if (!ownerDevice(c) || agentClaim(c) || (meta && meta.agent)) throw fail("denied", `${what} is for the owner's own screen, never a terminal, an agent or a module`);
-    };
-    const theWindow = (meta, id) => {
-      screenOnly(meta, "the pairing window");
-      const w = pairWindow;
-      if (!w || w.id !== String(id)) throw fail("not_found", "no such pairing window: it has closed");
-      if (windowWho(meta) !== w.who) throw fail("denied", "only the screen that opened the pairing window may use it");
-      return w;
-    };
-    const withdrawLive = async w => {
-      if (!w.live) return;
-      const live = w.live; w.live = null;
-      pendingTickets.delete(live.key);
-      if (link && link.revokes()) await link.revokeTicket(live.loc);
-    };
-    const closeWindow = async reason => {
-      const w = pairWindow;
-      if (!w) return;
-      pairWindow = null;
-      clearInterval(windowTimer); windowTimer = null;
-      if (w.pending) w.pending.resolve(false);
-      await withdrawLive(w);
-      ctx.events.emit("pairing-window.closed", { window: w.id, reason });
-    };
-    const holdForConfirm = async (windowId, pub, name) => {
-      const w = pairWindow;
-      if (!w || w.id !== windowId) throw new Error("the pairing window has closed; make a new code");
-      if (w.pending) throw new Error("another phone is already waiting to be confirmed");
-      const device = deviceId(pub);
-      const done = new Promise(resolve => { w.pending = { device, resolve }; });
-      ctx.events.emit("pairing.requested", { window: w.id, device, name, fingerprint: keyFingerprint(pub) });
-      const ok = await within(done, CONFIRM_MS, false);
-      if (w.pending && w.pending.device === device) w.pending = null;
-      if (!ok) throw new Error("the box did not confirm this phone");
-    };
-    const mintInWindow = async w => {
-      const minted = await mintTicket(undefined, { window: w.id });
-      w.live = lastMinted;
-      ctx.events.emit("pairing-window.renewed", { window: w.id });
-      return { ticket: minted.ticket, ticketExpiresAt: minted.expiresAt, confirmed: minted.confirmed };
-    };
-
-    ctx.tool("relay.pair.window.open", {
-      callers: ["deck", "tailnet"],
-      description: "Open a pairing window on this screen: one proof, then up to 10 minutes of Wink codes this screen may renew without another prompt (relay.pair.window.renew). Answers { window, closesAt, pingEveryMs, ticket, ticketExpiresAt }. The window is for pair.device on this box only. A phone that redeems a code is enrolled only after relay.pair.window.confirm.",
-      input: obj(),
-      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => "Let this screen show a code that adds a phone to this box, for up to 10 minutes" },
-      run: async (_, meta = {}) => {
-        const refusal = macCoreRefusal(platform, keys.core);
-        if (refusal) throw refusal;
-        screenOnly(meta, "opening the pairing window");
-        await closeWindow("replaced");
-        const t = now();
-        const w = { id: crypto.randomBytes(12).toString("base64url"), who: windowWho(meta), closesAt: t + WINDOW_MS, lastPing: t, lastRenew: t, renewals: 0, live: null, pending: null, purpose: "pair.device", boxName: boxName() };
-        pairWindow = w;
-        windowTimer = setInterval(() => {
-          const n = now();
-          if (pairWindow !== w) return;
-          if (n - w.lastPing > SILENCE_MS) closeWindow("silence"); else if (n >= w.closesAt) closeWindow("expired");
-        }, 5000);
-        windowTimer.unref?.();
-        ctx.events.emit("pairing-window.opened", { window: w.id });
-        const m = await mintInWindow(w);
-        return { window: w.id, closesAt: w.closesAt, pingEveryMs: PING_EVERY, ...m };
-      },
-    });
-
-    ctx.tool("relay.pair.window.renew", {
-      callers: ["deck", "tailnet"],
-      description: "Renew the Wink code inside an open pairing window, with no new proof. It withdraws the previous code at the relay first, so one is ever live. Only the screen that opened the window, while it keeps pinging; at most one every 15 seconds and 40 in a window. Answers { ticket, ticketExpiresAt }.",
-      input: obj({ window: str }, ["window"]),
-      run: async (input, meta = {}) => {
-        const w = theWindow(meta, input.window);
-        const n = now();
-        if (n - w.lastPing > SILENCE_MS) { await closeWindow("silence"); throw fail("denied", "the pairing window closed: the screen stopped pinging"); }
-        if (n >= w.closesAt) { await closeWindow("expired"); throw fail("denied", "the pairing window has expired"); }
-        if (n - w.lastRenew < RENEW_EVERY) throw fail("rate_limited", "a code can be renewed once every 15 seconds");
-        if (w.renewals >= RENEW_MAX) { await closeWindow("renewals"); throw fail("rate_limited", "this pairing window has used its renewals"); }
-        w.lastRenew = n; w.lastPing = n; w.renewals++;
-        await withdrawLive(w);
-        return mintInWindow(w);
-      },
-    });
-
-    ctx.tool("relay.pair.window.ping", {
-      callers: ["deck", "tailnet"],
-      description: "The open screen's heartbeat for its pairing window, every 15 seconds. The window closes after 30 seconds of silence. Answers { closesInMs }.",
-      input: obj({ window: str }, ["window"]),
-      run: async (input, meta = {}) => {
-        const w = theWindow(meta, input.window);
-        w.lastPing = now();
-        return { closesInMs: Math.max(0, w.closesAt - now()) };
-      },
-    });
-
-    ctx.tool("relay.pair.window.close", {
-      callers: ["deck", "tailnet"],
-      description: "Close the pairing window: the live code is withdrawn at the relay.",
-      input: obj({ window: str }, ["window"]),
-      run: async (input, meta = {}) => { theWindow(meta, input.window); await closeWindow("closed by the screen"); return { closed: true }; },
-    });
-
-    ctx.tool("relay.pair.window.confirm", {
-      callers: ["deck", "tailnet"],
-      description: "The person confirms the phone that is pairing (shown as pairing.requested, with its name and key fingerprint). Only then is it enrolled, and the window closes. Answers { confirmed: true }.",
-      input: obj({ window: str, device: str }, ["window", "device"]),
-      run: async (input, meta = {}) => {
-        const w = theWindow(meta, input.window);
-        if (!w.pending || w.pending.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be confirmed with that id");
-        w.pending.resolve(true);
-        return { confirmed: true };
-      },
-    });
-
-    ctx.tool("relay.pair.window.reject", {
-      callers: ["deck", "tailnet"],
-      description: "\"Not you?\": refuse the phone that is waiting to be confirmed, shown as pairing.requested. The window stays open and the slot is free at once, so a stranger who redeemed a code cannot hold it; the screen renews the code for the real phone. Answers { rejected: true }.",
-      input: obj({ window: str, device: str }, ["window", "device"]),
-      run: async (input, meta = {}) => {
-        const w = theWindow(meta, input.window);
-        if (!w.pending || w.pending.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be confirmed with that id");
-        const p = w.pending; w.pending = null; p.resolve(false);
-        ctx.events.emit("pairing.rejected", { window: w.id, device: p.device });
-        return { rejected: true };
       },
     });
 
@@ -1553,11 +1369,6 @@ export default {
 
     // Taking a device's presence key away (presence.remove) takes the device away too: its open
     // channel closes with 4401 "device removed" and it is refused on reconnect, the same as relay.devices.remove.
-    // The person session that opened a pairing window ended (signed out or revoked): the window closes at once, not 30 s later.
-    const offSignedOut = ctx.events.on("presence.signed-out", (/** @type {any} */ ev) => {
-      const id = ev && ev.payload && ev.payload.id;
-      if (pairWindow && id && pairWindow.who.endsWith(`|${id}`)) closeWindow("session ended");
-    });
     const offPresence = ctx.events.on("presence.removed", (/** @type {any} */ ev) => {
       const keyId = ev && ev.payload && ev.payload.id;
       if (!keyId) return;
@@ -1565,6 +1376,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { stopping = true; try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { stopping = true; try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

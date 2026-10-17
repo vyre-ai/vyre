@@ -132,7 +132,7 @@ export function mail({ request }) {
     /** Send, with gmail.send alone. Only google.release calls this, with what the person approved. */
     async send(acct, to, c) {
       const raw = rfc822({ from: acct.email, to, cc: addresses(c.cc, "cc"), bcc: addresses(c.bcc, "bcc"), subject: c.subject, body: c.body,
-        in_reply_to: c.in_reply_to || undefined });
+        in_reply_to: c.in_reply_to || undefined, ...(Array.isArray(c.attachments) && c.attachments.length ? { attachments: c.attachments } : {}) });
       const r = await request(acct, { api: "gmail", scope: "gmail.send", method: "POST", path: `${MESSAGES}/send`,
         body: { raw, ...(c.thread_id ? { threadId: c.thread_id } : {}) } });
       return { sent: true, id: String(r.id || ""), thread_id: String(r.threadId || ""), account: acct.name };

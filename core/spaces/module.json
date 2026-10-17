@@ -272,6 +272,11 @@
     "effect": "write"
    },
    {
+    "name": "spaces.publish-server-space",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules",
     "effect": "read"
@@ -353,6 +358,18 @@
    },
    {
     "name": "spaces.members.add-agent", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.groups.list", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.groups.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.groups.remove", "effect": "write",
     "reach": "person"
    },
    {
@@ -486,6 +503,10 @@
    },
    {
     "name": "spaces.label",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.names",
     "reach": "modules"
    },
    {

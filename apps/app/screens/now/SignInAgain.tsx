@@ -4,7 +4,7 @@ import { AppState, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Card, Icon, Text } from "@vyre/ui";
 import { call } from "../../src/api/box";
-import { afterCheck, signinCards, type SignInCard } from "../../src/real/signin-again.js";
+import { afterCheck, deviceCards, signinCards, type SignInCard } from "../../src/real/signin-again.js";
 import { dayTimeOf } from "../../src/time/show.js";
 
 /** One card, drawn from its words and buttons (the gallery draws it from a sample). */
@@ -29,7 +29,13 @@ export function SignInAgain() {
   const [cards, setCards] = useState<SignInCard[]>([]);
   const [busy, setBusy] = useState("");
   const [hints, setHints] = useState<Record<string, string>>({});
-  const load = useCallback(() => { void call<any>("approvals.items", {}).then((r) => setCards(r.error ? [] : signinCards(r.data))).catch(() => setCards([])); }, []);
+  const load = useCallback(() => {
+    // The box's own sign-in cards, and the person's own sign-ins on a new device (the box answers for whoever is asking, so each person sees theirs); either may be missing on an older box.
+    void Promise.all([
+      call<any>("approvals.items", {}).then((r) => (r.error ? [] : signinCards(r.data))).catch(() => [] as SignInCard[]),
+      call<any>("identity.signins.pending", {}).then((r) => (r.error ? [] : deviceCards(r.data))).catch(() => [] as SignInCard[]),
+    ]).then(([a, b]) => setCards([...a, ...b]));
+  }, []);
   useEffect(() => {
     load();
     const t = setInterval(load, 60_000);

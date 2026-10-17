@@ -5,7 +5,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { FileViewer, Avatar, AvatarStack, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, Sheet, Switch, Tabs, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { useRouter } from "expo-router";
+import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
+import { ComputerTab } from "./ComputerTab";
+import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
@@ -17,14 +21,17 @@ import { ChatTags } from "../../screens/tags/RecordTags";
 import { ForkRows, TasksPage, ContextPage, TranscriptPage, BackPage } from "../../screens/chat-tools/ChatToolsSheet";
 import { ChatFiles } from "../../screens/chat-tools/ChatFiles";
 import { driveSource } from "../../screens/drive/file-source";
-import { EFFORTS, effortLabel, modeLabel, modesOf, taskLive } from "../../screens/chat-tools/model.ts";
+import { EFFORTS, effortLabel, modeLabel, modesOf, subagentsOf, taskLive, type Task } from "../../screens/chat-tools/model.ts";
 
-export type PanelPage = "file" | "root" | "project" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "files";
-const TITLES: Record<PanelPage, string> = { file: "File", root: "In this chat", project: "Move to a project", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript and recall", back: "Go back", files: "Files" };
+export type PanelPage = "file" | "root" | "more" | "project" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "files";
+const TITLES: Record<PanelPage, string> = { file: "File", root: "In this chat", more: "More", project: "Move to a project", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript and recall", back: "Go back", files: "Files" };
 const fam = (f: string) => (f === "assistant" ? "assistant" : f === "model" ? "model" : "person");
 
 export type ChatPanelProps = {
   open: boolean; onClose: () => void; phone: boolean; page: PanelPage; onPage: (p: PanelPage) => void;
+  /** The tab showing on the first page, and its change (the chat screen keeps it, so the header menu can open the panel on one). */
+  tab: "details" | "library" | "computer"; onTab: (t: "details" | "library" | "computer") => void;
+  /** The chat's name, for the top of the panel. */ title: string;
   participants: readonly Participant[]; viewer: string; info: AboutInfo;
   muted: boolean; pinned: boolean; onMute: (on: boolean) => void; onPin: (on: boolean) => void;
   onMove?: () => void; onOpenTerminal?: () => void; onOpenParticipant?: (id: string) => void;
@@ -72,7 +79,10 @@ export function ChatPanel(p: ChatPanelProps) {
     setBusy(false);
     if (r.ok) { done?.(); const m = r.note || ok; if (m) showToast(m); } else setProblem(r.reason || "That did not go through.");
   };
-  const back = () => (p.page === "root" ? p.onClose() : p.onPage("root"));
+  // Pages reached from More go back to More; the rest go back to the tabs.
+  const cameFromMore = useRef(false);
+  const open = (page: PanelPage) => { cameFromMore.current = page !== "more"; p.onPage(page); };
+  const back = () => { if (p.page === "root") p.onClose(); else if (p.page !== "more" && cameFromMore.current) p.onPage("more"); else { cameFromMore.current = false; p.onPage("root"); } };
   const backRef = useRef(back);
   backRef.current = back;
 
@@ -106,14 +116,26 @@ export function ChatPanel(p: ChatPanelProps) {
   const here = p.info.runsOn === "mac" ? "This Mac" : "The server";
   const there = p.info.runsOn === "mac" ? "the server" : "this Mac";
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
+  // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
+  const router = useRouter();
+  // The panel is resizable on a wide screen: its width is kept per device, and a double-click on its edge sets the default.
+  const panelW = useStoredWidth("chat-panel", RAIL.panelWidth, RAIL.panelMin, RAIL.panelMax);
+  const { tab, onTab: setTab } = p;
+  const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
+  const [helpers, setHelpers] = useState<Task[] | null>(null);
+  useEffect(() => {
+    if (!p.open || tab !== "library") return;
+    let on = true;
+    chatTools.tasks(p.thread).then((t) => { if (on) setHelpers(subagentsOf(t)); }).catch(() => { if (on) setHelpers([]); });
+    return () => { on = false; };
+  }, [p.open, tab, p.thread]);
 
-  const root = (
+  const details = (
     <View style={{ gap: 4 }}>
-      <SectionLabel first meta={String(p.participants.length)}>People</SectionLabel>
       {p.participants.map((x) => (
         <Row key={x.id} dense lead={<Face name={x.name} family={fam(x.family)} size={32} id={x.id} />} title={x.name}
           sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
-          onPress={p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
+          onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
       ))}
       {p.onAdd && p.addable ? (adding ? (
         <View style={{ gap: 4 }}>
@@ -124,30 +146,34 @@ export function ChatPanel(p: ChatPanelProps) {
         </View>
       ) : <Row dense title="Add a teammate" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
 
-      <SectionLabel>About</SectionLabel>
-      <ChatTags chat={p.chat} thread={p.thread} />
-      <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => p.onPage("project")} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
+      <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => { cameFromMore.current = false; p.onPage("project"); }} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
+      <Row dense lead={<Icon name="more" size={20} />} title="More" sub="Effort, permissions, where it runs and the rest" chevron onPress={() => open("more")} />
+    </View>
+  );
+  const more = (
+    <View style={{ gap: 8 }}>
+      {agents.length ? <View style={{ gap: 4 }}><Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>Standing permissions</Text>{agents.map((a) => <View key={a.id}><Text style={{ paddingHorizontal: 12 }}>{a.name}</Text><StandingRows agent={a.name} /></View>)}</View> : null}
       <Row dense lead={<Icon name="hash" size={20} />} title={p.info.record ? p.info.record.title : "Link to a record"} sub={p.info.record ? `${p.info.record.type}${p.info.space ? " in " + p.info.space : ""}` : "Types # in the message box and picks one"} chevron={!p.info.record} onPress={p.info.record ? undefined : () => { p.onClose(); p.onLinkRecord(); }} />
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 6 }}>
         <Text size="caption" tone="muted">Agents see this chat and the records you tag, with the grants of whoever asked.</Text>
         <View style={{ flexDirection: "row" }}><Chip tone="sealed" icon="shield">{p.info.sealed > 0 ? `${p.info.sealed} sealed field${p.info.sealed === 1 ? "" : "s"}, never shown` : "No sealed fields here"}</Chip></View>
       </View>
 
-      <SectionLabel>How it answers</SectionLabel>
-      <Row dense title="Effort" state={effortLabel(effort)} chevron onPress={() => p.onPage("effort")} />
+      <Divider />
+      <Row dense title="Effort" state={effortLabel(effort)} chevron onPress={() => open("effort")} />
       <Row dense title="Thinking" sub={thinking === null ? "From the next turn" : undefined}
         end={<Switch label="Thinking" on={thinking === true} disabled={busy} onChange={(on) => { const was = thinking; setThinking(on); void run(async () => { const r = await chatTools.thinking(p.thread, on); if (!r.ok) setThinking(was); return r; }); }} />} />
-      <Row dense title="Mode" state={modeLabel(mode)} chevron onPress={() => p.onPage("mode")} />
+      <Row dense title="Mode" state={modeLabel(mode)} chevron onPress={() => open("mode")} />
       {p.shared ? <Row dense title="AI replies" sub={p.replyMode === "mention" ? "Only when someone mentions it or replies to it" : p.replyMode === "every" ? "To every message, each on its sender's own AI" : "As this chat is set"} chevron
         onPress={() => void run(() => chatTools.replyMode(p.chat, p.replyMode === "mention" ? "every" : "mention"), undefined, "Changed. Everyone in the chat sees it.")} /> : null}
 
-      <SectionLabel>Where it runs</SectionLabel>
+      <Divider />
       <Row dense lead={<Icon name={p.info.runsOn === "mac" ? "laptop" : "box"} size={20} />} title={here} sub={`Or on ${there}`} end={p.onMove ? <Button size="sm" kind="secondary" label={`Move to ${there}`} onPress={p.onMove} /> : undefined} />
       {p.away ? <Row dense title="Carry on here" sub={p.away.name ? `Take it over from ${p.away.name}` : "Take it over from the other device"} chevron onPress={() => void run(() => chatTools.continueHere(p.thread, p.away?.machine), p.onClose, "This chat is here now.")} /> : null}
       {p.onOpenTerminal ? <Row dense title="Open full terminal" sub="The shell in this chat's folder" chevron onPress={() => { p.onClose(); p.onOpenTerminal?.(); }} /> : null}
 
       {p.queued && p.queued.length ? <>
-        <SectionLabel>Waiting to send</SectionLabel>
+        <Divider />
         {p.queued.map((q) => <Row key={q.queued} dense title={q.text || "A message"} end={<Button size="sm" label="Send now" disabled={busy} onPress={() => void run(() => chatTools.sendNow(p.thread, q.queued), undefined, "Sent now.")} />} />)}
       </> : null}
 
@@ -155,25 +181,54 @@ export function ChatPanel(p: ChatPanelProps) {
         onMemory={p.onMemory}
         onExport={p.onExport}
         onRoll={p.onRoll}
-        onContext={() => p.onPage("context")}
-        onTasks={() => p.onPage("tasks")}
-        onTranscript={() => p.onPage("transcript")}
+        onContext={() => open("context")}
+        onTasks={() => open("tasks")}
+        onTranscript={() => open("transcript")}
         runningCount={running}
       />
-      <SectionLabel>Around it</SectionLabel>
-      <Row dense lead={<Icon name="file" size={20} />} title="Files" sub="Made, received and shared with the project" chevron onPress={() => (p.onOpenFiles ? (p.onClose(), p.onOpenFiles()) : p.onPage("files"))} />
+      <Divider />
+      <Row dense lead={<Icon name="file" size={20} />} title="Files" sub="Made, received and shared with the project" chevron onPress={() => (p.onOpenFiles ? (p.onClose(), p.onOpenFiles()) : open("files"))} />
       {p.noFork ? null : <ForkRows otherPlace={p.otherPlace} onFork={() => void run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
         onForkTo={(to) => void run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />}
-      {p.projectSlug && p.session ? <Row dense lead={<Icon name="undo" size={20} />} title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => p.onPage("back")} /> : null}
+      {p.projectSlug && p.session ? <Row dense lead={<Icon name="undo" size={20} />} title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => open("back")} /> : null}
+    </View>
+  );
+
+  const library = (
+    <View style={{ gap: 4 }}>
+      <Text size="secondary" tone="label" style={{ paddingHorizontal: 12 }}>Files</Text>
+      <ChatFiles chat={p.chat} />
+      <Text size="secondary" tone="label" style={{ paddingHorizontal: 12, paddingTop: 12 }}>Subagents</Text>
+      {helpers === null ? <Text tone="muted">Looking.</Text> : helpers.length ? helpers.map((t) => <Row key={t.id} dense lead={<Icon name="users" size={20} />} title={t.title} sub={t.status} chevron onPress={() => p.onPage("tasks")} />) : <Text tone="muted">Helpers this chat starts to work for it show here.</Text>}
+    </View>
+  );
+  const tabs: ["details" | "library" | "computer", string][] = [["details", "Details"], ["library", "Library"], ...(agents.length ? [["computer", "Computer"] as ["computer", string]] : [])];
+  // The top of the panel: one face, the name, the labels. A chat with one other shows their face; more than one shows a small stack.
+  const others = p.participants.filter((x) => x.id !== p.viewer);
+  const hero = (
+    <View style={{ alignItems: "center", gap: 8, paddingTop: 4 }}>
+      {others.length === 1
+        ? <Avatar of={markRef(others[0].family === "assistant" ? "agent" : "person", others[0].name, others[0].id)} size={56} />
+        : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
+      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
+      <ChatTags chat={p.chat} thread={p.thread} />
+    </View>
+  );
+  const root = (
+    <View style={{ gap: 16 }}>
+      {hero}
+      <Tabs items={tabs} value={tab} onChange={setTab} />
+      {tab === "library" ? library : tab === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} /> : details}
     </View>
   );
 
   const sub: Record<string, React.ReactNode> = {
-    project: <ProjectPicker projects={p.project.projects} current={p.project.current} onPick={async (slug) => { if (moving.current) return; moving.current = true; const r = await p.project.move(slug); moving.current = false; if (r) setProblem(r); else { showToast(slug ? "Moved to the project." : "Taken out of the project."); p.onPage("root"); } }} onBack={() => p.onPage("root")} />,
+    more,
+    project: <ProjectPicker projects={p.project.projects} current={p.project.current} onPick={async (slug) => { if (moving.current) return; moving.current = true; const r = await p.project.move(slug); moving.current = false; if (r) setProblem(r); else { showToast(slug ? "Moved to the project." : "Taken out of the project."); back(); } }} onBack={() => p.onPage("root")} />,
     effort: <View>{EFFORTS.map((e, i) => <View key={e.label}>{i ? <Divider /> : null}<Row dense title={e.label} selected={(e.id ?? null) === (effort ?? null)} state={(e.id ?? null) === (effort ?? null) ? "Now" : undefined}
-      onPress={() => { const was = effort; setEffort(e.id); void run(async () => { const r = await chatTools.effort(p.thread, e.id); if (!r.ok) setEffort(was); return r; }, () => p.onPage("root")); }} /></View>)}</View>,
+      onPress={() => { const was = effort; setEffort(e.id); void run(async () => { const r = await chatTools.effort(p.thread, e.id); if (!r.ok) setEffort(was); return r; }, () => back()); }} /></View>)}</View>,
     mode: <View>{modesOf(p.state?.modes).map((m, i) => <View key={m}>{i ? <Divider /> : null}<Row dense title={modeLabel(m)} selected={(mode || "default") === m} state={(mode || "default") === m ? "Now" : undefined}
-      onPress={() => { const was = mode; setMode(m); void run(async () => { const r = await chatTools.mode(p.thread, m); if (!r.ok) setMode(was); return r; }, () => p.onPage("root")); }} /></View>)}</View>,
+      onPress={() => { const was = mode; setMode(m); void run(async () => { const r = await chatTools.mode(p.thread, m); if (!r.ok) setMode(was); return r; }, () => back()); }} /></View>)}</View>,
     tasks: <TasksPage thread={p.thread} />,
     context: <ContextPage thread={p.thread} project={p.projectSlug} cwd={p.cwd} />,
     transcript: <TranscriptPage thread={p.thread} />,
@@ -183,15 +238,9 @@ export function ChatPanel(p: ChatPanelProps) {
   };
 
   const head = (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: 48 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: 56 }}>
       {p.page !== "root" ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={back} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 }}><Icon name="chev-l" size={20} tone="text" /></Pressable> : null}
-      <Text size="title" strong style={{ flex: 1 }} numberOfLines={1}>{p.page === "file" && p.file ? p.file.split("/").pop() : TITLES[p.page]}</Text>
-      {p.page === "root" ? (
-        <>
-          <Pressable accessibilityRole="button" accessibilityLabel={p.muted ? "Unmute this chat" : "Mute this chat. No alerts; mentions still reach you"} accessibilityState={{ selected: p.muted }} onPress={() => p.onMute(!p.muted)} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: p.muted ? color["accent-wash"] : "transparent" }}><Icon name="bell" size={18} tone={p.muted ? "accent" : "label"} /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={p.pinned ? "Unpin this chat" : "Pin this chat to the top of Chat"} accessibilityState={{ selected: p.pinned }} onPress={() => p.onPin(!p.pinned)} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: p.pinned ? color["accent-wash"] : "transparent" }}><Icon name="pin" size={18} tone={p.pinned ? "accent" : "label"} /></Pressable>
-        </>
-      ) : null}
+      <Text size="title" medium style={{ flex: 1 }} numberOfLines={1}>{p.page === "root" ? "" : p.page === "file" && p.file ? p.file.split("/").pop() : TITLES[p.page]}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={p.onClose} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 }}><Icon name="x" size={18} tone="label" /></Pressable>
     </View>
   );
@@ -201,6 +250,6 @@ export function ChatPanel(p: ChatPanelProps) {
   if (p.phone) return <Sheet open onClose={p.onClose} title={undefined}>{body}</Sheet>;
   // Beside the thread, not over it: the thread keeps its width minus the panel's, so nothing is cut off.
   return (
-    <View accessibilityLabel="In this chat" style={{ width: p.page === "file" ? 520 : 340, flexShrink: 0, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as object) : {}) }}>{body}</View>
+    <View accessibilityLabel="In this chat" style={{ width: p.page === "file" ? 520 : panelW.width, flexShrink: 0, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 16, paddingVertical: 0, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as object) : {}) }}>{body}{p.page === "file" ? null : <ResizeHandle edge="left" label="Resize the panel" width={panelW.width} onChange={panelW.set} onReset={panelW.reset} min={RAIL.panelMin} max={RAIL.panelMax} def={RAIL.panelWidth} />}</View>
   );
 }

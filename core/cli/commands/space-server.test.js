@@ -37,38 +37,35 @@ async function fakeVyred(t, root, tools) {
   return calls;
 }
 const HEALTH = { data: { version: "0.3.1", commit: "abc1234", role: "server", pid: 1, uptime: 5000, modules: { running: 30, failed: 0 }, records_store: { store: "twenty", from: "default", records: 12 } } };
-const CODE = { data: { qr: "vyre://wink/2?t=abc", art: "##\n##", expires: Date.now() + 300_000, code: "WINK-ABCD-EFGH", code_expires: Date.now() + 600_000, code_tries: 3 } };
 
-test("vyre space up prints the space code with its life, the four words, and where to type it", async t => {
+test("vyre space up on a server that is not set up says where it is set up from, and asks the daemon for no code", async t => {
   const root = tempHome(t);
-  const calls = await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: false } }), "wink.server.code": async () => CODE, "relay.setup.status": async () => ({ data: { words: "amber lake moss pine" } }) });
+  const calls = await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: false } }) });
   const r = await run(root, ["space", "up"]);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /Your space code: WINK-ABCD-EFGH \(good for 10 minutes, one use\)/);
-  assert.match(r.out, /Your four words: amber lake moss pine/);
-  assert.match(r.out, /choose Add a server/);
-  assert.deepEqual(calls.find(c => c.tool === "wink.server.code").input, { qr: true });
-  assert.ok(!r.out.includes("##"), "no terminal width is known here, so no QR art");
-  assert.equal(JSON.parse((await run(root, ["space", "up", "--json"])).stdout).code, "WINK-ABCD-EFGH");
+  assert.match(r.out, /not set up yet/);
+  assert.match(r.out, /Create a space/);
+  assert.match(r.out, /install command/);
+  assert.deepEqual(calls.map(c => c.tool), ["wink.server.status"], "no typed code and no words are asked for");
+  const j = JSON.parse((await run(root, ["space", "up", "--json"])).stdout);
+  assert.equal(j.owned, false);
+  assert.match(j.next, /install command/);
 });
 
-test("vyre space up on a space that is already set up says so and tells the owner how to add a device, and makes no code", async t => {
+test("vyre space up on a space that is already set up says so and tells the owner how to add a device", async t => {
   const root = tempHome(t);
-  const calls = await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: true, space: "Harlow", device: "Alex's laptop" } }), "wink.server.code": async () => CODE });
+  const calls = await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: true, space: "Harlow", device: "Alex's laptop" } }) });
   const r = await run(root, ["space", "up"]);
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /already set up to Harlow/);
   assert.match(r.out, /vyre phone add/);
-  assert.ok(!/Your space code/.test(r.out));
-  assert.ok(!calls.some(c => c.tool === "wink.server.code"), "an owned server mints no code");
+  assert.ok(!/not set up yet/.test(r.out));
+  assert.deepEqual(calls.map(c => c.tool), ["wink.server.status"]);
 });
 
-test("vyre space up with no typed code refuses and names the next step; extra arguments are exit 2", async t => {
+test("vyre space up takes no arguments: extra arguments are exit 2", async t => {
   const root = tempHome(t);
-  await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: false } }), "wink.server.code": async () => ({ data: { qr: "vyre://wink/2?t=abc" } }) });
-  const r = await run(root, ["space", "up"]);
-  assert.equal(r.code, 1);
-  assert.match(r.out, /next: .*wink\.server\.code/);
+  await fakeVyred(t, root, { "wink.server.status": async () => ({ data: { owned: false } }) });
   assert.equal((await run(root, ["space", "up", "now"])).code, 2);
 });
 

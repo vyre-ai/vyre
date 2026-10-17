@@ -4,7 +4,8 @@
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
 import { onTypesChanged } from "../store/types-signal.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
-import { mayWrite, mayAttrs, mayReadTask, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
+import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
+import { createPrivateRows, createReadRules, visiblePage } from "./private-rows.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -17,6 +18,8 @@ import { isSealedShape } from "../store/values.js";
 import { actsAsPerson } from "../core/chain.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/expr/conditions.js";
+import { createDefinitionChecks, TYPE_NAME } from "./definition-checks.js";
+import { writeOnceBreach, writeOnceNames } from "./write-once.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
@@ -49,7 +52,6 @@ export const RECORD_ACTIONS = Object.freeze([
 
 /** The chain's acting (last) hop is the kernel's own service: the only writer of a field the kernel owns. A kernel hop earlier in the chain, with anyone acting after it, is not. @param {any} chain */
 export const actsAsKernel = (chain) => { const h = chain && chain.hops && chain.hops[chain.hops.length - 1]; return Boolean(h && h.actor.kind === "service" && h.actor.id === "kernel"); };
-const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
 const checkType = (/** @type {any} */ t) => { if (typeof t !== "string" || !TYPE_NAME.test(t)) throw new KernelError("bad_input", "bad type name"); };
@@ -222,23 +224,13 @@ export function createRecords(cfg) {
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   // Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
   // people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
-  const seatOf = projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u));
-  const idOfA = (/** @type {any} */ a) => (a && typeof a === "object" ? (a.actor && a.actor.id) || a.id || null : typeof a === "string" ? a : null);
-  const onProject = async (/** @type {string} */ me, /** @type {any} */ link) => { const ref = link && (link.urn || (typeof link === "string" ? link : null)); const t = ref ? await seatOf(String(ref)) : null; return Boolean(t && (t.owner === me || t.team.includes(me))); };
-  const taskFacts = async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; };
-  /** @type {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>} */
-  const PRIVATE_READS = {
-    communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
-    "team-member": (me, rec) => onProject(me, rec.data && rec.data.project),
-    project: async (me, rec) => (rec.data && rec.data.personal_of ? String(rec.data.personal_of) === me : onProject(me, { urn: rec.urn })),
-    task: async (_me, rec, chain) => { const t = await taskFacts(rec.id); return mayReadTask(chain, { doer: t && t.doer, assigned_by: t && t.assigned_by, project: (rec.data && rec.data.project) || (t && t.project) }, { staff: false, project: seatOf, checkers: t && t.checkers }); },
-  };
+  const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; } });
   /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
   /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec) => {
-    const rule = PRIVATE_READS[type];
+    const rule = PRIVATE_READS[type] || await privRows.ruleOf(type);
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
@@ -253,7 +245,7 @@ export function createRecords(cfg) {
   /** @type {Set<string> | null} */ let protectedTypes = null;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
   let typesGen = 0;
-  const typesChanged = () => { protectedTypes = null; typesGen++; };
+  const typesChanged = () => { protectedTypes = null; privRows.invalidate(); typesGen++; };
   onTypesChanged(store, typesChanged);
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
@@ -265,6 +257,7 @@ export function createRecords(cfg) {
     }
     return protectedTypes.has(type);
   };
+  const privRows = createPrivateRows({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), builtinRule: (/** @type {string} */ t) => Boolean(PRIVATE_READS[t]), gen: () => typesGen, members: cfg.members, roleFor: (/** @type {any} */ a) => roleFor(a), mayView: (c, t, r) => mayView(c, t, r), serviceOnly: (/** @type {any} */ c) => serviceOnly(c), staffOfChain: (/** @type {any} */ c) => staffOfChain(c) }), privateType = privRows.isPrivate;
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
   const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
@@ -314,26 +307,6 @@ export function createRecords(cfg) {
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
 
   /** A type may say it holds work: the one value is "project". */
-  function checkKinds(/** @type {any} */ diff) {
-    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (t.kind !== undefined && t.kind !== "project") throw new KernelError("bad_input", `${t.name}: kind is "project" or left out`);
-  }
-
-  /** A role type points at one contact or organization through one required link, and names stages that already exist. */
-  async function checkRoles(/** @type {any} */ diff) {
-    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
-      if (t.role === undefined) continue;
-      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name} cannot be a role: ${why}`);
-      if (!t.role || typeof t.role.link !== "string") throw bad("it needs role.link, the field that names who holds it");
-      const f = (t.fields || []).find((/** @type {any} */ x) => x.name === t.role.link);
-      if (!f || f.kind !== "link" || (f.to !== "contact" && f.to !== "organization")) throw bad(`${t.role.link} must be a link to a contact or an organization`);
-      if (f.required !== true) throw bad(`${t.role.link} must be required, so a role never exists without its holder`);
-      if (t.role.ended !== undefined) {
-        const sf = (t.fields || []).find((/** @type {any} */ x) => x.kind === "stage");
-        const names = (t.stages || []).map((/** @type {any} */ s) => s.name).concat(sf && sf.options ? sf.options : []);
-        if (!Array.isArray(t.role.ended) || !t.role.ended.every((/** @type {any} */ e) => names.includes(e))) throw bad("role.ended names stages the type does not have");
-      }
-    }
-  }
   /** Each link in `input` must name a live record of the type it links to (a link with no target type: any live record of this Space). Nothing is read for a field that is not being set. @param {any[]} fields @param {any} input */
   async function checkLinkTargets(fields, input) {
     for (const f of fields) {
@@ -347,149 +320,6 @@ export function createRecords(cfg) {
         if (f.to && parts[3] !== f.to) throw new KernelError("bad_input", `${f.name} links to ${f.to}, not ${parts[3]}`);
         let there; try { there = await store.get(parts[3], parts[4]); } catch (e) { throw mapError(e); }
         if (!there || there.deleted_at) throw new KernelError("bad_input", `${f.name} links to a ${parts[3]} that does not exist`);
-      }
-    }
-  }
-  const COMPUTED_KINDS = new Set(["number", "text", "boolean", "date", "datetime"]);
-  const OVER_FNS = new Set(["count", "sum", "min", "max", "avg"]);
-  /** A computed field names its kind, and either an expression over this type's other fields or a total over the records that link to it. */
-  async function checkComputed(/** @type {any} */ diff) {
-    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) for (const f of t.fields || []) {
-      if (f.computed === undefined) continue;
-      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}.${f.name} cannot be computed: ${why}`);
-      const c = f.computed;
-      if (!c || typeof c !== "object" || (c.expr === undefined) === (c.over === undefined)) throw bad("give either expr or over");
-      if (!COMPUTED_KINDS.has(f.kind)) throw bad(`a computed field is a ${[...COMPUTED_KINDS].join(", ")} field`);
-      if (c.expr !== undefined) {
-        let tree; try { tree = parseComputed(String(c.expr)); } catch (e) { throw bad(String(/** @type {any} */ (e).message)); }
-        for (const n of exprNames(tree)) {
-          const g = t.fields.find((/** @type {any} */ x) => x.name === n);
-          if (!g) throw bad(`the expression names ${n}, which is not a field of ${t.name}`);
-          if (g.kind === "sealed") throw bad(`${n} is sealed and cannot be used in an expression`);
-          if (g.computed) throw bad(`${n} is computed too: a computed field reads stored fields only`);
-        }
-      } else {
-        const o = c.over;
-        if (!o || typeof o.type !== "string" || typeof o.via !== "string" || !OVER_FNS.has(o.fn) || (o.fn !== "count" && typeof o.field !== "string")) throw bad("over is { type, via, fn: count|sum|min|max|avg, field (not for count) }");
-        let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* checked when the other type is read */ }
-        const other = [...defs, ...(diff.add_types || []), ...(diff.change_types || [])].find((/** @type {any} */ x) => x.name === o.type);
-        if (other) {
-          const via = other.fields.find((/** @type {any} */ x) => x.name === o.via);
-          if (!via || via.kind !== "link" || (via.to !== undefined && via.to !== t.name)) throw bad(`${o.type}.${o.via} must be a link to ${t.name}`);
-          const meas = o.field ? other.fields.find((/** @type {any} */ x) => x.name === o.field.split(".")[0]) : null;
-          if (o.field && !meas) throw bad(`${o.type} has no field ${o.field}`);
-          if (meas && (meas.kind === "sealed" || meas.computed)) throw bad(`${o.field} cannot be measured`);
-        }
-      }
-    }
-  }
-  /**
-   * A person's new type needs its own label: a second type with the label of one the Space already has (another name, same words) is refused. An add of an existing name is
-   * not a new type (it is how a module or a Kit says what it needs again), and the store refuses anything that would take fields away.
-   */
-  async function checkNames(/** @type {any} */ diff, /** @type {any} */ chain, /** @type {any} */ o) {
-    const adding = diff.add_types || [];
-    // Only a person's own define: a seed by the kernel or a module (a service in the chain, or an approved Kit's waiver) says what it needs again and is never a second copy
-    const personal = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" && o.waiver === undefined;
-    if (!adding.length || !personal) return;
-    let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
-    const words = (/** @type {any} */ s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-    const seen = new Map();
-    for (const t of adding) {
-      const label = words(t.label || t.name);
-      const same = defs.find((/** @type {any} */ d) => d.name === t.name);
-      if (!same) {
-        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) && seen.get(label) !== t.name ? { label: t.label } : null);
-        if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
-      }
-      seen.set(label, t.name);
-    }
-  }
-  const VIEW_TYPES = new Set(["list", "board", "calendar", "page", "dashboard"]);
-  const VIEW_KEYS = new Set(["name", "type", "label", "groupBy", "dateField", "columns", "filter", "sort"]);
-  /**
-   * Conditional fields (visible_if, required_if), stage entry conditions (enter_if), stage sets and stored views: the expressions parse, they read this type's own stored
-   * fields (never a sealed one), and a stage set is picked by the record's other fields, never by its stage.
-   */
-  /** A group name is UI text: a string of 1 to 60 characters, trimmed, no control characters or line breaks. @param {unknown} n */
-  const groupName = (n) => typeof n === "string" && n.length > 0 && n.length <= 60 && n === n.trim() && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(n);
-  async function checkShape(/** @type {any} */ diff) {
-    // a field the kernel owns stays the kernel's: a change to a type cannot take `owned_by` off it, or an owner could then set a task's status by hand
-    if ((diff.change_types || []).length) {
-      let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
-      for (const t of diff.change_types) {
-        const was = defs.find((/** @type {any} */ d) => d.name === t.name);
-        for (const f of (was && was.fields) || []) if (f.owned_by !== undefined && !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name && x.owned_by === f.owned_by)) throw new KernelError("bad_input", `${t.name}.${f.name} is kept by the kernel: a change cannot take that away`);
-      }
-    }
-    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
-      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}: ${why}`);
-      const fields = t.fields || [];
-      const sf = fields.find((/** @type {any} */ x) => x.kind === "stage");
-      /** Parse `src` and check every name it reads. @param {string} what @param {unknown} src @param {string[]} [not] names it may not read */
-      const reads = (what, src, not = []) => {
-        if (typeof src !== "string" || !src.length) throw bad(`${what} is an expression`);
-        let tree; try { tree = parseComputed(src); } catch (e) { if (e instanceof KernelError) throw e; throw bad(`${what}: ${String(/** @type {any} */ (e).message)}`); }
-        for (const n of exprNames(tree)) {
-          const g = fields.find((/** @type {any} */ x) => x.name === n);
-          if (!g) throw bad(`${what} names ${n}, which is not a field of ${t.name}`);
-          if (g.kind === "sealed") throw bad(`${what} names ${n}, which is sealed`);
-          if (not.includes(n)) throw bad(`${what} cannot name ${n}`);
-        }
-      };
-      // groups are presentation: the sections of the type in order, and each field's section. Never a permission.
-      if (t.groups !== undefined) {
-        if (!Array.isArray(t.groups) || t.groups.length > 20) throw bad("groups is a list of at most 20 sections");
-        const names = new Set();
-        for (const g of t.groups) {
-          if (!g || typeof g !== "object" || Object.keys(g).some((/** @type {string} */ x) => x !== "name" && x !== "collapsed")) throw bad("a group is { name, collapsed? } and nothing else");
-          if (!groupName(g.name)) throw bad("a group has a name of 1 to 60 characters with no spaces at the ends, no line breaks and no control characters");
-          if (g.collapsed !== undefined && typeof g.collapsed !== "boolean") throw bad(`${g.name}.collapsed is true or false`);
-          if (names.has(g.name.toLowerCase())) throw bad(`two groups are called ${g.name}`);
-          names.add(g.name.toLowerCase());
-        }
-      }
-      for (const f of fields) {
-        if (f.group !== undefined && (!groupName(f.group) || !(t.groups || []).some((/** @type {any} */ g) => g.name === f.group))) throw bad(`${f.name}.group is one of the type's groups`);
-        if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
-        if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
-        if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
-        if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
-        if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);
-      }
-      const sets = t.stage_sets;
-      if (sets !== undefined) {
-        if (!Array.isArray(sets) || !sf) throw bad("stage_sets need a stage field and a list of sets");
-        const seen = new Set();
-        for (const set of sets) {
-          if (!set || typeof set.name !== "string" || !Array.isArray(set.stages) || !set.stages.length) throw bad("a stage set has a name, a when and stages");
-          if (seen.has(set.name)) throw bad(`two stage sets are named ${set.name}`); seen.add(set.name);
-          reads(`stage set ${set.name}.when`, set.when, [sf.name]);
-        }
-      }
-      // With stage sets, the stage field must offer every stage any set can put a record in (a definition without sets is as it always was).
-      if (sf && sets) {
-        const names = stageNamesOf(t);
-        if (!Array.isArray(sf.options) || !names.every((/** @type {string} */ n) => sf.options.includes(n))) throw bad("the stage field's options must include every stage of the default stages and of every stage set");
-      }
-      for (const st of [...(t.stages || []), ...(sets || []).flatMap((/** @type {any} */ x) => x.stages)]) if (st.enter_if !== undefined) reads(`stage ${st.name}.enter_if`, st.enter_if, sf ? [sf.name] : []);
-      if (t.views !== undefined) {
-        if (!Array.isArray(t.views) || t.views.length > 30) throw bad("views is a list of up to 30 views");
-        const names = new Set();
-        for (const v of t.views) {
-          if (!v || typeof v !== "object" || typeof v.name !== "string" || !TYPE_NAME.test(v.name)) throw bad("a view has a name");
-          if (names.has(v.name)) throw bad(`two views are named ${v.name}`); names.add(v.name);
-          for (const k of Object.keys(v)) if (!VIEW_KEYS.has(k)) throw bad(`view ${v.name}: unknown key ${k}`);
-          if (!VIEW_TYPES.has(v.type)) throw bad(`view ${v.name}: type is one of ${[...VIEW_TYPES].join(", ")}`);
-          const field = (/** @type {string} */ n) => fields.find((/** @type {any} */ x) => x.name === n);
-          if (v.groupBy !== undefined && !["stage", "choice"].includes((field(v.groupBy) || {}).kind)) throw bad(`view ${v.name}: groupBy is a stage or choice field`);
-          if (v.type === "board" && v.groupBy === undefined) throw bad(`view ${v.name}: a board needs groupBy`);
-          if (v.dateField !== undefined && !["date", "datetime"].includes((field(v.dateField) || {}).kind)) throw bad(`view ${v.name}: dateField is a date field`);
-          if (v.type === "calendar" && v.dateField === undefined) throw bad(`view ${v.name}: a calendar needs dateField`);
-          if (v.columns !== undefined && (!Array.isArray(v.columns) || v.columns.length > 40 || !v.columns.every((/** @type {string} */ c) => field(c)))) throw bad(`view ${v.name}: columns are fields of ${t.name}`);
-          if (v.sort !== undefined && (!v.sort || !field(v.sort.field) || (v.sort.dir !== undefined && !["asc", "desc"].includes(v.sort.dir)))) throw bad(`view ${v.name}: sort is { field, dir }`);
-          if (v.filter !== undefined) reads(`view ${v.name}.filter`, v.filter);
-        }
       }
     }
   }
@@ -509,6 +339,7 @@ export function createRecords(cfg) {
   const exprFn = () => (cfg.expr === undefined ? defaultExpr : cfg.expr);
   /** @type {Map<string, any>} */ const parsed = new Map();
   const parseComputed = (/** @type {string} */ src) => { let n = parsed.get(src); if (!n) { const e = exprFn(); if (!e) throw new KernelError("unavailable", "no evaluator is wired for computed fields"); n = e.parseExpr(src); parsed.set(src, n); } return n; };
+  const defChecks = createDefinitionChecks({ store, parseComputed: (/** @type {string} */ src) => parseComputed(src) });
   /**
    * Add the computed values to shaped records. A computed field is left out for a caller who cannot see everything it is made from: an expression that reads a
    * field hidden from them (or outside their field limit) shows nothing, and a total over other records counts only what the caller may read.
@@ -535,7 +366,7 @@ export function createRecords(cfg) {
         try {
           const measure = o.fn === "count" && !o.field ? { fn: "count" } : { fn: o.fn, field: o.field };
           const where = { field: o.via, op: "in", value: urns.map(u => ({ urn: u })) };
-          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] });
+          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] }, await privRows.rowsMayView(chain, o.type));
         } catch { continue; }
         const key = o.fn === "count" && !o.field ? "count" : `${o.fn}:${o.field}`;
         const by = new Map(rows.map((/** @type {any} */ r) => [r.group[o.via] && r.group[o.via].urn, r.values[key]]));
@@ -716,7 +547,8 @@ export function createRecords(cfg) {
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if (op === "create" && attrs) await attrsGate(chain, attrs);
     // a row of a type read by a rule of its own is changed only by someone who may read it (a project, a team row and a task have the ownership rule below, which says who may)
-    if ((op === "update" || op === "remove") && before && PRIVATE_READS[type] && !OWNED_TYPES.includes(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    if ((op === "update" || op === "remove" || op === "restore") && before && !OWNED_TYPES.includes(type) && await privateType(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    await privRows.linkGate(chain, type, before && before.data, (op === "create" || op === "update") ? input : undefined);
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
       // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
@@ -728,6 +560,7 @@ export function createRecords(cfg) {
     }
     // a link names live records of its type: the gateway checks, so every store holds only links that stand
     if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
+    const locked = op === "update" && writeOnceBreach(linkFields, before, input, type); if (locked) throw new KernelError("field_locked", locked);
     let stage = {};
     if (op === "create" || op === "update") await conditionGate(type, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input), input, op === "create");
     if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
@@ -839,9 +672,9 @@ export function createRecords(cfg) {
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
       // A Basic (device) install holds only the fixed personal types: a custom type needs a Cloud space.
       if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("cloud_required", cfg.basic.refusal);
-      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff, chain, o);
+      defChecks.checkKinds(diff); await defChecks.checkRoles(diff); await defChecks.checkShape(diff); await defChecks.checkNames(diff, chain, o);
       // A removed field is never required (new records could not be written without it); its data stays.
-      await checkComputed(diff);
+      await defChecks.checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
       { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true || (/** @type {any} */ (e) && /** @type {any} */ (e).code === "unavailable" && /** @type {any} */ (e).message)) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
         diff = withInverses(diff, known); }
@@ -986,7 +819,7 @@ export function createRecords(cfg) {
       return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
     },
 
-    async aggregate(chain, type, spec) {
+    async aggregate(chain, type, spec, rowOk) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       if (!spec || typeof spec !== "object" || !Array.isArray(spec.measures) || (spec.group_by !== undefined && !Array.isArray(spec.group_by))) throw new KernelError("bad_input", "an aggregate needs measures, and group_by as a list");
@@ -996,7 +829,7 @@ export function createRecords(cfg) {
       const typeDec = await countRead(chain, type);
       // The store totals the rows itself (one GROUP BY) only when every row of the type gets this chain's answer: no room, grants that cover the whole type with no row predicate, no
       // rule on reading, no privileged record in the type, and every field it groups or measures is one the chain may see. Anything else is totalled below, row by row.
-      if (typeDec && !vs && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+      if (typeDec && !vs && !rowOk && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
         const lim = await limitsOf(chain, type, typeDec);
         const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
         if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
@@ -1004,7 +837,7 @@ export function createRecords(cfg) {
         }
       }
       // A restricted caller whose access is attribute equalities: the store counts natively under the same predicate (a store that cannot, says `unsupported` and the rows are totalled below).
-      if (typeDec && !vs && typeof store.aggregate === "function") {
+      if (typeDec && !vs && !rowOk && typeof store.aggregate === "function") {
         const af = await attrFilterFor(chain, type);
         if (af) {
           const lim = await limitsOf(chain, type, typeDec);
@@ -1031,6 +864,7 @@ export function createRecords(cfg) {
           if (r.type !== type) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
+          if (rowOk && !(await rowOk({ ...r, urn: urn(r.type, r.id) }))) continue;
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
           if (room === null) continue;
           const al = allowList(dec);
@@ -1241,12 +1075,13 @@ export function createRecords(cfg) {
       const sealed_left = [];
       const present = (/** @type {any} */ v) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length);
       const join = (/** @type {any[]} */ a, /** @type {any[]} */ b) => { const seen = new Set(a.map(x => canonical(x))); return [...a, ...b.filter(x => !seen.has(canonical(x)))]; };
-      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
+      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { if (writeOnceNames(def).has(name) && present(keep.data[name])) { conflicts[name] = vals; return; } const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
       for (const f of def.fields) {
         const kv = keep.data[f.name], dv = drop.data[f.name];
         if (f.kind === "sealed") { if (present(dv)) sealed_left.push(f.name); continue; }
         if (!present(dv)) continue;
         if (!present(kv)) { patch[f.name] = dv; continue; }
+        if (f.write_once === true) { if (canonical(kv) !== canonical(dv)) conflicts[f.name] = dv; continue; }   // a write-once value is never changed, not even by a merge
         if (LISTS.has(f.kind)) { addTo(f.name, dv); continue; }
         if (canonical(kv) === canonical(dv)) continue;
         const comp = def.fields.find((/** @type {any} */ x) => x.name === `other_${f.name}s` && LISTS.has(x.kind));
@@ -1309,8 +1144,8 @@ export function createRecords(cfg) {
       try { keep = await store.get(m.type, m.keep); } catch (e) { throw mapError(e); }
       if (!keep) throw new KernelError("not_found", "no such record");
       // fields still holding what the merge put there go back; ones someone edited since stay as they are
-      const back = {}, edited = [];
-      for (const [k, v] of Object.entries(m.merged)) { if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
+      const back = {}, edited = [], once = writeOnceNames((await store.types().catch(() => [])).find((/** @type {any} */ t) => t.name === m.type));
+      for (const [k, v] of Object.entries(m.merged)) { if (once.has(k)) { edited.push(k); continue; } if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
       if (Object.keys(back).length) await api.update(chain, m.type, m.keep, back, keep.version);
       const restored = await api.restore(chain, m.type, m.drop);
       let relinked = 0;
@@ -1395,7 +1230,8 @@ export function createRecords(cfg) {
           for (let pages = 0; pages < 20 && !truncated; pages++) {
             const p = await api.query(chain, t.name, { filter: linkFilter(lf, target), page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
             const inv = (inverses.get(parts[3]) || []).find((/** @type {any} */ i) => i.from_type === t.name && i.from_field === lf.name);
-            for (const r of p.rows) { if (PRIVATE_READS[t.name] && !(await mayView(chain, t.name, r))) continue; if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
+            const priv = await privateType(t.name);
+            for (const r of p.rows) { if (priv && !(await mayView(chain, t.name, r))) continue; if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, ...(inv ? { inverse: { name: inv.name, label: inv.label } } : {}), record: r }); }
             if (!p.next_cursor) break;
             cursor = p.next_cursor;
           }
@@ -1455,31 +1291,34 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
+    async merge(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ keepId, /** @type {string} */ dropId) { await privRows.mergeGuard(chain, type, [keepId, dropId], privateType); return api.merge(chain, type, keepId, dropId); },
+    async unmerge(/** @type {any} */ chain, /** @type {string} */ mergeId) { const ev = isChain(chain) ? log.read({ type: "records.merged" }).find((/** @type {any} */ e) => e.id === mergeId) : null; if (ev) await privRows.mergeGuard(chain, ev.data.type, [ev.data.keep, ev.data.drop], privateType); return api.unmerge(chain, mergeId); },
     mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type), staffOfChain,
     /** Whether this chain may see events about one record of a listed type (the record gone: staff and services only). */
-    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
-    async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if (PRIVATE_READS[type] && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
+    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!(await privateType(type))) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
+    async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if ((await privateType(type)) && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
       const r = await api.get(chain, type, id);
-      return r && PRIVATE_READS[type] && !(await mayView(chain, type, r)) ? null : r;
+      return r && (await privateType(type)) && !(await mayView(chain, type, r)) ? null : r;
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
-      const r = await api.query(chain, type, spec);
-      if (!PRIVATE_READS[type]) return r;
-      const rows = []; for (const x of r.rows) if (await mayView(chain, type, x)) rows.push(x);
-      return { ...r, rows };
+      if (!(await privateType(type))) return api.query(chain, type, spec);
+      // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
+      return visiblePage(spec = checkPage(spec), page => api.query(chain, type, { ...spec, page }), x => mayView(chain, type, x));
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
       if (PRIVATE_READS[type] && !serviceOnly(chain) && !staffOfChain(chain)) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
-      return api.aggregate(chain, type, spec);
+      return api.aggregate(chain, type, spec, await privRows.rowsMayView(chain, type));
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
+      const hitOk = async (/** @type {any} */ h) => (!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!(await privateType(h.type)) || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null)));
+      const named = Array.isArray(spec && spec.types) && spec.types.length ? spec.types : null;
+      if (!named || (await Promise.all(named.map((/** @type {string} */ t) => privateType(t)))).some(Boolean)) return visiblePage(spec = checkPage(spec), page => api.search(chain, { ...spec, page }), hitOk);
       const r = await api.search(chain, spec);
-      const keep = [];
-      for (const h of r.rows) keep.push((!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!PRIVATE_READS[h.type] || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null))));
+      const keep = []; for (const h of r.rows) keep.push(await hitOk(h));
       return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
     },
   });

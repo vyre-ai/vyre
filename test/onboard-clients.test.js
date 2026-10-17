@@ -59,10 +59,8 @@ test("the onboard tools are the registry's, and first run is the only place that
   assert.ok(onboard.includes("onboard.space.join"));
   assert.ok(onboard.includes("onboard.space.open"));
   assert.ok(onboard.includes("onboard.member.link"));
-  assert.ok(onboard.includes("onboard.computer.add"));
-  assert.ok(onboard.includes("onboard.phone.add"));
   const wrapped = new Set(wrappedWrites());
-  for (const name of ["identity.create", "identity.github.link", "spaces.invites.accept", "spaces.invites.create", "devices.signin", "wink.install.issue", "wink.install.status", "vault.space.create"]) {
+  for (const name of ["identity.create", "identity.github.link", "spaces.invites.accept", "spaces.invites.create", "wink.install.issue", "wink.install.status", "vault.space.create"]) {
     assert.ok(wrapped.has(name), name);
   }
   const roots = [path.join(ROOT, "apps/app"), path.join(ROOT, "local/capsule")];
@@ -74,7 +72,11 @@ test("the onboard tools are the registry's, and first run is the only place that
       for (const name of clientCalls(f)) if (wrapped.has(name)) hits.push(`${path.relative(ROOT, f)}: ${name}`);
     }
   }
-  assert.deepEqual(hits.sort(), []);
+  // The in-page host (apps/app/src/host/host-core.js) is onboard.space.* for a browser or a shell with no daemon of its own: it pairs a server and then makes that server's space vault with one peer call, the same
+  // call first-run.js makes for a daemon. It is the one reviewed exception, said here with its reason and checked both ways: nothing else may call a wrapped tool, and the exception goes the day the page host stops.
+  const PAGE_HOST = ["apps/app/src/host/host-core.js: vault.space.create"];
+  assert.deepEqual(hits.filter((h) => PAGE_HOST.includes(h)), PAGE_HOST, "the page host's one exception is still used; if it is not, delete it from PAGE_HOST");
+  assert.deepEqual(hits.filter((h) => !PAGE_HOST.includes(h)).sort(), []);
 });
 
 test("each onboarding door calls an onboard tool, and the native shells open that same app", () => {

@@ -395,6 +395,35 @@ variable is the name in capitals (`stripe-live` becomes `STRIPE_LIVE`). A value 
 shows as `<concealed by vyre>`. These need presence, so Claude's own shell cannot use them to read
 a value.
 
+## Sharing inside your Space
+
+Each person has their own vault inside the Space. Owners and admins share the Space's items and whole vaults, and make groups. A member shares her own app connections (at Fill in) and the logins she chooses to lend to an agent she may instruct. What is shared can go to people, groups of people and agents, or to agents, in any mix. Three levels:
+
+| Level | What they can do |
+|---|---|
+| Fill in | Use it without seeing it. A login is filled in by their agent, an API key is used through Vyre. |
+| Read | Also see the value, on their own screen. |
+| Edit and rotate | Also change it and replace the key at its service. |
+
+An agent only ever holds Fill in, and you can only share with agents you may instruct yourself: an agent others also instruct would use what you gave it for them. Anything an agent sends, pays or deletes still waits for a yes. Taking a share away works at once.
+
+**Groups** (Settings, Groups) are named sets of people and agents that owners and admins make, so one share reaches all of them. An agent in a group holds Fill in and nothing more.
+
+**Vaults** keep things apart: your own, a client's, the marketing team's. A vault is shared as a whole, with a person, a group, an agent or everyone in the Space (every member at the level you pick, every agent at Fill in). Moving an item into a vault takes back what was shared on it, and whoever the vault is shared with then holds it. Point a project at a vault and its agents use the keys without seeing them.
+
+In this release members use shared API keys at Fill in. Read and Edit and rotate are kept off the share sheets for members until a member can use them; the owner's own screens are unchanged.
+
+## App connections, and what the server holds
+
+An app you connect (Clio, Notion, Google and the like) is a connection in your own vault. You can share it at Fill in only: whoever holds the share can have the app used as you, and never gets the token, because Vyre adds it where the app is called. Anything that sends or changes data still waits for your yes. Deleting the connection, taking a share away, or leaving the Space ends every share on it and clears what those people left waiting for approval.
+
+Two things are kept on the server so that agents and Flows keep working while you are signed out, and each is a key of its own:
+
+- **The connection key.** Your connections are sealed under a key that lives inside your vault. A copy of that key alone is sealed for the server. It opens your app connections and nothing else: not your passwords, cards or notes. A stolen copy of the server's files gives someone your connection tokens, so revoke at the app if a server is ever lost.
+- **The lend key.** A login you share with an agent is copied into your vault under a second key, sealed for the server the same way, so the agent can sign in while you are away. It opens only the logins you chose to lend, and the copy is deleted when you stop sharing. A stolen copy of the server's files gives someone those lent logins and nothing else of yours.
+
+Resetting a forgotten password rotates both keys. A connection made by an earlier build, stored as an ordinary item of kind connection, is not read any more; connect the app again.
+
 ## Share with another person
 
 A pass shares items with another person's Vyre. In this example you share with Dana, who runs her

@@ -37,7 +37,9 @@ function master(root, vaultKey) {
 test("the master key is the vault root, and lending still opens with nobody unlocked", async (t) => {
   const { root, vault } = home(t);
   const plain = path.join(root, "vault", "key");
-  // home() made a vault with its plaintext key file, the way a home from before the master password has one.
+  // A home from before the master password has a plaintext key file. A new vault no longer writes one, so the test makes the old home itself.
+  fs.mkdirSync(path.dirname(plain), { recursive: true });
+  fs.writeFileSync(plain, `${crypto.randomBytes(32).toString("hex")}\n`, { mode: 0o600 });
   const made = serverVaultKey(root);
   assert.ok(made && made.length === 32);
   const fileKey = readVaultKeyFile(plain);
@@ -61,6 +63,25 @@ test("the master key is the vault root, and lending still opens with nobody unlo
   assert.equal(again.fields.value, "in-the-air-9f3a");
   assert.equal(fs.existsSync(plain), false, "a plaintext copy that came back is gone once the held key is sealed");
   assert.ok(openVaultKey(root)?.equals(made), "and the sealed copy is the held key, so the two cannot diverge");
+});
+
+test("a new home writes no plaintext vault key, and the sealed copy the master record makes opens to the key serverVaultKey returned", async (t) => {
+  const { root, vault } = home(t);
+  const plain = path.join(root, "vault", "key");
+  assert.equal(fs.existsSync(plain), false, "a new vault writes no plaintext key file");
+  const made = serverVaultKey(root);
+  assert.ok(made && made.length === 32);
+  assert.equal(fs.existsSync(plain), false, "choosing the key writes nothing either");
+  master(root, Buffer.from(made));
+  assert.equal(fs.existsSync(plain), false, "the master password leaves no plaintext key behind");
+  assert.ok(openVaultKey(root)?.equals(made), "the sealed copy opens to the same key");
+  clearPersonal();
+  await vault.put({ name: "fresh", kind: "secret", fields: { value: "new-install-4d2c" } }, "cli");
+  const row = /** @type {any} */ (vault.db.prepare("SELECT * FROM vault_items WHERE name = ?").get("fresh"));
+  vault.lock();
+  assert.equal(currentPersonalKey(), null);
+  assert.equal((await vault.open(row)).fields.value, "new-install-4d2c", "lending opens from the sealed copy with nobody unlocked");
+  assert.equal(fs.existsSync(plain), false, "and no plaintext file appeared while it did");
 });
 
 test("a plaintext vault key left from before the master password is sealed and removed, with a migration that keeps lending working", async (t) => {

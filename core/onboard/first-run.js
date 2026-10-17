@@ -13,7 +13,7 @@ import { resolveInstallOnline } from "../../lib/install-online.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { loginAdapters } from "../../lib/agent-adapters.js";
 import { canAssign } from "../../lib/spaces/members.js";
-import { commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
+import { SPACE_NAME_SAY, commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { modelCaller } from "../modules/needs-you-hold.js";
 import { httpFetch } from "../../lib/http.js";
@@ -326,7 +326,8 @@ export function registerFirstRun(ctx, io) {
       const { held, personId } = await heldOf(meta);
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
-      const label = usernameOf(name) || "space";
+      const label = usernameOf(name);
+      if (!label) throw bad(SPACE_NAME_SAY.required);
       const issued = await personCall("wink.install.issue", { os: place });
       const command = issued && typeof issued.line === "string" ? issued.line : "";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
@@ -356,6 +357,21 @@ export function registerFirstRun(ctx, io) {
       if (adopted && sid && isPerson(meta && meta.caller)) {
         try { await personCall("vault.space.create", { space: sid }); }
         catch (e) { if (!e || e.code !== "exists") throw e; }
+        // The server's space gets its name in the names directory, so <name>.vyre.run answers a sign-in from another device. Once per install line; a refusal (a name taken) stops here with the way on.
+        if (!row.published) {
+          try {
+            // The server this install line paired, named by the pairing the line started: never the newest or the only one.
+            const server = status && typeof status.server === "string" && status.server ? status.server : "";
+            if (!server) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
+            await personCall("spaces.publish-server-space", { server, name: row.name });
+            row.published = true;
+          } catch (e) {
+            const x = /** @type {any} */ (e);
+            const code = String((x && x.code) || "claim");
+            const taken = code === "taken" || code === "name_taken";
+            return { id, online: false, expired: false, failed: true, code, canRename: false, kind: row.kind, expiresAt: row.expiresAt, message: taken ? "That name was taken a moment ago. Go back, pick another name and show a new command." : String((x && x.message) || "The space could not be named.").slice(0, 300) };
+          }
+        }
         rememberSpace(held, personId, { id: sid, name: row.name, role: "owner", server: null });
       }
       if (adopted) return { id, online: true, expired: false, kind: row.kind, expiresAt: row.expiresAt, ...(sid ? { space: sid } : {}) };
@@ -403,76 +419,6 @@ export function registerFirstRun(ctx, io) {
     run: async ({ space, role, ttlDays }, meta) => {
       const { held, personId } = await heldOf(meta);
       return remember(await invite(personCall, held, personId, space, role, ttlDays));
-    },
-  });
-
-  ctx.tool("onboard.computer.add", {
-    effect: "write",
-    description: "Sign this computer into every space this identity belongs to. Each space uses its own server.",
-    input: obj({ url: str, username: str, password: str, github: { type: "boolean" }, login: str, subject: str, name: str, type: str, fingerprint: str }, ["password"]),
-    callers: [...PERSON_ONLY],
-    run: async ({ url, username, password, github, login, subject }, meta) => {
-      refuseAgentSecret(meta, { url, username, password, github, login, subject });
-      const { held, personId } = await heldOf(meta);
-      if (!passwordOk(password)) throw bad("The master password is required, and it is at least 12 characters.");
-      const name = usernameOf(username);
-      const ghLogin = String(login ?? "").trim().toLowerCase();
-      const ghSubject = String(subject ?? "").trim();
-      if (!name && !(github === true && ghSubject)) throw bad("Give the username, or a GitHub account already linked on this device.");
-      const rows = await spacesNow(held, personId);
-      /** @type {{ server: string, space: string | null }[]} */
-      const targets = [];
-      /** @type {{ id: string, name: string }[]} */
-      const missing = [];
-      for (const s of rows) {
-        if (s.server) targets.push({ server: s.server, space: s.id });
-        else missing.push({ id: s.id, name: s.name });
-      }
-      const typed = url ? serverUrl(url) : "";
-      if (url && !typed) throw bad("The space address is a https URL.");
-      if (typed && missing.length === 1 && !targets.some((t) => t.server === typed)) {
-        const role = (rows.find((s) => s.id === missing[0].id) || { role: "owner" }).role;
-        rememberSpace(held, personId, { id: missing[0].id, name: missing[0].name, role, server: typed });
-        targets.push({ server: typed, space: missing[0].id });
-        missing.length = 0;
-      } else if (typed && !targets.some((t) => t.server === typed)) targets.push({ server: typed, space: null });
-      const seen = new Set();
-      const unique = targets.filter((t) => (seen.has(t.server) ? false : seen.add(t.server)));
-      if (!unique.length) throw bad("Give the space address. A space with no server yet needs one.");
-      /** @type {string[]} */
-      const servers = [];
-      /** @type {boolean[]} */
-      const lives = [];
-      /** @type {string[]} */
-      const devices = [];
-      let who = name || null;
-      for (const t of unique) {
-        const signed = await personCall("devices.signin", {
-          server: t.server,
-          password,
-          ...(name ? { username: name } : {}),
-          ...(github === true && ghSubject ? { github: { login: ghLogin, subject: ghSubject } } : {}),
-        });
-        if (signed && signed.username) who = signed.username;
-        lives.push(Boolean(signed && signed.live === true));
-        if (signed && typeof signed.device === "string") devices.push(signed.device);
-        servers.push(t.server);
-      }
-      return { url: typed || servers[0] || null, username: who, github: github === true, added: missing.length === 0, servers, missing, live: lives.length > 0 && lives.every(Boolean), devices };
-    },
-  });
-
-  ctx.tool("onboard.phone.add", {
-    effect: "write",
-    description: "Add this person's phone as one of their own devices. Returns the link and the typed code the phone uses, good for one phone and five minutes. It is not an invite to a space.",
-    input: obj({ space: str, name: str, type: str, fingerprint: str }),
-    callers: [...OPEN],
-    run: async (_input, meta) => {
-      // A phone is a device of this identity (wink.phone.open: a QR and a code, one phone, five minutes). It is never a member invite, which would add a second person.
-      const opened = await personCall("wink.phone.open", {});
-      const link = String((opened && (opened.link || opened.qr)) || "");
-      if (!link) throw bad("The phone link did not come back. Try again.");
-      return { link, role: "device", expires: opened.expires ?? null, ...(opened.code ? { code: String(opened.code) } : {}) };
     },
   });
 

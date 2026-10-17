@@ -42,20 +42,20 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.j
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { memberKey } from "./member-key.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { pruneInbox } from "./inbox-prune.js";
 import { memberListFilter, launchPersonOf, startedBy } from "./member-list.js";
 import { registerRecallSessions } from "./recall-sessions.js";
-import { ingressProviderCall, personCallOpts } from "../../lib/person-relay.js";
-import { heardActs } from "../../lib/said/hear.js";
+import { ingressProviderCall } from "../../lib/person-relay.js";
+import { isStaffPerson } from "../../lib/member-scope.js"; import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { normalizeCaps } from "../../lib/caps-flags/index.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases, ownSurface, sameKeyboard } from "./lease.js";
-import { Asks } from "./asks.js";
-import { editChanges, pushDir, pushChanges } from "./changes.js";
+import { Asks } from "./asks.js"; import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { registerComposerSlashTools } from "./composer-slash.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
@@ -938,7 +938,7 @@ export class Switchboard {
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker) });
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker), ...(purpose === "job" || o.once === true ? { job: true } : {}) });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined, person: o.person || (o.kernelTurn && o.kernelTurn.asker) || undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
@@ -989,7 +989,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -1092,7 +1092,7 @@ export class Switchboard {
         const c = may ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
         context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
       }
-      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone, no_project_docs: !may }).filter(([, v]) => v));
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone, no_project_docs: !may, person: (() => { const p = projectPerson(this, rec, o); return typeof p === "string" && p && p !== "-" ? p : undefined; })() }).filter(([, v]) => v));
       const r = await this.deps.call("sessions.prompt.compose", input);
       if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };
@@ -4040,11 +4040,10 @@ export default {
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
-      let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
+      let v = a.person ? await memberKey(ctx, a) : launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;   // a person's key is lent from their own vault for this turn, never read from the home's (member-key.js)
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
-      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
-      // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
+      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was checked when the account was made (https, or this machine), and it is the account's, not the thread's.
       const own = {};
       // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
       if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });

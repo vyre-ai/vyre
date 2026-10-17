@@ -44,6 +44,12 @@
         "effect": "write"
       },
       {
+        "name": "agents.flow-say",
+        "summary": "write in a Flow's chat: wake the Flow's agent for you, as you, with the Flow and its recent runs as context",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "agents.rollover",
         "reach": "anyone",
         "effect": "write"
@@ -57,6 +63,12 @@
         "summary": "the task a wake job thread is for (the Flows host only)",
         "reach": "modules",
         "effect": "read"
+      },
+      {
+        "name": "agents.wake-done",
+        "summary": "mark a task's wake over so it stops counting as a running job (the Flows host only)",
+        "reach": "modules",
+        "effect": "write"
       },
       {
         "name": "agents.wake-failed",

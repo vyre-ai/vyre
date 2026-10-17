@@ -5,7 +5,7 @@
 //
 // HOME box (E2E_HOME, default testbox6): a real vyred whose Wink module runs netd (a real Headscale, the gate, the node) with `wink.controlUrl` naming the box's own address and a
 // fixed `wink.gatePort`, plus a stand-in relay (relay/node/server.js). SERVER box (E2E_SERVER, default testbox2): a real vyred. The two pair with the real flow
-// (wink.server.code, wink.pair.server, wink.server.confirm); the home's hand-over (controlUrl, one-time key, node name, door address) goes to the server inside adopt, and the
+// (wink.server.code, wink.pair.server); the home's hand-over (controlUrl, one-time key, node name, door address) goes to the server inside adopt, and the
 // server's netjoin joins the home's network and dials the door. Checked: the pairing is done; the server's link says "direct"; a call from the server crosses as device:<sid>;
 // the device row is removed on the home and the server's next call cannot cross.
 // Then the RELAY FALLBACK: the home drops the server's UDP and its TCP to the gate (iptables raw table, tagged, removed after), the server's link must fall back to the relay, a call must still cross over it

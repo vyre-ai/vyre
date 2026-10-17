@@ -33,3 +33,58 @@ test("a named agent can start its lent task, not another, and not after the lend
   await flows.mint.end({ source: `flows:task:${mine2.id}`, reason: "the task is over" });
   await assert.rejects(() => k.gateway.ask.start(asAgent(), mine2.id), /./, "after the lend ends it holds nothing again");
 });
+
+test("a lend dies the moment its task is withdrawn, before anything takes the grant back", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const flows = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["tasks.withdraw"], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const asAgent = () => k.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: "s1", thread: "t1", person: OWNER, vouched: true });
+  const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  await flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: `flows:task:${task.id}`, reason: "the task" });
+  assert.equal((await k.gateway.ask.get(asAgent(), task.id)).id, task.id, "the lend works while the task is open");
+  await k.gateway.ask.withdraw(k.chains.forModule({ module: "flows", approver: owner }), task.id, { reason: "due time" });
+  // the grant is still there (nothing has taken it back yet) but it holds nothing
+  assert.ok((await flows.mint.list({ source: `flows:task:${task.id}` })).length >= 1, "the lend has not been ended");
+  await assert.rejects(() => k.gateway.ask.get(asAgent(), task.id), /./, "reading the task with the lend is refused");
+  await assert.rejects(() => k.gateway.ask.complete(asAgent(), task.id, { note: "late", sources: ["vyre://x/y/z"] }), /./, "handing it in is refused");
+});
+
+test("a lend that names a task the kernel does not hold is dead: an unknown task counts as closed", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const flows = k.kernelFor({ name: "flows", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const asAgent = () => k.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: "s1", thread: "t1", person: OWNER, vouched: true });
+  const real = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  // the lend covers the real task's address but is sourced from a task id that does not exist
+  await flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${real.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: "flows:task:ghost-task-id", reason: "a lend for nothing" });
+  await assert.rejects(() => k.gateway.ask.get(asAgent(), real.id), /./, "a lend for a task nobody holds reads nothing");
+  await assert.rejects(() => k.gateway.ask.start(asAgent(), real.id), /./, "and starts nothing");
+});
+
+test("a lend held to one job thread: that thread starts the task, another session of the same agent does not, and re-binding leaves no window with both", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const flows = k.kernelFor({ name: "flows", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const asAgent = (/** @type {string} */ thread) => k.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: `s-${thread}`, thread, person: OWNER, vouched: true });
+  const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  const lend = (/** @type {any} */ where) => flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 }, ...(where ? { where } : {}) }, source: `flows:task:${task.id}`, reason: "the agent was given this task" });
+  const can = async (/** @type {string} */ thread) => k.gateway.authorize({ chain: asAgent(thread), action: "tasks.work", resource: `vyre://${S}/task/${task.id}` }).then(d => d.effect === "allow");
+  await lend();
+  assert.equal(await can("job-1"), true, "the first lend, before the thread is known, is the agent's");
+  assert.equal(await can("job-2"), true);
+  // held to job-1: the unbound lend ends in the same step the bound one begins
+  await flows.mint.end({ source: `flows:task:${task.id}`, reason: "held to the job's thread" });
+  await lend({ sessions: ["job-1"] });
+  assert.equal((await flows.mint.list({ source: `flows:task:${task.id}` })).length, 1, "one lend, never two");
+  assert.equal(await can("job-1"), true, "the woken job holds it");
+  assert.equal(await can("job-2"), false, "another session of the same agent does not");
+  const started = await k.gateway.ask.start(asAgent("job-1"), task.id);
+  assert.equal(started.state, "working");
+  await assert.rejects(() => k.gateway.ask.complete(asAgent("job-2"), task.id, { note: "x", sources: [] }), /./, "and cannot hand it in");
+});

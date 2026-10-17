@@ -86,24 +86,3 @@ test("usage: one of --begin or --confirm, nothing else", async () => {
   }
 });
 
-const ASKING = { asking: true, name: "Harlow's Mac", choices: ["red oak sky", "net pie ash", "fox elm dew"], until: 1, line: "x" };
-test("confirm: shows the choices and sends the pick; nothing asking says so; no terminal is refused", async () => {
-  const a = deps({ replies: { "wink.server.pairing": () => ({ data: ASKING }), "wink.server.pair.answer": () => ({ data: { answered: true, yes: true, name: "Harlow's Mac" } }) } });
-  a.d.ask = async () => "2";
-  const r = await capture(() => run(["confirm"], /** @type {any} */ (a.d)));
-  assert.equal(r.code, 0);
-  assert.deepEqual(a.calls, [["wink.server.pairing", {}], ["wink.server.pair.answer", { yes: true, pick: 2 }]]);
-  assert.match(r.out, /1\) red oak sky/);
-  const n = deps({ replies: { "wink.server.pairing": () => ({ data: { asking: false } }) } });
-  const rn = await capture(() => run(["confirm"], /** @type {any} */ (n.d)));
-  assert.equal(rn.code, 0);
-  assert.deepEqual(n.calls, [["wink.server.pairing", {}]]);
-  const t = deps({ isTTY: false });
-  const rt = await capture(() => run(["confirm"], /** @type {any} */ (t.d)));
-  assert.notEqual(rt.code, 0);
-  assert.deepEqual(t.calls, []);
-  const x = deps({ replies: { "wink.server.pairing": () => ({ data: ASKING }), "wink.server.pair.answer": () => ({ data: { answered: true, yes: false, name: "m" } }) } });
-  const rx = await capture(() => run(["confirm", "--no"], /** @type {any} */ (x.d)));
-  assert.equal(rx.code, 0);
-  assert.deepEqual(x.calls[1], ["wink.server.pair.answer", { yes: false }]);
-});

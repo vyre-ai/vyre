@@ -67,7 +67,7 @@ export default {
         return (Array.isArray(list) ? list : list.servers || []).find(s => (member ? s.owner === member && s.label === name : s.name === name && !s.owner)) || null;
       },
       updateServer: async input => { data(await ctx.call("mcp.update", input)); },
-      removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
+      removeServer: async name => data(await ctx.call("mcp.remove", { name })),
       // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.
       putCredential: async (name, { config, secret, description }, as) => {
         const r = await ctx.call("vault.put", { name, kind: "api-credential", description, fields: { config: JSON.stringify(config), ...(secret ? { secret } : {}) } }, { as });

@@ -53,6 +53,7 @@ test("levels: use is fill, totp, read and call; reveal adds the value; manage ad
   assert.ok(!Object.values(ACCESS_LEVELS).some(l => l.includes("vault.run")), "run is its own grant");
   assert.deepEqual([...AGENT_ACTIONS], [...ACCESS_LEVELS.use]);
   assert.equal(levelOf([...ACCESS_LEVELS.reveal]), "reveal");
+  assert.equal(levelOf([...ACCESS_LEVELS.edit]), "edit");
   assert.equal(levelOf(["vault.fill"]), null);
   assert.throws(() => levelActions("admin"), { code: "bad_input" });
 });
@@ -96,9 +97,56 @@ test("teams: an assistant reaches a team's grant by association with a person in
   assert.equal((await ask(gw, kit, "vault.read", item())).effect, "deny");
 });
 
+test("edit level: a person with Edit and rotate reads, changes and rotates, and cannot delete, share or hand out access; an assistant never holds it", async () => {
+  const { gw, g } = await rig();
+  assert.deepEqual([...ACCESS_LEVELS.edit], [...ACCESS_LEVELS.reveal, "vault.edit", "vault.rotate"]);
+  for (const a of ["vault.delete", "vault.share", "grants.create"]) assert.ok(!ACCESS_LEVELS.edit.includes(a) && ACCESS_LEVELS.manage.includes(a), a);
+  await give(g, { kind: "actor", actor: actor("person", BOB) }, "edit");
+  for (const a of ["vault.fill", "vault.read", "vault.reveal", "vault.edit", "vault.rotate"]) assert.equal((await ask(gw, personChain(BOB), a, item())).effect, "allow", a);
+  for (const a of ["vault.delete", "vault.share"]) assert.notEqual((await ask(gw, personChain(BOB), a, item())).effect, "allow", `${a} stays with manage`);
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  for (const a of ["vault.edit", "vault.rotate", "vault.reveal"]) assert.notEqual((await ask(gw, assistantOf(BOB), a, item())).effect, "allow", `an assistant acting for an editor still lacks ${a}`);
+});
+
+test("teams hold agents: a listed agent reaches the team's grant with use only, an unlisted one does not, an unknown one cannot be listed, and taking it out ends it", async () => {
+  const { gw, g } = await rig();
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  await g.addActor(owner(), actor("agent", "juno"), P.actor(actor("agent", "juno")));
+  await assert.rejects(() => g.teams.set(owner(), { name: "Ops", members: [], agents: ["nope"] }), { code: "bad_input" }, "an agent that is not the Space's cannot be listed");
+  const team = await g.teams.set(owner(), { name: "Ops", members: [ALICE], agents: ["kit"] });
+  assert.deepEqual([...team.agents], ["kit"]);
+  await give(g, { kind: "group", id: team.id }, "manage");
+  // the agent acts for the owner here, who holds everything: what limits it is the agent's own hop, which is the team's grant
+  const kit = assistantOf(OWNER, "kit"), juno = assistantOf(OWNER, "juno");
+  assert.equal((await ask(gw, kit, "vault.read", item())).effect, "allow", "the listed agent uses what the team holds");
+  for (const a of ["vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate"]) assert.notEqual((await ask(gw, kit, a, item())).effect, "allow", `${a} is never an agent's, even listed in a team that holds manage`);
+  assert.equal((await ask(gw, juno, "vault.read", item())).effect, "deny", "an agent the team does not list has nothing");
+  // listing again without the agents field keeps them; an empty list takes them out at once
+  assert.deepEqual([...(await g.teams.set(owner(), { id: team.id, name: "Ops2" })).agents], ["kit"]);
+  await g.teams.set(owner(), { id: team.id, agents: [] });
+  assert.equal((await ask(gw, kit, "vault.read", item())).effect, "deny");
+});
+
+test("everyone in the Space: space:people reaches every member and nobody else, space:agents every agent with use only, and neither needs a team", async () => {
+  const { gw, g, gs } = await rig();
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  // space:agents is the Space's registered agents only: not an agent of another Space, not one that was never added (a model slot's hop is of this kind), not a person
+  assert.equal(gs.inTeam("space:agents", actor("agent", "kit")), true);
+  assert.equal(gs.inTeam("space:agents", { kind: "agent", id: "kit", space: "spc_other" }), false, "another Space's agent");
+  assert.equal(gs.inTeam("space:agents", actor("agent", "model:fake/slot#1")), false, "an agent never registered here, as a model slot is");
+  assert.equal(gs.inTeam("space:agents", actor("person", ALICE)), false, "a person is not an agent");
+  assert.equal(gs.inTeam("space:people", actor("agent", "kit")), false, "an agent is not one of the people");
+  await give(g, { kind: "group", id: "space:people" }, "reveal");
+  await give(g, { kind: "group", id: "space:agents" }, "use");
+  for (const who of [ALICE, BOB, CAROL]) assert.equal((await ask(gw, personChain(who), "vault.reveal", item())).effect, "allow", `${who} is a member`);
+  assert.equal((await ask(gw, assistantOf(OWNER, "kit"), "vault.read", item())).effect, "allow", "an agent of the Space uses it");
+  for (const a of ["vault.reveal", "vault.edit", "vault.rotate", "vault.share", "vault.delete"]) assert.notEqual((await ask(gw, assistantOf(OWNER, "kit"), a, item())).effect, "allow", `${a} is never an agent's`);
+  await assert.rejects(() => give(g, { kind: "group", id: "space:everyone" }, "use"), { code: "bad_input" }, "only the two named groups exist");
+});
+
 test("an assistant is never given reveal, change, delete, share or rotate, whoever asks", async () => {
   const { g } = await rig();
-  for (const level of ["reveal", "manage"]) {
+  for (const level of ["reveal", "edit", "manage"]) {
     const i = { subject: { kind: "actor", actor: actor("agent", "kit") }, actions: [...levelActions(level)], resource: { prefix: `${vault()}/*` }, conditions: {}, source: "vault:share" };
     await assert.rejects(() => g.create(owner(), i, P.create(i)), { code: "bad_input" }, level);
   }

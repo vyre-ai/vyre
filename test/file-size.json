@@ -3,11 +3,11 @@
  "limit": 2000,
  "files": {
   "core/switchboard/index.js": 5105,
-  "core/spaces/index.js": 2618,
+  "core/spaces/index.js": 2596,
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2049,
   "core/daemon/index.js": 2009,
   "core/vault/vault.js": 2054,
-  "kernel/flows/runner.js": 2080
+  "kernel/flows/runner.js": 2030
  }
 }

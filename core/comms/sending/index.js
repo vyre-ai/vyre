@@ -36,7 +36,7 @@ const textToHtml = t => t.split(/\n{2,}/).map(p => `<p>${p.replace(/&/g, "&amp;"
  * The message, checked and filled in: a from inside the firm's own domain (the saved from address when none is given), every address real and on one line, a subject on one line, and a body in
  * both forms. A Flow cannot send as another domain through the firm's account.
  * @param {any} conn @param {any} m
- * @returns {{ from: string, to: string[], subject: string, html: string, text: string, replyTo?: string }}
+ * @returns {{ from: string, to: string[], cc?: string[], bcc?: string[], subject: string, html: string, text: string, replyTo?: string, attachments?: { filename: string, contentType: string, bytes: Buffer }[] }}
  */
 export function check(conn, m) {
   const saved = parseAddress(conn && conn.from);
@@ -48,7 +48,12 @@ export function check(conn, m) {
   const list = (Array.isArray(m.to) ? m.to : String(m.to ?? "").split(/[,;]/)).map((/** @type {any} */ x) => String(x).trim()).filter(Boolean);
   if (!list.length) throw fail("say who to send to: to is an email address", "bad_input");
   if (list.length > MAX_TO) throw fail(`one send goes to at most ${MAX_TO} people`, "bad_input");
-  const to = list.map((/** @type {string} */ x) => { const a = parseAddress(x); if (!a || a.name) throw fail(`${x.slice(0, 60)} is not an email address`, "bad_input"); return a.email; });
+  const plain = (/** @type {string} */ x) => { const a = parseAddress(x); if (!a || a.name) throw fail(`${x.slice(0, 60)} is not an email address`, "bad_input"); return a.email; };
+  const to = list.map(plain);
+  /** @param {any} v @param {string} what */
+  const more = (v, what) => { const l = (Array.isArray(v) ? v : String(v ?? "").split(/[,;]/)).map((/** @type {any} */ x) => String(x).trim()).filter(Boolean); if (to.length + l.length > MAX_TO) throw fail(`one send goes to at most ${MAX_TO} people, ${what} included`, "bad_input"); return l.map(plain); };
+  const cc = more(m.cc, "cc"), bcc = more([...(Array.isArray(m.bcc) ? m.bcc : String(m.bcc ?? "").split(/[,;]/))], "bcc");
+  if (to.length + cc.length + bcc.length > MAX_TO) throw fail(`one send goes to at most ${MAX_TO} people, cc and bcc included`, "bad_input");
   const subject = String(m.subject ?? "");
   if (!oneLine(subject)) throw fail("the subject is one line", "bad_input");
   let html = typeof m.html === "string" ? m.html : "", text = typeof m.text === "string" ? m.text : "";
@@ -57,13 +62,13 @@ export function check(conn, m) {
   if (!html.trim()) html = textToHtml(text);
   /** @type {string | undefined} */ let replyTo;
   if (m.replyTo !== undefined && m.replyTo !== "") { const r = parseAddress(m.replyTo); if (!r) throw fail(`${String(m.replyTo).slice(0, 60)} is not an email address`, "bad_input"); replyTo = r.name ? `${r.name} <${r.email}>` : r.email; }
-  return { from: from.name ? `${from.name} <${from.email}>` : from.email, to, subject, html, text, ...(replyTo ? { replyTo } : {}) };
+  return { from: from.name ? `${from.name} <${from.email}>` : from.email, to, ...(cc.length ? { cc } : {}), ...(bcc.length ? { bcc } : {}), subject, html, text, ...(replyTo ? { replyTo } : {}), ...(Array.isArray(m.attachments) && m.attachments.length ? { attachments: m.attachments } : {}) };
 }
 
 /**
  * The HTTP request a provider wants for this message. Pure: nothing is sent.
  * @param {any} conn { provider, apiKey, from, domain?, region? } @param {any} m the message (checked here) @param {{ idem?: string }} [o]
- * @returns {{ url: string, method: "POST", headers: Record<string, string>, body: string }}
+ * @returns {{ url: string, method: "POST", headers: Record<string, string>, body: string | FormData }}
  */
 export function shape(conn, m, o = {}) {
   const p = String(conn && conn.provider);
@@ -73,24 +78,34 @@ export function shape(conn, m, o = {}) {
   const json = { "content-type": "application/json", accept: "application/json" };
   if (p === "resend") {
     return { url: "https://api.resend.com/emails", method: "POST", headers: { ...json, authorization: `Bearer ${k}`, ...(o.idem ? { "idempotency-key": o.idem } : {}) },
-      body: JSON.stringify({ from: c.from, to: c.to, subject: c.subject, html: c.html, text: c.text, ...(c.replyTo ? { reply_to: c.replyTo } : {}) }) };
+      body: JSON.stringify({ from: c.from, to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, html: c.html, text: c.text, ...(c.replyTo ? { reply_to: c.replyTo } : {}), ...(c.attachments ? { attachments: c.attachments.map(a => ({ filename: a.filename, content: a.bytes.toString("base64") })) } : {}) }) };
   }
   if (p === "mailgun") {
     const domain = String(conn.domain || (parseAddress(c.from) || { email: "@" }).email.split("@")[1]);
     const host = conn.region === "eu" ? "api.eu.mailgun.net" : "api.mailgun.net";
+    const auth = `Basic ${Buffer.from(`api:${k}`).toString("base64")}`;
+    const url = `https://${host}/v3/${encodeURIComponent(domain)}/messages`;
+    if (c.attachments) {
+      // with files, a multipart form: the same fields, and each file as an `attachment` part (the content type of the form, with its boundary, comes from the form itself)
+      const f = new FormData();
+      for (const [n, v] of [["from", c.from], ["to", c.to.join(",")], ["subject", c.subject], ["text", c.text], ["html", c.html], ...(c.cc ? [["cc", c.cc.join(",")]] : []), ...(c.bcc ? [["bcc", c.bcc.join(",")]] : []), ...(c.replyTo ? [["h:Reply-To", c.replyTo]] : [])]) f.set(String(n), String(v));
+      for (const a of c.attachments) f.append("attachment", new Blob([a.bytes], { type: a.contentType }), a.filename);
+      return { url, method: "POST", headers: { accept: "application/json", authorization: auth }, body: f };
+    }
     const f = new URLSearchParams({ from: c.from, to: c.to.join(","), subject: c.subject, text: c.text, html: c.html });
+    if (c.cc) f.set("cc", c.cc.join(","));
+    if (c.bcc) f.set("bcc", c.bcc.join(","));
     if (c.replyTo) f.set("h:Reply-To", c.replyTo);
-    return { url: `https://${host}/v3/${encodeURIComponent(domain)}/messages`, method: "POST",
-      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${Buffer.from(`api:${k}`).toString("base64")}` }, body: f.toString() };
+    return { url, method: "POST", headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", authorization: auth }, body: f.toString() };
   }
   if (p === "postmark") {
     return { url: "https://api.postmarkapp.com/email", method: "POST", headers: { ...json, "x-postmark-server-token": k },
-      body: JSON.stringify({ From: c.from, To: c.to.join(","), Subject: c.subject, HtmlBody: c.html, TextBody: c.text, ...(c.replyTo ? { ReplyTo: c.replyTo } : {}), MessageStream: String(conn.stream || "outbound") }) };
+      body: JSON.stringify({ From: c.from, To: c.to.join(","), ...(c.cc ? { Cc: c.cc.join(",") } : {}), ...(c.bcc ? { Bcc: c.bcc.join(",") } : {}), Subject: c.subject, HtmlBody: c.html, TextBody: c.text, ...(c.attachments ? { Attachments: c.attachments.map(a => ({ Name: a.filename, Content: a.bytes.toString("base64"), ContentType: a.contentType })) } : {}), ...(c.replyTo ? { ReplyTo: c.replyTo } : {}), MessageStream: String(conn.stream || "outbound") }) };
   }
   const from = /** @type {{ name: string, email: string }} */ (parseAddress(c.from)), reply = c.replyTo ? parseAddress(c.replyTo) : null;
   return { url: "https://api.sendgrid.com/v3/mail/send", method: "POST", headers: { ...json, authorization: `Bearer ${k}` },
-    body: JSON.stringify({ personalizations: [{ to: c.to.map(email => ({ email })) }], from: { email: from.email, ...(from.name ? { name: from.name } : {}) }, subject: c.subject,
-      content: [{ type: "text/plain", value: c.text }, { type: "text/html", value: c.html }], ...(reply ? { reply_to: { email: reply.email, ...(reply.name ? { name: reply.name } : {}) } } : {}) }) };
+    body: JSON.stringify({ personalizations: [{ to: c.to.map(email => ({ email })), ...(c.cc ? { cc: c.cc.map(email => ({ email })) } : {}), ...(c.bcc ? { bcc: c.bcc.map(email => ({ email })) } : {}) }], from: { email: from.email, ...(from.name ? { name: from.name } : {}) }, subject: c.subject,
+      content: [{ type: "text/plain", value: c.text }, { type: "text/html", value: c.html }], ...(c.attachments ? { attachments: c.attachments.map(a => ({ content: a.bytes.toString("base64"), filename: a.filename, type: a.contentType, disposition: "attachment" })) } : {}), ...(reply ? { reply_to: { email: reply.email, ...(reply.name ? { name: reply.name } : {}) } } : {}) }) };
 }
 
 /** What a provider said, as one short line (its own words), with the key taken out. @param {any} body @param {string} secret */
@@ -122,7 +137,7 @@ export async function send(conn, m, deps = {}) {
     const cfg = { address: from.email, username: String(conn.username || from.email), imap: { host, tls }, smtp: { host, ...(port ? { port } : {}), tls }, auth: { item: "sending", field: "password" } };
     const adapter = deps.smtp || imapAdapter();
     try {
-      const r = await adapter.send(cfg, async () => secret, { to: c.to, subject: c.subject, body: c.text });
+      const r = await adapter.send(cfg, async () => secret, { to: c.to, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}), subject: c.subject, body: c.text, ...(c.attachments ? { attachments: c.attachments } : {}) });
       return { id: String(r && (r.message_id || r.id) || ""), provider: p };
     } catch (e) { throw fail(`SMTP did not send: ${scrub(String(/** @type {Error} */ (e).message || e), secret).slice(0, 200)}`, /** @type {any} */ (e).code === "auth" ? "auth" : "refused"); }
   }

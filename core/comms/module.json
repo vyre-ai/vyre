@@ -52,6 +52,14 @@
   },
   "shows": {},
   "needs": {
+    "kernel": {
+      "actions": [
+        "drive.read"
+      ],
+      "prefixes": [
+        "file/*"
+      ]
+    },
     "vault": [
       "per-connection"
     ],
@@ -89,10 +97,13 @@
         "name": "comms.send",
         "label": "Send an email or a text",
         "outward": true,
-        "recipients": ["to"],
+        "recipients": ["to", "cc", "bcc"],
         "inputs": {
           "via": "string",
           "to": "string",
+          "cc": "string",
+          "bcc": "string",
+          "attachments": "object",
           "subject": "string",
           "body": "string"
         },
@@ -104,9 +115,12 @@
         "name": "comms.email",
         "label": "Send email through the firm's sending service",
         "outward": true,
-        "recipients": ["to"],
+        "recipients": ["to", "cc", "bcc"],
         "inputs": {
           "to": "string",
+          "cc": "string",
+          "bcc": "string",
+          "attachments": "object",
           "subject": "string",
           "text": "string",
           "html": "string"

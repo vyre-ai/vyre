@@ -3,7 +3,6 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -11,9 +10,6 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tempHome } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { createRelay } from "../relay/node/server.js";
-import { fileIdentityStore } from "../core/spaces/identity.js";
-import { claimServerSpace } from "../apps/app/src/identity/claim-space.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_TEST_MASTER_KDF = "cheap";
@@ -69,60 +65,4 @@ test("creating a space on a live daemon returns the space id and makes that spac
   const again = await call("onboard.space.poll", { id: opened.data.id });
   assert.ok(!again.error, JSON.stringify(again.error));
   assert.equal(again.data.online, true);
-});
-
-test("adding a computer dials the space server and the computer stays live there", { timeout: 180000 }, async (t) => {
-  const dir = await directory();
-  const relay = createRelay();
-  const relayUrl = await relay.listen();
-  const serverLines = /** @type {string[]} */ ([]);
-  const computerLines = /** @type {string[]} */ ([]);
-  const serverBox = await up(t, { machine: "server", name: "juniper-server", transcripts: [], vault: { keystore: "file" }, names: { directory: dir.base }, relay: { enabled: true, url: relayUrl }, modules: { disable: ["recall", "memory", "learn"] } }, serverLines);
-  const computerBox = await up(t, { machine: "server", name: "alex-computer", transcripts: [], vault: { keystore: "file" }, names: { directory: dir.base }, relay: { enabled: false }, modules: { disable: ["recall", "memory", "learn"] } }, computerLines);
-  const server = serverBox.d;
-  const computer = computerBox.d;
-  const computerRoot = computerBox.root;
-  t.after(() => relay.close());
-  t.after(() => dir.close());
-  const person = await computer.registry.call("identity.create", { username: "alex", password: PASSWORD }, "cli");
-  assert.ok(!person.error, JSON.stringify(person.error));
-  const issued = await computer.registry.call("wink.install.issue", { os: "linux" }, "cli");
-  assert.ok(!issued.error, `${JSON.stringify(issued.error)} ${computerLines.slice(-20).join(" | ")}`);
-  const code = String(issued.data.line || "").match(/VYRE_CODE=([A-Za-z0-9_-]+)/);
-  assert.ok(code, issued.data.line);
-  const redeemed = await server.registry.call("wink.server.install-redeem", { code: code[1] }, "module:relay");
-  assert.ok(!redeemed.error, `${JSON.stringify(redeemed.error)} ${serverLines.filter((l) => /adopt|install|owner/i.test(l)).slice(-20).join(" | ")}`);
-  const deadline = Date.now() + 20000;
-  let connected = null;
-  while (Date.now() < deadline) {
-    connected = await server.registry.call("relay.status", {}, "cli");
-    if (connected.data && connected.data.connected && connected.data.route) break;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  assert.ok(connected && connected.data && connected.data.connected, JSON.stringify(connected && connected.data));
-  const route = await server.registry.call("relay.route.id", {}, "module:wink");
-  assert.ok(!route.error, JSON.stringify(route.error));
-  const { publicKey } = crypto.generateKeyPairSync("ed25519");
-  const rootPublic = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-32)).toString("base64url");
-  const store = fileIdentityStore(path.join(computerRoot, "spaces"));
-  const st = store.status();
-  await claimServerSpace({
-    identity: { id: String(st.id), name: st.name, eid: String(st.eid), ops: store.ops(), key: { sign: async (m) => new Uint8Array(await store.sign(Buffer.from(m))) } },
-    name: "juniper", base: dir.base, route: { relay: relayUrl, route: String(route.data.route), box: String(route.data.box) },
-    host: async () => ({ space: server.kernel.id.space, rootPublic }),
-  });
-  const added = await computer.registry.call("onboard.computer.add", { url: "https://juniper.vyre.run", username: "alex", password: PASSWORD }, "cli");
-  assert.ok(!added.error, `${JSON.stringify(added.error)} ${serverLines.filter((l) => /chain hello|refused|relay/i.test(l)).slice(-30).join(" | ")} || ${computerLines.slice(-15).join(" | ")}`);
-  assert.equal(added.data.live, true);
-  assert.equal("password" in added.data, false);
-  assert.equal("carry" in added.data, false);
-  assert.equal(added.data.devices.length, 1);
-  const id = added.data.devices[0];
-  const listed = await server.registry.call("relay.devices.all", {}, "module:wink");
-  assert.ok(!listed.error, JSON.stringify(listed.error));
-  const hit = listed.data.devices.find((/** @type {any} */ d) => d.id === id);
-  assert.ok(hit, JSON.stringify(listed.data.devices));
-  assert.equal(hit.online, true);
-  const row = server.registry.deps.db.prepare("SELECT via_chain FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id);
-  assert.ok(row && row.via_chain, "the computer is on the server by its identity");
 });

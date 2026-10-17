@@ -9,13 +9,16 @@ import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
+import { AttachmentsField } from "./AttachmentsField";
 import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
-import { DocumentFields } from "./DocumentFields";
+import { DateTimeField } from "../components/DateTimeField";
+import { DateValue } from "./DateValue";
 import { FailurePanel } from "./FailurePanel";
-import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
+import { DocumentFields } from "./DocumentFields";
+import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -102,7 +105,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
                       <View key={fi} className="flex-row items-end gap-s2">
                         <View className="min-w-0 flex-1">{fieldChoices(options, s.type).length ? <Select label={fi ? undefined : "Field"} value={fieldValue(options, s.type, f.field)} options={fieldChoices(options, s.type, f.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} /> : <Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" />}</View>
-                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" /></View>
+                        <View className="min-w-0 flex-1">{dateKindOf(options, s.type, f.field) ? <DateValue label={fi ? undefined : "Value"} name="Value" kind={dateKindOf(options, s.type, f.field) as "date" | "datetime"} zone={options.zone} value={f.value} onChange={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} /> : <Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" />}</View>
                         <Button kind="ghost" size="sm" icon="x" label="Remove field" onPress={() => setStep(s.id, { fields: s.fields.filter((_: any, k: number) => k !== fi) })} />
                       </View>
                     ))}
@@ -161,10 +164,12 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <SendWith kind="email" s={s} set={set} options={options} />
                   <AddressField label="From (optional)" value={s.from ?? ""} onChange={(from) => setStep(s.id, { from: from || undefined })} placeholder="The sending account's own address" draft={draft} stepId={s.id} options={options} note="Sends only if this address is on the sending account's domain. If it is not, the run stops and tells you." />
                   <AddressField label="To" many value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="Cc (optional)" many value={s.cc ?? ""} onChange={(cc) => setStep(s.id, { cc: cc || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="Bcc (optional)" many value={s.bcc ?? ""} onChange={(bcc) => setStep(s.id, { bcc: bcc || undefined })} placeholder="Copied without the others seeing" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
                   <AddressField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
-                  <ComingNext />
+                  <AttachmentsField value={s.attachments ?? ""} onChange={(attachments) => setStep(s.id, { attachments: attachments || undefined })} draft={draft} stepId={s.id} options={options} />
                 </>
               ) : null}
               {s.kind === "ask" ? (
@@ -195,7 +200,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   {fieldChoices(options, s.type).length ? <Select label="Field" value={fieldValue(options, s.type, s.field)} options={fieldChoices(options, s.type, s.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { field })} /> : <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />}
-                  <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
+                  {dateKindOf(options, s.type, s.field) ? <DateValue label="New value" name="New value" kind={dateKindOf(options, s.type, s.field) as "date" | "datetime"} zone={options.zone} value={s.value ?? ""} onChange={(value) => setStep(s.id, { value })} /> : <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />}
                   <Rows rows={s.more ?? []} onChange={(more) => setStep(s.id, { more })} draft={draft} stepId={s.id} options={options} title="Also set" help="More fields changed on the same record in the same step." />
                 </>
               ) : null}
@@ -268,7 +273,13 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       ) : null}
       {s.kind === "wait" ? (
         <>
-          <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          <Select label="Wait" value={s.mode === "until" || s.mode === "on" ? s.mode : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          {s.mode === "on" ? (
+            <>
+              <DateTimeField label="Wait until" value={s.on ?? ""} zone={options.zone} onChange={(on) => set({ on: on ?? "" })} help={options.zone ? `In ${options.zone}.` : "In your own time zone."} />
+              <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
+            </>
+          ) : null}
           {s.mode === "until" ? (
             <>
               <Select label="Date to wait for" value={s.field ?? ""} options={dateChoices(draft, s.id, options)} placeholder="Choose the date, such as the appointment" onChange={(field) => set({ field })} />
@@ -369,14 +380,6 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
 }
 
 /** What the sending service cannot do yet: shown, switched off, never faked. */
-function ComingNext() {
-  return (
-    <View className="gap-s2">
-      {["CC", "BCC", "Attachments"].map((x) => <Field key={x} label={x} name={x} value="" disabled placeholder="Coming next" />)}
-      <Text size="caption" tone="label">CC, BCC and attachments (a file from Files, or one an earlier step made) need the sending service to carry them. They are next.</Text>
-    </View>
-  );
-}
 
 /** A new connection, inline: a name, one https address, how the key is sent and which Vault item holds it. It is saved as a Connection in the Vault (connectors.connection.create); the key itself is never typed here. */
 function NewConnection({ options, onAdded }: { options: Options; onAdded: (name: string) => void }) {

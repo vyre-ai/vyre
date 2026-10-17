@@ -265,9 +265,8 @@ async function boxAddress(r, env) {
 }
 
 /**
- * The ending of `vyre box add`. The installer's last step ran on the server's own terminal: it showed the pairing QR and the long code, and a device that
- * asked was confirmed there with three words. There is no browser page and no one-time link on a server. This saves the box, says whether it is paired,
- * and, when it is not, where the code comes from.
+ * The ending of `vyre box add`. The installer runs the install command the Vyre app made, which carries a single-use pair code. There is no browser page and no
+ * one-time link on a server. This saves the box, says whether it is paired, and, when it is not, where the install command comes from.
  */
 async function onboard(r, target, env) {
   config.save({ box: { ssh: target } });
@@ -276,8 +275,8 @@ async function onboard(r, target, env) {
     out(`\n  ${signal("Your server is paired")}${st.space ? ` to ${st.space}` : ""}. Open the Vyre app to carry on.`);
     return 0;
   }
-  out(`\n  ${signal("Your server is installed and not paired yet.")} Pair it from the Vyre app: scan the code the server shows, or paste the long code.`);
-  out(dim(`  To show the code again: ssh ${target} vyre call wink.server.code '{"qr":true}'`));
+  out(`\n  ${signal("Your server is installed and not paired yet.")} In the Vyre app, choose Create a space and run the install command it shows on the server.`);
+  out(dim("  The command carries a pair code made from your identity. For a new one, choose Show the install command again."));
   return 0;
 }
 

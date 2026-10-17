@@ -3,7 +3,7 @@ import { timeOf } from "../../src/time/show.js";
 
 import { modelChoices } from "../../src/chat/core/composer-state.js";
 
-export type AgentFull = { name: string; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
+export type AgentFull = { name: string; look?: string | null; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
 export type Watcher = { name: string; source?: string; trigger?: string; cadence?: string; schedule?: string; agent?: string; paused?: boolean; files?: unknown; project?: string };
 export type Computer = { agent?: string; state?: string; screen?: number | null; screens?: number; size?: { w?: number; h?: number }; viewers?: number; takeover?: string | null; paused?: boolean; cpus?: number; memory_gb?: number; label?: string | null };
 export type UsageFull = { agent: string | null; auth?: string; turns?: number; threads?: number; spent_usd?: number; budget_usd?: number | null; left_usd?: number | null; duration_ms?: number; last_at?: number | null; tokens?: Record<string, number>; limit?: { status?: string; kind?: string; utilization?: number; resets_at?: number } | null };

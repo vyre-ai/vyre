@@ -108,6 +108,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 ## If it can fail
 - timeout_ms 1-3600000; retry false | {attempts 1-8, backoff_ms n | [n...], on [timeout, unavailable, rate_limited, upstream_5xx, connection_reset, busy]}. Defaults: find 30 s x3, pick 30 s x3, filter 30 s x1, create 1 min x3, update 1 min x3, upsert 1 min x3, remove 1 min x3, stage 1 min x3, call 1 min x1, service 30 s x1, classify 1 min x2, extract 1 min x2, fn 10 s x1; other kinds do not retry. A refusal is never retried.
 - on_fail={then: continue|stop, steps}: steps run if this one fails for good (they read `error.code`, `error.message`, `error.step`); `continue` carries on, `stop` (default) fails the run after them. No on_fail inside an on_fail.
+- flows.patch: insert {into: <step>, block: on_fail} or {lane: on_failure, first | after: <id>}; meta sends, returns, lock.
 - verify={check: `output.record`, essential: true|false, say: "what was checked"} or {readback: true} on create, update, upsert, stage. Put an essential verify on every step that changes something.
 
 ## Expressions

@@ -416,7 +416,7 @@ test("the setup page takes only the install line's own code, opens only after th
   const line = await mintPairCode({ person: PERSON, publicKey: creator.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => creator.sign(m) });
   // A code the stranger's own published key signed, for the stranger's own setup material: valid, and the directory confirms it, but it is not this server's line.
   const theirs = await mintPairCode({ person: STRANGER, publicKey: stranger.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => stranger.sign(m) });
-  let up = true;
+  let up = false;   // the boot redeem finds the directory down; the page is tried once it is back
   const directory = { resolveById: async (/** @type {string} */ id) => {
     if (!up) throw Object.assign(new Error("unreachable"), { code: "unreachable" });
     return { entries: [{ kind: "device", pub: id === PERSON ? creator.pub : stranger.pub }] };
@@ -488,4 +488,33 @@ test("the setup page answers 429 after ten tries in a minute, and the minute end
     clock += 61_000;
     assert.equal((await postSetup(port, JSON.stringify({ code: "bad" }))).status, 400);
   } finally { await page.stop(); }
+});
+
+test("the install status names the server THIS line paired, by its pairing, and not the newest server", async () => {
+  const me = identity();
+  const meta = metaOf();
+  const tools = new Map();
+  const ctx = {
+    tool: (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def),
+    call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      if (tool === "spaces.identity.device") return { data: { deviceKey: me.pub } };
+      if (tool === "spaces.identity.self") return { data: { id: PERSON } };
+      if (tool === "spaces.identity.sign") return { data: { sig: Buffer.from(me.sign(Buffer.from(String(input.message), "base64url"))).toString("base64url") } };
+      return { data: {} };
+    },
+  };
+  // Two pairings finished close together: pr_mine made srv_mine, a later unrelated one made srv_other (the "newest").
+  const made = new Map([["pr_mine", "srv_mine"], ["pr_other", "srv_other"]]);
+  let next = "pr_mine";
+  registerInstallPair({ ctx, meta, now: NOW, ticket: async () => "vyre://wink/2?t=abc", pair: async () => ({ pairing: next }), serverOf: (id) => made.get(id) || null });
+  await tools.get("wink.install.issue").run({ os: "linux" });
+  assert.equal((await tools.get("wink.install.status").run()).server, null, "no pairing yet, no server");
+  await tools.get("wink.install.complete").run();
+  assert.equal((await tools.get("wink.install.status").run()).server, "srv_mine");
+  // A new line forgets the old pairing.
+  next = "pr_other";
+  await tools.get("wink.install.issue").run({ os: "linux" });
+  assert.equal((await tools.get("wink.install.status").run()).server, null);
+  await tools.get("wink.install.complete").run();
+  assert.equal((await tools.get("wink.install.status").run()).server, "srv_other");
 });

@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf, instructionBlocks, withRefsResolved } from "./prompts.js";
+import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf, instructionBlocks, REFS_MAX, withRefsResolved } from "./prompts.js";
 
 function fresh() {
   const db = new DatabaseSync(":memory:");
@@ -198,4 +198,16 @@ test("instructions: a reference the reader may not read keeps only its name, and
 test("instructions: nothing to resolve is returned as it was", async () => {
   assert.equal(await withRefsResolved(null, async () => true), null);
   assert.deepEqual(await withRefsResolved({ agent: { name: "x", text: "Be brief." } }, async () => true), { agent: { name: "x", text: "Be brief." } });
+});
+
+test("instructions: a file with 200 references has fifty looked up, the rest keep their names, and the prompt says how many", async () => {
+  /** @type {string[]} */ const asked = [];
+  const text = Array.from({ length: 200 }, (_, i) => `[#Doc ${i}](vyre://acme/matter/m_${i})`).join(" ");
+  const x = await withRefsResolved({ agent: { name: "rex", text } }, async (r) => { asked.push(r.urn); return true; });
+  assert.equal(REFS_MAX, 50);
+  assert.equal(asked.length, 50, "only fifty are asked");
+  const out = /** @type {string} */ (x?.agent?.text);
+  assert.equal((out.match(/vyre:\/\/acme\/matter\/m_\d+/g) || []).length, 50, "fifty carry their address");
+  assert.match(out, /\(150 more references in this file keep only their names: at most 50 are looked up in one file\)/);
+  assert.ok(out.includes("#Doc 199") && !out.includes("m_199"), "the last one is there by name only");
 });

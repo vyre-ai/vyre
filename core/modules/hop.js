@@ -7,8 +7,6 @@
 //   - a tool that EXPLICITLY declares reach "person" (the vault, google.open, gate.said.add ...): a module reaches it only when the call itself proves the person (a relayed call, the person's
 //     own session) or the host that runs it is the person's own act (a Flow step the Flows host runs, a view click the person made, a call inside a space's own chain).
 // An explicit person-only tool is never reached by a module's plain ctx.call, even for the person: the module could be called by anything. hop.test.js holds this table.
-import { isPerson } from "../../lib/caller.js";
-import { modelCaller } from "./needs-you-hold.js";
 
 /** Set only by Registry.callFlow, after the Flows host has spent the task approval a person gave for exactly this act: the call then counts as the person's own yes, as a redeemed card does. A symbol key cannot come over the wire. */
 export const FLOW_ACT = Symbol("vyre.flow_act");
@@ -27,12 +25,6 @@ export function mayHop(def, call) {
 }
 
 /**
- * The call's caller is a person's own surface and not a model. Onboard and identity relay from it before a session token exists; every other module needs proven facts or a token.
- * @param {unknown} caller
- */
-export function onPersonSurface(caller) { return isPerson(String(caller)) && !modelCaller(String(caller)); }
-
-/**
  * ctx.events.origin and ctx.events.withOrigin for one module. A module may replay an origin it was handed (it keeps ctx.events.origin() beside work it stores for later), but only Vyre's own modules may
  * name any caller class: an added module that could would have the gate judge its call as the person's own surface.
  * @param {() => boolean} firstParty @param {() => string | undefined} capture @param {(o: string | undefined, f: () => any) => any} run
@@ -42,7 +34,7 @@ export function originApi(firstParty, capture, run) {
   return {
     origin: () => { const o = capture(); if (o && handed.size < 1000) handed.add(o); return o; },
     withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => {
-      if (o && !firstParty() && !handed.has(o)) throw Object.assign(new Error(`withOrigin: this module was never handed the origin ${o}`), { code: "denied" });
+      if (o && !firstParty() && !handed.has(o)) throw Object.assign(new Error(`withOrigin: this module was never handed the origin ${o}; use the origin the call arrived with, or ask the owner to allow this module`), { code: "denied" });
       return run(o, f);
     },
   };

@@ -42,7 +42,7 @@ A Playbook is a project template. It lists stages, the tasks of each stage and w
 
 **Snooze is device-local.** `apps/app/src/state/snooze.ts` keeps Later in the device's own store under vyre.needs.later. The engine has no snooze for a task, an ask or a held send, and nothing is sent anywhere. Another device still shows the card.
 
-**Events.** task.created, task.readied, task.unblocked, task.started, task.stuck, task.completed, task.approved, task.rejected, task.skipped, task.voided, task.edited, task.reopened.
+**Events.** task.created, task.readied, task.unblocked, task.started, task.stuck, task.completed, task.approved, task.rejected, task.skipped, task.withdrawn, task.voided, task.edited, task.reopened.
 
 **Checks on a call.** The task actions are `tasks.request`, tasks.read, tasks.work and `tasks.decide`, registered with the authorizer. Deny looks like absence. A task a caller may not read returns null from `tasks.get`.
 

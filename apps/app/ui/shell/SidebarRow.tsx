@@ -14,12 +14,15 @@ export function SidebarRow({ label, icon, lead, on, onPress, badge, trailing, fo
 }) {
   const { color } = useUiTheme();
   const ink = on ? "text" : tone === "label" ? "label" : "text-2";
+  // 36 high, an 18 icon, 12 between, the label at 14. The fill is inset 8 from the edges and the content pads 8 more, so it sits on the 16 gutter.
   const row = (
     <Pressable accessibilityRole="link" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress}
-      style={({ hovered }: any) => [{ minHeight: folded ? RAIL.foldedRow : RAIL.rowH, borderRadius: RAIL.rowRadius, paddingHorizontal: folded ? 0 : RAIL.rowPadX, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "flex-start", gap: 12, backgroundColor: on ? color["surface-3"] : hovered ? "var(--hover)" : "transparent" }]}>
+      style={({ hovered, focused }: any) => [{ minHeight: folded ? RAIL.foldedRow : RAIL.navRowH, marginHorizontal: folded ? 0 : RAIL.rowInset, borderRadius: RAIL.rowRadius, paddingHorizontal: folded ? 0 : RAIL.gutter - RAIL.rowInset, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "flex-start", gap: RAIL.iconGap,
+        backgroundColor: on ? color.selected : hovered || focused ? color.hover : "transparent",
+        ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
       {lead ?? (icon ? <View><Icon name={icon} tone={ink} size={RAIL.iconSize} />{folded && badge ? <View style={{ position: "absolute", right: -3, top: -3, width: 8, height: 8, borderRadius: 4, backgroundColor: color.primary }} /> : null}</View> : null)}
-      {folded ? null : <Text medium={Boolean(on)} style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, color: color[ink] }} numberOfLines={1} className="flex-1">{label}</Text>}
-      {!folded && badge ? <View className="min-w-s5 items-center rounded-full px-s2" style={{ backgroundColor: color.selected }}><Text size="caption" medium tone="default">{String(badge)}</Text></View> : null}
+      {folded ? null : <Text medium={Boolean(on)} style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, color: color[ink] }} numberOfLines={1}>{label}</Text>}
+      {!folded && badge ? <View style={{ minWidth: 20, alignItems: "center", borderRadius: 10, paddingHorizontal: 8, backgroundColor: color.selected }}><Text size="caption" medium tone="default">{String(badge)}</Text></View> : null}
       {!folded ? trailing : null}
     </Pressable>
   );

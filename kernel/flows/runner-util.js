@@ -97,3 +97,9 @@ export function toFilter(n, scope) {
   }
   return null;
 }
+
+/** Actions whose risk is that something leaves the Space or is deleted (a run holds these for a yes unless a standing permission covers them). */
+export const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
+
+/** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
+export const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });

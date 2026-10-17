@@ -37,7 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
-import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
+import { registerGroups } from "./groups.js"; import { registerAddAgent } from "./add-agent.js"; import { registerNames } from "./names.js"; import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch, isReleaseBuild } from "../../lib/release-build.js";
@@ -87,7 +87,7 @@ import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { httpFetch } from "../../lib/http.js"; import { entryView } from "./entry-view.js";
-import { chosenServer } from "./chosen-server.js";
+import { chosenServer } from "./chosen-server.js"; import { registerPublishServerSpace } from "./publish-server-space.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
@@ -1333,6 +1333,7 @@ export default {
       }
       return { space: id, existed: true, rootPublic: have.publicKey };
     });
+    registerPublishServerSpace({ tool, obj, str, refuse, chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
@@ -1969,25 +1970,8 @@ export default {
         await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
-    tool("spaces.members.add-agent", "Add an agent (an assistant that does work in the space, for example as the doer of a task) to a space. The kernel's own actor membership: owners and admins only, under the person's proof.",
-      obj({ space: str, agent: str }, ["space", "agent"]),
-      async (i, meta) => {
-        const row = spaceOf(i.space);
-        await gate(row.id, undefined, meta);
-        const agent = String(i.agent || "").trim().toLowerCase();
-        if (!/^[a-z][a-z0-9_-]{0,39}$/.test(agent)) throw refuse("An agent's name is letters, digits, - and _, up to 40.", "bad_input");
-        const h = kernelHandle(row.id);
-        if (!h || !h.gateway || !h.gateway.grants || typeof h.gateway.grants.addActor !== "function") throw refuse("This space has no kernel here to add an agent to.", "unavailable");
-        const k = await kctxOf(meta, row.id);
-        try { await h.gateway.grants.addActor(k.chain, { kind: "agent", id: agent, space: row.id }, k.proof); }
-        catch (e) {
-          const c = String(/** @type {any} */ (e).code || "");
-          if (c === "needs_presence") throw refuse("This change needs your approval on your device.", "needs_presence");
-          if (c === "not_allowed") throw refuse("Only an owner or an admin can add an agent.", "forbidden");
-          throw e;
-        }
-        return { space: row.id, agent: { kind: "agent", id: agent } };
-      }, { presence: { summary: (/** @type {any} */ i) => `Add the agent ${i && i.agent} to ${i && i.space}` } });
+    registerAddAgent({ tool, spaceOf, gate, kernelHandle, kctxOf, refuse, obj, str });
+    registerGroups({ tool, spaceOf, gate, kernelHandle, kctxOf, refuse, obj, str });
     tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);
@@ -2046,14 +2030,6 @@ export default {
       const rootPublic = (await attestedKeyOf(row.id)) || (k ? k.publicKey : null);
       return c && c.pin && rootPublic ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, rootPublic) } : {};
     };
-    /** The short typed code for an invite's own link (RC1): wink makes it, so it carries this same link and nothing else. Best effort: with no relay or no typed codes the invite is just the link (`code` null). @param {string} link @param {string} space */
-    const typedCodeFor = async (link, space) => {
-      try {
-        const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
-        const d = r && !r.error && r.data ? r.data : null;
-        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
-      } catch { return { code: null }; }
-    };
     tool("spaces.invites.create", "Make a join link for a role. A temp or member invite can name projects. Owners and admins, unless managers may invite.",
       obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, seats: { type: "array", items: { type: "object" }, description: "Projects the joiner is put on when they accept: [{ project, level: lead | contributor | viewer }], contributor by default" }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
@@ -2089,12 +2065,11 @@ export default {
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
           const link = `https://${row.name}/join/${token}`;
-          // The link to share names no server (vyre.run/i/<token>); the space's own join link rides beside it, and is what the typed code carries.
-          return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
+          return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until };
         }
         if (!ROLE_IDS.includes(i.role) && i.role !== "guest") throw refuse("A custom role can be invited into only on a space with its own server. Invite as Member, then give the role (roles.assign).", "not_kernel");
         const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role === "guest" ? "temp" : i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
-        return { id: r.id, link: i.alias ? r.link : publicInviteLink(r.token), join_link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
+        return { id: r.id, link: i.alias ? r.link : publicInviteLink(r.token), join_link: r.link, token: r.token };
       });
     tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
       const row = spaceOf(i.space);
@@ -2504,6 +2479,8 @@ export default {
       const list = await (await members(row.id, meta)).list().catch(() => []);
       return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
+
+    registerNames({ tool, spaces, identity, K, nameOf, refuse, obj, str });
 
     tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. With no space it answers for this home's own Space once it holds the root key. The kernel reads this on every invite card.", obj({ space: str }), async i => {
       // The daemon asks with no space for this home's own Space: the one the kernel keeps here, once this module holds its root key (until then the card shows none).

@@ -16,9 +16,9 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
-### Members and custom record types
+### Long runs of rows you may not see
 
-A row of a record type your Space defined itself, linked to a project, is readable only by that project's team, as matters, tasks and files are. A row linked to two projects is readable by either team. A row linked to no project is still readable by every member, so link sensitive rows to a project.
+A list or a search of a type whose rows are private by project looks through up to 20 pages of hidden rows before it gives up. If more than that lie between you and the next row you may read, the page comes back empty with no way to continue. Nothing hidden is shown; ask an owner or an admin, or filter the list.
 
 ### A Viewer's AI cannot open the project folder
 
@@ -51,10 +51,9 @@ CSV export is in the web app. A phone does not offer it yet.
 
 ### Members and sign-ins
 
-- A member adds a setup token or API key as their own AI account in their own vault. Only that member's own chats use it; a job, a Flow and an agent never do.
 - A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
 - A member's MCP servers that they sign in to inside a session are not carried to their next session.
-- Removing an app connection removes it here and discards what it was holding at the Gate. The vendor is told to drop the token only when the connection records its revocation address, and the connect flow does not record one yet, so today a removed connection's token is not revoked at the vendor.
+- Removing an app connection removes it here and discards what it was holding at the Gate. The vendor is told to drop the token only when the connection records its revocation address (the sign-in records one on the vendor's own origin). The tests for this have not run on CI yet, so until they do, treat a removed connection's token as not revoked at the vendor and revoke it in the app.
 - The firm Microsoft 365 app lets a member send and invite from their own mailbox, never held. A member's agent's send is held at that member's own Gate. Standing permissions for it are not tested end to end yet.
 
 ### Vyre on a Mac as the server

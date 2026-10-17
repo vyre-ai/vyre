@@ -61,7 +61,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/daemon -> core/wink` | node/peer-wire.js, homemove.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |
-| `core/devices -> core/spaces` | identity.js | devices.signin dials the space server through the same identity store pairing uses | ctx.call |
 | `core/files -> core/link` | transport.js | the legacy folder-as-a-disk path looks up a program the Mac may have (drive.js); it goes with that path | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
@@ -77,7 +76,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
-| `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
 | `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
 | `local/capsule -> core/cli` | commands/capsule-native.js | where the native Lumen app is built, shared with `vyre capsule` | lib |
 | `local/hands-mac -> local/screen-mac` | floor.js | the floor for Vyre's hands and eyes on the Mac (SPEC section 11) | lib |

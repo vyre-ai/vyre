@@ -719,9 +719,10 @@ test("taking a grant away cancels what its holder left waiting at the Gate; taki
   await assert.rejects(hub.remove({ name: key }), e => e.code === "denied" && /only they can remove it/.test(e.message));
   assert.ok(hub.row(key), "someone else cannot remove it");
   mine = true;
-  await hub.remove({ name: key });
+  const removedRes = await hub.remove({ name: key });
   assert.deepEqual(cancelled.sort(), ["h1", "h2", "h3"], "the rest is cancelled with the connection");
   assert.deepEqual(revoked, [{ owner: A, connection: "clio-alice" }], "the vendor is asked to drop the token");
+  assert.deepEqual({ removed: removedRes.removed, revoked: removedRes.revoked }, { removed: key, revoked: true });
   assert.ok(!hub.row(key), "the row is gone");
   assert.ok(events.some(e => e.type === "mcp.held-cancelled"), "and it is on the record");
 });
@@ -740,4 +741,22 @@ test("a vendor that no longer honours the sign-in puts the connection in needs_r
   assert.equal(seen.state, "needs_reconnect");
   assert.ok(events.some(e => e.type === "mcp.needs-reconnect"));
   assert.ok(n >= 1 && n <= 3, "a bounded number of tries, no loop: " + n);
+});
+
+test("removing a person's connection says whether the vendor was told to drop the token, and if not why", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp";
+  const run = async (revokeConnection) => {
+    const { hub } = fakeHub({ mayUseConnection: async () => true, ...(revokeConnection ? { revokeConnection } : {}) });
+    await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+    return hub.remove({ name: personKey("clio", A) });
+  };
+  const key = personKey("clio", A);
+  assert.deepEqual(await run(async () => ({ revoked: true, why: "revoked at the vendor" })), { removed: key, revoked: true, why: "revoked at the vendor" });
+  assert.deepEqual(await run(async () => ({ revoked: false, why: "the vendor named no revocation address, so the token is not revoked there" })), { removed: key, revoked: false, why: "the vendor named no revocation address, so the token is not revoked there" });
+  assert.deepEqual(await run(async () => { throw new Error("down"); }), { removed: key, revoked: false, why: "the vendor could not be told" });
+  assert.deepEqual(await run(null), { removed: key, revoked: false, why: "the hub has no way to tell the vendor" });
+  // an owner's own row (no owner on the row) says nothing of it
+  const { hub } = fakeHub({});
+  await hub.add({ name: "plain", transport: "http", url });
+  assert.deepEqual(await hub.remove({ name: "plain" }), { removed: "plain" });
 });

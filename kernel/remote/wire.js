@@ -17,7 +17,7 @@ export const CALLS = Object.freeze({
   // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
   moves: ["out", "outMany"],
   // the Store calls of a team member's app (list, me, actors, types, events) are the member door's rows (core/work/member-tools.js); get, create and update answer in the gateway's shape and, with the Store's keys, in the Store's
-  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events"],
+  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events", "audit"],
   memory: ["file", "recall", "retire"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou", "list", "move", "submit"],
   events: ["read"],
@@ -33,9 +33,11 @@ export const CALLS = Object.freeze({
   // A member's own chats on the team's server (0.3.3 J9): a SERVICE the home registers (core/work/chat-service.js). The call runs the work module's chat tool in THIS Space, as the member's own chain: their pinned
   // assistant, the chats they are in, starting one. A member never reaches a registry tool; the list of calls is fixed here.
   // A member's own AI sign-in on the team's server (0.3.3 G03; core/sessions/accounts-service.js): a login of theirs, run as its own user, serving only their turns. A key needs a Vault of their own (0.3.4).
-  accounts: ["list", "signin", "remove", "default"],
+  accounts: ["list", "signin", "remove", "default", "add"],
   // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
   skills: ["browse", "list", "get", "draft", "approve", "decline", "rollback", "versions"],
+  // A member's own new-device sign-ins on the team's server (core/identity/signins.js): the card on Now and its two answers; the person is the door's authenticated chain.
+  identity: ["signins", "revoke", "ack"],
   flows: ["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "test-save", "test-remove", "test-list", "test-run", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"],
   // A member starts her own projects on the team's server (0.3.3; core/work/member-projects.js): the installed templates, a blank project, a project from a template.
   work: ["templates", "project-create", "start-project"],

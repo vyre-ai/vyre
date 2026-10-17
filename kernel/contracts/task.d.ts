@@ -56,6 +56,8 @@ export interface Task {
   /** Free text from the doer: shown to the checker only in the separate "from <doer>" block, capped, never as a button or link. */
   readonly note?: string;
   readonly state: TaskState;
+  /** Set when the Flows service withdrew the task at its due time: the task is `skipped` and is never reopened. */
+  readonly withdrawn?: { readonly reason: 'timeout'; readonly at: number };
   readonly stuck?: StuckInfo;
   readonly session?: string;
   readonly outcome?: 'approved' | 'rejected' | 'answered' | 'cancelled' | 'expired';
@@ -67,6 +69,8 @@ export interface Task {
   readonly payload?: { readonly payload_hash: string; readonly decision: string; readonly draft_hash?: string };
   /** Who assigned it: part of the chain a teammate works under, so an assigner cannot borrow a broader teammate. */
   readonly assigned_by: Actor;
+  /** The first person on the verified chain that made the task (null or absent when there was none): set by the kernel, never by the request. An agent that hands a task on keeps the person it began with. */
+  readonly requested_for?: string;
   /** The task this one is a part of (a sub-item). Set when it is made or by `edit`. */
   readonly parent?: Uuid;
   /** The Project record of this Space the task belongs to (a link). Set when it is made or by `edit`; `list` takes `{ project }`. */
@@ -85,6 +89,7 @@ export type TransitionBy =
   | 'doer'
   | 'doer_or_person'
   | 'proposal_for_person_with_presence'
+  | 'flow_deadline'
   | 'responsible_person_or_person_with_presence'
   | 'assistant_or_detection'
   | 'dependencies_met'
@@ -120,6 +125,8 @@ export interface TaskApi {
   unblock(chain: import('./chain.js').Chain, task: Uuid, opts: { readonly reassign_to?: Actor; readonly proof?: import('./chain.js').PresenceProof }): Promise<Task>;
   /** Skip: the doer's own act for an unguarded task; for a guarded one it raises a proposal for a person. */
   skip(chain: import('./chain.js').Chain, task: Uuid, reason: string): Promise<Task | { readonly proposal: Task }>;
+  /** Only the Flows service: end a task whose Flow step's due time passed. It becomes `skipped` with `withdrawn` set, in one write, and nobody can start, hand in or reopen it afterwards. */
+  withdraw(chain: import('./chain.js').Chain, task: Uuid, opts?: { readonly reason?: string }): Promise<Task>;
   /** The Now view: everything waiting on this person. */
   needsYou(chain: import('./chain.js').Chain): Promise<readonly Task[]>;
   /** Did a checker approve exactly this payload? (`seal.use` asks.) */

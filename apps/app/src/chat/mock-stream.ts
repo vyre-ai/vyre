@@ -202,7 +202,7 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   const t0 = f.t;
   const fa = new Clock().at(t0).say("f1a", "The supplier can end the contract on 60 days notice with no cause, so the bakery has no fixed term to rely on. Ask for 24 months with a renewal right.", tps * 1.3, 120, { author: "model:sonnet", message: "f1a" });
   const fb = new Clock().at(t0).say("f1b", "Clause 4 lets the supplier pass on any price increase without a cap. That is the cost that can grow unseen, so ask for a cap tied to the first year.", tps * 1.1, 160, { author: "model:opus", message: "f1b" });
-  const fc = new Clock().at(t0).say("f1c", "The contract has no delivery duty for the supplier. Check the roof and the oven vent before", tps * 1.6, 100, { author: "model:local", message: "f1c" });
+  const fc = new Clock().at(t0).say("f1c", "The contract has no delivery duty for the supplier. Ask for a delivery window and a penalty for", tps * 1.6, 100, { author: "model:local", message: "f1c" });
   fc.push("text-cut", { note: "Stopped at this model's reply limit" }, 0, { message: "f1c" });
   const g = new Clock().at(Math.max(fa.t, fb.t, fc.t) + 100);
   g.push("status", { state: "waiting", turn: "turn-g" }, 0);
@@ -223,7 +223,7 @@ export function modelsScript(o: { tps?: number } = {}): Segment[] {
   const alex = { author: VIEWER };
   const slots = [
     { id: "agent:kit", name: "kit on Claude", provider: "claude", message: "q1a", text: "Clause 4 lets the supplier pass on any price increase without a cap. Ask for a cap tied to the first year." },
-    { id: "model:codex/gpt-5#1", name: "kit on Codex", provider: "codex", message: "q1b", text: "The contract has no delivery duty for the supplier. Check the roof and the oven vent before you sign." },
+    { id: "model:codex/gpt-5#1", name: "kit on Codex", provider: "codex", message: "q1b", text: "The contract has no delivery duty for the supplier. Ask for a delivery window and a penalty for late orders before you sign." },
     { id: "model:grok/grok-4#1", name: "Grok", provider: "grok", message: "q1c", text: "Sixty days notice with no cause is the exposure: the bakery has no fixed term to rely on." },
   ];
   const a = new Clock();

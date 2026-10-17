@@ -13,10 +13,11 @@
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
 /** @typedef {{ action: string, label: string, risk: string, inputs: Record<string, string> }} ActionOpt */
-/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], zone?: string, types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]>, filesOf?: (query: string) => Promise<{ path: string, name: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
+import { dateString, localParts, systemZone, validZone, wallString } from "../../../../lib/time/index.js";
 import { policyDefinition, policyDraft, policyProblem, policyWords, splitPolicy } from "./failure.js";
 import { SPECIAL_BUILDER_ACTIONS } from "./special-builder-actions.js";
 
@@ -95,7 +96,7 @@ const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id
 const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(s[1] ?? "") ? s[0].toLowerCase() + s.slice(1) : s);
 
 /** @param {Options} o */
-export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
+export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(typeof o.zone === "string" ? { zone: o.zone } : {}), ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
@@ -147,7 +148,8 @@ export function stepSummary(s, o, d) {
     case "upsert": return `${s.updateFields ? "Find or create" : "Find, then change or create"} a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
-    case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
+    case "wait": if (s.mode === "on") return s.on ? `Wait until ${showAt(s.on, o.zone)}` : "Wait until a date and time";
+      if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
       return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
     case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
     case "web": return `${s.method === "GET" || !s.method ? "Fetch" : "Send"} ${s.path || "/"} ${s.method === "GET" || !s.method ? "from" : "to"} ${named(o.connections || [], s.connector) || "a web service"}`;
@@ -208,6 +210,7 @@ function kindProblem(s, o) {
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
     case "wait":
+      if (s.mode === "on") return s.on && Number.isFinite(Date.parse(s.on)) ? null : "Pick the date and time to wait for.";
       if (s.mode === "until") return !/^\{[a-z0-9_.]+\}$/i.test((s.field || "").trim()) ? "Pick the date to wait for." : s.when !== "at" && !(Number(s.amount) > 0) ? "Say how long before or after." : null;
       return Number(s.amount) > 0 ? null : "Say how long to wait.";
     case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
@@ -317,7 +320,9 @@ export function eventChoices(o, current) {
 }
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
-const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
+const tokenExpr = (t) => (/^(steps|event|row|item|error|trigger)\./.test(t) ? t : `trigger.${t}`);
+/** A trigger field whose path is also a helper ({me.name}, {now}) stays reachable by its full path: the helper wins the short name, `{trigger.me.name}` is the field. */
+const viaTrigger = (/** @type {string} */ path) => (Object.hasOwn(HELPERS, path) ? `trigger.${path}` : path);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
@@ -331,7 +336,11 @@ const unesc = (/** @type {string} */ s) => s.replace(new RegExp(`\\{\\{(${INNER}
 const esc = (/** @type {string} */ s) => s.replace(new RegExp(`(?<!\\{)\\{(${INNER})\\}(?!\\})`, "gi"), "{{$1}}");
 const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}(?!\})/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
-const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
+const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)",
+  // what a run knows about itself (kernel/flows/runner.js scope `run`): its number among the Flow's, the Flow's name, who approved it, the Space's name, and the person who started it ("your name")
+  "run.number": "text(run.number)", "flow.name": "text(run.flow_name)", "approver.name": "text(run.approver_name)", "space.name": "text(run.space_name)", "me.name": "text(run.starter_name)" });
+/** The expression path each run helper reads, to the token it was written as. */
+const PATH_TOKEN = /** @type {Record<string, string>} */ ({ "run.number": "run.number", "run.flow_name": "flow.name", "run.approver_name": "approver.name", "run.space_name": "space.name", "run.starter_name": "me.name" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
 let DATE_TOKENS = new Map();
 /**
@@ -351,6 +360,14 @@ const partExpr = (t, sign, n, unit, fmt) => {
   const f = (fmt || "").toLowerCase() || (dateOnly || t === "today" ? "weekday" : "weekdaytime");
   return `format(${base}, "${f}", ${dateOnly ? '"UTC"' : "tz"}${sign ? `, ${sign === "-" ? "-" : ""}${Number(n)}, "${String(unit).toLowerCase()}"` : ""})`;
 };
+/** The files an email carries, from the box's text (paths of Files, or values from earlier steps, apart by commas or lines), as the call's `attachments`. @param {string} t */
+export const valAtt = (t) => attList(t).map((x) => ({ path: val(x) }));
+/** The files of an email step as a list (paths, or {tokens}), from the text the step keeps. @param {string} t @returns {string[]} */
+export const attList = (t) => String(t ?? "").split(/[\n,]/).map((x) => x.trim()).filter(Boolean).slice(0, 10);
+/** The step's text for a list of files. @param {string[]} l */
+export const attText = (l) => l.join(", ");
+/** The box's text for a saved `attachments` list, or null when it is not a plain list of paths. @param {any} v */
+const unvalAtt = (v) => { if (!Array.isArray(v) || !v.length) return null; const out = []; for (const a of v) { if (!a || typeof a !== "object" || Object.keys(a).some((k) => k !== "path")) return null; const p = unval(a.path); if (p === null) return null; out.push(p); } return out.join(", "); };
 /** An address or number for a send step: a whole {token} of an emails or phones field is its main address (the engine's `first`), anything else is a value as `val` has it. @param {string} t */
 export const valAddr = (t) => {
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim());
@@ -380,7 +397,7 @@ const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, 
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
-const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
+const refToken = (n) => (PATH_TOKEN[n] ? PATH_TOKEN[n] : n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? viaTrigger(n.slice(8)) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
@@ -404,9 +421,9 @@ function templateText(e) {
   return out;
 }
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
-const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -528,6 +545,9 @@ const doer = (who) => (who.startsWith("agent:") ? `teammate:${who.slice(6)}` : w
 /** How many a For each goes through: what the author set, 50 by default, at most 1000 (the engine's own limit). @param {any} v */
 export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 1 ? Math.min(n, 1000) : 50; };
 
+/** The kind ("date" or "datetime") of a field a Create or Update step sets, when the object says so, else null. The field is named as typed: it is matched by the name the engine stores it under. @param {Options} o @param {string | undefined} type @param {string | undefined} field */
+export const dateKindOf = (o, type, field) => { if (!(field || "").trim()) return null; const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.name === slug(field || "")); return f && (f.kind === "date" || f.kind === "datetime") ? f.kind : null; };
+
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
   if (s.kind === "advanced") return s.raw;
@@ -548,6 +568,7 @@ function kindDefinition(s, d) {
     case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
     case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
     case "wait":
+      if (s.mode === "on") return { id: s.id, kind: "wait", until: s.on };   // a moment picked by hand: an ISO instant, read in the zone the person picked it in
       if (s.mode === "until") { const ms = Math.round(Number(s.amount || 0) * (UNITS[s.unit || "hours"] || 3_600_000)); return { id: s.id, kind: "wait", until: val(s.field || ""), ...(s.when === "at" || !ms ? {} : { offset_ms: s.when === "after" ? ms : -ms }) }; }
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
     case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(driveOf(s) ? { drive: driveOf(s) } : {}), ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
@@ -567,8 +588,8 @@ function kindDefinition(s, d) {
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: outputOf(s), record: rec(s.record), await: s.await === false ? false : true, ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(label ? { label } : {}), ...peopleOf(s) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: outputOf(s), ...(s.record ? { record: rec(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(skillsOf(s) ? { skills: skillsOf(s) } : {}), ...(HOWS.some((x) => x[0] === s.how) ? { how: s.how } : {}), ...(HOWS.some((x) => x[0] === s.how) && typeof s.template === "string" && s.template.trim() ? { template: s.template } : {}), ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
-      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
-      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
+      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), ...(s.cc && s.cc.trim() ? { cc: valAddr(s.cc) } : {}), ...(s.bcc && s.bcc.trim() ? { bcc: valAddr(s.bcc) } : {}), ...(s.attachments && s.attachments.trim() ? { attachments: valAtt(s.attachments) } : {}), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
+      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), ...(s.cc && s.cc.trim() ? { cc: valAddr(s.cc) } : {}), ...(s.bcc && s.bcc.trim() ? { bcc: valAddr(s.bcc) } : {}), ...(s.attachments && s.attachments.trim() ? { attachments: valAtt(s.attachments) } : {}), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title), ...(s.record ? { record: rec(s.record) } : {}), ...(formOf(s.form) ? { form: formOf(s.form) } : {}) };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || ""), ...Object.fromEntries((s.more || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) } };
     default: throw new Error(`no step kind ${s.kind}`);
@@ -587,7 +608,9 @@ function tokenWords(f, d, o, none = "a date") {
 }
 /** What a Wait until can wait for: the values before this step, each named plainly, as [token, label]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
 export const dateChoices = (d, stepId, o) => valueSources(d, stepId, o).filter(([tok]) => tok !== "{now}" && tok !== "{today}").map(([tok, words]) => /** @type {[string, string]} */ ([tok, words.replace(/ of the record that started it$/, "").replace(/ from the form$/, "")]));
-export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"]]);
+export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"], ["on", "Until a date and time I pick"]]);
+/** A picked moment in words, in the Space's zone when the options name one, else the viewer's. @param {string} iso @param {string} [zone] */
+const showAt = (iso, zone) => { const ms = Date.parse(iso); if (!Number.isFinite(ms)) return "a date and time"; const z = zone && validZone(zone) ? zone : systemZone(); const p = localParts(ms, z); return `${dateString(p)} at ${wallString(p)}`; };
 export const WHEN_CHOICES = /** @type {[string, string][]} */ ([["before", "before"], ["after", "after"], ["at", "at that time"]]);
 export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);
 /** A formula is a Code step that returns one value: the engine evaluates the expression (its own language, kernel/flows/expr.js) before the code runs. `FORMULA_HASH` is the hash of this source, checked by a test. */
@@ -832,6 +855,7 @@ function stepFromKind(s) {
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
     case "wait": {
+      if (typeof s.until === "string" && /^\d{4}-\d{2}-\d{2}T/.test(s.until) && Number.isFinite(Date.parse(s.until)) && keys(s, ["id", "kind", "until", "label"])) return { id: s.id, kind: "wait", mode: "on", on: s.until };
       if (s.until !== undefined) {
         const off = s.offset_ms === undefined ? 0 : s.offset_ms, f = unval(s.until);
         const u = Object.entries(UNITS).reverse().find(([, ms]) => off % ms === 0);
@@ -875,8 +899,8 @@ function stepFromKind(s) {
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
       if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unvalAddr(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unvalAddr(i.to), body: unval(i.body) };
-      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
-      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
+      if (s.action === "comms.email" && keys(i, ["to", "cc", "bcc", "attachments", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && (i.attachments === undefined || unvalAtt(i.attachments) !== null) && (i.cc === undefined || unvalAddr(i.cc) !== null) && (i.bcc === undefined || unvalAddr(i.bcc) !== null) && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), ...(i.attachments === undefined ? {} : { attachments: unvalAtt(i.attachments) }), ...(i.cc === undefined ? {} : { cc: unvalAddr(i.cc) }), ...(i.bcc === undefined ? {} : { bcc: unvalAddr(i.bcc) }), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
+      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "cc", "bcc", "attachments", "subject", "body"]) && unvalAddr(i.to) !== null && (i.attachments === undefined || unvalAtt(i.attachments) !== null) && (i.cc === undefined || unvalAddr(i.cc) !== null) && (i.bcc === undefined || unvalAddr(i.bcc) !== null) && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), ...(i.attachments === undefined ? {} : { attachments: unvalAtt(i.attachments) }), ...(i.cc === undefined ? {} : { cc: unvalAddr(i.cc) }), ...(i.bcc === undefined ? {} : { bcc: unvalAddr(i.bcc) }), subject: unval(i.subject || ""), body: unval(i.body) };
       if (!SPECIAL_ACTIONS.has(s.action) && keys(s, ["id", "kind", "action", "resource", "input", "label"]) && typeof s.action === "string" && ACTION_WORDS.test(s.action) && typeof s.resource === "string" && RESOURCE_WORDS.test(s.resource) && Object.values(i).every((v) => unval(v) !== null)) return { id: s.id, kind: "action", action: s.action, resource: s.resource, fields: rowsOf(i) };
       return adv;
     }
@@ -982,7 +1006,7 @@ export function valueSources(d, stepId, o) {
     if (s.kind === "document") out.push([`{steps.${s.id}.path}`, `Where the document made by ${s.id} is filed`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
-  out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);
+  out.push(["{now}", "The date and time now"], ["{today}", "Today's date"], ["{run.number}", "This run's number"], ["{flow.name}", "The Flow's name"], ["{approver.name}", "The name of who approved the Flow"], ["{space.name}", "The Space's name"], ["{me.name}", "Your name, the person who started the run"]);
   return out;
 }
 

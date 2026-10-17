@@ -41,6 +41,9 @@ ALTER TABLE sessions_accounts ADD COLUMN model TEXT`;
 /** Whose account it is: a person's id (a member's own sign-in, served only to that person's turns), or NULL for the home's own accounts (the owner's, from before accounts had a person). Added by checking for the column, like privacy. */
 export const ACCOUNTS_PERSON_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN person TEXT`;
 
+/** 1 when a member's key or setup token lives in THEIR OWN vault (vault.me.*) and is lent for their own turn; 0 for a row from before members could add one, whose item is in the home's vault. */
+export const ACCOUNTS_OWN_VAULT_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN own_vault INTEGER NOT NULL DEFAULT 0`;
+
 /**
  * An endpoint a key may be sent to: https, or plain http to this machine only; no login in the address, no query or fragment, nothing that names the cloud's
  * metadata service. Returns the address without a trailing slash, or throws bad_input saying why.
@@ -106,7 +109,7 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), person: r.person == null ? null : String(r.person), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), person: r.person == null ? null : String(r.person), own_vault: Boolean(r.own_vault), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
   }
 
   /**
@@ -187,9 +190,9 @@ export class Accounts {
     const person = i.person == null || i.person === "" ? null : String(i.person);
     const first = !this.db.prepare("SELECT 1 FROM sessions_accounts WHERE provider = ? AND person IS ?").get(provider, person);
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ? AND person IS ?").run(provider, person);
-    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model, person)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
-      i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100), person);
+    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model, person, own_vault)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
+      i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100), person, person && kind !== "login" && i.own_vault === true ? 1 : 0);
     return this.row(id);
   }
 
@@ -240,14 +243,15 @@ export class Accounts {
    * account out of scope is a refusal, never a fallback to a different one (reviewer-2's finding:
    * the assistant, or anything a prompt injection shapes, must not be able to reach another
    * project's account just by naming it).
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} i `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null, job?: boolean }} i `job`: an agent's unattended job (a member's own key or token is never chosen for it). `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
    * @returns {any} the resolved account (never synthetic-only unless nothing else exists), or null
    *   when the provider has no accounts configured at all (today's single-credential behavior).
    */
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    const listed = this.list(provider, i.person);
+    // an agent's job runs on the agent's own access, never on a member's own key or token: those are for that member's own turns
+    const listed = this.list(provider, i.job === true ? undefined : i.person).filter(a => !(i.job === true && a.person && a.kind !== "login"));
     // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
     const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);

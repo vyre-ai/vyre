@@ -21,7 +21,9 @@ export default function NewChatScreen() {
   const router = useRouter();
   const st = useStore();
   // "Chat about this": a record or project opens a new chat with its urn and name; the chat is linked to it, and the first words name it so the assistant can read it
-  const { about, name, project: projectParam } = useLocalSearchParams<{ about?: string; name?: string; project?: string }>();
+  const { about, name, project: projectParam, group } = useLocalSearchParams<{ about?: string; name?: string; project?: string; group?: string }>();
+  // "New group chat" is this page asking for two or more
+  const wantGroup = group === "1";
   // New chat from a project: the chat is made in it, and its own team is listed first (removable)
   const [project, setProject] = useState(typeof projectParam === "string" ? projectParam : "");
   const [projectName, setProjectName] = useState("");
@@ -89,7 +91,7 @@ export default function NewChatScreen() {
   const several = picked.length > 1;
   const onlyPeople = picked.length > 0 && picked.every((k) => k.startsWith("p:"));
   return (
-    <Page title="New chat" sub="Who do you want to talk to?" back="/u/chats">
+    <Page title={wantGroup ? "New group chat" : "New chat"} sub={wantGroup ? "Pick two or more. Everyone you pick joins the chat." : "Who do you want to talk to?"} back="/u/chats">
       {loadErr ? <Card><EmptyState title="Your Vyre did not answer" body={loadErr} action={{ label: "Back to Chat", onPress: () => router.replace("/u/chats" as never) }} /></Card>
         : agents === null ? <LoadingState rows={3} />
         : (
@@ -106,7 +108,7 @@ export default function NewChatScreen() {
             {aboutUrn ? <Banner tone="plain"><Text>{`This chat is about ${typeof name === "string" && name ? name : "that record"}. It stays private to the people in it until you share it on the timeline.`}</Text></Banner> : null}
             <Field label="First message (optional)" value={text} onChangeText={setText} placeholder="What do you want to work on?" multiline />
             {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
-            <View className="flex-row"><Button kind="primary" label={busy ? "Starting" : several ? "Start group chat" : "Start chat"} disabled={!picked.length || busy} onPress={() => void start()} /></View>
+            <View className="flex-row"><Button kind="primary" label={busy ? "Starting" : several ? "Start group chat" : "Start chat"} disabled={picked.length < (wantGroup ? 2 : 1) || busy} onPress={() => void start()} /></View>
           </View>
         )}
     </Page>

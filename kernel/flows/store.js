@@ -46,6 +46,7 @@ export class MemoryFlowStore {
     /** @type {Map<string, Run>} */ this.runs = new Map();
     /** @type {Map<string, number>} flow id -> when its schedule last ran (so a restart catches up once instead of forgetting) */ this.schedules = new Map();
     /** @type {any} */ this.control = null;
+    /** @type {Map<string, number>} */ this.seq = new Map();
     /** @type {Map<string, any[]>} saved test cases by flow id */ this.tests = new Map();
   }
 
@@ -126,6 +127,8 @@ export class MemoryFlowStore {
   }
   /** The Space-wide switch (pause all, drain): null when nothing was ever set. @returns {Promise<any>} */
   async getControl() { return this.control ? structuredClone(this.control) : null; }
+  /** The Flow's next run number: a counter that only grows, whatever happens to its runs. @param {string} flow */
+  async nextRunNumber(flow) { const n = (this.seq.get(flow) || 0) + 1; this.seq.set(flow, n); return n; }
   /** @param {any} c */
   async putControl(c) { this.control = structuredClone(c); }
   /** @param {string} id */
@@ -273,6 +276,31 @@ export class RecordsFlowStore {
   }
   /** The Space-wide switch (pause all, drain): null when nothing was ever set. */
   async getControl() { const r = (await this.#find("flow-control", "key", "space"))[0]; return r ? JSON.parse(r.data.body) : null; }
+
+  /**
+   * The Flow's next run number: a counter that only grows, kept with the Flow's other state as a flow-control row (`seq:<flow>`, the number in `since`), so pruning old runs never takes a number back. One
+   * caller at a time per Flow in this process; a second writer elsewhere is caught by the row's version and tries again.
+   * @param {string} flow @returns {Promise<number>}
+   */
+  async nextRunNumber(flow) {
+    const key = `seq:${flow}`;
+    const prev = this.#seqLock.get(flow) || Promise.resolve();
+    const run = prev.then(async () => {
+      for (let tries = 0; tries < 8; tries++) {
+        const r = (await this.#find("flow-control", "key", key))[0];
+        try {
+          if (r) { const n = Number(r.data.since) + 1; await this.k.records.update(this.chain, "flow-control", r.id, { key, mode: "seq", since: n, body: "" }, r.version); return n; }
+          await this.k.records.create(this.chain, "flow-control", { key, mode: "seq", since: 1, body: "" });
+          return 1;
+        } catch (e) { if (!e || /** @type {any} */ (e).code !== "version_conflict") throw e; }
+      }
+      throw Object.assign(new Error("the run number could not be taken"), { code: "unavailable" });
+    });
+    const tail = run.catch(() => {});
+    this.#seqLock.set(flow, tail);
+    try { return await run; } finally { if (this.#seqLock.get(flow) === tail) this.#seqLock.delete(flow); }
+  }
+  /** @type {Map<string, Promise<void>>} */ #seqLock = new Map();
   /** @param {any} c */
   async putControl(c) {
     const r = (await this.#find("flow-control", "key", "space"))[0];

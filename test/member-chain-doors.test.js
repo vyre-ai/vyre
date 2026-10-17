@@ -59,7 +59,7 @@ test("(h) a limited member device is refused the device-admin tools but still us
   const { facts, call } = await rig(t, { limited: true });
   const f = facts(MEMBER);
   assert.equal(f?.limited, true, "the live limit rides in her facts");
-  for (const tool of ["relay.devices.mark", "presence.enroll", "wink.phone.open", "spaces.devices.set"]) {
+  for (const tool of ["relay.devices.mark", "presence.enroll", "wink.pair.server", "spaces.devices.set"]) {
     assert.ok(DEVICE_ADMIN.has(tool), `${tool} is a device-admin tool`);
     const r = await call(tool, {}, f);
     assert.ok(r.error && r.error.code === "denied", `${tool}: refused`);

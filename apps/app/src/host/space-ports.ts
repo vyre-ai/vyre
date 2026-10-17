@@ -7,12 +7,16 @@ import { serverSession, type PairIdentity } from "../real/pairing";
 
 export async function spacePorts(): Promise<SpacePorts> {
   const client = await import("@vyre/relay-client/setup.js");
+  const { mintPairCode } = await import("@vyre/relay-client/pair-install.js");
   const { openChannel, request } = await import("@vyre/relay-client/client.js");
   const { webCrypto } = await import("@vyre/relay-client/webcrypto.js");
   const { connectSetup } = await import("@vyre/relay-client/setupchannel.js");
   const { utf8 } = await import("@vyre/relay-client/bytes.js");
   return {
     client,
+    mintPairCode,
+    createSetupKey: client.createSetupKey,
+    setupFingerprint: client.setupFingerprint,
     relay: relayUrl(),
     connect: ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 } as never, { offer, key, secret }),
     // The person pressed Create space, which is the yes to pairing the server that answers their own line, so this pairs beside any server the page already reaches.

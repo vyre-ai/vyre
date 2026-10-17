@@ -29,9 +29,9 @@ export default function FlowChatScreen() {
   const target = chat ? replyTarget(chat, aim) : null;
   const send = (text: string) => {
     if (!chat || !target || !text.trim()) return;
-    const thread = target.thread ?? chat.sections[chat.sections.length - 1]?.thread;
-    if (!thread) return;
-    call("threads.post", { thread, text: text.trim() }).then((r) => { if (r.error) showToast(`Not sent. ${r.error.message}`); }).catch((e) => showToast(`Not sent. ${e instanceof Error ? e.message : "The server did not answer."}`));
+    // A person's words wake the Flow's agent for them, as them, with the Flow and its recent runs as context; "Reply to this run" narrows it to that run.
+    if (!chat.agent) { showToast("Not sent. This chat has no agent to ask yet."); return; }
+    call("agents.flow-say", { agent: chat.agent, flow: chat.id, text: text.trim(), ...(aim ? { run: aim.run } : {}) }).then((r) => { if (r.error) showToast(`Not sent. ${r.error.message}`); }).catch((e) => showToast(`Not sent. ${e instanceof Error ? e.message : "The server did not answer."}`));
   };
   return (
     <Page title={chat?.title ?? "Flow chat"} back="/u/chats">

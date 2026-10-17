@@ -219,3 +219,10 @@ test("no internal words: a participant whose only name is an id shows as Someone
   assert.ok(lines.some((t) => /Someone set replies/.test(t)));
   for (const t of lines) assert.doesNotMatch(t, /per[_ ][a-z2-7]{12,}|tfbsa6hid/i, "an id never reaches a person");
 });
+
+test("a model that joined with a name is labelled by that name, as the join line says it", () => {
+  const g = createGroup({ viewer: V });
+  g.apply(fr("participant-joined", { who: "model:codex/gpt-5#1", name: "kit on Codex" }));
+  g.apply(fr("text-delta", { message: "q1", text: "hi" }, { author: "model:codex/gpt-5#1", message: "q1" }));
+  assert.equal(g.label("a:q1").name, "kit on Codex");
+});

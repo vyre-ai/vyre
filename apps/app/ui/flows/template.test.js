@@ -25,6 +25,8 @@ test("typing a brace opens the suggestions and finishing one completes the token
   assert.equal(appendToken("", "{x}"), "{x}");
 });
 
+const HELPER_TOKENS = ["{today}", "{now}", "{run.number}", "{flow.name}", "{approver.name}", "{space.name}", "{me.name}"];
+
 test("the insert list holds the form, earlier steps and the helper values", () => {
   const d = draft([{ id: "find1", kind: "find", type: "client" }, { id: "calc", kind: "formula", formula: "1" }, email]);
   const g = insertList(d, "mail", O);
@@ -33,15 +35,15 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
   const help = g[g.length - 1];
-  assert.deepEqual(help.items.map((i) => i.token), ["{today}", "{now}"]);
-  assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false && i.note === "Not available yet"));
+  assert.deepEqual(help.items.map((i) => i.token), HELPER_TOKENS);
+  assert.deepEqual(help.soon, [], "the engine reads every helper, so none waits");
 });
 
 test("only steps before this one are offered, and the engine can declare helpers", () => {
   const d = draft([email, { id: "later", kind: "formula", formula: "1" }]);
   assert.equal(insertList(d, "mail", O).some((g) => g.title === "Earlier steps"), false);
   const g = insertList(d, "mail", O, { engineHas: ["{run.number}"] });
-  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), ["{today}", "{now}", "{run.number}"]);
+  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), HELPER_TOKENS);
 });
 
 test("a record trigger lists its object's fields, and a sealed one carries a lock note", () => {
@@ -56,7 +58,7 @@ test("a record trigger lists its object's fields, and a sealed one carries a loc
 
 test("unknown tokens are flagged and the preview fills samples", () => {
   const g = insertList(draft([email]), "mail", O);
-  assert.deepEqual(unknownTokens("Hi {name} {bogus.x} {run.number}", g), ["{bogus.x}", "{run.number}"]);
+  assert.deepEqual(unknownTokens("Hi {name} {bogus.x} {run.number}", g), ["{bogus.x}"]);
   assert.equal(tokenLabel("name", g), "Name");
   assert.equal(renderPreview("Hi {name}, {email}", { name: "Ana" }, g), "Hi Ana, [Email]");
   assert.equal(suggest(g, "mes")[0].token, "{message}");
@@ -126,12 +128,12 @@ test("insert a date reads back in words, formats by the field's type, and an off
   assert.match(datePending({ ...d, dir: "at", kind: undefined }), /not a date type/);
 });
 
-test("today and now are helpers the engine reads; the rest wait", () => {
+test("the helper values are all ones the engine reads", () => {
   const g = insertList(draft([email]), "mail", O);
   const help = g[g.length - 1];
-  assert.deepEqual(help.items.map((i) => i.token), ["{today}", "{now}"]);
-  assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false));
-  assert.deepEqual(unknownTokens("{today} {now} {run.number}", g), ["{run.number}"]);
+  assert.deepEqual(help.items.map((i) => i.token), HELPER_TOKENS);
+  assert.deepEqual(help.soon, []);
+  assert.deepEqual(unknownTokens("{today} {now} {run.number} {nope}", g), ["{nope}"]);
 });
 
 test("link fields nest the target object's fields, up to three links", () => {

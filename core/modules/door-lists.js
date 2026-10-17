@@ -10,6 +10,8 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A person's own sign-ins on a new device (core/identity/signins.js): every person sees, vouches for and signs out their own, for the person the kernel chain says the call is, never an input.
+  "identity.signin.ack", "identity.signin.revoke", "identity.signins.pending",
   // A member's own held items (what their agent asked to send from their mailbox): the handler shows and answers only the items they asked for, never the owner's or another member's (core/gate/requester.js).
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.revise",
   // A member's own provisioned Microsoft account (the app and the address): the handler gives a member only theirs and the owner the firm app.
@@ -23,7 +25,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
-  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.shared.list", "vault.me.shared.request", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
   "mcp.repin",
   "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
@@ -31,9 +33,9 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
-  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
+  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
-  "flows.actions", "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
+  "flows.actions", "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.runs", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
   "memory.answer", "memory.ask", "memory.brief", "memory.card", "memory.context", "memory.decisions", "memory.facts", "memory.graph", "memory.prompt", "memory.relevant",
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
@@ -43,8 +45,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
-  "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.computer.add", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
-  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
+  "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
+  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", 
   "onboard.setup", "onboard.skip", "onboard.status", "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll", "onboard.windows", "onboard.you",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
   "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
@@ -52,7 +54,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "projects.list",
   "providers.list",
   "recall.search",
-  "records.actors", "records.create", "records.events", "records.forget.propose", "records.get", "records.holders", "records.kits.get", "records.kits.library",
+  "records.actors", "records.audit", "records.create", "records.events", "records.forget.propose", "records.get", "records.holders", "records.kits.get", "records.kits.library",
   "releases.info",
   "records.linked", "records.list", "records.me", "records.reference", "records.roles", "records.seal-put", "records.types", "records.update",
   "roles.catalogue", "roles.get", "roles.list", "roles.tools",
@@ -60,7 +62,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "runner.move",
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
   "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.list",
-  "spaces.list", "spaces.members.list", "spaces.pair.install",
+  "spaces.groups.list", "spaces.list", "spaces.members.list", "spaces.pair.install",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
   "stream.send", "stream.typing",
   "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
@@ -71,7 +73,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "threads.watch",
   "views.list",
   "wink.install.complete", "wink.install.issue", "wink.install.status",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
+  "wink.server.adopt", "wink.server.pair.answer",
   "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
   "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
@@ -115,7 +117,6 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "context.now", "context.report",
   "design.catalogue", "design.css", "design.css.propose", "design.css.status", "design.css.verify", "design.decide", "design.proposals", "design.propose",
   "design.screen.remove", "design.screens", "design.validate",
-  "devices.signin",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
   "documents.signing.remind", "documents.signing.waiting", "documents.template.add",
@@ -127,8 +128,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
   "files.linked.mentions.resolve",
-  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
-  "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
+  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.budget.set", "flows.kit.remove", "flows.pause", "flows.resume",
+  "flows.rollback", "flows.run", "flows.settle", "flows.test.remove",
   "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
@@ -186,8 +187,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "recall.setup", "recall.status", "recall.thread", "recall.transcript", "recall.turn", "recall.unwatch", "recall.watch",
   "records.define", "records.dev-seed", "records.forget", "records.reveal", "records.sees-as",
   "relay.devices.ask-trust", "relay.devices.list", "relay.devices.mark", "relay.devices.path", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust",
-  "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", "relay.pair.window.close", "relay.pair.window.confirm",
-  "relay.pair.window.open", "relay.pair.window.ping", "relay.pair.window.reject", "relay.pair.window.renew", "relay.setup.status", "relay.status", "relay.web.pin",
+  "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", 
+  "relay.setup.status", "relay.status", "relay.web.pin",
   "relay.web.release",
   "releases.cert", "releases.sign",
   "rules.accept", "rules.define", "rules.disable", "rules.dismiss", "rules.enable", "rules.propose", "rules.remove",
@@ -210,9 +211,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "spaces.identity.entries", "spaces.identity.entry.add", "spaces.identity.entry.remove", "spaces.identity.recover.approve", "spaces.identity.recover.begin",
   "spaces.identity.recover.code", "spaces.identity.recover.finish", "spaces.identity.republish", "spaces.identity.resolve", "spaces.identity.status",
   "spaces.identity.sync", "spaces.invites.accept", "spaces.invites.confirm", "spaces.invites.create", "spaces.invites.list", "spaces.invites.preview",
-  "spaces.invites.redeem", "spaces.invites.revoke", "spaces.members.add", "spaces.members.add-agent", "spaces.members.computers", "spaces.members.extend",
+  "spaces.groups.remove", "spaces.groups.set", "spaces.invites.redeem", "spaces.invites.revoke", "spaces.members.add", "spaces.members.add-agent", "spaces.members.computers", "spaces.members.extend",
   "spaces.members.remove", "spaces.members.set-role", "spaces.members.transfer", "spaces.move.plan", "spaces.moves.evidence", "spaces.moves.finish", "spaces.moves.receipt",
-  "spaces.moves.receive", "spaces.name-here", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
+  "spaces.moves.receive", "spaces.name-here", "spaces.publish-server-space", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
   "spaces.records.status", "spaces.resume", "spaces.retire-here", "spaces.roles.names", "spaces.server.install", "spaces.servers", "spaces.setup.claim",
   "spaces.setup.save", "spaces.status", "spaces.storage.delete", "spaces.storage.get", "spaces.storage.list", "spaces.storage.put", "spaces.storage.put-if",
   "spaces.storage.set-cap", "spaces.storage.usage", "spaces.time-zone.set", "spaces.upgrade.plan", "spaces.upgrade.receipt", "spaces.upgrade.run",
@@ -240,9 +241,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "waiting.count", "waiting.list",
   "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
   "watchers.run", "watchers.test",
-  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.code.status", "wink.decline", "wink.device.key",
-  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open", "wink.phone.scan",
-  "wink.relay.apply", "wink.remove", "wink.server.code", "wink.server.confirm", "wink.server.pairing", "wink.server.probe", "wink.server.release",
+  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.decline", "wink.device.key",
+  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", 
+  "wink.relay.apply", "wink.remove", "wink.server.code", "wink.server.pairing", "wink.server.probe", "wink.server.release",
   "wink.server.reset.begin", "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge",
   "wink.storage.bridge.accept", "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick",
   "wink.storage.remove", "wink.storage.status",
@@ -254,7 +255,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
 export const SELF_GATED = Object.freeze(new Set([
-  "vault.access.get", "vault.access.set", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
+  "vault.access.get", "vault.access.set", "vault.named.access.get", "vault.named.access.set", "vault.named.create", "vault.named.list", "vault.named.move", "vault.named.remove", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
   "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",
@@ -300,8 +301,6 @@ export const MEMBER_OUTWARD = Object.freeze({
   "onboard.space.open": "the person's yes: opening her Space is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.space.current": "the person's yes: naming which Space she is in is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.member.link": "the person's yes: linking her member identity is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.computer.add": "the person's yes: adding a computer is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.phone.add": "the person's yes: adding her phone is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.windows": "the person's yes: finishing Windows setup is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "identity.vault.install": "the person's yes: installing her vault on this device is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "spaces.pair.install": "the owner's yes: pairing a server install is the owner's Space act; an assistant's request lands as a held card in the owner's approvals, her own call from her device needs only her when she is the owner.",
@@ -351,7 +350,7 @@ export const GROUP_OF = Object.freeze(new Map(Object.entries(TOOL_GROUPS).flatMa
  */
 export const GUEST_MAY = Object.freeze(new Set([
   "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
+  "wink.server.adopt", "wink.server.pair.answer",
   "records.get", "records.list", "records.me", "records.types",
   "roles.tools",
   "spaces.list",

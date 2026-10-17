@@ -32,7 +32,7 @@ async function rig(o = {}) {
   const events = /** @type {any[]} */ ([]);
   const idKey = identityKey();
   const svc = createLoginService({
-    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); } }, now: () => clock.t,
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); }, keys: () => [...store.keys()] }, now: () => clock.t,
     verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex" || u === "blair",
     onNewDevice: e => events.push(e), ...o,
   });
@@ -240,4 +240,74 @@ test("a person can list their live sign-ins and sign one device out; the device 
   const before = r.events.length;
   await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" }, "203.0.113.82");
   assert.equal(r.events.length, before + 1, "the signed-out device is new again and rings the others");
+});
+
+test("by person: a person lists and signs out only the devices of their own usernames, whatever name a caller gives", async () => {
+  const r = await rig();
+  const go = async (/** @type {any} */ device) => {
+    const b = r.svc.begin({ username: "alex" }, "203.0.113.90");
+    const d = deriveLogin(PASSWORD, b.salt, TEST_KDF);
+    return r.svc.finish({ username: "alex", challenge: b.challenge, sig: d.sign(loginMessage(SPACE, "alex", b.challenge)), device }, "203.0.113.90");
+  };
+  await go({ id: "browser-aaaaaaaa", label: "Aina's laptop" });
+  r.clock.t += 1000;
+  await go({ id: "browser-bbbbbbbb", label: "A phone" });
+  assert.deepEqual(r.svc.sessionsOfPerson(PERSON).map(x => x.device), ["browser-bbbbbbbb", "browser-aaaaaaaa"], "newest first, for the person the record names");
+  assert.deepEqual(r.svc.sessionsOfPerson("per_" + "b".repeat(26)), [], "another person sees none of them");
+  assert.equal(r.svc.revokeDeviceOfPerson("per_" + "b".repeat(26), "browser-aaaaaaaa").revoked, false, "another person cannot sign them out");
+  assert.equal(r.svc.sessionsOfPerson(PERSON).length, 2);
+  assert.deepEqual(r.svc.revokeDeviceOfPerson(PERSON, "browser-aaaaaaaa"), { revoked: true, ended: 1 });
+  assert.deepEqual(r.svc.sessionsOfPerson(PERSON).map(x => x.device), ["browser-bbbbbbbb"]);
+  assert.equal(JSON.stringify(r.svc.sessionsOfPerson(PERSON)).includes("session"), false);
+});
+
+test("a person's usernames are found from the records, so each person sees and signs out their own devices", async () => {
+  const r = await rig();
+  assert.deepEqual(r.svc.usernamesOf(PERSON), ["alex"]);
+  assert.deepEqual(r.svc.usernamesOf("per_" + "b".repeat(26)), [], "another person has none here");
+  const noKeys = createLoginService({ space: SPACE, store: { get: () => undefined, set() {} } });
+  assert.deepEqual(noKeys.usernamesOf(PERSON), [], "a store that cannot list answers nothing, never a guess");
+});
+
+test("the master password and the key made from it never appear in anything sent to the server or kept by it: register, begin, finish, the session and the stored records", async () => {
+  const clock = { t: 1_800_000_000_000 };
+  const store = new Map();
+  const idKey = identityKey();
+  const svc = createLoginService({
+    space: SPACE, relayPub: relayKey.pub, store: { get: k => store.get(k), set: (k, v) => { store.set(k, v); }, keys: () => [...store.keys()] }, now: () => clock.t,
+    verifyIdentity: async (person, pub) => person === PERSON && pub === idKey.pub, isMember: async u => u === "alex",
+  });
+  const rk = crypto.randomBytes(32);
+  // the request a device really sends to register, built by the production helper
+  const reg = await buildRegistration({
+    space: SPACE, username: "alex", person: PERSON, password: PASSWORD, kdf: TEST_KDF, identity: idKey, now: () => clock.t,
+    makeBundle: K => ({ v: 1, username: "alex", id: PERSON, passwordWrap: aesWrap(K, rk, "vyre:master:password:v1") }),
+  });
+  await svc.register(reg.body);
+  // a sign-in as a device does it: begin, derive, sign, finish
+  const begin = svc.begin({ username: "alex" }, "203.0.113.5");
+  const d = deriveLogin(PASSWORD, begin.salt, TEST_KDF);
+  const finishRequest = { username: "alex", challenge: begin.challenge, sig: d.sign(loginMessage(SPACE, "alex", begin.challenge)), device: { label: "Aina's laptop" } };
+  const finished = await svc.finish(finishRequest, "203.0.113.5");
+  assert.equal(finished.ok, true);
+  const wrong = await svc.finish({ ...finishRequest, challenge: "no-such-challenge" }, "203.0.113.5").catch(e => ({ error: e.message }));
+
+  // every spelling of the password and of K that a careless field could carry
+  const spellings = (/** @type {Uint8Array | string} */ x) => { const b = Buffer.from(x); return [b.toString("utf8"), b.toString("hex"), b.toString("base64"), b.toString("base64url")]; };
+  const secrets = [...spellings(PASSWORD), ...spellings(reg.K), ...spellings(d.K)].filter(s => s.length >= 12);
+  // Buffers and typed arrays in a value are written out as hex and base64url too, so a raw byte copy of K cannot hide
+  const flat = (/** @type {any} */ v) => JSON.stringify(v, (_k, x) => (x && x.type === "Buffer" && Array.isArray(x.data) ? `${Buffer.from(x.data).toString("hex")}|${Buffer.from(x.data).toString("base64url")}` : x));
+  const seen = {
+    "the register request": reg.body, "the begin answer": begin, "the finish request": finishRequest, "the finish answer": finished, "a refused finish": wrong,
+    "every stored record": Object.fromEntries(store),
+  };
+  for (const [what, value] of Object.entries(seen)) {
+    const text = flat(value);
+    for (const s of secrets) assert.equal(text.includes(s), false, `${what} must not contain the password or K`);
+  }
+  // and what the server does keep is a public key, the salt and the password-protected record
+  const kept = flat(Object.fromEntries(store));
+  assert.ok(kept.includes(reg.body.loginPub), "the login public key is stored");
+  assert.ok(kept.includes("passwordWrap"), "the record stays wrapped under the password-derived key");
+  reg.K.fill(0);
 });

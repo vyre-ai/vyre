@@ -47,9 +47,10 @@ export function openDeviceKey(kept, identitySeed) {
  * @returns {Promise<{ pub: string, sign: (m: Uint8Array) => Promise<Uint8Array> | Uint8Array, close: () => void, where: "shell" | "page" }>}
  */
 export async function deviceKey(o) {
-  if (o.shell) {
-    const pub = await o.shell.public(true);
-    return { pub, where: "shell", close() {}, sign: async (m) => unb64(await o.shell.sign(b64u(m))) };
+  const shell = o.shell;
+  if (shell) {
+    const pub = await shell.public(true);
+    return { pub, where: "shell", close() {}, sign: async (m) => unb64(await shell.sign(b64u(m))) };
   }
   if (!o.kept) throw Object.assign(new Error("This device has no key yet. Unlock to make one."), { code: "bad_device_key" });
   return { ...openDeviceKey(o.kept, o.identitySeed), where: "page" };

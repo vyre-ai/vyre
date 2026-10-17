@@ -25,6 +25,7 @@ test("wakes group by Flow, oldest first, one chat per Flow", { skip: !strip }, a
   assert.equal(c[0].runs, 3);
   assert.equal(c[0].needsYou, 1);
   assert.equal(c[0].lastState, "waiting");
+  assert.equal(c[0].agent, "refunds", "the agent a person's message in this chat wakes");
   assert.equal(c[1].title, "Flow: Draft welcome - Welcome email");
   assert.equal(c[0].title, "Flow: refunds agent - Refund request");
 });

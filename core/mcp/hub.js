@@ -598,17 +598,23 @@ export class Hub {
 
   async remove({ name }) {
     const row = this.must(name);
+    /** @type {{ revoked: boolean, why: string } | null} */ let revoked = null;
     // A person's connection can be taken away only by the person who made it; what it was holding at the Gate, and the vendor's own token, go with it.
     if (row.owner) {
       if (!(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
       await this.cancelHeld(row, () => true, "the connection was removed");
-      if (typeof this.deps.revokeConnection === "function") { try { await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); } catch (e) { this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); } }
+      revoked = { revoked: false, why: "the hub has no way to tell the vendor" };
+      if (typeof this.deps.revokeConnection === "function") {
+        try { const r = await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); revoked = { revoked: Boolean(r && r.revoked === true), why: String((r && r.why) || "") }; }
+        catch (e) { revoked = { revoked: false, why: "the vendor could not be told" }; this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); }
+      }
     }
     await this.stopServer(name, "removed");
     this.db.prepare("DELETE FROM mcp_servers WHERE name = ?").run(name);
     this.live.delete(name);
     this.deps.emit("mcp.removed", { name });
-    return { removed: name };
+    // for a person's connection the answer says whether the vendor was told to drop the token, and if not why, so what is left for the person to do at the app is plain
+    return { removed: name, ...(revoked ? revoked : {}) };
   }
 
   /**

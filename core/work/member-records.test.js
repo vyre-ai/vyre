@@ -128,3 +128,25 @@ test("door.open honors a held chain only when it is exactly one person's, for th
   }
   assert.equal(await code(door.open({}, { in_space: "spc_zzzzzzzzzzzz", in_space_chain: { ...chain, space: "spc_zzzzzzzzzzzz" } })), "not_found", "a Space this server does not host");
 });
+
+test("the audit is a row of the member door: an admin and the owner read it as themselves, a plain member is refused, and a stranger or a chain with an agent in it gets nothing", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  assert.ok(MEMBER_TOOLS["records.audit"] && /** @type {any} */ (CALLS).records.includes("audit"), "records.audit is a row and a call of its group");
+  assert.ok(!MEMBER_TOOLS["records.audit"].keys.some((/** @type {string} */ k) => ["page", "window", "space"].includes(k)), "the door lets the filters through, never a page size, a window or a Space");
+  await w.d.kernel.gateway.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
+  const made = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Jane", age: 40 } })).record;
+  // an admin and the owner read it, as themselves
+  const byAdmin = await w.as(ZED, "records.audit", { type: "contact" });
+  const change = byAdmin.changes.find((/** @type {any} */ x) => x.record === made.urn);
+  assert.ok(change, "the admin sees the change");
+  assert.equal(change.who, `person:${ANA}`, "and who made it");
+  assert.ok((await w.as(w.OWNER, "records.audit", { type: "contact" })).changes.some((/** @type {any} */ x) => x.record === made.urn), "the owner too");
+  assert.equal((await w.as(ZED, "records.audit", { person: ANA, type: "contact", limit: 1 })).changes.length, 1, "the filters pass");
+  // a plain member, and Ana who made the record, are refused in words
+  assert.equal(await code(w.as(BEN, "records.audit", { type: "contact" })), "not_allowed", "a member is refused");
+  assert.equal(await code(w.as(ANA, "records.audit", {})), "not_allowed", "even for a record she made herself");
+  // a stranger, and a chain that is not one person's (an agent behind an admin), get nothing
+  assert.equal(await code(w.as("per_" + "efghijklmnopqrstuvwxyzabcd", "records.audit", {})), "not_found", "a stranger gets nothing");
+  const agentChain = { ...w.chainOf(ZED), hops: [...w.chainOf(ZED).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
+  assert.equal(await code(/** @type {any} */ (w.svc).records.audit(agentChain, {})), "not_found", "an agent behind an admin gets nothing");
+});

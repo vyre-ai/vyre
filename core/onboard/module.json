@@ -36,8 +36,6 @@
       { "name": "onboard.space.list", "effect": "read", "reach": "anyone" },
       { "name": "onboard.space.current", "effect": "write", "reach": "anyone", "outward": true },
       { "name": "onboard.member.link", "effect": "write", "reach": "anyone", "outward": true },
-      { "name": "onboard.computer.add", "effect": "write", "reach": "anyone", "outward": true },
-      { "name": "onboard.phone.add", "effect": "write", "reach": "anyone", "outward": true },
       { "name": "onboard.first.progress", "effect": "read", "reach": "anyone" },
       { "name": "onboard.first.progress.save", "effect": "write", "reach": "person" },
       { "name": "onboard.agent.list", "effect": "read", "reach": "anyone" },

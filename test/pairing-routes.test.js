@@ -29,12 +29,6 @@ const ROUTES = {
   "wink.pair.server": ["core/wink/pairing.js", "wink.server.adopt"],
   "wink.pair.status": ["core/wink/pairing.js", "proveIdentity"],
   "wink.pair.targets": ["core/wink/pairing.js", "proveIdentity"],
-  "wink.phone.open": ["core/wink/pairing.js", "acceptPhone"],
-  "wink.phone.scan": ["core/wink/pairing.js", "acceptPhone"],
-  "wink.phone.pairing": ["core/wink/pairing.js", "acceptPhone"],
-  "wink.phone.pair.answer": ["core/wink/pairing.js", "acceptPhone"],
-  "wink.phone.wait": ["core/wink/pairing.js", "acceptPhone"],
-  "wink.phone.enrolled": ["core/wink/pairing.js", "confirmPublished"],
   "wink.server.paired": ["core/wink/pairing.js", "proveIdentity"],
   "wink.device.paired": ["core/wink/pairing.js", "proveIdentity"],
 };
@@ -48,7 +42,6 @@ const EXCLUDE = {
   "spaces.server.install": "the space-creation code exchange; the adopting line is spaces.pair.install",
   "spaces.bundle.enrol": "a space bundle on this device, not an identity enrol",
   "onboard.pair": "a read of whether pairing is done; the adopt is wink.server.adopt",
-  "onboard.phone.add": "an invite link for the phone during first run; not a server owner adopt",
   "wink.storage.pair": "a storage offer, not an owner adopt",
   "link.pair": "a box link; it does not adopt a space owner",
   "link.pair.approve": "a box link; it does not adopt a space owner",
@@ -61,12 +54,6 @@ const EXCLUDE = {
   "relay.pair.first": "the relay ticket transport under wink.server.adopt",
   "relay.pair.ticket": "the relay ticket transport under wink.server.adopt",
   "relay.pair.pending.confirm": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.open": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.renew": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.ping": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.close": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.confirm": "the relay ticket transport under wink.server.adopt",
-  "relay.pair.window.reject": "the relay ticket transport under wink.server.adopt",
   "presence.enroll": "a presence key on an already paired device",
   "presence.person.pair-grant": "a presence grant for a paired session",
   "presence.person.pair-challenge": "a presence grant for a paired session",
@@ -139,9 +126,7 @@ test("every pair, adopt, enrol and install tool is routed or explicitly a differ
     assert.ok(src.includes(symbol), `${name} in ${file} must contain ${symbol}`);
   }
   const pairing = fs.readFileSync(path.join(ROOT, "core/wink/pairing.js"), "utf8");
-  const accept = pairing.slice(pairing.indexOf("const acceptPhone"), pairing.indexOf("ctx.tool(\"wink.phone.pair.answer\""));
-  assert.match(accept, /confirmPublished/);
-  const offer = pairing.slice(pairing.indexOf("ctx.tool(\"wink.server.setup-offer\""), pairing.indexOf("ctx.tool(\"wink.server.confirm\""));
+  const offer = pairing.slice(pairing.indexOf("ctx.tool(\"wink.server.setup-offer\""), pairing.indexOf("ctx.tool(\"wink.server.status\""));
   assert.match(offer, /confirmPublished/);
   const redeem = fs.readFileSync(path.join(ROOT, "core/wink/install-pair.js"), "utf8");
   const body = redeem.slice(redeem.indexOf("export async function redeemInstallCode"), redeem.indexOf("export function registerInstallPair"));

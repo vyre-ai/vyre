@@ -4,7 +4,9 @@
 import { GITHUB_MOCK } from "./mock.js";
 
 const mock = { person: /** @type {string | null} */ (null), id: "id_alex", current: /** @type {string | null} */ (null), spaces: /** @type {{ id: string, name: string, role: string, server: string | null }[]} */ ([]) };
-let progress = { screen: "id.create", stack: ["id.create"] };
+// Nothing saved yet: a first run opens on its own first screen (the resume in FirstRun.tsx only takes a saved stack).
+/** @type {{ screen: string | null, stack: string[] }} */
+let progress = { screen: null, stack: [] };
 
 /** @param {string} username */
 export async function lookupPerson(username) {
@@ -76,18 +78,8 @@ export async function makeInvite(input) {
   return { ok: true, link: "https://vyre.run/i/sampletoken", role: input.role, ttlDays: input.ttlDays, space: input.space || "juniper" };
 }
 
-/** @param {any} input */
-export async function addComputer(input) {
-  return { ok: true, url: input.url, username: input.username || null, github: input.github === true, added: true };
-}
-
 export async function finishFirstRun() {
   return { ok: true, done: true };
-}
-
-/** @param {string} [space] */
-export async function addPhone(space) {
-  return { ok: true, link: "https://vyre.run/i/samplephone", space: space || null };
 }
 
 export async function listAgentProviders() {

@@ -16,9 +16,10 @@ import { runCases } from "./cases.js";
 import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
-import { linksFor, withLinks } from "./links.js";
+import { linksFor, withLinks, lesserRead, byPerson, starterOf } from "./links.js";
 import { LinkError } from "../../lib/link/path.js";
-import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
+import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter, slim, OUTWARD } from "./runner-util.js";
+import { simulate as simulateFlow } from "./simulate.js";
 export { resolveValue, toFilter };
 import { stampAdders } from "./adders.js";
 import { resolveTagsFor } from "./tags.js";
@@ -36,12 +37,11 @@ import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
 import { standingFor } from "./standing-run.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
-import { hiddenField } from "../../lib/secret-keys.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, agent_due_ms: 86_400_000, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /**
  * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
  * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
@@ -62,52 +62,10 @@ const INLINE_KINDS = new Set(["decide", "repeat"]);
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 /** Actions only a Flow run holds (a person is never asked for them, so an adder is not judged by them): a code step, a model call, and a send that is held for a yes each time. */
 const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
-const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 
-class Suspend extends Error { constructor() { super("suspended"); this.name = "Suspend"; } }
-class StepFail extends Error {
-  /** @param {string} code @param {string} message */
-  constructor(code, message) { super(message); this.name = "StepFail"; this.code = code; }
-}
-/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. @param {any} e @returns {never} */
-function portFail(e) {
-  if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
-  throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
-}
-/** What went wrong, as a code and words, whatever was thrown. A port's own code is kept; the usual network faults get the names a retry policy knows. @param {any} e @returns {{ code: string, message: string }} */
-function failOf(e) {
-  if (e instanceof StepFail) return { code: e.code, message: e.message };
-  const raw = e && typeof e.code === "string" ? e.code : "error";
-  const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
-  return { code, message: e instanceof Error ? e.message : String(e) };
-}
-/**
- * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, and the whole is cut to 2 KB. A sealed placeholder stays a placeholder.
- * @param {any} v @returns {any}
- */
-export function showable(v) {
-  if (v === undefined) return undefined;
-  const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
-    if (depth > 6) return "\u2026";
-    if (typeof x === "string") return redactText(x);
-    if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, hiddenField(k, y) ? "[hidden]" : walk(y, depth + 1)]));
-    return x;
-  };
-  const out = walk(v, 0);
-  const text = JSON.stringify(out) ?? "null";
-  return text.length > 2048 ? { cut: true, head: text.slice(0, 2000) } : out;
-}
-
-/** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
-class Hold extends Error {
-  /** @param {string} reason */
-  constructor(reason) { super(reason); this.name = "Hold"; this.reason = reason; }
-}
-class PauseFlow extends Error {
-  /** @param {string} reason */
-  constructor(reason) { super(reason); this.name = "PauseFlow"; this.reason = reason; }
-}
+import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
+import { showable } from "./runner-faults.js";
+export { showable };
 
 /**
  * @typedef {import('./store.js').Run} Run
@@ -427,6 +385,7 @@ export class FlowRunner {
     set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
     set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
     { const keep = await pick("flows.runs_keep_days", 86_400_000, 1, 3650); if (keep !== undefined) this.keepMs = keep; }
+    set("agent_due_ms", await pick("flows.agent_due_hours", 3_600_000, 1, 8760));
     const cap = await pick("flows.retry_attempts", 1, 1, 8);
     if (cap !== undefined) this.retryCap = cap;
     try { this.holidays = holidaysFrom(await /** @type {any} */ (this.settingsFn)("flows.holidays")); } catch { /* keep the list it had */ }
@@ -649,7 +608,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor) }, env);
   }
 
   /**
@@ -779,7 +738,7 @@ export class FlowRunner {
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
     const byModel = (callerChain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
-    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {} }, { trust: byModel ? "external" : "member", data: input ?? {} });
+    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {}, ...starterOf(callerChain) }, { trust: byModel ? "external" : "member", data: input ?? {} });
   }
 
   /** Wait for every started run to reach a resting state. For tests and for shutdown. */
@@ -804,6 +763,25 @@ export class FlowRunner {
   async #start(f, trig, src) {
     const id = runIdFor(f.id, trig.key);
     return this.#locked(id, () => this.#startLocked(id, f, trig, src));
+  }
+
+  /** The next run number of a Flow, from the store's counter that only grows; a store with none falls back to one more than the highest a surviving run has. @param {string} flow */
+  async #nextNumber(flow) {
+    if (typeof /** @type {any} */ (this.store).nextRunNumber === "function") return /** @type {any} */ (this.store).nextRunNumber(flow);
+    const runs = await this.store.listRuns({ flow, limit: 1000 });
+    const top = runs.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, Number(r.number) || 0), 0);
+    return (top || runs.length) + 1;
+  }
+
+  /** The display names a run can print (the approver, the starter, the Space), from the host's `names` port; one it cannot find is left out here and the scope says "a team member" or "this Space" in its place. @param {any} f @param {string} [starter] */
+  async #namesFor(f, starter) {
+    const get = /** @type {any} */ (this.ports).names;
+    if (typeof get !== "function") return {};
+    const one = async (/** @type {{ person?: string }} */ q) => { try { const v = await get({ space: f.space, ...q }); return typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : undefined; } catch { return undefined; } };
+    const approver = f.approver && f.approver.kind === "person" ? await one({ person: String(f.approver.id) }) : undefined;
+    const by = starter ? (f.approver && String(f.approver.id) === starter ? approver : await one({ person: starter })) : undefined;
+    const space = await one({});
+    return { ...(approver ? { approver } : {}), ...(by ? { starter: by } : {}), ...(space ? { space } : {}) };
   }
 
   /** @param {string} id @param {any} f @param {any} trig @param {any} src */
@@ -837,6 +815,10 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver, label: String(f.flow.label || f.flow.name || "").slice(0, 120) };
+    // The words a Flow can print about itself, fixed once when the run starts (so a replay prints the same): this run's number among the Flow's, who approved it, who started it, and the Space's name.
+    run.number = await this.#nextNumber(f.id);
+    if (typeof trig.by === "string" && trig.by) run.started_by = trig.by;
+    run.names = await this.#namesFor(f, run.started_by);
     const about = recordOfTrigger(trig);
     if (about) run.record = about;
     if (hold) {
@@ -1099,6 +1081,17 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, { action: "flows.run", resource: `vyre://${ctx.cat.space}/flow/${target.id}` }, () => this.joins.subflow(ctx, s, key, val, target), { input: s.input === undefined ? undefined : val(s.input) });
   }
 
+  /**
+   * The input of a call step as the person will be asked about it, and as it will run: the host may fill in facts the person should see and the act should hold to (the files on an email: name, size and
+   * content hash, read as the approver), so the one yes the Flow asks is a yes to exactly those. Nothing is changed in a dry run or when the host offers no preview.
+   * @param {any} ctx @param {any} s @param {any} input
+   */
+  async #preview(ctx, s, input) {
+    if (ctx.dry || typeof this.ports.preview !== "function") return input;
+    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
+    catch (e) { throw new StepFail(String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e)); }
+  }
+
   /** @param {string} type @param {any} data @param {Run} run @param {string} subject */
   #emit(type, data, run, subject) {
     if (run.dry) return;
@@ -1125,7 +1118,7 @@ export class FlowRunner {
     const run = ctx.run, t = run.trigger;
     const inh = run.inherit;                                 // a lane of a parallel step reads what its parent had read when it split
     const trigger = inh ? inh.trigger : t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
-    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
+    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow, number: run.number ?? null, flow_name: run.label || run.flow, approver_name: (run.names && run.names.approver) || NAME_FALLBACK.person, starter_name: (run.names && (run.names.starter || run.names.approver)) || NAME_FALLBACK.person, space_name: (run.names && run.names.space) || NAME_FALLBACK.space }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
   }
 
   /** @param {any} ctx @param {string} key @param {Partial<import('./store.js').Run['steps'][string]>} patch */
@@ -1148,7 +1141,7 @@ export class FlowRunner {
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
     const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
     const load = async () => {
-      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: (type, id) => this.k.records.get(this.#chain(ctx), type, id) }); }
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.trigger && ctx.run.trigger.by) }); }
       catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
     };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
@@ -1190,17 +1183,17 @@ export class FlowRunner {
         case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
         case "wait": out = await this.#wait(ctx, s, key, val); break;
         case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-        case "call": { const rides = ridesOf(ctx.flow, s.id, ctx.cat), ride = s.with ? ctx.dry ? "dry" : this.#rideOf(ctx, s) : undefined; out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
+        case "call": { const callInput = await this.#preview(ctx, s, val(s.input)), rides = ridesOf(ctx.flow, s.id, ctx.cat), ride = s.with ? ctx.dry ? "dry" : this.#rideOf(ctx, s) : undefined; out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
           if (ctx.dry) return { dry: true };
           if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
           // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
           const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
           if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
           // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
-          const input = val(s.input);
+          const input = callInput;
           const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }), ...(ride ? { ride: { run: ctx.run.id, step: s.id, with: s.with } } : {}) } : {}) });
           return draftAs ? { draft: true, via: draftAs, result: r } : r;
-        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }), rides, ride }); break; }
+        }, { input: callInput, bind: actBind({ action: s.action, resource: s.resource, input: callInput }), rides, ride }); break; }
         case "classify": out = await this.#classify(ctx, s, key, val); break;
         case "extract": out = await this.#extract(ctx, s, key, val); break;
         case "service": out = await this.#service(ctx, s, key, val); break;
@@ -1280,7 +1273,7 @@ export class FlowRunner {
         led = this.#led(ctx, key);
         const tries = ((led && led.tries) || 0) + 1;
         const log = [...((led && led.attempts_log) || []), { at: this.now(), code: f.code }].slice(-8);
-        if (f.code !== "verify_failed" && pol.retryOn.has(f.code) && tries < pol.attempts) {
+        if (f.code !== "verify_failed" && !(f.code === "timeout" && ["ask", "assign", "agent"].includes(s.kind)) && pol.retryOn.has(f.code) && tries < pol.attempts) {
           await this.#mark(ctx, key, { status: "started", tries, last_error: f, attempts_log: log });
           const wait = pol.backoff_ms.length ? pol.backoff_ms[Math.min(tries - 1, pol.backoff_ms.length - 1)] : 0;
           await this.#sleepOnce(ctx, `${key}?retry${tries}`, wait);   // suspends the run until the wake; the replay then tries again
@@ -1762,7 +1755,12 @@ export class FlowRunner {
     if (led && led.status === "waiting") {
       const res = led.wait && led.wait.result;
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
-      if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
+      if (res.timeout) {
+        // The due time passed: the task is withdrawn so nobody can hand it in late (the agent's session ends and its use of the task is taken back where the kernel ends the task), then the step fails.
+        await this.#withdraw(ctx, led.task, `step ${s.id} was not finished in time`, s.id);
+        this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
+        throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
+      }
       const t = res.task || {};
       // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
       let values;
@@ -1825,10 +1823,29 @@ export class FlowRunner {
       }
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
-      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });
-      this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow-run/${run.id}`);
-      throw this.#suspendOn(ctx, key, { kind: "task", task: task.id });
+      // A due time: the step's own `timeout_ms`, or for an agent the Space's default. It is written on the ledger once, so a replay keeps it; past it the step fails with `timeout` (see below).
+      const dueMs = s.timeout_ms ?? (doer.kind === "agent" && s.kind !== "ask" ? this.limits.agent_due_ms : 0);
+      const wait = { kind: "task", task: task.id, ...(dueMs ? { deadline: this.now() + Math.min(dueMs, this.limits.wait_max_ms) } : {}) };
+      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait });
+      this.#emit("step.waiting", { run: run.id, step: key, task: task.id, ...(wait.deadline ? { until: wait.deadline } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      throw this.#suspendOn(ctx, key, wait);
     }, { input: s.kind === "agent" ? val(s.instructions) : val(s.title) });
+  }
+
+  /**
+   * Withdraw a task whose due time passed: the kernel ends it (no later start, hand-in or move by anyone), and with it the use of it lent to an agent. Not optional: if the kernel cannot withdraw it the step fails with
+   * `withdraw_failed` (never a clean timeout while the task may still be open). Safe to repeat: a task that has already ended refuses with bad_state, and that is all the answer needed.
+   * @param {any} ctx @param {string} task @param {string} reason @param {string} stepId
+   */
+  async #withdraw(ctx, task, reason, stepId) {
+    const run = ctx.run;
+    // under the Flows service's own chain: the kernel refuses a withdrawal from anything else
+    try { await this.k.ask.withdraw(this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); }
+    catch (e) {
+      // a task that already ended (answered in the last moment, or withdrawn before a crash) is as withdrawn as it will get; anything else means it may still be open, and the step must not report a clean timeout
+      if (e && /** @type {any} */ (e).code === "bad_state") return;
+      throw new StepFail("withdraw_failed", `the task for step ${stepId} could not be withdrawn, so the step is not marked timed out: ${/** @type {Error} */ (e).message}`);
+    }
   }
 
   /**
@@ -1965,76 +1982,10 @@ export class FlowRunner {
 
   // ------------------------------------------------------------------ simulation
 
-  /**
-   * Replay a window of past events against a Flow with its actions stubbed, and say what it would have done: how many runs, how many approvals it
-   * would have asked for, what it would have written, sent and run. Reads are real (as the approver, read-only), so a `find` sees today's data;
-   * writes, tasks, calls, http, code and models are stubbed; waits do not wait. Nothing is stored and nothing is emitted.
-   * @param {any} flow a stored Flow (a draft or an active one)
-   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[], cat?: any, softReads?: boolean }} o
-   */
+  /** What the Flow would have done over a window of past events, with its actions stubbed (kernel/flows/simulate.js). @param {any} flow @param {any} o */
   async simulate(flow, o) {
-    const cat = o.cat || await this.catalogFn();
-    const compiled = compileFlow(flow, cat);
-    if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings };
-    const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
-    const limit = o.limit || 1000;
-    /** @type {{ trigger: string, key: string, scope: any, env: any, at: number }[]} */
-    const hits = [];
-    let seen = 0;
-    const t = flow.trigger;
-    if (t.on === "event" || t.on === "stage") {
-      let evs = o.events;
-      if (!evs) {
-        const chain = this.chains.forFlow({ flow: "simulation", space: cat.space, approver: o.approver, tainted: false, run: "sim", source_spaces: [cat.space] });
-        evs = await this.k.events.read(chain, { type: "*", limit: 20_000 });
-      }
-      for (const env of evs) {
-        if (o.since && env.received_at !== undefined && env.received_at < o.since) continue;
-        if (o.until && env.received_at !== undefined && env.received_at > o.until) continue;
-        seen++;
-        const scope = triggerScope(t, env);
-        if (scope && hits.length < limit) hits.push({ trigger: t.on, key: String(env.id), scope, env, at: env.received_at ?? env.time });
-      }
-    } else if (t.on === "time" && (t.cron !== undefined || t.every_ms !== undefined) && o.since !== undefined && o.until !== undefined) {
-      // the schedule's real times: in its zone, inside its hours, off holidays (an interval counts from the window that opens, as it does live)
-      const first = t.cron !== undefined ? o.since - 1 : o.since;
-      for (const at of dueTimes(t, first, o.until, this.#zone(t, cat), this.holidays, Math.min(limit, 1000)).times) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
-    } else for (const [i, sample] of (o.samples || []).entries()) hits.push({ trigger: t.on, key: `sample${i}`, scope: { trigger: sample }, env: null, at: this.now() });
-
-    const runs = [];
-    /** @type {Record<string, number>} */ const writes = {};
-    /** @type {Record<string, { action: string, risk: string, count: number }>} */ const outward = {};
-    let asks = 0, tasks = 0, completed = 0, paused = 0, failed = 0;
-    for (const h of hits) {
-      /** @type {Run} */
-      const run = { id: "sim_" + h.key, flow: "simulation", version: 0, hash: "", space: cat.space, trigger: { kind: h.trigger, key: h.key, ...(h.env ? { event: slim(h.env) } : { input: h.scope.trigger }) },
-        tainted: Boolean(h.env && (h.env.trust === "external" || h.env.trust === "untrusted")), source_spaces: (h.env && h.env.source_spaces) || [cat.space], depth: 0, state: "running", started_at: h.at, updated_at: h.at, steps: {}, approver: o.approver, dry: true };
-      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]), softReads: Boolean(o.softReads) };
-      /** @type {{ outcome: string, reason?: string }} */ let result = { outcome: "completed" };
-      try { await this.#walk(ctx, flow.steps, "", {}); }
-      catch (e) {
-        if (e instanceof PauseFlow) result = { outcome: "paused", reason: e.reason };
-        else if (e instanceof Suspend) result = { outcome: "completed" };
-        else result = { outcome: "failed", reason: e instanceof Error ? e.message : String(e) };
-      }
-      if (result.outcome === "completed") completed++; else if (result.outcome === "paused") paused++; else failed++;
-      asks += ctx.dryAsks; tasks += ctx.dryTasks.length;
-      for (const eff of ctx.dryEffects) {
-        if (/^records\.(create|update|remove)$/.test(eff.action)) { const ty = eff.resource.split("/")[3]; writes[ty] = (writes[ty] || 0) + 1; }
-        if (OUTWARD.has(eff.risk)) { const k = eff.action; outward[k] = outward[k] || { action: eff.action, risk: eff.risk, count: 0 }; outward[k].count++; }
-      }
-      const ran = [...new Set(Object.entries(run.steps).filter(([k, v]) => !k.includes("?") && !k.includes("!") && (/** @type {any} */ (v)).status === "done").map(([k]) => k.replace(/@.*$/, "")))];
-      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, ran, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
-    }
-    const span = o.since !== undefined && o.until !== undefined ? ` in ${describeSpan(o.until - o.since)}` : " in that window";
-    return {
-      ok: true, warnings: compiled.warnings, events_seen: seen, matched: hits.length,
-      summary: `This Flow would have run ${hits.length} ${hits.length === 1 ? "time" : "times"}${span} and asked for ${asks} ${asks === 1 ? "approval" : "approvals"}.`
-        + (paused ? ` ${paused} would have paused.` : "") + (failed ? ` ${failed} would have failed.` : ""),
-      totals: { runs: hits.length, completed, paused, failed, asks, tasks, writes, outward: Object.values(outward) },
-      runs: runs.slice(0, 200),
-      cannot_prove: ["what the actions really do (they are stubbed)", "how long a person takes to answer a question or a task", "what a model or a Code step returns", "events that have not happened yet"],
-    };
+    const self = this;
+    return simulateFlow({ catalogFn: () => this.catalogFn(), chains: this.chains, k: this.k, get holidays() { return self.holidays; }, now: () => this.now(), zone: (t, cat) => this.#zone(t, cat), walk: (ctx, steps, prefix, locals) => this.#walk(ctx, steps, prefix, locals) }, flow, o);
   }
 
   // ------------------------------------------------------------------ reading runs
@@ -2049,9 +2000,6 @@ export class FlowRunner {
 
 // ---------------------------------------------------------------------- helpers
 
-/** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
-const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });
-
 /** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
 /** Does a service answer say the Chrome it needs is on a Mac that is off? Returns the plain reason, or null. @param {any} r */
 function deviceOffline(r) {
@@ -2062,6 +2010,8 @@ function deviceOffline(r) {
 const SERVICE_BODY_CAP = 64 * 1024;
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
+/** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
+const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
 const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
 
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }

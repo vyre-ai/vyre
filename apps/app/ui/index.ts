@@ -11,6 +11,11 @@ export type { IconName } from "./components/Icon";
 export { Button, IconButton } from "./components/Button";
 export { Chip } from "./components/Chip";
 export { ChipToken } from "./components/ChipToken";
+export { FilePicks } from "./components/FilePicks";
+export { MailComposer } from "./components/MailComposer";
+export { blankMail, sendInput, problemOf } from "./components/mail-composer-model";
+export type { MailForm, FileRef } from "./components/mail-composer-model";
+export type { FilePick, FileChoice } from "./components/FilePicks";
 export { StatusPill } from "./components/StatusPill";
 export { PickerList, optionId } from "./components/PickerList";
 export type { PickerItem } from "./components/PickerList";
@@ -27,6 +32,7 @@ export type { SwitcherSpace } from "./components/SpaceSwitcherTitle";
 export { Row } from "./components/Row";
 export { Banner } from "./components/Banner";
 export { Field } from "./components/Field";
+export { DateTimeField } from "./components/DateTimeField";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
 export { FormFields } from "./components/FormFields";
@@ -44,6 +50,9 @@ export { markRef, spaceRef } from "./marks/useMark";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
+export { ConnectApps, ShareSheet, SetupSheet } from "./connect/ConnectApps";
+export type { App as ConnectApp, Share as ConnectShare } from "./connect/ConnectApps";
+export { sampleApps as sampleConnectApps, SAMPLE_GRANTEES as SAMPLE_CONNECT_GRANTEES } from "./connect/connect-model.js";
 export { Menu } from "./components/Menu";
 export type { MenuItem } from "./components/Menu";
 export { showToast, comingSoon, ToastHost } from "./components/Toast";
@@ -61,6 +70,8 @@ export { motion, SPRING, useReducedMotion, PressableScale, Appear, Stagger, Skel
 export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./motion";
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
+export { ResizeHandle, useStoredWidth } from "./shell/ResizeHandle";
+export { SidebarSearch } from "./shell/SidebarSearch";
 export { Shell } from "./shell/Shell";
 export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
 export { SidebarRow } from "./shell/SidebarRow";
@@ -188,6 +199,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES,
+  FEATURED_SLASHES, NATIVE_SLASHES, ConversationList, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord,
 } from "./chat";
-export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps } from "./chat";
+export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

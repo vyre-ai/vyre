@@ -230,11 +230,10 @@ export function matchGrant(g, action, resource, o) {
     if (!hit) return { ok: false, reason: "no_grant" };
   }
   const c = g.conditions || {};
-  if (c.when) {
-    if (c.when.expires !== undefined && c.when.expires <= o.now) return { ok: false, reason: "expired" };
-    if (c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
-  }
+  if (c.when && c.when.expires !== undefined && c.when.expires <= o.now) return { ok: false, reason: "expired" };
+  if (c.when && c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
   if (c.where && c.where.origins && !(typeof o.origin === "string" && c.where.origins.includes(o.origin))) return { ok: false, reason: "wrong_node" };
+  if (c.where && c.where.sessions && !(typeof o.thread === "string" && c.where.sessions.includes(o.thread))) return { ok: false, reason: "wrong_session" }; // a grant lent to one job thread is that thread's alone: another session of the same agent holds nothing of it
   return { ok: true };
 }
 
@@ -427,10 +426,14 @@ export function createAuthorizer(cfg) {
     if (!subjectOk) return { ok: false, reason: "no_grant" };
     // An assistant reaches a team's grant only by association with a person in the team, and by it holds use and nothing that changes who has access or shows a value: no admin, grant or sharing act.
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
-    const m = matchGrant(g, action, resource, { attrs, now, probe, origin, since: since(action), risk: riskOf(action) });
+    const m = matchGrant(g, action, resource, { attrs, now, probe, origin, thread: h.actor.kind === "agent" && h.via && typeof h.via.thread === "string" ? h.via.thread : undefined, since: since(action), risk: riskOf(action) });
     if (!m.ok) return m;
+    if (/^vault:lease:/.test(String(g.source || "")) && !(g.approver && typeof cfg.approverHolds === "function" && await cfg.approverHolds(String(g.approver), action, resource))) return { ok: false, reason: "expired" }; // a lease is carried by the person who approved it: it holds nothing once they no longer hold the credential, even before it is taken back
     // where the act may go: every recipient must match the grant's `to` (an act with no recipients, or one outside it, is not covered)
     if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
+    // A grant lent for one task (a Flow's lend of the task to an agent, a vault lease for it) ends with the task: once the task is done, skipped or withdrawn it holds nothing, even before the lend is taken back.
+    const lent = /^(?:flows:task|vault:lease):(.+)$/.exec(String(g.source || ""));
+    if (lent && !(typeof cfg.taskOpen === "function" && await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };   // no answer about the task counts as ended
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).

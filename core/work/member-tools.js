@@ -37,6 +37,8 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.list": { tool: "records.serve", call: "list", keys: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], types: [] },
   "records.get": { tool: "records.serve", call: "get", keys: ["urn"], types: [] },
   "records.events": { tool: "records.serve", call: "events", keys: ["record", "task", "since", "limit"], types: [] },
+  // the admin audit: only an owner or an admin gets an answer (the tool refuses every other member); the door lets through the filters only, never a page size or window
+  "records.audit": { tool: "records.serve", call: "audit", keys: ["record", "person", "project", "type", "since", "limit"], types: [] },
   "records.create": { tool: "records.serve-create", call: "create", keys: ["type", "data"], types: [] },
   "records.update": { tool: "records.serve-update", call: "update", keys: ["urn", "patch", "base_version"], types: [] },
   "tasks.list": { tool: "tasks.serve", call: "list", keys: ["record", "doer", "checker", "state", "limit"], types: [] },
@@ -44,6 +46,10 @@ export const MEMBER_TOOLS = Object.freeze({
   "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
   "tasks.move": { tool: "tasks.serve-work", call: "move", keys: ["id", "to", "reason", "suggested_fix"], types: [] },
   "tasks.submit": { tool: "tasks.serve-work", call: "submit", keys: ["id", "evidence"], types: [] },
+  // a member's new-device sign-ins on the team's server (core/identity/signins.js): the card on Now, "Not me, sign it out" and "It was me"; the device id is the only input, the person is the door's authenticated chain
+  "identity.signins": { tool: "identity.signins.serve", call: "pending", keys: [], types: [] },
+  "identity.revoke": { tool: "identity.signins.serve-write", call: "revoke", keys: ["device"], types: [] },
+  "identity.ack": { tool: "identity.signins.serve-write", call: "ack", keys: ["device"], types: [] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
   // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive
   // a member's own Flows (core/flows/member.js): Flows belong to the Space; any member drafts, a version runs on the authority of whoever approved it, and she approves her own with any trigger

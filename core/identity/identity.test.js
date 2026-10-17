@@ -7,11 +7,9 @@ import os from "node:os";
 import path from "node:path";
 import { open, migrate as migrateDb } from "../store/index.js";
 import identity from "./index.js";
-import devices from "../devices/index.js";
 import { fileIdentityStore } from "../spaces/identity.js";
 import { forgetAll, identityHeld } from "../../kernel/identity/holder.js";
 import { readMaster } from "../../kernel/identity/master.js";
-import { dialLive } from "../devices/live.js";
 import { vouch } from "../../lib/github-verified.js";
 
 process.env.VYRE_TEST_MASTER_KDF = "cheap";
@@ -52,28 +50,6 @@ test("an agent cannot supply the master password, and a migration strips the pla
   assert.equal(readMaster(root).github.login, "alex-studio");
   await assert.rejects(() => tools.get("identity.github.link").run({ login: "alex-studio", subject: "gh_12345" }, { caller: "cli" }), (e) => e.code === "github_unverified", "a receipt is spent once");
   await tools.get("identity.lock").run({}, { caller: "cli" });
-  const devTools = new Map();
-  const dctx = {
-    paths: { root },
-    store: { db, migrate(steps) { migrateDb(db, "devices", steps); } },
-    tool(name, def) { devTools.set(name, def); },
-    dialServer: async () => ({ device: "aaaaaaaaaaaaaaaa", live: true }),
-  };
-  await devices.start(dctx);
-  await assert.rejects(() => devTools.get("devices.signin").run({ server: "https://juniper.vyre.run", github: { login: "alex-studio", subject: "gh_12345" } }, { caller: "cli" }), (e) => e.code === "person_enters");
-  assert.equal(identityHeld(path.join(root, "spaces", "identity.json")), false, "GitHub alone does not unwrap");
-  const signed = await devTools.get("devices.signin").run({ server: "https://juniper.vyre.run", password: "correct horse battery", github: { login: "alex-studio", subject: "gh_12345" } }, { caller: "cli" });
-  assert.equal(signed.ok, true);
-  assert.equal(signed.unlocked, true);
-  assert.equal(signed.live, true);
-  assert.equal(signed.device, "aaaaaaaaaaaaaaaa");
-  assert.equal(signed.carry.recoveryWrap, undefined);
-  assert.equal(JSON.stringify(signed).includes(readMaster(root).recoveryWrap.ct), false);
-  assert.equal(signed.username, "alex");
   forgetAll();
   db.close();
-});
-
-test("signing in does not succeed when this computer cannot find the space server", async () => {
-  await assert.rejects(() => dialLive({ paths: { root: path.join(os.tmpdir(), "vyre-no-such-dial") }, config: {} }, { server: "https://juniper.vyre.run", username: "alex" }), (e) => e.code === "unreachable");
 });

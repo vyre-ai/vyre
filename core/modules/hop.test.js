@@ -2,7 +2,8 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mayHop, onPersonSurface, originApi } from "./hop.js";
+import { mayHop, originApi } from "./hop.js";
+import { isPerson } from "../../lib/caller.js";
 
 const none = { relayed: false, spaceHop: false, flowRun: false, viewFor: false };
 const call = (/** @type {object} */ o) => ({ firstParty: true, origin: "local", ...none, ...o });
@@ -26,8 +27,8 @@ const TABLE = [
 for (const [name, def, c, want, why] of TABLE) test(`hop: ${name}`, () => assert.equal(mayHop(def, c), want, why));
 
 test("hop: only a person's own surface, never a model, stands for the person before a token exists", () => {
-  for (const ok of ["local", "cli", "deck"]) assert.equal(onPersonSurface(ok), true, ok);
-  for (const no of ["mcp", "mcp:agent:kit", "harness:thread:t1", "module:probe", "hook"]) assert.equal(onPersonSurface(no), false, no);
+  for (const ok of ["local", "cli", "deck"]) assert.equal(isPerson(ok), true, ok);
+  for (const no of ["mcp", "mcp:agent:kit", "harness:thread:t1", "module:probe", "hook"]) assert.equal(isPerson(no), false, no);
 });
 
 test("hop: an added module replays an origin it was handed, and cannot name one it was not (a forged cli never reaches a defaulted write)", () => {

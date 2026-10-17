@@ -38,6 +38,12 @@ test("a checked or outward task can never be skipped or completed by its doer al
   assert.ok(!c.TASK_TRANSITIONS.some(r => r.from === "working" && r.to === "done" && r.guarded !== false), "working to done only for tasks with no checker");
 });
 
+test("a task ends at its Flow's due time only by flow_deadline, to skipped, from every open state", () => {
+  const rows = c.TASK_TRANSITIONS.filter(r => r.by === "flow_deadline");
+  assert.deepEqual(rows.map(r => `${r.from}>${r.to}`).sort(), ["needs_check>skipped", "ready>skipped", "stuck>skipped", "working>skipped"]);
+  assert.ok(rows.every(r => r.guarded === undefined), "a withdrawal is not a guarded skip: a person's yes is not asked for what the Flow ends itself");
+});
+
 test("trust and redaction orders match the contract", () => {
   assert.deepEqual([...c.TRUST_ORDER], ["untrusted", "external", "member", "system"]);
   assert.ok(c.REDACTION_ORDER.indexOf("privileged") > c.REDACTION_ORDER.indexOf("pii"));

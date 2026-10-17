@@ -41,7 +41,7 @@ export async function startGithub() {
 
 /** @param {string} [login] @param {string} [code] */
 export async function finishGithub(login, code) {
-  if (MOCK) return mock.finishGithub(login);
+  if (MOCK) return mock.finishGithub(login || "");
   /** @type {Record<string, string>} */
   const input = {};
   if (login) input.login = login;
@@ -68,6 +68,13 @@ export async function joinSpace(link) {
 export async function openSpace(input) {
   if (MOCK) return mock.openSpace(input);
   try { return done(await tool("onboard.space.open", { kind: input.kind, ...(input.name ? { name: input.name } : {}) })); }
+  catch (e) { return fail(e); }
+}
+
+/** Pick another name for a space whose name the directory said was taken; the paired server is kept and the claim is tried again. @param {string} id @param {string} name */
+export async function renameSpace(id, name) {
+  if (MOCK) return { ok: true, id, name };
+  try { return done(await tool("onboard.space.name", { id, name })); }
   catch (e) { return fail(e); }
 }
 
@@ -98,24 +105,9 @@ export async function makeInvite(input) {
   catch (e) { return fail(e); }
 }
 
-/** @param {{ url: string, username?: string, password: string, github?: boolean }} input */
-export async function addComputer(input) {
-  if (MOCK) return mock.addComputer(input);
-  try {
-    return done(await tool("onboard.computer.add", { url: input.url, password: input.password, ...(input.username ? { username: input.username } : {}), ...(input.github ? { github: true } : {}) }));
-  } catch (e) { return fail(e); }
-}
-
 export async function finishFirstRun() {
   if (MOCK) return mock.finishFirstRun();
   try { return done(await tool("onboard.first.done", {})); }
-  catch (e) { return fail(e); }
-}
-
-/** @param {string} [space] */
-export async function addPhone(space) {
-  if (MOCK) return mock.addPhone(space);
-  try { return done(await tool("onboard.phone.add", space ? { space } : {})); }
   catch (e) { return fail(e); }
 }
 

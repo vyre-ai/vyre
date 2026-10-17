@@ -15,7 +15,7 @@ There is a single live first run. The app route is `/onboard` (`apps/app/app/onb
 | Phase | What happens |
 | --- | --- |
 | Identity | Create a username and master password, save the recovery key, optionally continue with GitHub, then optionally sign in to an AI (Claude, Codex, Grok, …) through each provider's own login. Credentials stay in the person's vault; agents never receive them. |
-| Space | Join with an invite, create a space (Linux or always-on Mac) and wait for the install line, invite someone, add a computer, or add a phone. |
+| Space | Join with an invite, create a space (Linux or always-on Mac) and wait for the install line, or invite someone. |
 | Ready | Pick a space when there are several, then open the app. |
 
 Progress is stored per person (`onboard.first.progress` / `onboard.first.progress.save`), not on the box config alone, so a reload resumes on the same step.
@@ -26,7 +26,7 @@ After identity, the optional **Sign in to an AI** step lists every login-able ad
 
 ## Approvals
 
-Every outward first-run write (`onboard.person.create`, `onboard.space.*`, `onboard.member.link`, `onboard.computer.add`, `onboard.phone.add`, `onboard.github.finish`, `onboard.agent.signin`, …) is held for a one-tap approval when the caller is `mcp:agent:<name>`. Passwords and recovery keys are refused from model callers.
+Every outward first-run write (`onboard.person.create`, `onboard.space.*`, `onboard.member.link`, `onboard.github.finish`, `onboard.agent.signin`, …) is held for a one-tap approval when the caller is `mcp:agent:<name>`. Passwords and recovery keys are refused from model callers.
 
 ## What was removed
 

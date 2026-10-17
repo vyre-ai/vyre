@@ -69,7 +69,6 @@ await send("Page.enable");
 await send("Network.enable");
 await send("Fetch.enable", { patterns: [{ urlPattern: "http*://*", requestStage: "Request" }] });
 
-const clickButton = label => evalIn(`(() => { const b = [...document.querySelectorAll("#vyre-loader button")].find(x => x.textContent.trim() === ${JSON.stringify(label)}); if (b) { b.click(); return true; } return false; })()`);
 const loaderText = () => evalIn("document.getElementById('vyre-loader') ? document.getElementById('vyre-loader').innerText : ''");
 const keyDatabases = async () => String(await evalIn("indexedDB.databases ? indexedDB.databases().then(d => JSON.stringify(d.map(x => x.name))) : '[]'"));
 /** @type {Array<{ url: string, method: string, pageAddress: string }>} */ const outbound = [];
@@ -95,52 +94,24 @@ const failures = [];
 const note = (ok, why) => { if (!ok) failures.push(why); };
 const resolveDirect = loc => fetch(`${relay.url}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
 
-// 1. A hostile link: someone else's ticket. One lookup, the card, and nothing paired without the tap.
+// 1. A #pair= link pairs nothing: the fragment is scrubbed from the address, the relay is never asked, no socket opens, no key is made, nothing is stored.
 const t1 = await registerTicket(relay.url);
 await openLink(t1.ticket);
 await pump(8000);
 const card = String(await loaderText());
 const addressAfter = String(await evalIn("location.href"));
-const asks = outbound.filter(o => o.method === "POST" && /^https:\/\/relay\.vyre\.run\/v1\/pair$/.test(o.url));
-note(/says it is alex\.vyre\.run/.test(card), `the confirm card did not say who it claims to be: ${card.slice(0, 160)}`);
-note(/fingerprint is [a-z2-7 ]{9}/.test(card), "the confirm card shows no key fingerprint");
 note(!addressAfter.includes("#") && !addressAfter.includes(t1.ticket), `the ticket is still in the address: ${addressAfter}`);
-note(asks.length === 1 && asks[0].method === "POST", `the loader should look the ticket up exactly once with POST /v1/pair, saw ${asks.length}`);
-note(asks.every(o => !o.pageAddress.includes("#")), "the fragment was still in the address at the relay lookup");
-note(outbound.every(o => /^https:\/\/relay\.vyre\.run\//.test(o.url)), `something other than the relay was contacted: ${outbound.filter(o => !/^https:\/\/relay\.vyre\.run\//.test(o.url)).map(o => o.url)}`);
-note((await resolveDirect(t1.loc)).status === 404, "the real relay should have used the ticket up on that one lookup");
-note(sockets.length === 0, `a socket to the relay opened before any tap: ${sockets}`);
-note(!(await keyDatabases()).includes("vyre-relay"), `a device key store exists before any tap: ${await keyDatabases()}`);
-note(await clickButton("Not now"), "no Not now button on the card");
-await pump(1500);
-note(/Nothing was paired/.test(String(await loaderText())), "Not now did not say nothing was paired");
-note(sockets.length === 0, "a socket opened after Not now");
-note(!(await keyDatabases()).includes("vyre-relay"), "a device key store exists after Not now");
+note(outbound.length === 0, `the loader contacted something for a #pair= link: ${outbound.map(o => o.url)}`);
+note((await resolveDirect(t1.loc)).status !== 404, "the ticket was used up by the loader: it must not look it up");
+note(sockets.length === 0, `a socket opened for a #pair= link: ${sockets}`);
+note(!(await keyDatabases()).includes("vyre-relay"), `a device key store exists: ${await keyDatabases()}`);
+note(!/Pair this device|says it is/.test(card), `the loader showed a pairing card: ${card.slice(0, 160)}`);
+note(String(await evalIn(`localStorage.getItem("vyre.box")`)) === "null", "a box was stored");
 
-// 2. Only the tap on Pair makes the key and opens the pairing channel.
-const t2 = await registerTicket(relay.url);
-outbound.length = 0;
-await openLink(t2.ticket);
-await pump(6000);
-note(sockets.length === 0, "a socket opened before the tap on Pair");
-note(await clickButton("Pair this device"), "no Pair button on the card");
-await pump(6000);
-note(outbound.filter(o => o.method === "POST" && /\/v1\/pair$/.test(o.url)).length === 1, "pairing must use the record already held, not a second lookup");
-note(sockets.some(u => /^wss:\/\/relay\.vyre\.run\//.test(u)), `the tap on Pair did not start pairing over the relay (sockets: ${sockets})`);
-
-// 3. A record that names another relay is refused with no card and no socket.
-sockets.length = 0;
-const t3 = await registerTicket(relay.url, { relay: "wss://evil.example" });
-await openLink(t3.ticket);
-await pump(6000);
-const refused = String(await loaderText());
-note(!/Pair this device/.test(refused), `a record naming another relay still showed a card: ${refused.slice(0, 160)}`);
-note(sockets.length === 0, `a socket opened for a record naming another relay: ${sockets}`);
-
-for (const t of [t1, t2, t3]) try { t.ws.close(); } catch {}
+for (const t of [t1]) try { t.ws.close(); } catch {}
 c.kill(); server.close(); await relay.stop();
 
-console.log(JSON.stringify({ outbound: outbound.map(o => [o.method, o.url]), sockets, card: card.slice(0, 200), refused: refused.slice(0, 160) }, null, 2));
+console.log(JSON.stringify({ outbound: outbound.map(o => [o.method, o.url]), sockets, card: card.slice(0, 200) }, null, 2));
 if (failures.length) { console.log("THE HAND-OFF DID NOT HOLD:\n- " + failures.join("\n- ")); process.exit(1); }
-console.log("A #pair= link shows its card and pairs nothing without the tap; one lookup, the fragment gone first; the tap alone starts pairing; a record naming another relay is refused.");
+console.log("A #pair= link pairs nothing: the fragment is scrubbed, the relay is not asked, no socket, no key, no box stored.");
 await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});

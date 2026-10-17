@@ -72,6 +72,7 @@ export function cheatsheet() {
   out.push("", "## If it can fail");
   out.push(`- timeout_ms ${POLICY_LIMITS.timeoutMin}-${POLICY_LIMITS.timeoutMax}; retry false | {attempts 1-${POLICY_LIMITS.attempts}, backoff_ms n | [n...], on [${RETRY_CODES.join(", ")}]}. Defaults: ${Object.entries(POLICY).map(([k, p]) => `${k} ${ms(/** @type {any} */ (p).timeout_ms)} x${/** @type {any} */ (p).attempts}`).join(", ")}; other kinds do not retry. A refusal is never retried.`);
   out.push("- on_fail={then: continue|stop, steps}: steps run if this one fails for good (they read `error.code`, `error.message`, `error.step`); `continue` carries on, `stop` (default) fails the run after them. No on_fail inside an on_fail.");
+  out.push("- flows.patch: insert {into: <step>, block: on_fail} or {lane: on_failure, first | after: <id>}; meta sends, returns, lock.");
   out.push("- verify={check: `output.record`, essential: true|false, say: \"what was checked\"} or {readback: true} on create, update, upsert, stage. Put an essential verify on every step that changes something.", "");
   out.push("## Expressions", `- Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for the time functions), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].`);
   out.push("- An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.");

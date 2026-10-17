@@ -14,9 +14,11 @@ A chat is a conversation thread. People and agents both take part, and the model
 
 ## What a person sees
 
-- **Chats** list at `/u/chats` (`apps/app/screens/chats/ChatsScreen.tsx`): title, project, the people and agents in it, the providers that answered, a status (working, idle, stopped, failed) and a **Needs you** chip when it waits on you.
+- **Chat** list at `/u/chats` (`apps/app/screens/chats/ChatsScreen.tsx`): one list of chats, group chats, agents and teammates, newest first, from `ConversationList` in the UI library. A search on top reads title, last line and project. Project chips (All, each project, No project) narrow the list. A chat with two or more others is a group chat. An agent or teammate you have no chat with yet starts one when you tap it. A chat shows a **Needs you** state when it waits on you.
+- **+ menu** beside the search: New chat, New group chat (`/u/chats/new?group=1`, two or more people) and New agent.
 - **New chat** at `/u/chats/new` starts a chat with the assistant or an agent. One chat opens at `/u/chats/<id>`.
-- **Filter by tag**: a row of tag chips above the list. Search also matches title, project, people, agents and tags (`apps/app/screens/chats/chats-model.js`).
+- **Side panel**: one tap on the chat header opens it, with three tabs. **Details** holds the people, the agent's page, the project (Move to a project; a chat is in at most one), the record and how the chat answers. **Library** holds the chat's files and its subagents. **Computer** shows the computer of an agent in the chat: asleep, waking or live with a thumbnail; Wake, Sleep, and Open for the full-screen view (`apps/app/src/chat/ComputerTab.tsx`, `computers.agent.*`).
+- **Filter by tag**: a row of tag chips above the list.
 - **Composer** (`apps/app/src/chat/ChatComposer.tsx`): `@` lists people, agents and files, and `#` lists the kinds other modules offer (vault items, Drive files, artifacts, GitHub, records). Enter sends.
 - **Message actions** (`apps/app/src/chat/MessageBar.tsx`): Copy, Reply, Ask about this, and a menu with Copy as Markdown, Copy code, Edit, Retry, Branch from here, React and Pin. They show on hover, keyboard focus or long press.
 - **Chat menu** (`apps/app/screens/chats/useChatMenu.tsx`): Open, Rename, Move to a project, Archive, Delete.

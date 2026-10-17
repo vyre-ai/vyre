@@ -22,7 +22,8 @@ export function connectionsSource(call: Call) {
     connectCancel: (id: string) => ask("connectors.connect.cancel", { id }),
     /** Finish a sign-in with the whole address the browser landed on (a browser on another device). */
     connectFinish: (id: string, url: string) => ask("connectors.connect.finish", { id, url }),
-    disconnect: (name: string) => ask("connectors.disconnect", { name }),
+    /** The answer says whether the vendor was told to drop the token, for a person's connection; `revoked` is null when the box did not say. */
+    async disconnect(name: string) { const r = await ask<{ revoked?: unknown; why?: unknown }>("connectors.disconnect", { name }); return { revoked: typeof r?.revoked === "boolean" ? r.revoked : null, why: String(r?.why ?? "") }; },
     /** Who can use a connection that exists; a null scope is the default. */
     setScope: (name: string, scope: Scope) => ask("connectors.scope", { name, scope }),
     // The firm's sending service (comms.*): the key goes to the vault once, through vault.connect (the person's presence), and is never read back.
@@ -86,6 +87,15 @@ export function connectionsSource(call: Call) {
     madeDecline: (proposal: string) => ask("connectors.connection.decline", { proposal }),
     madeCheck: (id: string) => ask<{ light: string; words: string }>("connectors.connection.check", { id }),
     madeDelete: (id: string) => ask("connectors.connection.delete", { id }),
+    // sharing a connection's vault item (V2): who holds it, and a change at one level; agents are listed to name the agent grants
+    shareGet: (name: string) => ask<unknown>("vault.access.get", { name }),
+    shareSet: (input: Record<string, unknown>) => ask("vault.access.set", input),
+    async agentList() { const r = await ask<unknown>("agents.list", {}); return (Array.isArray(r) ? r : []).filter((a): a is { name: string; uid?: string } => !!a && typeof (a as { name?: unknown }).name === "string"); },
+    /** The catalog's entries the box found one-click: what mcp.catalog adds to the curated presets. */
+    async oneClickEntries() { const r = await ask<{ entries?: unknown }>("mcp.catalog", {}); return Array.isArray(r?.entries) ? r.entries : []; },
+    /** A member's own connection: who holds it (Fill in only) and a change; the owner's item sharing is shareGet and shareSet. */
+    memberShareGet: (name: string) => ask<unknown>("vault.me.connection.shares", { name }),
+    memberShareSet: (input: Record<string, unknown>) => ask("vault.me.connection.share", input),
     // vault: items, grants, connections by surface
     async vaultItems() { return pickItems(await ask("vault.list", {})); },
     /** Let a module read a vault item: a person's own act (the box asks for presence). */

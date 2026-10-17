@@ -52,6 +52,10 @@ const S = StyleSheet.create({
 
 
 export type BlockCtx = {
+  /** A chat with one other: messages carry no face or name. */
+  solo?: boolean;
+  /** The key of the message row before this one's, or null (it tells whether the sender changed). */
+  before?: (key: string) => string | null;
   /** A wide screen shows diffs side by side. */
   wide: boolean;
   /** Whether the thread is wide enough (about 560 points) for a side by side diff; with the chat panel open beside it, it is not, and a diff is one column. Defaults to `wide`. */

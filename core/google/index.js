@@ -37,6 +37,7 @@ import { driveSeam, strip } from "./drive-seam.js";
 import { scopeFor, requireOwner, emailProblem, isOwnAct, actingPerson } from "./member-scope.js";
 import { forMember } from "./member-account.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { hold as holdFiles, release as releaseFiles } from "../../lib/connectors/attachments.js";
 
 const str = { type: "string" };
 const METHODS_DRIVE = ["GET", "POST", "PATCH"];
@@ -51,7 +52,7 @@ const account = { type: "string", description: "an account name from google.acco
 /** What a held item of a google:<account> sender carries, for gate.senders. */
 const CONTENT = {
   subject: "string (an email)", body: "string, plain text (an email)", cc: "email[]? (an email)", bcc: "email[]? (an email)",
-  in_reply_to: "Message-ID? (an email reply)", thread_id: "Gmail thread id? (an email reply)",
+  attachments: "files by reference: path, name, size, sha256, by (an email)?", in_reply_to: "Message-ID? (an email reply)", thread_id: "Gmail thread id? (an email reply)",
   op: "create | update (an invite; `to` is the attendees)", event_id: "string (an invite update)", summary: "the event title (an invite)",
   start: "ISO time (an invite)", end: "ISO time? (an invite)", where: "string? (an invite)", description: "string? (an invite)", time_zone: "IANA zone? (an invite)",
 };
@@ -453,7 +454,8 @@ export default {
     });
 
     const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails,
-      in_reply_to: { type: "string", description: "the Message-ID being answered, from google.mail.read" }, thread_id: str, account };
+      in_reply_to: { type: "string", description: "the Message-ID being answered, from google.mail.read" }, thread_id: str, account,
+      attachments: { type: "array", description: "files of Files by reference: [{ path, name? }]", items: { type: "object", properties: { path: str, name: str }, required: ["path"] } } };
 
     /** The content of an email from a tool's input, checked. */
     const mailContent = input => {
@@ -488,8 +490,16 @@ export default {
       run: safe(async (input, meta) => {
         const acct = forWrite(visible(), named(input.account));
         const { to, c } = mailContent(input);
-        // a member's own send from their own mailbox goes out at once; it is their own act, so it is not held
-        if (acct.member && await isOwnAct(ctx.kernel, meta)) { const out = await gm.send(acct, to, c); ctx.events.emit("google.sent", { account: acct.name, what: "email" }); return out; }
+        // files go by reference: path, name, size and hash are held and approved with the message; the bytes are read when it is sent
+        const files = await holdFiles(ctx, meta, input.attachments).catch(e => { throw fail(e.message, e.code || "bad_input"); });
+        if (files.length) c.attachments = files;
+        // a member's own send from their own mailbox goes out at once; it is their own act, so it is not held (its files are read now, under the same hold that checked them)
+        if (acct.member && await isOwnAct(ctx.kernel, meta)) {
+          const bytes = await releaseFiles(ctx, c.attachments || []).catch(e => { throw fail(e.message, e.code || "failed"); });
+          const out = await gm.send(acct, to, bytes.length ? { ...c, attachments: bytes } : c);
+          ctx.events.emit("google.sent", { account: acct.name, what: "email" });
+          return out;
+        }
         const id = await hold(acct, to, c, input, meta);
         if (id && typeof id === "object") return { sent: true, covered_by: id.by };   // inside a standing permission the member gave: it went out
         return { held: id, message: `Held at the Gate: "${c.subject}" to ${to.join(", ")} from ${acct.email} goes out once the user approves it in Vyre.` };
@@ -579,7 +589,8 @@ export default {
           return { event_id: event.id, url: event.url, attendees: event.attendees };
         }
         checkMessage(dest, content);
-        const out = await gm.send(acct, dest, content);
+        const files = await releaseFiles(ctx, content.attachments).catch(e => { throw fail(e.message, e.code || "failed"); });
+        const out = await gm.send(acct, dest, files.length ? { ...content, attachments: files } : content);
         ctx.events.emit("google.sent", { account: acct.name, what: "email" });
         return out;
       }),

@@ -2,18 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  RecoveryKeySheet, RolePicker, Segmented, ServerUrlField, SpaceSwitcherTitle, Text, passwordStrength,
+  RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, passwordStrength,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, usernameOf } from "../../../../lib/first-run-shape.js";
+import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
+import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
-  addComputer, addPhone, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
+  loadProgress, makeInvite, openSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -43,10 +44,10 @@ export function FirstRun() {
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [invite, setInvite] = useState(shot?.link || "");
-  const [url, setUrl] = useState("");
   const [github, setGithub] = useState(false);
-  const [phoneLink, setPhoneLink] = useState(shot?.screen === "phone.add" ? shot.link || "" : "");
   const [space, setSpace] = useState(shot?.space || "");
+  const [suggest, setSuggest] = useState("");
+  const [taken, setTaken] = useState(false);
   const [spaces, setSpaces] = useState<Membership[]>([]);
   const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
@@ -102,7 +103,7 @@ export function FirstRun() {
   }, [shot, screen]);
 
   useEffect(() => {
-    if (shot || (screen !== "ready" && screen !== "space.choice" && screen !== "computer.add")) return;
+    if (shot || (screen !== "ready" && screen !== "space.choice")) return;
     let live = true;
     void listSpaces().then((r) => {
       if (!live || !r.ok || !Array.isArray(r.spaces)) return;
@@ -124,11 +125,26 @@ export function FirstRun() {
     });
   }, [path, shot]);
 
+  // A space needs a name from the person. Offer one built from the username that the directory says is free; nothing is offered unchecked.
+  useEffect(() => {
+    if (screen !== "create.kind" || space || shot) return;
+    let live = true;
+    void (async () => {
+      for (const s of spaceNameSuggestions(username, 6)) {
+        if (!live) return;
+        if (MOCK || (await checkName(s)) === "free") { setSuggest(s); setSpace((cur) => cur || s); return; }
+      }
+    })();
+    return () => { live = false; };
+  }, [screen, username, space, shot]);
+
   useEffect(() => {
     if (screen !== "create.wait" || !waitId || shot) return;
     const tick = () => {
       void pollSpace(waitId).then((r) => {
         if (!r.ok) { setFailure(r.message || "Could not check whether the space is online yet."); return; }
+        if (r.failed && r.canRename) { setTaken(true); setFailure(SPACE_NAME_SAY.taken(suggest)); return; }
+        if (r.failed) { setFailure(typeof r.message === "string" ? r.message : "The space could not be made."); return; }
         if (r.expired) { setFailure(typeof r.message === "string" ? r.message : "The install window ended. Go back and show a new command."); setOnline(false); return; }
         if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
         if (r.online) setOnline(true);
@@ -222,7 +238,7 @@ export function FirstRun() {
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
@@ -325,8 +341,16 @@ export function FirstRun() {
   if (screen === "create.kind") {
     return (
       <FlowStep steps={steps} onBack={back} title="Where should it run?" lead="One install command, then this screen waits until it is online." failure={failure}
-        primary={{ label: "Show the command", disabled: !kind, loading: busy, onPress: () => void run(async () => {
-          const r = await openSpace({ kind: kind || "linux", name: space || undefined });
+        primary={{ label: "Show the command", disabled: !kind || !usernameOf(space), loading: busy, onPress: () => void run(async () => {
+          const wanted = usernameOf(space);
+          if (!wanted) { setFailure(SPACE_NAME_SAY.required); return; }
+          if (!MOCK && (await checkName(wanted)) === "taken") {
+            const alt = (await Promise.all(spaceNameSuggestions(username || wanted, 6).map(async (c) => ((await checkName(c)) === "free" ? c : "")))).find(Boolean) || "";
+            if (alt) setSuggest(alt);
+            setFailure(SPACE_NAME_SAY.taken(alt));
+            return;
+          }
+          const r = await openSpace({ kind: kind || "linux", name: wanted });
           if (!r.ok) { setFailure(r.message); return; }
           if (!commandOk(r.command)) { setFailure("The install command is not one this app can show."); return; }
           setCommand(String(r.command));
@@ -334,6 +358,7 @@ export function FirstRun() {
           if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
           go("create.wait");
         }) }}>
+        <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={usernameOf(space) ? `Its address will be ${usernameOf(space)}.vyre.run` : SPACE_NAME_SAY.required} error={space && !usernameOf(space) ? SPACE_NAME_SAY.required : undefined} />
         <ChoiceList label="Where it runs" value={kind} onChange={setKind} options={[
           { value: "linux", title: "Linux server", sub: "A cloud machine or any computer that stays on.", icon: "server" },
           { value: "mac", title: "Always-on Mac", sub: "A Mac that stays awake.", icon: "laptop" },
@@ -349,6 +374,19 @@ export function FirstRun() {
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
         primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => go("ready") }}>
+        {taken ? (
+          <>
+            <Field label="Space name" name="Space name" value={space} onChangeText={setSpace} help={suggest ? `${suggest} is free.` : undefined} />
+            <Button label="Use this name" onPress={() => void run(async () => {
+              const wanted = usernameOf(space);
+              if (!wanted) { setFailure(SPACE_NAME_SAY.required); return; }
+              if (!MOCK && (await checkName(wanted)) === "taken") { setFailure(SPACE_NAME_SAY.taken(suggest)); return; }
+              const r = await renameSpace(waitId, wanted);
+              if (!r.ok) { setFailure(r.message); return; }
+              setTaken(false); setFailure("");
+            })} />
+          </>
+        ) : null}
         {command ? <CodeBlock code={command} lang="sh" /> : null}
         {expiresAt && !online ? <Text tone="muted">{`Install link expires ${new Date(expiresAt).toLocaleString()}`}</Text> : null}
       </FlowStep>
@@ -372,38 +410,6 @@ export function FirstRun() {
     );
   }
 
-  if (screen === "computer.add") {
-    const urlOk = /^https:\/\/[^\s]+$/.test(url.trim());
-    return (
-      <FlowStep steps={steps} onBack={back} title="Add your computer" lead="This computer connects to every space you belong to. Each space has its own address. The master password unlocks the vault." failure={failure}
-        primary={{ label: "Add this computer", disabled: !urlOk || !passwordOk(password) || (!github && !usernameOf(username)), loading: busy, onPress: () => void run(async () => {
-          const r = await addComputer({ url: url.trim(), password, ...(github ? { github: true } : { username }) });
-          if (!r.ok) { setFailure(r.message); return; }
-          go("ready");
-        }) }}>
-        {spaces.length ? spaces.map((s) => <Text key={s.id} tone="muted">{`${s.name}, ${s.role}${s.server ? `, ${s.server}` : ""}`}</Text>) : null}
-        <ServerUrlField value={url} onChangeText={setUrl} error={url && !urlOk ? "Use a https address, with no password in it." : undefined} />
-        {github ? <Text tone="muted">GitHub will sign you in. Type the master password to unlock the vault.</Text> : <Field label="Username" value={username} onChangeText={setUsername} />}
-        <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(false))} />
-      </FlowStep>
-    );
-  }
-
-  if (screen === "phone.add") {
-    return (
-      <FlowStep steps={steps} onBack={back} title="Add your phone" lead="Your phone opens this link and joins the space." failure={failure}
-        primary={{ label: phoneLink ? "Done" : "Add your phone", loading: busy, onPress: () => void run(async () => {
-          if (phoneLink) { go("ready"); return; }
-          const r = await addPhone(space || undefined);
-          if (!r.ok) { setFailure(r.message); return; }
-          setPhoneLink(String(r.link || ""));
-        }) }}>
-        {phoneLink ? <InviteShare link={phoneLink} /> : null}
-      </FlowStep>
-    );
-  }
-
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
     <FlowStep steps={steps} hero mark="done" title="You're in"
@@ -423,11 +429,10 @@ export function FirstRun() {
         })} />
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
+      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your master password.`}</Text>
       <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
         { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
         { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },
-        { value: "computer.add", title: "Add a computer", sub: "It connects to every space you belong to.", icon: "laptop" },
-        { value: "phone.add", title: "Add a phone", sub: "The phone opens a link.", icon: "link" },
       ]} />
     </FlowStep>
   );

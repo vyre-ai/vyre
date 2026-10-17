@@ -38,7 +38,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9695 (rel6, 16 Oct 2026, [kernel +4: lead ruling YES, 16 Oct 2026] seal/client.js writes <seal dir>/sealer.pid when it spawns the sealing process and removes it when the process exits, so lib/vault-wipe.js sees a sealer a ps listing cannot see yet).
 // 9820 (integrate/0.6, 16 Oct 2026): standing grants in gate kernel hooks, flows.actions and skills/chrome tools on the registry, and browser-access unification land in the trusted base together (+125 on 9695).
 // 9842 (integrate/0.6, 16 Oct 2026): gate standing list tools and flows.actions read path in the registry (+22 measured at ab0d8a54f).
-const CAP = 9842;
+// 9740 (rec6b, 18 Oct 2026, lead ruling: make real headroom): the type-definition checks (kinds, roles, computed fields, names, shape) moved to gateway/definition-checks.js, which decides no grant and reads no record: the base fell from 9842 to 9680. The cap is the new size plus 60, kept for the 0.6 additions of records, accounts and flows; it only goes down.
+// 9673 (0.5.4 assembly dry run, flow6b, 19 Oct 2026): the measured base of the assembled branches (9668 before vault6's level and team-agent kernel lines, +5), the lower value that passes (rec6b's headroom said 9740).
+const CAP = 9673;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
@@ -52,6 +54,8 @@ const BASE_FILES = [
 const NOT_BASE_FILES = {
   "modules/child.js": "runs INSIDE the module's sandbox, as the module's own host: the supervisor does not trust it (it is the confined side of the bridge, and everything it does is a message the host-side door checks)",
   "audit/verify.js": "checks over public data that no kernel path calls yet (a device verifying a Space-key endorsement or revocation, two devices comparing checkpoints): it decides no grant and reads no secret, so it needs no kernel authority; kept for the device side that may still come",
+  "gateway/definition-checks.js": "validates a type definition (kinds, roles, computed fields, names, shape) and refuses in words: it decides no grant and reads no record; records.js calls it and the gateway gates the define itself",
+  "tasks/scrub.js": "forgets stored task words when a value is sealed or a record is erased (TR-1): it decides no grant, approves nothing and reads only the text it removes; tasks.js hands it the stores",
   "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
 };
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */

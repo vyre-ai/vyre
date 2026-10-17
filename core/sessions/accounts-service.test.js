@@ -48,8 +48,8 @@ async function signIn(w, person, label) {
   throw new Error("the sign-in did not finish");
 }
 
-test("the accounts a member reaches are four calls, and an API key is not one of them", () => {
-  assert.deepEqual(CALLS.accounts, ["list", "signin", "remove", "default"]);
+test("the accounts a member reaches are five calls: sign-in, and a key kept in their own vault", () => {
+  assert.deepEqual(CALLS.accounts, ["list", "signin", "remove", "default", "add"]);
 });
 
 test("a member signs in on their own account; it is theirs alone: not the owner's, not another member's, and no one else's turn resolves to it", { timeout: 90_000 }, async t => {
@@ -71,15 +71,16 @@ test("a member signs in on their own account; it is theirs alone: not the owner'
   assert.ok(fs.existsSync(path.join(w.root, "accounts", mine[0].id, ".fake", "auth.json")), "the login wrote its token in Ana's own account folder");
 });
 
-test("a member cannot touch another member's account, and the door has no call that adds a key", { timeout: 90_000 }, async t => {
+test("a member cannot touch another member's account, and a key can only be one of their own vault", { timeout: 90_000 }, async t => {
   const w = await world(t);
   await signIn(w, ANA, "Ana's Codex");
   const [ana] = await w.as(ANA, "list", {});
   await assert.rejects(() => w.as(BEN, "remove", { id: ana.id }), /no account/, "Ben removing Ana's account: not found, never not yours");
   await assert.rejects(() => w.as(BEN, "default", { id: ana.id }), /no account/);
   await assert.rejects(() => w.as(BEN, "signin", { provider: "codex", account: ana.id }), /no account/, "Ben signing Ana's account in again");
-  assert.equal(w.svc.add, undefined);
-  assert.equal(w.svc.key, undefined);
+  assert.equal(w.svc.key, undefined, "no shortcut that stores a key in the owner's vault");
+  for (const item of ["nonesuch", "claude-setup-token", "anthropic-api-key"]) await assert.rejects(() => w.as(ANA, "add", { provider: "claude", kind: "api-key", label: "Mine", vault_item: item }), /own vault/, `${item}: a key is named in her own vault, never the owner's`);
+  assert.deepEqual((await w.as(ANA, "list", { provider: "claude" })).filter((/** @type {any} */ a) => !a.synthetic), [], "nothing was added");
   assert.equal((await w.as(ANA, "list", {})).length, 1, "Ana's account is still there");
 });
 

@@ -209,14 +209,6 @@
    "module": "bridges",
    "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
   },
-  "bridges.resolve": {
-   "module": "bridges",
-   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
-  },
-  "bridges.view.read": {
-   "module": "bridges",
-   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
-  },
   "chrome.act": {
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
@@ -1240,30 +1232,6 @@
   "relay.pair.start": {
    "module": "relay",
    "reason": "the callers list (surfaces, the owner's devices, a module) plus owner() in the tool, which refuses a model, an agent, a hook, a guest and anonymous, and the presence proof the tool requires"
-  },
-  "relay.pair.window.close": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
-  },
-  "relay.pair.window.confirm": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
-  },
-  "relay.pair.window.open": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
-  },
-  "relay.pair.window.ping": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
-  },
-  "relay.pair.window.reject": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
-  },
-  "relay.pair.window.renew": {
-   "module": "relay",
-   "reason": "callers limited in code to deck, tailnet"
   },
   "relay.setup.status": {
    "module": "relay",
@@ -2589,10 +2557,6 @@
    "module": "onboard",
    "reason": "ownerWrite refuses mcp, agents and anonymous callers; presence when the server is owned"
   },
-  "onboard.computer.add": {
-   "module": "onboard",
-   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
-  },
   "onboard.first.progress": {
    "module": "onboard",
    "reason": "read-only: onboarding step progress for the setup page; ownerWrite refuses models"
@@ -2624,10 +2588,6 @@
   "onboard.person.status": {
    "module": "onboard",
    "reason": "read-only: whether this device already has an identity; ownerWrite refuses models"
-  },
-  "onboard.phone.add": {
-   "module": "onboard",
-   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
   },
   "onboard.space.current": {
    "module": "onboard",
@@ -2664,6 +2624,10 @@
   "work.chat.prefs": {
    "module": "work",
    "reason": "read-only: chat preferences for the signed-in person; kernelOf refuses when no kernel is attached"
+  },
+  "agents.flow-say": {
+   "module": "agents",
+   "reason": "only a person writes: the handler refuses every non-person caller, reads the Flow and its runs through that person's own access (no access, no wake) and the job runs as them"
   }
  }
 }

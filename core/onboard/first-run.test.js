@@ -37,8 +37,7 @@ test("the join path never names a server, and identity leads to the path the per
   assert.equal(afterAi({ path: "join", heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
   assert.equal(afterAi({ path: "create" }), "create.kind");
   assert.equal(afterAi({}), "space.choice");
-  assert.equal(afterAi({ path: "computer" }), "computer.add");
-  assert.equal(afterAi({ path: "phone" }), "phone.add");
+  assert.equal(afterAi({ path: "phone" }), "space.choice", "first run has no Add your phone step any more (a phone signs in with the one sign-in line), so path=phone is the plain choice");
 });
 
 /** @param {{ status?: any, config?: any, fetch?: typeof fetch }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[], ctx: any }} */
@@ -78,20 +77,19 @@ function harness(opt = {}) {
     if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: opt.completeCode || "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
     if (name === "spaces.invites.preview") { if (opt.preview) return opt.preview(input); throw Object.assign(new Error("no card"), { code: "not_found" }); }
-    if (name === "wink.phone.open") return { qr: "vyre://wink/2?p=phoneseed", link: "vyre://wink/2?p=phoneseed", expires: 1_900_000_000_000, code: "WINK-ABCD-EFGH" };
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
       if (link.includes("adminlink")) return { space: "spc_juniper", name: "juniper", role: "admin", server: "https://juniper.vyre.run" };
       return { space: "spc_juniper", name: "juniper", role: "member", server: "https://juniper.vyre.run" };
     }
-    if (name === "devices.signin") {
-      assert.equal("password" in input, true);
-      return { ok: true, username: input.username || "alex", server: input.server, live: true, device: "aaaaaaaaaaaaaaaa" };
-    }
     if (name === "vault.space.create") {
       if (made.has(input.space)) throw Object.assign(new Error("exists"), { code: "exists" });
       made.add(input.space);
       return { generation: 1 };
+    }
+    if (name === "spaces.publish-server-space") {
+      if (opt.publish) return opt.publish(input);
+      return { space: "spc_aaaaaaaaaa", name: input.name };
     }
     if (name === "identity.github.link") return { login: input.login };
     throw Object.assign(new Error(`missing ${name}`), { code: "no_such_tool" });
@@ -104,14 +102,14 @@ test("the first-run tools are the ones the app calls, and an access change is ma
   const { tools } = harness();
   const names = [...tools.keys()].sort();
   assert.deepEqual(names, [
-    "onboard.agent.list", "onboard.agent.signin", "onboard.computer.add", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save",
+    "onboard.agent.list", "onboard.agent.signin", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save",
     "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
-    "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
+    "onboard.person.create", "onboard.person.lookup", "onboard.person.status",
     "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll",
   ]);
   const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
   const rows = new Map(manifest.does.tools.filter((t) => typeof t === "object").map((t) => [t.name, t]));
-  for (const name of ["onboard.person.create", "onboard.github.finish", "onboard.space.join", "onboard.space.open", "onboard.space.current", "onboard.member.link", "onboard.computer.add", "onboard.phone.add"]) {
+  for (const name of ["onboard.person.create", "onboard.github.finish", "onboard.space.join", "onboard.space.open", "onboard.space.current", "onboard.member.link"]) {
     assert.equal(rows.get(name).outward, true, name);
     assert.equal(rows.get(name).effect, "write", name);
     assert.equal(rows.get(name).reach, "anyone", name);
@@ -237,7 +235,8 @@ test("the install command is the pairing line, and an invite goes through the sp
   assert.equal(commandOk(opened.command), true);
   assert.match(opened.command, /VYRE_CODE=/);
   assert.equal(opened.code, undefined);
-  const mac = await tools.get("onboard.space.open").run({ kind: "mac" }, {});
+  await assert.rejects(() => tools.get("onboard.space.open").run({ kind: "mac" }, {}), (e) => e.code === "bad_input" && /Name your space/.test(e.message), "no name, no default label");
+  const mac = await tools.get("onboard.space.open").run({ kind: "mac", name: "studio" }, {});
   assert.match(mac.command, /install-mac-server\.sh/);
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
   assert.equal(polled.online, false);
@@ -250,24 +249,9 @@ test("the install command is the pairing line, and an invite goes through the sp
   const join = await tools.get("onboard.space.join").run({ link: link.link }, {});
   assert.equal(join.joined, true);
   assert.equal(calls.some((c) => c.name === "spaces.invites.accept"), true);
-  const invitesBefore = calls.filter((c) => c.name === "spaces.invites.create").length;
-  const phone = await tools.get("onboard.phone.add").run({ space: "juniper" }, {});
-  assert.equal(phone.link, "vyre://wink/2?p=phoneseed");
-  assert.equal(phone.role, "device");
-  assert.equal(phone.code, "WINK-ABCD-EFGH");
-  assert.equal(calls.some((c) => c.name === "wink.phone.open"), true, "a phone is paired as the person's own device");
-  assert.equal(calls.filter((c) => c.name === "spaces.invites.create").length, invitesBefore, "adding a phone makes no invite for a second person");
-  const computer = await tools.get("onboard.computer.add").run({ url: "https://juniper.vyre.run", username: "alex", password: "correct horse battery" }, {});
-  assert.equal(computer.url, "https://juniper.vyre.run");
-  assert.equal(computer.username, "alex");
-  assert.equal("password" in computer, false);
-  assert.equal(calls.some((c) => c.name === "devices.signin"), true);
-  assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
-  // The card for adding a computer names the server it will sign in to.
-  assert.match(lineOfOp("onboard.computer.add", { url: "https://juniper.vyre.run", username: "alex" }, "An assistant"), /juniper\.vyre\.run/);
 });
 
-test("one identity is owner of one space and admin of another, and a computer signs into both servers", async () => {
+test("one identity is owner of one space and admin of another, and the spaces list names both servers", async () => {
   const { tools, calls } = harness();
   const made = await tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
   assert.equal(made.already, false);
@@ -301,27 +285,6 @@ test("one identity is owner of one space and admin of another, and a computer si
   assert.equal((await tools.get("onboard.space.list").run({}, {})).current, byName.juniper.id);
   await assert.rejects(() => tools.get("onboard.space.current").run({ space: "spc_missing" }, {}), /not one this identity/);
 
-  const computer = await tools.get("onboard.computer.add").run({ url: "https://studio.vyre.run", username: "alex", password: "correct horse battery" }, {});
-  const signins = calls.filter((c) => c.name === "devices.signin");
-  assert.deepEqual(signins.map((c) => c.input.server).sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.equal(signins.every((c) => c.input.username === "alex" && c.input.password === "correct horse battery"), true);
-  assert.equal(computer.added, true);
-  assert.deepEqual(computer.missing, []);
-  assert.equal("password" in computer, false);
-  assert.equal("carry" in computer, false);
-  const againList = await tools.get("onboard.space.list").run({}, {});
-  assert.equal(againList.spaces.find((s) => s.name === "studio").server, "https://studio.vyre.run");
-  assert.equal(againList.id, "id_alex");
-  const againComputer = await tools.get("onboard.computer.add").run({ username: "alex", password: "correct horse battery" }, {});
-  const both = calls.filter((c) => c.name === "devices.signin");
-  assert.equal(both.length, 4);
-  assert.deepEqual(both.slice(2).map((c) => c.input.server).sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.deepEqual(againComputer.servers.slice().sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.equal(againComputer.added, true);
-  assert.equal(againComputer.live, true);
-  assert.equal(againComputer.devices.length, 2);
-  const line = lineOfOp("onboard.computer.add", { username: "alex", password: "correct horse battery" }, "An assistant");
-  assert.doesNotMatch(line, /horse/);
   const shown = lineOfOp("onboard.space.current", { space: "juniper" }, "An assistant");
   assert.match(shown, /juniper/);
   assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
@@ -329,7 +292,7 @@ test("one identity is owner of one space and admin of another, and a computer si
 
 test("a person poll makes the space vault once the server has adopted the creator", async () => {
   const space = "spc_aaaaaaaaaa";
-  const status = { issued: true, owned: true, locked: true, space, expires: Math.floor(Date.now() / 1000) + 1800 };
+  const status = { issued: true, owned: true, locked: true, space, server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
   const { tools, calls } = harness({ status });
   const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
@@ -387,4 +350,41 @@ test("a poll stops hard when another server answered the install line first", as
   const w = await waiting.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
   const p = await waiting.tools.get("onboard.space.poll").run({ id: w.id }, { caller: "cli" });
   assert.equal(p.contested, undefined, "an ordinary wait is not a hard stop");
+});
+
+test("a person poll names the server's space in the directory, once, on the server this install line paired, so <name>.vyre.run answers a sign-in", async () => {
+  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
+  const { tools, calls } = harness({ status });
+  const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
+  const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(polled.online, true);
+  assert.equal(calls.some((c) => c.name === "spaces.servers"), false, "the server is the one the install status names, never picked from a list");
+  const published = calls.filter((c) => c.name === "spaces.publish-server-space");
+  assert.equal(published.length, 1);
+  assert.deepEqual(published[0].input, { server: "srv_mine", name: "juniper" });
+  await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(calls.filter((c) => c.name === "spaces.publish-server-space").length, 1, "published once for this install line");
+});
+
+test("a person poll that is refused the name does not say online and says what to do; an agent's poll publishes nothing", async () => {
+  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
+  const refused = harness({ status, publish: () => { throw Object.assign(new Error("someone else has that name"), { code: "taken" }); } });
+  const opened = await refused.tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
+  const polled = await refused.tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(polled.online, false);
+  assert.equal(polled.failed, true);
+  assert.equal(polled.code, "taken");
+  assert.match(String(polled.message), /pick another name/);
+  assert.equal((await refused.tools.get("onboard.space.list").run({}, {})).spaces.some((s) => s.name === "juniper"), false, "no space is listed for a name the directory refused");
+  const agent = harness({ status });
+  const o2 = await agent.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "mcp" });
+  await agent.tools.get("onboard.space.poll").run({ id: o2.id }, { caller: "mcp" });
+  assert.equal(agent.calls.some((c) => c.name === "spaces.publish-server-space"), false);
+  // Adopted but this line has paired no server yet: nothing is guessed, nothing is published, and the poll says so instead of online.
+  const unpaired = harness({ status: { ...status, server: null } });
+  const o3 = await unpaired.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const p3 = await unpaired.tools.get("onboard.space.poll").run({ id: o3.id }, { caller: "cli" });
+  assert.equal(p3.online, false);
+  assert.equal(p3.failed, true);
+  assert.equal(unpaired.calls.some((c) => c.name === "spaces.publish-server-space"), false);
 });

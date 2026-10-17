@@ -6,6 +6,8 @@ import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
+import type { Directory, Level, Share, Who } from "./ShareSheet";
+import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 
 export type Scope = "space" | "mine";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
@@ -28,12 +30,19 @@ export interface VaultData {
   /** Space: who the item is shared with and who could be picked (vault.access.get), and share or unshare (vault.access.set). */
   access?(item: VItem): Promise<{ rows: { who: string; level: "use" | "edit" }[]; people: { id: string; name: string }[] }>;
   setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
+  /** Space: who an item is shared with (people, groups and agents at Fill in, Read, Edit and rotate), the directory to pick from, and one change (vault.access.get and vault.access.set). */
+  sharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; levels?: Level[] }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
+  /** Space: the vaults an item can move to, and the move (vault.named.list, vault.named.move). */
+  moving?: { list(): Promise<{ id: string; name: string; sub: string }[]>; move(item: VItem, vault: string | null): Promise<void> };
+  /** Mine: who one of the member's app connections is shared with (a person, a group or an agent she may instruct, at Fill in only), and one change (vault.me.connection.*). `info` says what it connects to. */
+  connectionSharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; info?: { account: string; how: string } }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
 }
 
 export function sampleData(): VaultData {
   const items = [...SAMPLE_ITEMS];
+  const held = new Map<string, Share[]>();
   return {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false }),
@@ -46,6 +55,18 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
+    moving: { list: async () => [{ id: "acme", name: "Northwind Bakery (client)", sub: "Shared with Billing and Dana" }, { id: "marketing", name: "Marketing", sub: "Shared with Marketing and Juno" }], move: async () => {} },
+    connectionSharing: {
+      load: async (v) => ({ shares: held.get(v.id) ?? [{ id: "kit", level: "use" as Level }], dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME, info: { account: "alex@juniperstudio.example.com", how: "You connected it" } }),
+      set: async (v, w, level) => { const cur = (held.get(v.id) ?? [{ id: "kit", level: "use" as Level }]).filter((x) => x.id !== w.id); held.set(v.id, level ? [...cur, { id: w.id, level }] : cur); },
+    },
+    sharing: {
+      load: async (v) => ({ shares: (held.get(v.id) ?? v.shared.map((s) => ({ id: s.who, level: (s.level === "edit" ? "edit" : "use") as Level }))), dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME }),
+      set: async (v, w, level) => {
+        const cur = (held.get(v.id) ?? v.shared.map((s) => ({ id: s.who, level: (s.level === "edit" ? "edit" : "use") as Level }))).filter((x) => x.id !== w.id);
+        held.set(v.id, level ? [...cur, { id: w.id, level }] : cur);
+      },
+    },
   };
 }
 
@@ -83,7 +104,7 @@ export function realData(call: Call): VaultData {
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
         const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number }[] }>("vault.me.list");
-        return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
+        return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
       } catch (e) {
         if ((e as { code?: string }).code === "locked") return { items: [], locked: true };
         throw e;
@@ -110,6 +131,40 @@ export function realData(call: Call): VaultData {
       return { rows: r.access.map((a) => ({ who: a.subject, level: a.level })), people: r.people };
     },
     async setAccess(item, who, level) { await ask("vault.access.set", { name: item.id, kind: "person", subject: who, level }); },
+    moving: {
+      async list() { const r = await ask<{ vaults: { id: string; name: string; personal: boolean; shared: number }[] }>("vault.named.list"); return r.vaults.filter((v) => !v.personal).map((v) => ({ id: v.id, name: v.name, sub: v.shared ? `Shared with ${v.shared} ${v.shared === 1 ? "holder" : "holders"}` : "Only you" })); },
+      async move(item, vault) { await ask("vault.named.move", { item: item.id, vault }); },
+    },
+    connectionSharing: {
+      async load(item) {
+        const [sh, dr, me] = await Promise.all([
+          ask<{ shares: { kind: Who["kind"] | "team"; subject: string; level: Level }[] }>("vault.me.connection.shares", { name: item.id }),
+          ask<{ people: { id: string; name: string; role?: string }[]; groups: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents: { id: string; name: string; instructors?: string[] }[] }>("vault.me.connection.directory"),
+          ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id }),
+        ]);
+        const dir: Directory = {
+          people: dr.people.map((p) => ({ id: p.id, kind: "person", name: p.name, sub: p.role ?? "" })),
+          groups: dr.groups.map((g) => ({ id: g.id, kind: "group", name: g.name, people: g.people ?? [], agents: g.agents ?? [] })),
+          agents: dr.agents.map((a) => ({ id: a.id, kind: "agent", name: a.name, instructors: a.instructors ?? [] })),
+        };
+        const f = me.fields ?? {};
+        return { shares: sh.shares.map((s) => ({ id: s.subject, level: s.level })), dir, me: null, info: { account: f.server_url ? new URL(f.server_url).host : "", how: f.connected_by ? "You connected it" : "" } };
+      },
+      async set(item, w, level) { await ask("vault.me.connection.share", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
+    },
+    sharing: {
+      async load(item) {
+        const r = await ask<{ access: { kind: Who["kind"] | "team"; subject: string; level: Level }[]; people: { id: string; name: string; role?: string }[]; teams?: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents?: { id: string; name: string }[] }>("vault.access.get", { name: item.id });
+        const dir: Directory = {
+          people: r.people.map((p) => ({ id: p.id, kind: "person", name: p.name, sub: p.role ?? "" })),
+          groups: (r.teams ?? []).map((t) => ({ id: t.id, kind: "group", name: t.name, people: t.people ?? [], agents: t.agents ?? [] })),
+          agents: (r.agents ?? []).map((a) => ({ id: a.id, kind: "agent", name: a.name })),
+        };
+        // Read and Edit and rotate are not hidden by the tools but cannot be used by a member yet, so this box offers Fill in only and a share made earlier at another level still shows as it is.
+        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null, levels: ["use"] };
+      },
+      async set(item, w, level) { await ask("vault.access.set", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
+    },
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
   };
 }

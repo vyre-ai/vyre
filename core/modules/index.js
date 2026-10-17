@@ -49,7 +49,7 @@ const LOADER_FEATURES = ["modules.status"];
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 /** The sign-in tools: they authenticate a person (a passkey or the device's own key) and open a person session; the presence verifier still checks that proof. */
 const SIGN_IN = new Set(["presence.person.start"]);
-export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status", "wink.install.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "relay.devices.path", "presence.person.status", "wink.install.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -633,7 +633,7 @@ const RELAY = Symbol("vyre.relay");
 const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
   memory: ["spaces.storage."],
-  work: ["spaces.storage.", "vault.uses.for"], // vault.uses.for: the timeline asks, as the person looking
+  work: ["spaces.storage.", "vault.uses.for", "spaces.members.list"], // vault.uses.for: the timeline asks, as the person looking; spaces.members.list: the names of those a person adds to a chat, asked as that person
   publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
@@ -1767,7 +1767,7 @@ export class Registry {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
         let card;
-        try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
+        try { card = await hold.run({ tool, fields, from: asker, input, ...(typeof meta.thread === "string" && meta.thread ? { thread: meta.thread } : {}) }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
         return scrubVaultResult(caller, tool, { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } }, input, def);
       }

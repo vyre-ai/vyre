@@ -22,8 +22,8 @@ const HANDS_VALUE = new Set([
 ]);
 /** Adding a device. The schema must name name, type and fingerprint so the card can show them. */
 const DEVICE_ADD = new Set([
-  "onboard.computer.add", "onboard.phone.add", "onboard.windows",
-  "spaces.devices.enrol", "spaces.devices.restore", "wink.phone.open", "wink.pair.server", "devices.signin",
+  "onboard.windows",
+  "spaces.devices.enrol", "spaces.devices.restore", "wink.pair.server",
 ]);
 /** @param {string} caller */
 const kindOf = (caller) => String(caller || "").replace(/[\s:](agent|thread):.*$/s, "");
@@ -214,7 +214,7 @@ export async function holdNeedsYou(registry, o) {
   const hold = registry.tools.get("approvals.hold");
   if (!hold) return { error: { code: "held_unavailable", message: `${tool} changes a device or an invite, and this server has no approvals queue to hold it in` } };
   let card;
-  try { card = await hold.run({ tool, fields, from: asker, input, moment }, { caller: "module:registry" }); }
+  try { card = await hold.run({ tool, fields, from: asker, input, moment, ...(provenSession(meta) ? { thread: String(meta.thread) } : {}) }, { caller: "module:registry" }); }
   catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
   const id = card && card.id;
   return { error: { code: "held_for_approval", approval: id, line: card && card.line, moment: (card && card.moment) || moment, ...(card && card.group ? { group: card.group } : {}), message: `${tool} waits for your one tap (approval ${id}). Nothing changed. After you approve, call it again with the same input and approval: ${id}` } };

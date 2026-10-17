@@ -33,11 +33,11 @@ export const tokensOf = (text) => /** @type {{ token: string, path: string, suff
 export const HELPERS = /** @type {{ token: string, label: string, engine: boolean }[]} */ ([
   { token: "{today}", label: "Today's date", engine: true },
   { token: "{now}", label: "The date and time now", engine: true },
-  { token: "{run.number}", label: "The run number", engine: false },
-  { token: "{flow.name}", label: "The Flow's name", engine: false },
-  { token: "{approver.name}", label: "The approver's name", engine: false },
-  { token: "{space.name}", label: "The Space's name", engine: false },
-  { token: "{me.name}", label: "Your name", engine: false },
+  { token: "{run.number}", label: "The run number", engine: true },
+  { token: "{flow.name}", label: "The Flow's name", engine: true },
+  { token: "{approver.name}", label: "The approver's name", engine: true },
+  { token: "{space.name}", label: "The Space's name", engine: true },
+  { token: "{me.name}", label: "Your name (the person who started the run)", engine: true },
 ]);
 
 /** Sealed field names come as `sealed: true` on a field. @param {{ name: string, label: string, sealed?: boolean }} f */
@@ -81,6 +81,8 @@ export function insertList(d, stepId, o, opt = {}) {
     }
     if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null, `{${s.id}.rows}`));
     if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null, `{${s.id}.value}`));
+    // a Documents step (a call of documents.generate, which the builder shows as an advanced step) files a document and answers its path: a value an email can attach
+    if (s.kind === "advanced" && s.raw && s.raw.kind === "call" && s.raw.action === "documents.generate") steps.push(item(`{steps.${s.id}.path}`, `The document made by ${s.summary || s.id}`, null, `{${s.id}.path}`));
     if (s.kind === "classify") steps.push(item(`{steps.${s.id}.label}`, `The group picked by ${s.id}`, null, `{${s.id}.label}`));
   }
   if (steps.length) out.push({ title: "Earlier steps", items: steps });

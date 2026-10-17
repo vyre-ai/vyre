@@ -182,3 +182,34 @@ test("gate: who approved, rejected, revised or settled an item is the caller, ne
   assert.ok(revised.length && revised.every((/** @type {any} */ e) => (e.payload || e).by === "cli"));
 });
 
+
+test("gate.withdraw-thread: only the Space's own host discards what a session holds; an agent, a member's key, the CLI and another module are refused", async t => {
+  const root = tempHome(t);
+  const gmail = await fakeGmail(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
+    name: "test-box", vault: { keystore: "file" },
+    gate: { senders: { mail: { type: "gmail", vault: "work-mail-token", from: "alex@example.com", base: gmail.base } } },
+  }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
+  const local = as("local");
+  const juno = (tool, input = {}, thread = "t-1") => d.registry.call(tool, input, "mcp:agent:juno", { thread, agent: "juno" });
+  const send = (thread, subject) => juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject, body: "Hi Dana" }, thread }, thread);
+  const a = await send("t-1", "First"), b = await send("t-2", "Second");
+  assert.equal(a.data.state, "held"); assert.equal(b.data.state, "held");
+
+  const withdraw = (caller, input = { thread: "t-1" }) => d.registry.call("gate.withdraw-thread", input, caller);
+  for (const [who, caller] of [["an agent", "mcp:agent:juno"], ["a member's MCP key", "mcp:thread:t-1"], ["the CLI", "cli"], ["another module", "module:wink"], ["the registry", "module:registry"]]) {
+    const r = await withdraw(caller);
+    assert.ok(r.error, `${who} is refused`);
+  }
+  assert.equal((await local("gate.held")).data.length, 2, "nothing was discarded by a refused caller");
+
+  const done = await withdraw("module:vyred", { thread: "t-1", why: "The task's due time passed, so this was cancelled and nothing was sent." });
+  assert.deepEqual(done.data, { discarded: 1 });
+  assert.deepEqual((await local("gate.held")).data.map(x => x.id), [b.data.id], "the other session's item still waits");
+  assert.match((await local("gate.get", { id: a.data.id })).data.error, /due time passed/, "the reason is on the item, in words");
+  assert.deepEqual((await withdraw("module:vyred")).data, { discarded: 0 }, "a repeat finds nothing held");
+  assert.equal(gmail.got.length, 0, "nothing was sent");
+});

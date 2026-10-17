@@ -5,8 +5,10 @@
 export const SETTINGS_ITEMS = [
   { id: "spaces", label: "Space", href: "/u/spaces", icon: "space", group: "Space" },
   { id: "roles", label: "People and roles", href: "/u/settings/roles", icon: "users", group: "Space" },
+  { id: "groups", label: "Groups", href: "/u/settings/groups", icon: "users", group: "Space" },
   { id: "connections", label: "Connections", href: "/u/connections", icon: "link", group: "Space" },
   { id: "rules", label: "Rules", href: "/u/settings/rules", icon: "list", group: "Space" },
+  { id: "audit", label: "Audit", href: "/u/settings/audit", icon: "clock", group: "Security" },
   { id: "tags", label: "Tags", href: "/u/tags", icon: "hash", group: "Space" },
   { id: "memory", label: "Memory", href: "/u/memory", icon: "memory", group: "Space" },
   { id: "sites", label: "Sites and publishing", href: "/u/sites", icon: "globe", group: "Space" },
