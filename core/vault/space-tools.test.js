@@ -92,7 +92,7 @@ test("a lent value never reaches the response, the audit line, the log or an err
   assert.equal(JSON.stringify(ok).includes(SECRET), false, "and never came back");
   await assert.rejects(() => r.call("vault.space.use", { space: SPACE, id: "stripe", url: "https://api.example.com/boom" }, "mcp:agent:kit"), (/** @type {any} */ e) => !e.message.includes(SECRET) && e.code === "network");
   await assert.rejects(() => r.call("vault.space.use", { space: SPACE, id: "stripe", url: "https://evil.example/x" }, "mcp:agent:kit"), (/** @type {any} */ e) => e.code === "host_refused");
-  const used = r.events.filter(e => e[0] === "vault.space.used");
+  const used = r.events.filter(e => e[0] === "vault.space-used");
   assert.equal(used.length, 3, "a use, a failed use and a refused one are each audited");
   assert.deepEqual(used[0][1], { space: SPACE, item: "Stripe", host: "api.example.com", by: "mcp:agent:kit", ok: true, status: 200 });
   assert.equal(used[1][1].ok, false);

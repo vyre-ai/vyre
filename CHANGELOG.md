@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- feat(vault): every `vault.space.use` raises `vault.space.used` with the space, the item's name, the host, the caller and the result, never the value. A transport error is scrubbed of the lent value before it reaches the caller.
+- feat(vault): every `vault.space.use` raises `vault.space-used` with the space, the item's name, the host, the caller and the result, never the value. A transport error is scrubbed of the lent value before it reaches the caller.
 - fix(vault): a space vault item is saved with the hosts it may be sent to, and `vault.space.use` sends only to those hosts, over the kernel's one HTTP path (https, a public address pinned for the connection) and follows a redirect only to another saved host. An item saved without hosts is refused. The server's space vault private key is sealed at rest, with its key outside the space directory.
 - fix(vault): `vault.space.grant` wraps the space key only to a person the space's kernel names as a member, only with a 32-byte public key, and refuses a second, different key for a member who already has one. A kernel that cannot answer shares nothing.
 - fix(install): redeeming an install line asks the name directory this computer is configured to use, the same one the identity was published to. The check is still the one published-key check.
