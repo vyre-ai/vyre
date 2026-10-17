@@ -515,6 +515,8 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
   const own = async (/** @type {string} */ who, /** @type {string} */ person, /** @type {string} */ value) => {
     const r = await orig("sessions.accounts.add", { provider: "claude", label: `${who}'s key`, kind: "setup-token", vault_item: `${who}-token` }, "deck", { token: w.tokens[who] });
     assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`);
+    // a login counts only once it is signed in (core/sessions/accounts.js): a person who added a key has signed in with it
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), String(r.data.id));
     lent.set(String(r.data.id), { person, value });
     return String(r.data.id);
   };
