@@ -78,6 +78,11 @@ test("a standing permission lets one agent send inside its scope with no questio
   // the list shows the use
   const listed = (await ok(OWNER, "gate.standing.list")).permissions.find((/** @type {any} */ p) => p.id === made.id);
   assert.equal(listed.use.count, 2);
+  assert.equal(listed.kind, "send", "what it may do without asking");
+  assert.equal(listed.agent, "juno");
+  assert.ok(listed.daily_cap >= 1, "its limit");
+  assert.deepEqual((await ok(OWNER, "gate.standing.list", { agent: "juno" })).permissions.map((/** @type {any} */ p) => p.id), [made.id], "narrowed to one agent");
+  assert.deepEqual((await ok(OWNER, "gate.standing.list", { agent: "kit" })).permissions, [], "another agent has none");
   assert.equal(listed.use.last.length, 2);
 
   // revoke is instant
