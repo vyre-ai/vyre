@@ -11,6 +11,7 @@ import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import ImportPage from "./ImportPage";
 import { ItemSharing } from "./ItemSharing";
+import { MoveItem } from "./MoveItem";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
@@ -161,7 +162,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
             {local.some((e) => e.item === cur.id) || events.length ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>
         </Sec>
-        <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} /></View>
+        <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} />{scope === "space" && data.moving ? <MoveItem api={data.moving} item={cur} onMoved={load} /> : null}</View>
       </View>
     </Card>
   ) : null;

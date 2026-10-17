@@ -1,11 +1,11 @@
 // Vault, Vaults: the Space's named vaults. Owner surfaces; the sample world edits in memory.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ErrorState, LoadingState } from "@vyre/ui";
-import { Frame } from "../places/Frame";
+import { Card, EmptyState, ErrorState, IconTile, LoadingState, Row } from "@vyre/ui";
+import { Footnote, Frame, Sec } from "../places/Frame";
 import { MOCK } from "../../src/real/box";
 import { VaultsPanel, type Vlt } from "./VaultsPanel";
 import type { Directory, Level, Share, Who } from "./ShareSheet";
-import { realVaults, type VaultsData } from "./vaults-data";
+import { memberVaults, realVaults, type SharedVault, type VaultsData } from "./vaults-data";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 
 const SAMPLE: Vlt[] = [
@@ -16,6 +16,7 @@ const SAMPLE: Vlt[] = [
 export function VaultsScreen() {
   const [world, setWorld] = useState<{ vaults: Vlt[]; dir: Directory } | null>(null);
   const [err, setErr] = useState("");
+  const [member, setMember] = useState<SharedVault[] | null>(null);
   const data: VaultsData = useMemo(() => {
     if (!MOCK) return realVaults();
     let vs = [...SAMPLE];
@@ -27,9 +28,20 @@ export function VaultsScreen() {
       remove: async (id) => { vs = vs.filter((x) => x.id !== id); },
     };
   }, []);
-  const reload = useCallback(() => { setErr(""); data.load().then(setWorld).catch((e) => setErr(String(e?.message || "The vaults did not load."))); }, [data]);
+  // The owner's tool answers the owner; a member is turned away by it and sees what was shared with her instead.
+  const reload = useCallback(() => { setErr(""); data.load().then(setWorld).catch((e) => { if (!MOCK && /denied|forbidden|not_allowed/.test(String(e?.code ?? "") + String(e?.message ?? ""))) memberVaults().then(setMember).catch((x) => setErr(String(x?.message || "The vaults did not load."))); else setErr(String(e?.message || "The vaults did not load.")); }); }, [data]);
   useEffect(reload, [reload]);
   const kind = (w: Who | { id: string }): Who["kind"] => ("kind" in w ? w.kind : "person");
+  if (member) return (
+    <Frame title="Vaults" sub="Vaults shared with you." back="/u/vault">
+      {member.length ? member.map((v) => (
+        <Sec key={v.id} title={v.name}>
+          <Card flush>{v.items.length ? v.items.map((i) => <Row key={i.name} dense lead={<IconTile name="key" />} title={i.name} sub="You can have it used. You never see the key." />) : <Row dense title="Nothing you can use yet" />}</Card>
+        </Sec>
+      )) : <EmptyState title="No vault is shared with you" body="When someone shares a vault with you, its keys show here." />}
+      <Footnote icon="shield">A shared key works through the app and your agents. It is added where it is used and never shown to you.</Footnote>
+    </Frame>
+  );
   if (err) return <Frame title="Vaults" sub="Vaults of this Space." back="/u/vault"><ErrorState title="The vaults did not load" reason={err} retry={reload} /></Frame>;
   if (!world) return <Frame title="Vaults" sub="Vaults of this Space." back="/u/vault"><LoadingState rows={3} /></Frame>;
   const find = (id: string): Who => [...world.dir.people, ...world.dir.groups, ...world.dir.agents].find((x) => x.id === id) ?? { id, kind: id === "everyone" ? "group" : "person", name: id };

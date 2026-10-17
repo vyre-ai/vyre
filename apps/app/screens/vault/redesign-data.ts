@@ -32,6 +32,8 @@ export interface VaultData {
   setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
   /** Space: who an item is shared with (people, groups and agents at Fill in, Read, Edit and rotate), the directory to pick from, and one change (vault.access.get and vault.access.set). */
   sharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; levels?: Level[] }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
+  /** Space: the vaults an item can move to, and the move (vault.named.list, vault.named.move). */
+  moving?: { list(): Promise<{ id: string; name: string; sub: string }[]>; move(item: VItem, vault: string | null): Promise<void> };
   /** Mine: who one of the member's app connections is shared with (a person, a group or an agent she may instruct, at Fill in only), and one change (vault.me.connection.*). `info` says what it connects to. */
   connectionSharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; info?: { account: string; how: string } }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
@@ -53,6 +55,7 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
+    moving: { list: async () => [{ id: "acme", name: "Northwind Bakery (client)", sub: "Shared with Billing and Dana" }, { id: "marketing", name: "Marketing", sub: "Shared with Marketing and Juno" }], move: async () => {} },
     connectionSharing: {
       load: async (v) => ({ shares: held.get(v.id) ?? [{ id: "kit", level: "use" as Level }], dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME, info: { account: "alex@juniperstudio.example.com", how: "You connected it" } }),
       set: async (v, w, level) => { const cur = (held.get(v.id) ?? [{ id: "kit", level: "use" as Level }]).filter((x) => x.id !== w.id); held.set(v.id, level ? [...cur, { id: w.id, level }] : cur); },
@@ -128,6 +131,10 @@ export function realData(call: Call): VaultData {
       return { rows: r.access.map((a) => ({ who: a.subject, level: a.level })), people: r.people };
     },
     async setAccess(item, who, level) { await ask("vault.access.set", { name: item.id, kind: "person", subject: who, level }); },
+    moving: {
+      async list() { const r = await ask<{ vaults: { id: string; name: string; personal: boolean; shared: number }[] }>("vault.named.list"); return r.vaults.filter((v) => !v.personal).map((v) => ({ id: v.id, name: v.name, sub: v.shared ? `Shared with ${v.shared} ${v.shared === 1 ? "holder" : "holders"}` : "Only you" })); },
+      async move(item, vault) { await ask("vault.named.move", { item: item.id, vault }); },
+    },
     connectionSharing: {
       async load(item) {
         const [sh, dr, me] = await Promise.all([

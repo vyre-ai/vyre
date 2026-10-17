@@ -10,6 +10,10 @@ export type VaultsData = {
   remove(id: string): Promise<void>;
 };
 
+/** What a member sees of the vaults shared with her: each vault and the credentials in it she can use (vault.me.vaults). Names only. */
+export type SharedVault = { id: string; name: string; items: { name: string; kind: string }[] };
+export async function memberVaults(): Promise<SharedVault[]> { return (await tool<{ vaults: SharedVault[] }>("vault.me.vaults")).vaults; }
+
 export function realVaults(): VaultsData {
   return {
     async load() {
