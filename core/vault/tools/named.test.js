@@ -40,6 +40,8 @@ test("a named vault is made, listed with what is in it and who holds it, and rem
   const { call, vaults, db } = rig();
   const made = await call("vault.named.create", { name: "Marketing" });
   assert.equal(made.vault.id, "vault_marketing");
+  const dir = (await call("vault.named.list", {})).directory;
+  assert.deepEqual([dir.people.map((/** @type {any} */ p) => p.id), dir.teams.map((/** @type {any} */ t) => t.id)], [[BOB], [TEAM]], "who can be picked");
   assert.deepEqual((await call("vault.named.list", {})).vaults.map((/** @type {any} */ v) => [v.name, v.items]), [["Acme", 0], ["Marketing", 0]]);
   await call("vault.named.move", { item: "stripe", vault: "vault_marketing" });
   assert.equal((await call("vault.named.list", {})).vaults.find((/** @type {any} */ v) => v.id === "vault_marketing").items, 1);

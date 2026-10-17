@@ -38,7 +38,14 @@ export function register({ ctx, vault, tool }) {
     const items = rows();
     const out = [];
     for (const v of await vaultsOf(meta)) out.push({ id: v.id, name: v.name, personal: Boolean(v.personal), owner: v.owner, items: items.filter(r => r.named === v.id).length, shared: (await shared(v.id)).length });
-    return { vaults: out };
+    // who can be picked for a share (the owner's view: every member, team and agent of the Space)
+    const ms = (await members(meta)) || [], ts = (await teams(meta)) || [];
+    const al = await ctx.call("agents.list", {}).catch(() => null);
+    const ar = al && Array.isArray(al.data) ? al.data : al && al.data && Array.isArray(al.data.agents) ? al.data.agents : [];
+    return { vaults: out, directory: {
+      people: ms.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.display_name || m.person), role: String(m.role || "") })),
+      teams: ts.map((/** @type {any} */ t) => ({ id: String(t.id), name: String(t.name), people: [...(t.members || [])], agents: [...(t.agents || [])] })),
+      agents: ar.filter((/** @type {any} */ a) => a && (a.uid || a.id) && a.name).map((/** @type {any} */ a) => ({ id: String(a.uid || a.id), name: String(a.name) })) } };
   });
 
   tool("vault.named.move", PEOPLE, "Put an item in a vault, or back in the Space's own (vault null). What was shared on the item at its old place is taken back; the new vault's shares apply.", obj({ item: str, vault: { type: ["string", "null"] } }, ["item"]),
