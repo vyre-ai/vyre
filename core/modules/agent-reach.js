@@ -29,6 +29,7 @@ export const PERSON_ONLY = new Map([
   ["assistant.access.narrow", "turns tools or areas off for the person's own assistant: only the person narrows their assistant (G23, the owner's ruling); the assistant never limits or frees itself"],
   ["assistant.access.restore", "turns tools or areas back on for the person's own assistant: the person's own yes, never the assistant's (G23)"],
   ["work.project.level", "sets a person's level on a project (lead, contributor, viewer): a project Lead's or staff's own act on the team's seats, never an assistant's"],
+  ["agents.flow-say", "writes in a Flow's chat as the person and wakes the Flow's agent for them, with the person's own grants: the person's own voice; an assistant that wants an agent to act gives it a task as itself"],
   ["agents.docs.get", "reads another agent's instructions: the person's own view; an agent gets its own instructions and context at session start, never through a tool"],
   ["agents.docs.set", "writes an agent's instructions: the person's own act; an agent never edits any agent's words (a model proposes through flows.propose)"],
   ["agents.context.list", "lists an agent's context files and links: the person's own view; an agent gets its own context at session start"],

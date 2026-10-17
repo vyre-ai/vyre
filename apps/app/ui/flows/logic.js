@@ -294,7 +294,7 @@ export function fieldValue(o, type, current) {
  * `brand` is the Space's own and is never asked for. @param {string[]} names @returns {{ values: string[], aliases: string[] }}
  */
 export function placeholderPlan(names) {
-  const values = [], aliases = [];
+  /** @type {string[]} */ const values = [], aliases = [];
   for (const n of [...new Set((names || []).map(String))]) {
     const dot = n.indexOf(".");
     if (dot < 0) values.push(n);
@@ -495,7 +495,7 @@ export const TARGETED = new Set(["fields", "draft", "file"]);
 /** The draft's output fields from a stored output; null when it says more than the editor shows. @param {any} o */
 const outputFrom = (o) => {
   if (!o || typeof o !== "object" || !OUTPUTS.some((x) => x[0] === o.kind) || Object.keys(o).some((k) => k !== "kind" && k !== "target")) return null;
-  if (o.target !== undefined && !(TARGETED.has(o.kind) && (typeof o.target === "string" || (o.kind === "fields" && Array.isArray(o.target) && o.target.every((x) => typeof x === "string" && x && !x.includes(",")))))) return null;
+  if (o.target !== undefined && !(TARGETED.has(o.kind) && (typeof o.target === "string" || (o.kind === "fields" && Array.isArray(o.target) && o.target.every((/** @type {any} */ x) => typeof x === "string" && x && !x.includes(",")))))) return null;
   return o.kind === "note" ? {} : { output: o.kind, ...(o.target !== undefined ? { outputTarget: Array.isArray(o.target) ? o.target.join(", ") : o.target } : {}) };
 };
 /** The kinds of field a question's form can have, as [stored, words]. */
@@ -787,6 +787,7 @@ export const actionPick = (o, action) => {
 const ACTION_WORDS = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 const RESOURCE_WORDS = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
 export const SPECIAL_ACTIONS = new Set(SPECIAL_BUILDER_ACTIONS);
+/** @param {any} o */
 const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
 
 /** @param {any} s */
