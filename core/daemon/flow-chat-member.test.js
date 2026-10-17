@@ -80,15 +80,17 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const kept = (await K.gateway.records.query(K.gateway.serviceChain("skills"), "skill", { page: { limit: 50 } })).rows;
   const secret = kept.find((/** @type {any} */ x) => x.data.name === "owner-secret");
   assert.ok(secret, "the owner's skill exists");
-  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
+  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.list {"type":"contact","limit":3}\nvyre records.get {"urn":"vyre://${K.space}/skill/${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
   const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
     const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
     const th = (await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {};
     out("thread", JSON.stringify({ status: th.thread && th.thread.status, reason: th.thread && th.thread.stopped_reason, turns: th.thread && th.thread.turns, account: th.thread && th.thread.account, driver: th.thread && th.thread.driver }));
-    out("items", JSON.stringify(th.turns || th.items || th.messages || []).slice(-1500));
+    out("keys", Object.keys(th).join(","));
+    out("types", (th.events || []).map((/** @type {any} */ x) => x.type).join(","));
+    out("texts", (th.events || []).filter((/** @type {any} */ x) => /text|message|tool|notice/.test(String(x.type))).map((/** @type {any} */ x) => `${x.type}: ${JSON.stringify(x.payload).slice(0, 400)}`).slice(-6).join(" ## "));
     out("log", logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-12).join(" || "));
-    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").slice(-1200); } catch { return "none"; } })());
+    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").split("\n").filter((l) => /error|denied|EACCES|ENOENT|forbidden|not_found|rows|socket|VYRE_HOME/i.test(l.replace(/"append":"[^"]*"/, ""))).map((l) => l.replace(/"append":"[^"]*"/, "").slice(-600)).slice(-4).join(" ## "); } catch { return "none"; } })());
     throw e;
   });
   assert.ok(said.includes("rows"), "an ordinary read in the job answers");
