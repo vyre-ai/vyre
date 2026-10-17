@@ -27,7 +27,7 @@ export function StatusLine({ presence, state, busy, canStop, stopping, offline, 
 }) {
   const words = starting || presence || (offline ? "Offline, showing what was saved" : state === "asking" ? "Waiting for you" : "");
   return (
-    <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", minHeight: phone ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: phone ? 16 : 24 }}>
+    <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 760, alignSelf: "center", minHeight: phone ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: phone ? 16 : 24 }}>
       <Text size="caption" tone="label" numberOfLines={1} style={S.s1}>{words}</Text>
       {starting ? null : place}
       {stopping ? <Chip>Stopping</Chip> : null}

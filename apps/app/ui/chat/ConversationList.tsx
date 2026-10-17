@@ -9,7 +9,9 @@ import { markRef } from "../marks/useMark";
 import { Field } from "../components/Field";
 import { IconButton } from "../components/Button";
 import { Menu, type MenuItem } from "../components/Menu";
+import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
+import { RAIL } from "../shell/rail-tokens.js";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
@@ -17,37 +19,40 @@ import { convoChips, type Convo } from "./convo-model.js";
 
 export type { Convo };
 
-/** The face in front of a row. */
+/** The face in front of a row, in a 32 box. */
 function Face({ c }: { c: Convo }) {
-  if (c.kind === "agent") return <Avatar of={markRef("agent", c.title, c.agent)} size={40} />;
-  if (c.kind === "person") return <Avatar of={markRef("person", c.title, c.person)} size={40} />;
-  if (c.kind === "group") return <AvatarStack of={c.names.map((n) => markRef("person", n))} size={28} max={2} />;
+  if (c.kind === "agent") return <Avatar of={markRef("agent", c.title, c.agent)} size={32} />;
+  if (c.kind === "person") return <Avatar of={markRef("person", c.title, c.person)} size={32} />;
+  if (c.kind === "group") return <AvatarStack of={c.names.map((n) => markRef("person", n))} size={24} max={2} />;
   const lone = c.names[0];
-  return <Avatar of={markRef(lone ? "agent" : "project", lone ?? c.title, lone)} size={40} />;
+  return <Avatar of={markRef(lone ? "agent" : "project", lone ?? c.title, lone)} size={32} />;
 }
 
+/** A chat row: 56 high, a 32 face, 12 between, the name at 14/20 medium with the time at its right, the preview at 13/18 muted with the dot at its right. The fill is inset 8 from the edges and the content pads 8 more, so the face sits on the 16 gutter. */
 function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: boolean; when: string; menu?: MenuItem[]; onOpen: () => void }) {
   const { color } = useUiTheme();
   const [sheet, setSheet] = useState(false);
+  const ease = { transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` };
   return (
     <>
       <Pressable accessibilityRole="button" accessibilityLabel={`${c.title}${c.sub ? `, ${c.sub}` : ""}${c.dot === "ask" ? ", waiting on you" : c.dot === "unread" ? ", unread" : ""}${c.open ? "" : ", you are not in this chat"}`}
         accessibilityState={{ selected: Boolean(selected), disabled: !c.open }} onPress={c.open ? onOpen : undefined} onLongPress={menu && menu.length ? () => setSheet(true) : undefined}
-        style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, opacity: c.open ? 1 : 0.5,
-          backgroundColor: selected ? color.selected : hovered || focused ? color.hover : "transparent" }]}>
+        style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: RAIL.iconGap, height: RAIL.chatRowH, marginHorizontal: RAIL.rowInset, paddingHorizontal: RAIL.gutter - RAIL.rowInset, borderRadius: RAIL.rowRadius, opacity: c.open ? 1 : 0.5,
+          backgroundColor: selected ? color.selected : hovered || focused ? color.hover : "transparent",
+          ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), ...ease } as any]}>
         {({ hovered, focused }: any) => (
           <>
-            <View style={{ width: 44, alignItems: "center" }}><Face c={c} /></View>
+            <View style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center" }}><Face c={c} /></View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text medium={Boolean(c.dot) || Boolean(selected)} numberOfLines={1}>{c.title}</Text>
-              {c.sub ? <Text size="secondary" tone="label" numberOfLines={1}>{c.sub}</Text> : null}
-            </View>
-            <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 6, minWidth: 28 }}>
-              {hovered || focused ? (menu && menu.length && c.chat ? <Menu align="end" trigger={<IconButton icon="more" label={`More for ${c.title}`} kind="ghost" />} items={menu} /> : null)
-                : <>
-                  {when ? <Text size="caption" tone="label">{when}</Text> : null}
-                  {c.dot ? <View accessibilityElementsHidden style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.dot === "ask" ? color.primary : color.label }} /> : null}
-                </>}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 20 }}>
+                <Text medium numberOfLines={1} style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>{c.title}</Text>
+                {hovered || focused ? (menu && menu.length && c.chat ? <Menu align="end" trigger={<Pressable accessibilityRole="button" accessibilityLabel={`More for ${c.title}`} style={{ width: 20, height: 20, alignItems: "center", justifyContent: "center" }}><Icon name="more" size={RAIL.iconSize} tone="label" /></Pressable>} items={menu} /> : null)
+                  : when ? <Text tone="label" style={{ fontSize: RAIL.sectionLabelSize, lineHeight: 16 }}>{when}</Text> : null}
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: RAIL.subLine }}>
+                <Text tone="label" numberOfLines={1} style={{ flex: 1, fontSize: RAIL.subSize, lineHeight: RAIL.subLine }}>{c.sub}</Text>
+                {c.dot ? <View accessibilityElementsHidden style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.dot === "ask" ? color.primary : color.label }} /> : null}
+              </View>
             </View>
           </>
         )}
@@ -96,7 +101,7 @@ export function ConversationList({ items, onOpen, whenOf, menuOf, currentChat }:
   /** The chat that is open now, marked in the list. */ currentChat?: string;
 }) {
   return (
-    <View style={{ gap: 2 }}>
+    <View style={{ gap: RAIL.rowGap }}>
       {items.map((c) => <ConvoRow key={c.id} c={c} selected={Boolean(c.chat) && c.chat === currentChat} when={whenOf(c)} menu={menuOf?.(c)} onOpen={() => onOpen(c)} />)}
     </View>
   );

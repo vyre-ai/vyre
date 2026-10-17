@@ -447,18 +447,18 @@ export function ChatScreen(p: ChatScreenProps) {
       </View>
 
       {meta.queue.length ? (
-        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24, gap: 4, paddingTop: 6, alignItems: "flex-start" }}>
+        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 760, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24, gap: 4, paddingTop: 6, alignItems: "flex-start" }}>
           {meta.queue.map((q) => <Chip key={q.key} icon="clock">{`Queued: ${q.text.length > 60 ? `${q.text.slice(0, 59)}…` : q.text}`}</Chip>)}
         </View>
       ) : null}
 
       {securing ? (
-        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Chip tone="ok" icon="shield">{`Securing your ${securing} in the Vault`}</Chip>
         </View>
       ) : null}
       {note ? (
-        <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+        <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Text size="caption" tone="muted">{note}</Text>
         </View>
       ) : null}
@@ -477,7 +477,7 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {replyTo ? (
-        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 760, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
           <View style={{ flex: 1, minWidth: 0, borderLeftWidth: 3, borderLeftColor: color.accent, paddingLeft: 8 }}><Text size="caption" strong tone="accent" numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>{replyTo.text ? <Text size="caption" tone="muted" numberOfLines={1}>{excerpt(replyTo.text)}</Text> : null}</View>
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, minWidth: 44, alignItems: "center", justifyContent: "center" }}><Icon name="x" /></Pressable>
@@ -485,7 +485,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {highlights.length ? (
-        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
           {highlights.map((h) => (
             <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <Icon name="chat" tone="label" />

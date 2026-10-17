@@ -62,6 +62,7 @@ export type { PressableScaleProps, HapticName, SwipeAction, SwipeSet } from "./m
 export { useStore, useStoreQuery, setStore, allowsMock } from "./store";
 export type { Store, Query } from "./store";
 export { ResizeHandle, useStoredWidth } from "./shell/ResizeHandle";
+export { SidebarSearch } from "./shell/SidebarSearch";
 export { Shell } from "./shell/Shell";
 export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
 export { SidebarRow } from "./shell/SidebarRow";

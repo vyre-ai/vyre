@@ -407,7 +407,7 @@ export function ChatComposer(p: ComposerProps) {
   const aiMenu = pm || slots.length > 1 || !!p.models?.length;
 
   return (
-    <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 20, paddingBottom: p.phone ? 8 : 16, paddingTop: 6 }}>
+    <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
       {p.editing ? (
         <View accessibilityLabel="Editing a message" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: big ? T : 36, paddingHorizontal: 12, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["accent-wash"] }}>
           <Icon name="refresh" />
@@ -422,7 +422,7 @@ export function ChatComposer(p: ComposerProps) {
           <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} crumbs={crumbs} onCrumb={(i) => { if (i < nestPath.length) setNestPath(nestPath.slice(0, i)); }} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
         </View>
       ) : null}
-      <View style={{ backgroundColor: color["surface-3"], borderWidth: focused ? 1 : 0, borderColor: color["edge-strong"], borderRadius: 28, paddingVertical: p.phone ? 6 : 8, paddingHorizontal: p.phone ? 8 : 10, gap: 6 }}>
+      <View style={{ backgroundColor: color["surface-3"], borderWidth: focused ? 1 : 0, borderColor: color["edge-strong"], borderRadius: 12, paddingVertical: p.phone ? 6 : 8, paddingHorizontal: p.phone ? 8 : 10, gap: 6 }}>
         {p.attachments?.length || toks.length || hasState ? (
           <View accessibilityLabel="Files and tags for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
             {p.attachments?.map((a) => (a.thumb ? (

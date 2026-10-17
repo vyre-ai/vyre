@@ -2,23 +2,25 @@ import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Text } from "../components/Text";
 import { Icon, type IconName } from "../components/Icon";
-import { Field } from "../components/Field";
 import { Tip } from "../components/Tip";
 import { Pressable } from "react-native";
 import { useUiTheme } from "../theme";
 import { SidebarRow } from "./SidebarRow";
+import { SidebarSearch } from "./SidebarSearch";
+import { ArrowNav } from "./ArrowNav";
+import { SidebarLabel } from "./SidebarLabel";
 import { RAIL } from "./rail-tokens.js";
 import { filterItems, groupItems } from "./sidebar-stack.js";
 
 export type PanelItem = { id: string; label: string; href: string; icon?: IconName; group?: string; /** A mark (a project emblem) in place of the icon. */ lead?: React.ReactNode };
 /** What a place shows in the sidebar once you are inside it: its list, with Back to the main sidebar. `before` and `after` are slots (the Records pinned views, "All record types", "New view"). */
 export type PanelDef = {
-  id: string; title: string; icon: IconName; onBack: () => void; items: PanelItem[]; currentHref?: string; search?: string;
+  id: string; title: string; icon: IconName; onBack: () => void; items: PanelItem[]; currentHref?: string;
+  /** The search's placeholder. Absent: no search. */ search?: string;
+  /** A search the section owns (the Chat list's); else the panel keeps its own and filters its items by it. */ query?: string; onQuery?: (q: string) => void;
+  /** A control inside the search's right end (a filter menu's button). */ filter?: React.ReactNode;
+  /** The section's + at the right of the top bar (a menu or a button). */ plus?: React.ReactNode;
   before?: React.ReactNode; after?: React.ReactNode; empty?: string;
-  /** The header row's own contents, in place of the search (the Chat list has a search, a filter and a + menu of its own). It gets the back button to put first. */
-  top?: (back: React.ReactNode) => React.ReactNode;
-  /** Buttons at the end of the header row, after the search (a filter, a + menu). */
-  actions?: React.ReactNode;
 };
 
 /**
@@ -27,18 +29,17 @@ export type PanelDef = {
  */
 export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folded?: boolean; onOpen: (href: string) => void }) {
   const { color } = useUiTheme();
-  const [q, setQ] = useState("");
-  const shown = filterItems(panel.items, q);
-  const back = (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Back to the main sidebar`} onPress={panel.onBack} style={({ hovered }: any) => [{ minHeight: folded ? RAIL.foldedRow : RAIL.rowH, borderRadius: RAIL.rowRadius, paddingHorizontal: folded ? 0 : RAIL.rowPadX, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "flex-start", gap: 12, backgroundColor: hovered ? "var(--hover)" : "transparent" }]}>
-      <Icon name="chevron-left" tone="text-2" size={RAIL.iconSize} />
-      {folded ? null : <Text medium style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, color: color["text-2"] }}>{panel.title}</Text>}
-    </Pressable>
-  );
+  const [own, setOwn] = useState("");
+  const q = panel.onQuery ? panel.query ?? "" : own;
+  const shown = panel.onQuery ? panel.items : filterItems(panel.items, q);
   if (folded) {
     return (
       <View style={{ gap: RAIL.rowGap }}>
-        <Tip label="Back to the main sidebar" hint="Esc">{back}</Tip>
+        <Tip label="Back to the main sidebar" hint="Esc">
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to the main sidebar" onPress={panel.onBack} style={({ hovered }: any) => [{ minHeight: RAIL.foldedRow, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" }]}>
+            <Icon name="chevron-left" tone="text-2" size={RAIL.iconSize} />
+          </Pressable>
+        </Tip>
         <View style={{ minHeight: RAIL.foldedRow, alignItems: "center", justifyContent: "center" }}><Icon name={panel.icon} tone="text" size={RAIL.iconSize} /></View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
           {panel.items.map((it) => <SidebarRow key={it.id} folded label={it.label} icon={it.icon ?? panel.icon} on={it.href === panel.currentHref} onPress={() => onOpen(it.href)} />)}
@@ -46,33 +47,24 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
       </View>
     );
   }
-  const backBtn = (
-    <Tip label={`Back to the main sidebar`} hint="Esc" side="top">
-      <Pressable accessibilityRole="button" accessibilityLabel="Back to the main sidebar" onPress={panel.onBack} style={({ hovered, focused }: any) => [{ width: 40, height: 40, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" }]}>
-        <Icon name="chevron-left" tone="text-2" size={RAIL.iconSize} />
-      </Pressable>
-    </Tip>
-  );
   return (
-    <View style={{ flex: 1, gap: RAIL.sectionGap / 2, minHeight: 0 }}>
-      {panel.top ? panel.top(backBtn) : (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          {backBtn}
-          {panel.search ? <View style={{ flex: 1, minWidth: 0 }}><Field name={panel.search} value={q} onChangeText={setQ} placeholder={panel.search} /></View> : <Text medium style={{ flex: 1, fontSize: RAIL.labelSize, color: color["text-2"] }} numberOfLines={1}>{panel.title}</Text>}
-          {panel.actions}
-        </View>
-      )}
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.sectionGap / 2 }}>
-        {panel.before}
-        {groupItems(shown).map((g) => (
-          <View key={g.label} style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel={g.label || panel.title}>
-            {g.label ? <Text size="caption" medium tone="label" style={{ paddingHorizontal: RAIL.rowPadX, paddingBottom: 4, fontSize: RAIL.sectionLabelSize }} numberOfLines={1}>{g.label}</Text> : null}
-            {g.items.map((it) => <SidebarRow key={it.id} label={it.label} icon={it.icon ?? panel.icon} lead={it.lead} on={it.href === panel.currentHref} onPress={() => onOpen(it.href)} />)}
-          </View>
-        ))}
-        {!shown.length && panel.empty ? <Text tone="label" size="secondary" style={{ paddingHorizontal: RAIL.rowPadX }}>{q ? "Nothing matches." : panel.empty}</Text> : null}
-        {panel.after}
-      </ScrollView>
+    <View style={{ flex: 1, gap: 8, minHeight: 0 }}>
+      {panel.search ? <SidebarSearch value={q} onChange={panel.onQuery ?? setOwn} placeholder={panel.search} end={panel.filter} /> : null}
+      <ArrowNav>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
+          {/* Back to the main sidebar is the first row, the same as any other place. */}
+          <SidebarRow label="All places" icon="chevron-left" tone="label" onPress={panel.onBack} hint="Esc" />
+          {panel.before}
+          {groupItems(shown).map((g) => (
+            <View key={g.label} style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel={g.label || panel.title}>
+              {g.label ? <SidebarLabel>{g.label}</SidebarLabel> : null}
+              {g.items.map((it) => <SidebarRow key={it.id} label={it.label} icon={it.icon ?? panel.icon} lead={it.lead} on={it.href === panel.currentHref} onPress={() => onOpen(it.href)} />)}
+            </View>
+          ))}
+          {!shown.length && panel.empty ? <Text tone="label" style={{ paddingHorizontal: RAIL.gutter, paddingTop: 8, fontSize: RAIL.labelSize }}>{q ? "Nothing matches." : panel.empty}</Text> : null}
+          {panel.after}
+        </ScrollView>
+      </ArrowNav>
     </View>
   );
 }

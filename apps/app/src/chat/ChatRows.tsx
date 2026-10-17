@@ -47,7 +47,7 @@ const S = StyleSheet.create({
 export const PERSON = "alex";
 export const ASSISTANT = "juno";
 const BODY_INDENT = 44;
-const MAX = 820;
+const MAX = 760;
 
 function useRow(store: ChatStore, key: string) {
   useSyncExternalStore((f) => store.subscribeRow(key, f), () => store.rowRev(key));
@@ -82,10 +82,12 @@ type Dress = { flash?: boolean; mentioned?: boolean; divider?: number | null; pi
 const ActionsOn = createContext(false);
 /** Screenshots of the sample world can show the actions row without a pointer (?actions=1). */
 const showActions = () => allowsMock() && typeof location !== "undefined" && /[?&]actions=1/.test(location.search);
-function ActionRow({ children }: { children: React.ReactNode }) {
+function ActionRow({ children, side }: { children: React.ReactNode; side: "left" | "right" }) {
   const on = useContext(ActionsOn);
+  const { color } = useUiTheme();
+  if (!on) return null;
   return (
-    <View pointerEvents={on ? "auto" : "none"} accessibilityElementsHidden={!on} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, opacity: on ? 1 : 0 }}>
+    <View style={{ position: "absolute", top: -14, zIndex: 5, [side]: 8, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
       {children}
     </View>
   );
@@ -108,19 +110,20 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
       {dress?.divider ? <View style={{ paddingHorizontal: side }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
       <ActionsOn.Provider value={hover || held || focus || showActions()}>
-      <View style={{ paddingHorizontal: side, paddingTop: continued ? 2 : 10, paddingBottom: 2, alignItems: mine ? "flex-end" : "flex-start" }}>
+      <View style={{ paddingHorizontal: side, paddingTop: continued ? 8 : 16, paddingBottom: 0, alignItems: mine ? "flex-end" : "flex-start" }}>
         {showWho ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 4, paddingLeft: 2 }}><Face name={who} family={family} size={24} provider={provider} /><Text size="caption" medium tone="label">{who}</Text></View> : null}
-        <View style={{ maxWidth: "88%", minWidth: 0, gap: 6, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: mine ? color.primary : color["surface-3"],
-          ...(dress?.mentioned || dress?.flash ? { borderWidth: 2, borderColor: color.accent } : {}) }}>
-          {dress?.reply ? <Text size="caption" tone={mine ? "inverse" : "label"}>in a reply</Text> : null}
-          {children}
-          {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
+        {/* The bubble is the anchor of its toolbar: the actions float over its top corner on hover, focus or a long press, so they take no room between messages. */}
+        <View style={{ maxWidth: "75%", minWidth: 0 }}>
+          <View style={{ gap: 6, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: mine ? color.primary : color["surface-3"],
+            ...(dress?.mentioned || dress?.flash ? { borderWidth: 2, borderColor: color.accent } : {}) }}>
+            {dress?.reply ? <Text size="caption" tone={mine ? "inverse" : "label"}>in a reply</Text> : null}
+            {children}
+            {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
+          </View>
+          {bar || detail ? <ActionRow side={mine ? "left" : "right"}>{detail ? <Text size="caption" tone="label">{detail}</Text> : null}{bar}</ActionRow> : null}
         </View>
         {dress?.replies ? <Text size="caption" tone="muted" style={{ paddingTop: 2 }}>{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
-        <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
-          {bar ? <ActionRow>{detail ? <Text size="caption" tone="label">{detail}</Text> : null}{bar}</ActionRow> : detail ? <ActionRow><Text size="caption" tone="label">{detail}</Text></ActionRow> : null}
-          {footer}
-        </View>
+        {footer}
       </View>
       </ActionsOn.Provider>
       </Pressable>

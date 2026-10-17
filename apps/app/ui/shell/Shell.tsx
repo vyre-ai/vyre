@@ -22,6 +22,8 @@ import { RAIL } from "./rail-tokens.js";
 import { isToggleKey, railWidth } from "./rail-state.js";
 import { useRail } from "./useRail";
 import { ResizeHandle, useStoredWidth } from "./ResizeHandle";
+import { ArrowNav } from "./ArrowNav";
+import { SidebarLabel } from "./SidebarLabel";
 import { allItems, currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
 
 export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
@@ -43,6 +45,8 @@ export type ShellProps = NavDef & {
   folded?: boolean;
   /** Opens search: the footer's search button. */
   onSearch?: () => void;
+  /** Lock the vault on this device (the account menu's Lock). */
+  onLock?: () => void;
   children: React.ReactNode;
 };
 
@@ -52,20 +56,21 @@ function SpaceSwitcher({ spaces, space, onSpace, compact }: Pick<ShellProps, "sp
 
 type RailProps = ShellProps;
 
-/** The space at the top of the rail: its logo or monogram, its name and a chevron; folded, only the mark. The menu switches space. */
+/** The space at the top of the rail: a 24 mark, its name on one line and a chevron; folded, only the mark. The menu switches space. */
 function RailSwitcher({ p, folded }: { p: RailProps; folded: boolean }) {
   const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
   const all = cur.id === "all";
   const { color } = useUiTheme();
   const mark = all
-    ? <View style={{ width: RAIL.tile, height: RAIL.tile, borderRadius: Math.round(RAIL.tile * 0.28), backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}><Icon name="space" tone="text-2" size={RAIL.iconSize} /></View>
+    ? <View style={{ width: RAIL.tile, height: RAIL.tile, borderRadius: Math.round(RAIL.tile * 0.28), backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}><Icon name="space" tone="text-2" size={14} /></View>
     : <SpaceTile space={cur} size={RAIL.tile} />;
   return (
     <Menu
+      align="start"
       trigger={
-        <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`} style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 12, padding: 4, borderRadius: RAIL.rowRadius + 2, justifyContent: folded ? "center" : "flex-start", backgroundColor: hovered ? "var(--hover)" : "transparent" }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`} style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 4, marginLeft: -4, borderRadius: RAIL.rowRadius, justifyContent: folded ? "center" : "flex-start", backgroundColor: hovered || focused ? color.hover : "transparent", transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
           {mark}
-          {folded ? null : <><View style={{ flex: 1, minWidth: 0 }}><Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text></View><Icon name="chevron-down" size={16} tone="label" /></>}
+          {folded ? null : <><Text medium style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, flexShrink: 1 }} numberOfLines={1}>{cur.name}</Text><Icon name="chevron-down" size={14} tone="label" /></>}
         </Pressable>
       }
       items={p.spaces.map((s) => ({ label: s.id === p.space ? `${s.name} (showing)` : s.name, onPress: () => p.onSpace(s.id) }))}
@@ -73,51 +78,58 @@ function RailSwitcher({ p, folded }: { p: RailProps; folded: boolean }) {
   );
 }
 
-const caps = { textTransform: "uppercase", letterSpacing: 0.7, fontSize: RAIL.sectionLabelSize } as const;
-
-/** The main sidebar: the places, then each named group (AI, Build) under a small label (folded: under a hairline). */
+/** The main sidebar: Search, the places, then each named group (AI, Build) under a small label (folded: under a hairline). */
 function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
   const { color } = useUiTheme();
   const all = allItems(p) as NavItem[];
   const cur = currentItem(p.current, all)?.id;
   const row = (it: NavItem) => <SidebarRow key={it.id} label={it.label} icon={it.icon} on={cur === it.id} badge={it.id === "now" ? it.badge : undefined} folded={folded} onPress={() => p.onNavigate(it.href)} />;
   return (
-    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.sectionGap }}>
+    <View style={{ flex: 1, gap: 8, minHeight: 0 }}>
       {folded ? null : (
-        <Pressable accessibilityRole="button" accessibilityLabel="Search" onPress={p.onSearch} style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: RAIL.rowH, paddingHorizontal: RAIL.rowPadX, borderRadius: RAIL.rowRadius, backgroundColor: hovered || focused ? color.hover : color["surface-3"] }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Search" onPress={p.onSearch} style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, height: RAIL.searchH, marginHorizontal: RAIL.gutter, paddingHorizontal: 12, borderRadius: RAIL.rowRadius, backgroundColor: hovered || focused ? color.hover : color["surface-3"], transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
           <Icon name="search" tone="label" size={RAIL.iconSize} />
           <Text tone="label" style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>Search</Text>
           <Text size="caption" tone="faint">Cmd K</Text>
         </Pressable>
       )}
-      <View style={{ gap: RAIL.rowGap }}>{p.items.map(row)}</View>
-      {(p.groups ?? []).map((g) => (
-        <View key={g.name} style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel={g.name}>
-          {folded ? <View style={{ height: 1, backgroundColor: color.edge, marginHorizontal: 8, marginBottom: 6 }} /> : <Text size="caption" medium tone="label" style={[{ paddingHorizontal: RAIL.rowPadX, paddingBottom: 4 }, caps]} numberOfLines={1}>{g.name}</Text>}
-          {g.items.map(row)}
-        </View>
-      ))}
-    </ScrollView>
+      <ArrowNav>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
+          {p.items.map(row)}
+          {(p.groups ?? []).map((g) => (
+            <View key={g.name} style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel={g.name}>
+              {folded ? <View style={{ height: 1, backgroundColor: color.edge, marginHorizontal: 8, marginVertical: 6 }} /> : <SidebarLabel>{g.name}</SidebarLabel>}
+              {g.items.map(row)}
+            </View>
+          ))}
+        </ScrollView>
+      </ArrowNav>
+    </View>
   );
 }
 
-/** You at the foot of the rail: your face, nothing else. A tap opens a small menu with the bottom places (Settings, Build) and Collapse or Expand. Every section's sidebar has this same foot. */
+/** You at the foot: your face (28) and nothing else. A tap opens a popover above it with your name and the space, then Settings, Build, Collapse and Lock. Every section's sidebar has this same foot. */
 function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
   const { color } = useUiTheme();
+  const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
   const items = [
     ...p.bottom.map((it) => ({ label: it.label, onPress: () => p.onNavigate(it.href) })),
-    { label: folded ? "Expand the sidebar" : "Collapse the sidebar", onPress: toggle },
+    { label: folded ? "Expand sidebar" : "Collapse sidebar", onPress: toggle },
+    ...(p.onLock ? [{ label: "Lock", onPress: p.onLock }] : []),
   ];
+  const header = (
+    <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 2 }}>
+      <Text medium numberOfLines={1}>{p.user.name}</Text>
+      <Text size="caption" tone="label" numberOfLines={1}>{cur?.name ?? ""}</Text>
+    </View>
+  );
   return (
-    <View style={{ gap: RAIL.rowGap }}>
-      <View style={{ height: 1, backgroundColor: color.edge, marginVertical: 8 }} />
-      <View style={{ alignItems: folded ? "center" : "flex-start" }}>
-        <Menu align="start" trigger={
-          <Pressable accessibilityRole="button" accessibilityLabel={`${p.user.name}: Settings, Build and the sidebar`} style={({ hovered, focused }: any) => [{ borderRadius: 24, padding: 4, backgroundColor: hovered || focused ? color.hover : "transparent" }]}>
-            <Avatar of={markRef("person", p.user.name)} size={RAIL.face} />
-          </Pressable>
-        } items={items} />
-      </View>
+    <View style={{ height: RAIL.footH, justifyContent: "center", paddingHorizontal: folded ? 0 : RAIL.gutter - 4, alignItems: folded ? "center" : "flex-start" }}>
+      <Menu align="start" side="top" header={header} items={items} trigger={
+        <Pressable accessibilityRole="button" accessibilityLabel={`${p.user.name}: account, Settings, Build and the sidebar`} style={({ hovered, focused }: any) => [{ borderRadius: 20, padding: 4, backgroundColor: hovered || focused ? color.hover : "transparent", transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
+          <Avatar of={markRef("person", p.user.name)} size={RAIL.face} />
+        </Pressable>
+      } />
     </View>
   );
 }
@@ -140,19 +152,21 @@ function Rail(p: RailProps) {
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
   }, [toggle, panel]);
-  // The rail is resizable: one width kept for the main sidebar and one for a section's list, each per device. A double-click on the edge sets the default again.
-  const mainW = useStoredWidth("rail", RAIL.width, RAIL.minWidth, RAIL.maxWidth);
-  const listW = useStoredWidth("rail-list", RAIL.listWidth, RAIL.minWidth, RAIL.maxWidthList);
-  const w = panel ? listW : mainW;
+  // The rail is resizable and is the same width in every section: one width kept per device. A double-click on the edge sets the default again.
+  const w = useStoredWidth("rail", RAIL.width, RAIL.minWidth, RAIL.maxWidth);
   const enter = reduced ? undefined : (panel ? SlideInRight : SlideInLeft).duration(RAIL.slideMs);
   return (
-    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, padding: folded ? 12 : RAIL.inset, gap: RAIL.sectionGap - 8, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
-      <RailSwitcher p={p} folded={folded} />
+    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+      {/* The top bar: the space switcher on the left, the section's + on the right. */}
+      <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "space-between", paddingHorizontal: folded ? 0 : RAIL.gutter }}>
+        <RailSwitcher p={p} folded={folded} />
+        {folded ? null : panel?.plus}
+      </View>
       <Animated.View key={panel?.id ?? "main"} entering={enter} style={{ flex: 1, minHeight: 0 }}>
         {panel ? <SidebarPanel panel={panel} folded={folded} onOpen={p.onNavigate} /> : <MainNav p={p} folded={folded} />}
       </Animated.View>
       <RailFoot p={p} folded={folded} toggle={toggle} />
-      {folded ? null : <ResizeHandle edge="right" label="Resize the sidebar" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.minWidth} max={panel ? RAIL.maxWidthList : RAIL.maxWidth} def={panel ? RAIL.listWidth : RAIL.width} />}
+      {folded ? null : <ResizeHandle edge="right" label="Resize the sidebar" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.minWidth} max={RAIL.maxWidth} def={RAIL.width} />}
     </View>
   );
 }

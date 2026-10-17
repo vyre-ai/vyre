@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { ConversationHeader, ConversationList, convosShown, showToast } from "@vyre/ui";
+import { ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -13,6 +13,7 @@ import { startChat } from "../../src/state/start-chat";
 import { byTag, chatsOrdered, chatsShown } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { NewAgentFlow } from "./NewAgentFlow";
+import { Text } from "@vyre/ui";
 
 /** The id of the chat the path shows (/u/chats/<id> or /session/<id>), or "". */
 export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.exec(path)?.[1] ?? "";
@@ -22,24 +23,50 @@ const useChatsFilter = create<{ q: string; project: string; tag: string; all: Co
   q: "", project: "all", tag: "", all: [], tags: [], newAgent: false, set: (p) => set(p),
 }));
 
-/** The header row of the Chat list: `lead` is the sidebar's back button. The same row is the top of a phone's Chat page. */
-export function ChatsSidebarHeader({ lead }: { lead?: React.ReactNode }) {
+const useAdd = () => {
   const router = useRouter();
-  const f = useChatsFilter();
   const go = (p: string) => router.push(p as never);
-  const add = [
+  return [
     { label: "New chat", onPress: () => go("/u/chats/new") },
     { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
-    { label: "New agent", onPress: () => f.set({ newAgent: true }) },
+    { label: "New agent", onPress: () => useChatsFilter.getState().set({ newAgent: true }) },
     { label: "New email", onPress: () => go("/u/mail/compose") },
   ];
+};
+
+/** The section's + (New chat, New group chat, New agent, New email): the sidebar's top bar. */
+export function ChatsPlusButton() {
+  const add = useAdd();
+  return <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />;
+}
+
+/** The filter control inside the search's right end: All, each project, No project, tags and Flows. */
+export function ChatsFilterButton() {
+  const router = useRouter();
+  const f = useChatsFilter();
+  const items = [
+    ...convoChips(f.all).map((k) => ({ label: k.label, selected: f.project === k.id, onPress: () => f.set({ project: k.id }) })),
+    ...f.tags.map((t) => ({ label: `#${t}`, selected: f.tag === t, onPress: () => f.set({ tag: f.tag === t ? "" : t }) })),
+    { label: "Flows", onPress: () => router.push("/u/flows" as never) },
+  ];
+  const narrowed = f.project !== "all" || Boolean(f.tag);
+  return <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={items} />;
+}
+
+/** The search, filter and + as one row: the top of a phone's Chat page (the sidebar spreads the same three pieces over its search and top bar). */
+export function ChatsSidebarHeader() {
+  const f = useChatsFilter();
+  const add = useAdd();
   return (
-    <>
-      <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
-      <ConversationHeader lead={lead} all={f.all} query={f.q} onQuery={(q) => f.set({ q })} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })}
-        extraFilters={[{ label: "Flows", onPress: () => go("/u/flows") }]} add={add} />
-    </>
+    <ConversationHeader all={f.all} query={f.q} onQuery={(q) => f.set({ q })} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })} add={add} />
   );
+}
+
+/** What the sidebar's search reads and writes. */
+export function useChatsSearch() {
+  const q = useChatsFilter((s) => s.q);
+  const set = useChatsFilter((s) => s.set);
+  return { q, set };
 }
 
 /**
@@ -77,6 +104,8 @@ export function ChatsSidebar() {
   return (
     <>
       {sheets}
+      <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
+      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </>
   );

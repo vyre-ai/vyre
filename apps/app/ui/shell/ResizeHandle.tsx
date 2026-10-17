@@ -48,9 +48,9 @@ export function ResizeHandle({ width, onChange, onReset, min, max, def, edge, la
       {...({ role: "separator", "aria-orientation": "vertical", "aria-label": label, "aria-valuenow": width, "aria-valuemin": min, "aria-valuemax": max, tabIndex: 0,
         onPointerDown: down, onKeyDown: key, onDoubleClick: onReset,
         onPointerEnter: () => setOn(true), onPointerLeave: () => setOn(false), onFocus: () => setOn(true), onBlur: () => setOn(false) } as object)}
-      style={[{ position: "absolute", top: 0, bottom: 0, width: 10, zIndex: 20 }, edge === "right" ? { right: -5 } : { left: -5 }, { cursor: "col-resize" } as object]}
+      style={[{ position: "absolute", top: 0, bottom: 0, width: 6, zIndex: 20 }, edge === "right" ? { right: -3 } : { left: -3 }, { cursor: "col-resize" } as object]}
     >
-      <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: 4, width: 2, backgroundColor: lit ? color["edge-strong"] : "transparent" }} />
+      <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: 2, width: 2, backgroundColor: lit ? color["edge-strong"] : "transparent", ...({ transitionProperty: "background-color", transitionDuration: "150ms" } as object) }} />
     </View>
   );
 }
