@@ -30,7 +30,7 @@ test("scope and search: Mine is the member's own, Space is the rest", () => {
 
 test("groups follow the fixed order and skip empty ones", () => {
   assert.deepEqual(groupsOf([v({ group: "Logins" }), v({ group: "AI models" })]).map((g) => g.name), ["AI models", "Logins"]);
-  assert.equal(GROUPS.length, 10);
+  assert.equal(GROUPS.length, 11);
 });
 
 test("delete warns what would break", () => {

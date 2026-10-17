@@ -278,6 +278,8 @@ export function register(ctx, h) {
       const by = await h.personOf(meta);
       await ctx.kernel.mint.end({ source: sourceOf(a, subject), reason: "the sharing of this agent changed" });
       if (level) await ctx.kernel.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: subject, space: ctx.kernel.space } }, actions: level === "edit" ? ["agents.use", "agents.edit"] : ["agents.use"], resource: { prefix: urnOf(a) }, source: sourceOf(a, subject), reason: `shared by ${by || "the owner"}: ${level === "edit" ? "Can edit" : "Can use"}` });
+      // the Vault keeps copies of a member's items for the agents she may instruct; when her access to one is taken away it ends her shares with it
+      try { ctx.events.emit("agent.access-changed", { agent: a.name, uid: a.uid, person: subject, level: level || null }); } catch { /* the sharing is done; the Vault also checks at every fill */ }
       if (h.changed) h.changed();
       return { ok: true };
     },

@@ -87,7 +87,7 @@ function all(/** @type {string} */ space) {
       ["Customize", "Add and change object types, fields and stages", "/u/settings/customize", "records"],
       ["Spaces and members", "Switch Space, see who is in each, invite people", "/u/spaces", "space"],
       ["Roles", "Decide what each person can do, see and use", "/u/settings/roles", "users"],
-      ["Groups", "Sets of people and agents you give things to at once", "/u/settings/groups", "users"],
+      ["Groups", "Sets of people and agents you give things to at once", "/u/settings/groups", "contacts"],
       ["Rules", "Set what an agent never does, drafts only, or asks about first", "/u/settings/rules", "hand"],
       ["Privacy and sealing", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
       ["Audit", "See who changed what on a record, with the value before and after", "/u/settings/audit", "clock"],

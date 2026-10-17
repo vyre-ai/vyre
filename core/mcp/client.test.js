@@ -263,9 +263,12 @@ test("sse: the server ending the stream calls onExit and rejects pending calls",
 
 test("a member's server is dialled public only: a name that resolves to a loopback, a private or a metadata address is refused on connect, the owner's own address rule is not applied to her", async () => {
   for (const address of ["127.0.0.1", "10.0.0.7", "192.168.1.20", "169.254.169.254", "::1"]) {
+    // connect only builds the channel: the dial, and so the public-address check, happens at the first request (initialize).
     const f = publicStreamFetch(async () => [{ address }]);
-    await assert.rejects(connect({ transport: "http", url: "https://mcp.member.example/mcp" }, { fetch: f, timeout: 2000 }), /public|not_public|refused|address/i, address);
+    const c = await connect({ transport: "http", url: "https://mcp.member.example/mcp" }, { fetch: f, timeout: 2000 });
+    await assert.rejects(c.initialize(), /public|not_public|refused|address/i, address);
   }
   // one private answer among public ones is enough to refuse (every answer must be public)
-  await assert.rejects(connect({ transport: "http", url: "https://mcp.member.example/mcp" }, { fetch: publicStreamFetch(async () => [{ address: "93.184.216.34" }, { address: "10.0.0.7" }]), timeout: 2000 }), /public|not_public|refused|address/i);
+  const mixed = await connect({ transport: "http", url: "https://mcp.member.example/mcp" }, { fetch: publicStreamFetch(async () => [{ address: "93.184.216.34" }, { address: "10.0.0.7" }]), timeout: 2000 });
+  await assert.rejects(mixed.initialize(), /public|not_public|refused|address/i);
 });

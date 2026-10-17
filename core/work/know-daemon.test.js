@@ -46,8 +46,11 @@ test("seed a session, a teammate in a later session recalls its decision from th
   const ownerMeta = { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true }) };
   const ask = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta = ownerMeta, caller = "cli") => d.registry.call(tool, input, caller, meta);
 
-  assert.ok(!(await ask("projects.create", { name: "Harlow Legal", home: cwd })).error);
-  const projUrn = (await ask("work.project.ref", { project: "harlow-legal" })).data.urn;
+  const created = await ask("projects.create", { name: "Harlow Legal", home: cwd });
+  assert.ok(!created.error, "projects.create: " + JSON.stringify(created.error));
+  const ref = await ask("work.project.ref", { project: "harlow-legal" });
+  assert.ok(ref.data, "work.project.ref: " + JSON.stringify(ref.error) + " after projects.create answered " + JSON.stringify(created.data));
+  const projUrn = ref.data.urn;
   assert.ok(projUrn, "the project record exists");
   writeTranscript();
   const idx = await ask("recall.index", {});

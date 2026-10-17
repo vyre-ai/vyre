@@ -84,7 +84,10 @@ test("a standing permission over a real mail connection: the owner's agent goes 
     const r = await w.throughRegistryHold(agent, person, "mail.send", { account: mail.id, to, subject: "Re: intake", body: "Hi, the form is on staging." });
     assert.ok(!r.error, `${agent} as ${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
     const id = r.data.held || r.data.id;
-    return (await ok("gate.get", { id })).state;
+    // a member's held item is the member's own: the owner is told there is no such item, so it is read as the person it belongs to
+    const got = await as(person, "gate.get", { id });
+    assert.ok(!got.error, `${person.slice(4, 8)} reads their own held item: ${JSON.stringify(got.error)}`);
+    return got.data.state;
   };
   const made = await ok("gate.standing.add", { agent: "juno", kind: "send", via, to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 20 });
   // the owner's agent (an approverless run: the person hop is the owner, who holds the connection)

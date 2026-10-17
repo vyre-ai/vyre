@@ -248,7 +248,8 @@
       "summon.queued",
       "summon.started",
       "summon.thread",
-      "summon.finished"
+      "summon.finished",
+      "agent.access-changed"
     ]
   },
   "shows": {

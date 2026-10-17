@@ -35,8 +35,10 @@ async function rig(t) {
   const ownerTok = (await K.surfaces.open(chain(OWNER), {})).token;
   const uid = (await d.registry.call("agents.create", { name: "juno", kind: "agent" }, "cli", { token: ownerTok })).data.uid;
   const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "deck", { token: (await K.surfaces.open(chain(person), {})).token });
+  // A member's agent reaches the Gate through a module's tool (mail.send, microsoft.mail.send ...), which files the request in the agent's own turn: the door keeps gate.request itself to the owner, and a module call is not at
+  // the door. The courier stands in for that module with the agent's token, so the Gate sees the same verified chain.
   const agentOf = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
-    d.registry.call(tool, input, "mcp:agent:juno", { token: (await K.surfaces.open(chain(person), { agent: uid, session: "s-j-" + person.slice(4, 8), thread: "t-j-" + person.slice(4, 8) })).token, thread: "t-j-" + person.slice(4, 8), agent: "juno" });
+    d.registry.call(tool, input, tool === "gate.request" ? "module:courier" : "mcp:agent:juno", { token: (await K.surfaces.open(chain(person), { agent: uid, session: "s-j-" + person.slice(4, 8), thread: "t-j-" + person.slice(4, 8) })).token, thread: "t-j-" + person.slice(4, 8), agent: "juno" });
   return { d, K, OWNER, as, agentOf };
 }
 const ASK = { kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update", text: "Ovens are in." } };

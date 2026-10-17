@@ -61,7 +61,7 @@ test("gate: a request is held, listed and never sent on its own", async () => {
   const held = gate.held();
   assert.equal(held.length, 1);
   assert.deepEqual({ ...held[0], at: 0, anchor: { ...held[0].anchor, at: 0 } }, { id: r.id, kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild",
-    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0,
+    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0, requester: null,
     anchor: { tool_use_id: null, event: null, thread: "t-1", at: 0 } });
   assert.equal(held[0].anchor.at, held[0].at, "without a tool_use_id, the thread and the time find it");
   assert.equal(gate.held({ thread: "other" }).length, 0);

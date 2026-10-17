@@ -43,7 +43,7 @@ test("the owner's standing permission for an agent covers the agent's send for t
   await K.gateway.grants.setRole(dev(OWNER), { person: BEN, role: "member" }, { presence: { op: "stand-in", fields: {}, n: 1 } }).catch(() => {});
   const uid = (await ok(OWNER, "agents.create", { name: "juno", kind: "agent" })).uid;
   const agentFor = async (/** @type {string} */ person) => ({ token: (await K.surfaces.open(dev(person), { agent: uid, session: `s-${person.slice(4, 8)}`, thread: `t-${person.slice(4, 8)}` })).token, thread: `t-${person.slice(4, 8)}`, agent: "juno" });
-  const send = async (/** @type {string} */ person, /** @type {string} */ to) => d.registry.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "Re: intake", body: "Hi, the form is on staging." } }, "mcp:agent:juno", await agentFor(person));
+  const send = async (/** @type {string} */ person, /** @type {string} */ to) => d.registry.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "Re: intake", body: "Hi, the form is on staging." } }, "module:mail", await agentFor(person));   // as the mail module files it in the agent's turn: the door keeps gate.request itself to the owner
 
   const made = await ok(OWNER, "gate.standing.add", { agent: "juno", kind: "send", via: "mail", to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 5 });
   assert.ok(made.id);
