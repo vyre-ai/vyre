@@ -3,20 +3,21 @@
 //
 //   { op: "set", step, key, value }                 one key of a step; key may be a path (set.client); value omitted removes it
 //   { op: "replace", step, line | with }            a step replaced whole (its lines text, or its stored form)
-//   { op: "insert", after | first | into+block, line | step }   a new step after another, first, or at the end of a block (then, else, steps)
+//   { op: "insert", after | first | into+block, line | step }   a new step after another, first, or at the end of a block (then, else, steps, or on_fail: that step's failure path)
+//   { op: "insert", lane: "on_failure", first | after, line | step }   a step in the Flow's own failure steps ("If the run fails")
 //   { op: "remove", step }
 //   { op: "move", step, by }                        within its list, by an offset
 //   { op: "trigger", trigger }
-//   { op: "meta", key, value }                      name, label, description, concurrency, lock, stuck_after_ms
+//   { op: "meta", key, value }                      name, label, description, concurrency, lock, stuck_after_ms, group, sends, returns
 //
 // A step is named by its id. An unknown id says which ids there are and which is close.
 
-import { ops, locate } from "./canvas.js";
+import { ops, locateIn } from "./canvas.js";
 import { parseLines } from "./lines.js";
 import { nearest } from "./places.js";
 import { walkSteps } from "./schema.js";
 
-export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms", "group"];
+export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms", "group", "sends", "returns"];
 const BAD = new Set(["__proto__", "constructor", "prototype"]);
 
 export class PatchError extends Error {
@@ -27,7 +28,7 @@ export class PatchError extends Error {
 /** @param {any} flow @param {string} id @param {number} at */
 function known(flow, id, at) {
   if (typeof id !== "string" || !id) throw new PatchError(at, "name the step by its id");
-  if (!locate(flow.steps, id) && !(flow.on_failure && locate(flow.on_failure, id))) {
+  if (!locateIn(flow, id)) {
     /** @type {string[]} */ const ids = [];
     walkSteps(flow.steps, s => ids.push(s.id));
     const close = nearest(id, ids);
@@ -60,7 +61,7 @@ export function applyPatch(flow, patch) {
         if (!path[0] || path.some(k => !k || BAD.has(k))) throw new PatchError(at, "key is a name, or a path like set.client");
         if (path[0] === "id" || path[0] === "kind") throw new PatchError(at, "a step keeps its id and kind (replace it to change them)");
         const top = path[0];
-        const cur = locate(f.steps, p.step) || /** @type {any} */ (locate(f.on_failure, p.step));
+        const cur = /** @type {any} */ (locateIn(f, p.step));
         const s = cur.list[cur.index];
         if (path.length === 1) { f = ops.updateStep(f, p.step, { [top]: p.value }); break; }
         const copy = structuredClone(s[top] ?? {});
@@ -76,7 +77,7 @@ export function applyPatch(flow, patch) {
         const next = p.line !== undefined ? stepFromLine(p.line, at) : p.with;
         if (!next || typeof next !== "object" || typeof next.id !== "string") throw new PatchError(at, "give the new step as line (lines text) or with (its stored form)");
         const c = structuredClone(f);
-        const l = locate(c.steps, p.step) || /** @type {any} */ (locate(c.on_failure, p.step));
+        const l = /** @type {any} */ (locateIn(c, p.step));
         l.list.splice(l.index, 1, next);
         f = c;
         break;
@@ -84,7 +85,13 @@ export function applyPatch(flow, patch) {
       case "insert": {
         const step = p.line !== undefined ? stepFromLine(p.line, at) : p.step;
         if (!step || typeof step !== "object" || typeof step.id !== "string") throw new PatchError(at, "give the new step as line (lines text) or step (its stored form)");
-        if (p.into !== undefined) { known(f, p.into, at); f = ops.addStep(f, step, null, { into: p.into, block: p.block }); }
+        if (p.lane !== undefined) {
+          if (p.lane !== "on_failure") throw new PatchError(at, "lane is on_failure (the Flow's own failure steps)");
+          if (p.after !== undefined) known(f, p.after, at);
+          else if (p.first !== true) throw new PatchError(at, "say where in the failure steps: after (a step id in them) or first: true");
+          f = ops.addStep(f, step, p.after === undefined ? null : p.after, { lane: "on_failure" });
+        }
+        else if (p.into !== undefined) { known(f, p.into, at); f = ops.addStep(f, step, null, { into: p.into, block: p.block }); }
         else if (p.after !== undefined) { known(f, p.after, at); f = ops.addStep(f, step, p.after); }
         else if (p.first === true) f = ops.addStep(f, step, null);
         else throw new PatchError(at, "say where: after (a step id), first: true, or into (a block step) with block");
