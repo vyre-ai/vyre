@@ -195,7 +195,7 @@ const HOME_FAQ = [
   ['Is Vyre free?', 'Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.'],
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
-  ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with your Vyre's address, your username and your master password.'],
+  ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with your Vyre\'s address, your username and your master password.'],
   ['Where does my data live?', 'Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
   ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do.'],
@@ -558,7 +558,7 @@ devicePage({
   title: 'Vyre for Windows: the Vyre app in your tray',
   desc: 'Vyre for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server, ask your agents, and map your shared folder as a drive.',
   h1: 'Vyre, <b>in your Windows tray.</b>',
-  lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Sign in on the PC with your Vyre's address, your username and your master password.',
+  lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Sign in on the PC with your Vyre\'s address, your username and your master password.',
   ogSub: 'A tray icon and an Alt+Space panel, connected to your own Vyre server.',
   art: `${appwin('lap-vault', 'The Vyre app in a window on Windows: the vault.')}`,
   what: { h: 'The same window, <b>on your PC.</b>', items: [
