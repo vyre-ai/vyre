@@ -32,7 +32,7 @@ A chat is a conversation thread. People and agents both take part, and the model
 
 **One typist.** `threads.lease` and `threads.release` (`core/switchboard/lease.js`) give one surface a chat's keyboard at a time. The app offers **Take over** when another surface holds it.
 
-**Tags with #.** A record picked with `#` travels as `{ kind: "record", id }` in a send's `mentions`. `core/switchboard/record-tags.js` checks that the id is a record in this Space and reads it under the sender's own chain through `records.reference`. A record the sender cannot read is not a tag and stays plain text. The model sees the record as data, with sealed parts shown as `{{field:<urn>#<name>}}` placeholders. `core/mentions` fans a search out to every provider as the asker, within `SEARCH_MS` (400 ms), and returns names only. `mentions.resolve` is for sessions and the assistant, never a model.
+**Tags with #.** A record picked with `#` travels as `{ kind: "record", id }` in a send's `mentions`. `lib/record-tags.js` checks that the id is a record in this Space and reads it under the sender's own chain through `records.reference`. A record the sender cannot read is not a tag and stays plain text. The model sees the record as data, with sealed parts shown as `{{field:<urn>#<name>}}` placeholders. `core/mentions` fans a search out to every provider as the asker, within `SEARCH_MS` (400 ms), and returns names only. `mentions.resolve` is for sessions and the assistant, never a model.
 
 **Tags on a chat.** `tags` is a field on the `chat-record` type, so a chat is a taggable record. `/u/tags/<tag>` (`apps/app/screens/tags/TagScreen.tsx`) lists every record type that carries `tags`, chats included, and can be pinned to the sidebar.
 

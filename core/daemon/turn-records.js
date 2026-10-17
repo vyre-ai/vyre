@@ -2,7 +2,7 @@
 // A chat turn's record and collection picks, read under the ASKER's own chain. A group-chat turn reaches the Switchboard as module:stream, so the call itself carries no person: the asker is the id
 // the stream names and the kernel has already checked is in the chat (assertAsker, before anything here runs). The chain built from that id is the one the daemon builds for the same person's
 // turn session (a device chain for that one person), so what a member may not read is not tagged for them, whatever the owner could read. The Switchboard never holds the chain: it asks for the tags.
-import { recordTags } from "../switchboard/record-tags.js";
+import { recordTags } from "../../lib/record-tags.js";
 
 /**
  * @param {{ kernel: any, personChainFor: (person: string) => any }} o
