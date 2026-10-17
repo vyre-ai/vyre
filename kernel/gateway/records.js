@@ -253,7 +253,7 @@ export function createRecords(cfg) {
       if (typeof store.types !== "function") return false;
       const gen = typesGen;
       // while the definitions cannot be read (the store is away) every type counts as protected: an owner, an admin and a keeper are served as ever, anyone else is refused, and nothing is remembered
-      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (gen !== typesGen) return built.has(type); protectedTypes = built; typesAway = false; } catch { typesAway = true; return true; }
+      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); typesAway = false; if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { typesAway = true; return true; }
     }
     return protectedTypes.has(type);
   };
