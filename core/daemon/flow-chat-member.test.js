@@ -86,9 +86,10 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
     const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
     const th = (await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {};
     out("thread", JSON.stringify({ status: th.thread && th.thread.status, reason: th.thread && th.thread.stopped_reason, turns: th.thread && th.thread.turns, account: th.thread && th.thread.account, driver: th.thread && th.thread.driver }));
-    out("items", JSON.stringify(th.turns || th.items || th.messages || []).slice(-1500));
+    out("keys", Object.keys(th).join(","));
+    out("tail", JSON.stringify(th).slice(-1400));
     out("log", logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-12).join(" || "));
-    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").slice(-1200); } catch { return "none"; } })());
+    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").split("\n").filter((l) => /error|denied|EACCES|ENOENT|forbidden|not_found|rows|socket|VYRE_HOME/i.test(l.replace(/"append":"[^"]*"/, ""))).map((l) => l.replace(/"append":"[^"]*"/, "").slice(-600)).slice(-4).join(" ## "); } catch { return "none"; } })());
     throw e;
   });
   assert.ok(said.includes("rows"), "an ordinary read in the job answers");
