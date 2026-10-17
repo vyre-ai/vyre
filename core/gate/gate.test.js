@@ -148,6 +148,16 @@ test("gate: an item left mid-send by a stopped vyred goes back to held, marked a
   assert.equal(sent.length, 0);
 });
 
+test("gate: what one session holds can be discarded by its thread with a reason, and another session's items stay held", () => {
+  const { gate, sent } = setup();
+  const a = ask(gate, { thread: "t-1" }), b = ask(gate, { thread: "t-2", content: { ...DRAFT, subject: "Other" } });
+  for (const it of gate.held({ thread: "t-1" })) gate.reject({ id: it.id, reason: "The task's due time passed, so this was cancelled and nothing was sent.", by: "flows:deadline" });
+  assert.deepEqual(gate.held({ thread: "t-1" }), []);
+  assert.deepEqual(gate.held().map(x => x.id), [b.id]);
+  assert.match(gate.row(a.id).error, /due time passed/);
+  assert.equal(sent.length, 0, "nothing was sent");
+});
+
 test("gate: reject discards, and a discarded item cannot be approved", async () => {
   const { gate, events, sent } = setup();
   const { id } = ask(gate);
