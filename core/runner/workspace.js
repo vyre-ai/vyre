@@ -90,7 +90,7 @@ export function fscryptSetupPlan(base, runCmd = (c, a) => spawnSync(c, a, { enco
 /** @param {"darwin"|"linux"|"win32"|string} platform @param {{ sizeGb?: number, base?: string, prefer?: "fscrypt"|"gocryptfs" }} [opts] */
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
-  if (platform === "linux") return opts.prefer === "fscrypt" || (opts.prefer !== "gocryptfs" && opts.base && fscryptSupported(opts.base)) ? fscryptDriver() : linuxDriver();
+  if (platform === "linux") return opts.prefer === "fscrypt" || (opts.prefer !== "gocryptfs" && opts.base && fscryptSupported(opts.base)) ? fscryptDriver(opts.log) : linuxDriver();
   if (platform === "win32") { if (process.env.VYRE_WINDOWS_LENDING !== "experimental") throw new Error("Running a space's work on this computer isn't available on Windows yet. Your sessions run on the space's server."); return winDriver(opts); }
   throw new Error(`no encrypted workspace for ${platform} yet`);
 }
@@ -240,7 +240,14 @@ function winDriver({ sizeGb = 8 } = {}) {
  * and writes run at the filesystem's own speed (measured: about 1.0x of a plain folder, against 9 to 28x for gocryptfs). The 64-byte
  * fscrypt key is derived from the leased key and goes to the helper over stdin; it is never an argument or a file.
  */
-function fscryptDriver() {
+/** The helper said the key removal is "incomplete": one plain line, nothing else changes. @param {{ out?: string } | null | undefined} r @param {(m: string) => void} log @returns {boolean} whether it was said */
+export function sayIfIncomplete(r, log) {
+  if (!/incomplete/.test(String(r && r.out || ""))) return false;
+  log("the key is removed but a process still holds a file open: it can read until it exits");
+  return true;
+}
+
+function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }) {
   const enc = dir => path.join(dir, "enc");
   const key64 = key => { const k = Buffer.from(crypto.hkdfSync("sha512", key, Buffer.alloc(0), "vyre fscrypt workspace v1", 64)); const hex = Buffer.from(k.toString("hex")); k.fill(0); return hex; };
   const helper = (verb, dir, key) => runWithPass("python3", [FSCRYPTCTL, verb, dir], key ? key64(key) : Buffer.alloc(0));
@@ -270,7 +277,9 @@ function fscryptDriver() {
       // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" only means a process
       // still holds a file open; the sessions are stopped first, and isMounted reads "present" only while the key is there.
       if (!fs.existsSync(enc(dir))) return;
-      await helper("remove", enc(dir));
+      const r = await helper("remove", enc(dir));
+      // 0.6.0 limit: say it plainly when the removal is not finished. The key is gone from the filesystem, but what a process still holds open can be read until that process exits.
+      sayIfIncomplete(r, log);
     },
     async destroy(dir) { fs.rmSync(dir, { recursive: true, force: true }); },
   };
