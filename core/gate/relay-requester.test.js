@@ -66,3 +66,28 @@ test("google: a member's agent's send from the firm key is filed at the Gate as 
   await w.ok(w.OWNER, "google.members.email", { person: BEN, email: "ben@firm.test" });
   await filedAsBen(w, "google.mail.send", { to: "dana@harlow.example", subject: "Refund R-9", body: "Hello Dana" });
 });
+
+test("mcp: a member's server calls are hers alone: she cannot update or remove the owner's row of the same name, an agent is refused, and the owner's row is untouched", { timeout: 240_000 }, async t => {
+  const w = await world(t);
+  const fakeMcp = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "mcp", "testing", "fake-mcp.js");
+  const added = await w.ok(w.OWNER, "mcp.add", { name: "issues", transport: "stdio", command: process.execPath, args: [fakeMcp, "--stdio"] });
+  assert.ok(added, "the owner's server is added");
+  const rows = async () => (await w.ok(w.OWNER, "mcp.servers")).map((/** @type {any} */ s) => s.name).filter((/** @type {string} */ n) => n === "issues");
+  assert.deepEqual(await rows(), ["issues"]);
+  // a member's remove and update of that name reach only her own rows: she has none, so there is no such server, and the owner's is untouched
+  const rm = await w.as(BEN, "mcp.remove", { name: "issues" });
+  assert.equal(rm.error?.code, "not_found", JSON.stringify(rm));
+  const up = await w.as(BEN, "mcp.update", { name: "issues", tools: {} });
+  assert.equal(up.error?.code, "not_found", JSON.stringify(up));
+  assert.deepEqual(await rows(), ["issues"], "the owner's row is untouched");
+  // an agent (the member's, with the member's token) is refused
+  for (const [tool, input] of [["mcp.remove", { name: "issues" }], ["mcp.update", { name: "issues", tools: {} }]]) {
+    const r = await w.agentTurn(tool, input);
+    assert.ok(r.error, `${tool}: an agent is refused: ${JSON.stringify(r)}`);
+  }
+  assert.deepEqual(await rows(), ["issues"], "and the row is still there");
+  // the connectors tools that start all this take a person: a bare call is refused and writes nothing
+  const bare = await w.d.registry.call("connectors.connect.finish", { id: "x", url: "https://x.example/cb" }, "mcp");
+  assert.ok(bare.error, JSON.stringify(bare));
+  assert.deepEqual(await rows(), ["issues"]);
+});
