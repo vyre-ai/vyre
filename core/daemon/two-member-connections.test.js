@@ -1,11 +1,10 @@
 // @ts-check
-// Two members, one owner, one assistant, on a REAL daemon with the kernel on, against a fake MCP server: the production path for everything a person's own app connection promises. Written to the recipe of
-// flows-mcp-member.test.js (member session tokens on the registry's calls). It runs on CI.
-//   C3      the hub: A's call to A's connection runs; B's, the owner's and a call with no turn are refused for it
-//   connect the connector tools: each member lists only their own, disconnects only their own, cannot repin, test, restart, update or remove another's, and the owner cannot repin a member's
-//   forged  a forged or expired token is refused, never served as the owner's
-//   assistant  Ben's assistant reads Ben's view and cannot connect
-// Everything uses the paste-a-token path of a test preset (no vendor, no browser). Steps are named so a failure says where the walk stopped.
+// The hub and a person's own app connection, on a REAL daemon with the kernel on, against a fake MCP server, written to the recipe of flows-mcp-member.test.js (member session tokens on the registry's calls). It runs on CI.
+// The connector tools themselves (list, disconnect, finish, forged tokens, the assistant's reads) are covered by core/connectors/member.test.js; this file does not repeat them. It covers what only the hub and the
+// Vault can show:
+//   C3         A's call to A's connection runs; B's, the owner's, an assistant's and a forged token's are refused, and a refused call never reaches the server with A's token
+//   member tools  vault6's member-scoped mcp.update, remove, test and restart reach only the maker's own row; another member and the owner are refused; Ben's assistant cannot remove, update, test or restart Ben's row
+// Everything uses the paste-a-token path of a test preset (no vendor, no browser).
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 
@@ -60,12 +59,6 @@ test("two members' own app connections: each is used, listed and removed by its 
   const cyConn = await as("cy", "connectors.connect", { preset: "tokvendor", token: CY_TOKEN });
   step("Cy connects: " + JSON.stringify(cyConn.error || cyConn.data), cyConn.data && cyConn.data.step === "connected");
 
-  // ---- the connector tools: each member lists only their own
-  const names = (/** @type {any} */ r) => (((r.data && (r.data.connections || r.data)) || [])).map((/** @type {any} */ c) => c.name);
-  step("Ben's list is his own one", names(await as("ben", "connectors.list")).join() === "tokvendor");
-  step("Cy's list is her own one", names(await as("cy", "connectors.list")).join() === "tokvendor");
-  step("the owner's list holds neither", !names(await as("owner", "connectors.list")).includes("tokvendor"));
-
   // ---- the hub rows: each is visible to its maker only (C3)
   const rowsOf = async (/** @type {"owner"|"ben"|"cy"} */ w) => ((await as(w, "mcp.servers")).data || []);
   const benRow = (await rowsOf("ben")).find((/** @type {any} */ s) => s.owner === BEN), cyRow = (await rowsOf("cy")).find((/** @type {any} */ s) => s.owner === CY);
@@ -106,27 +99,19 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("Ben can test his own", !(await as("ben", "mcp.test", { name: benRow.name })).error);
   step("Ben can restart his own", !(await as("ben", "mcp.restart", { name: benRow.name })).error);
 
-  // ---- forged tokens are refused on the connector tools, and never served as the owner's
-  for (const [tool2, input] of /** @type {[string, any][]} */ ([["connectors.list", {}], ["connectors.catalog", {}], ["connectors.connect", { preset: "tokvendor", token: BEN_TOKEN }], ["connectors.disconnect", { name: "tokvendor" }], ["connectors.connect.cancel", { id: "x" }], ["connectors.connect.finish", { id: "x", url: "http://127.0.0.1/x" }]])) {
-    const r = await forged(tool2, input);
-    step(`${tool2} refuses a forged token`, r.error);
-  }
-
-  // ---- Ben's assistant: reads Ben's view, cannot connect, disconnect or finish
+  // ---- Ben's assistant (an agent in Ben's turn) is not Ben: it cannot remove, update, test or restart his connection, and the connection is still there afterwards
   const uid = await juno();
   const assistant = async (/** @type {string} */ tool2, /** @type {any} */ input = {}) => d.registry.call(tool2, input, "mcp:agent:juno", { token: (await K.surfaces.open(chain(BEN), { agent: uid, session: "s-juno-ben", thread: "t-juno-ben" })).token, thread: "t-juno-ben", agent: "juno" });
-  step("the assistant reads Ben's connections", names(await assistant("connectors.list")).join() === "tokvendor");
-  step("and Ben's catalog", !(await assistant("connectors.catalog")).error);
-  step("it cannot connect an app", (await assistant("connectors.connect", { preset: "tokvendor", token: BEN_TOKEN, replace: true })).error);
-  step("it cannot disconnect one", (await assistant("connectors.disconnect", { name: "tokvendor" })).error);
-  step("Ben's connection is still there", names(await as("ben", "connectors.list")).join() === "tokvendor");
+  step("the assistant cannot remove Ben's connection", (await assistant("mcp.remove", { name: benRow.name })).error);
+  step("nor update it", (await assistant("mcp.update", { name: benRow.name, idle: 60 })).error);
+  step("nor test it", (await assistant("mcp.test", { name: benRow.name })).error);
+  step("nor restart it", (await assistant("mcp.restart", { name: benRow.name })).error);
+  step("nor repin it", (await assistant("mcp.repin", { name: benRow.name, seen: "0".repeat(64) })).error);
+  step("Ben's connection is still there and still runs", (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name) && !(await run("ben", benRow.name)).error);
 
-  // ---- disconnect removes only the maker's row
-  step("Cy cannot disconnect what she did not connect under another name", (await as("cy", "connectors.disconnect", { name: "no-such" })).error);
-  const gone = await as("cy", "connectors.disconnect", { name: "tokvendor" });
-  step("Cy disconnects hers: " + JSON.stringify(gone.error || ""), !gone.error);
-  step("Cy has no connection now", names(await as("cy", "connectors.list")).length === 0);
-  step("her hub row is gone", !(await rowsOf("cy")).some((/** @type {any} */ s) => s.owner === CY));
-  step("Ben's connection and hub row are untouched", names(await as("ben", "connectors.list")).join() === "tokvendor" && (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
-  step("and still run", !(await run("ben", benRow.name)).error);
+  // ---- the maker removes his own; it is gone for him and untouched for Cy
+  const removed = await as("ben", "mcp.remove", { name: benRow.name });
+  step("Ben removes his own connection: " + JSON.stringify(removed.error || ""), !removed.error);
+  step("his row is gone", !(await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
+  step("Cy's row and call are untouched", (await rowsOf("cy")).some((/** @type {any} */ s) => s.name === cyRow.name) && !(await run("cy", cyRow.name)).error);
 });
