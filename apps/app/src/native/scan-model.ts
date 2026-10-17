@@ -50,7 +50,7 @@ export function onceEach(handle: (c: ScannedCode) => void, hold = 1500, now: () 
   return (text: string | null | undefined) => {
     const c = readCode(text);
     if (!c) return;
-    const key = c.kind === "wink" ? c.ticket : c.kind === "typed" ? c.code : c.text;
+    const key = c.kind === "wink" ? c.ticket : c.text;
     const t = now();
     if (key === last && t - at < hold) return;
     last = key;
