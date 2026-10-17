@@ -6,12 +6,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { OPEN, PERSON_ONLY, ASK_FIRST } from "../core/modules/agent-reach.js";
 
-test("the release notes and the run and stage answers are open to the person's assistant", () => {
-  for (const t of ["update.whats-new", "update.whats-new-seen", "flows.settle", "flows.advance"]) assert.ok(OPEN.has(t), `${t} is open`);
+test("the release notes are open to the person's assistant", () => {
+  for (const t of ["update.whats-new", "update.whats-new-seen"]) assert.ok(OPEN.has(t), `${t} is open`);
 });
 
 test("approving, rolling back, removing a test case, spending on an eval and the Mac's lid stay the person's own, each with a reason", () => {
-  for (const t of ["approvals.local-yes", "flows.rollback", "flows.test.remove", "models.eval-approve", "models.eval-decline", "models.eval-record", "link.sleep", "link.wake"]) {
+  for (const t of ["approvals.local-yes", "flows.settle", "flows.advance", "flows.rollback", "flows.test.remove", "models.eval-approve", "models.eval-decline", "models.eval-record", "link.sleep", "link.wake"]) {
     assert.ok(PERSON_ONLY.has(t), `${t} is person only`);
     assert.ok(String(PERSON_ONLY.get(t)).length > 30, `${t} says why`);
   }
