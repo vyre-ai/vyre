@@ -80,5 +80,5 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   // Named, inside the scope: the same standing permission covers it, so it goes out with no question (the positive control).
   const named = await callAs({ to: "client@example.com", text: "hi" });
   assert.ok(!named.error, JSON.stringify(named.error));
-  await until(() => calls(logFile) === 1);
+  await until(() => calls(logFile) === 1).catch(async e => { throw new Error(`${e.message}: the named send answered ${JSON.stringify(named.data).slice(0, 300)}; held at the Gate now: ${JSON.stringify(await ok("gate.held")).slice(0, 400)}`); });
 });
