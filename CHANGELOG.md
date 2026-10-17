@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(connectors): Notion takes the owner's MCP token pasted into the Vault, as a `token` route beside sign-in (C8b).
+- feat(mcp): a server's readOnlyHint never relaxes a name that says nothing, and destructiveHint is held as a delete whatever the mode (B7, sec53 review).
+- feat(mcp): an outward call with no named recipient is held as `unnamed`, so no standing permission or intent matches it; a destructive call is a delete no standing permission covers (B8, sec53 review).
+- feat(mcp): `probeServer` reads a catalog row's own discovery documents and says dcr-advertised, open-client, needs-client, no-oauth or refused. It never registers (B4).
 - feat(mcp): the app catalog is a reviewed weekly snapshot. `scripts/mcp-catalog-snapshot.mjs` pulls the official MCP registry (latest version of each server, cursor-paged) and the Claude plugin repos into `core/mcp/catalog.snapshot.json`; `.github/workflows/mcp-catalog.yml` opens a pull request with the diff every Monday, so a person reads each new entry first. `mcp.catalog` (person) searches it by words, category, connected or verified. An entry is verified only when its address sits on the domain its registry name is published under. The connected mark covers only servers the caller may use.
 - feat(mcp): description pinning. A server's tool descriptions are fingerprinted at the first listing (or the cache a person already used). A later list that differs is held with the server: no tools offered, calls refused with `tools_changed`, `mcp.servers` shows the change to a person, and `mcp.repin { name, seen }` approves exactly the list they read. A new address starts a new review. `mcp.repin` takes the whole 64-character fingerprint, never a prefix. Migrations add `tools_pin`, `pinned_at`, `pin_seen`, `tools_seen`.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
