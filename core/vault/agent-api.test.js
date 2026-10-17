@@ -253,6 +253,17 @@ test("vault.connection.may reads the CALLER's chain from the turn's token, never
     await assert.rejects(tools.get("vault.connection.may").run({ connection: "clio-token", level: "read" }, { caller, token: "tok_ben" }), e => e.code === "denied", caller);
 });
 
+test("only a connection's maker, alone in the chain, holds it at level own: not an assistant acting for them, not another member, not the owner, and not with a person named by `as`", async t => {
+  const { v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  const own = (chain, over = {}) => v.access.mayUseConnection({ owner: "per_ben", connection: "clio", level: "own", ...over }, { chain });
+  assert.equal(await own(rig.person("per_ben")), true, "Ben alone");
+  assert.equal(await own(rig.assistant("agt_kit", "per_ben")), false, "Ben's assistant: an agent hop is in the chain");
+  assert.equal(await own(rig.person("per_cy")), false, "another member");
+  assert.equal(await own(rig.owner()), false, "the Space owner is not the maker");
+  assert.equal(await own(rig.person("per_ben"), { as: "per_ben" }), false, "the level is about the caller, never a person named in the input");
+  assert.equal(await own(rig.person("per_ben"), { owner: undefined }), false, "a connection with no maker is nobody's to own");
+});
+
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
   const { cred, ask, give, agent, net, GET, v } = await mk(t);
   await cred("graph-api");

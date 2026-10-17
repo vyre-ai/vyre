@@ -54,6 +54,7 @@ CSV export is in the web app. A phone does not offer it yet.
 - A member adds a setup token or API key as their own AI account in their own vault. Only that member's own chats use it; a job, a Flow and an agent never do.
 - A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
 - A member's MCP servers that they sign in to inside a session are not carried to their next session.
+- Removing an app connection removes it here and discards what it was holding at the Gate. The vendor is told to drop the token only when the connection records its revocation address, and the connect flow does not record one yet, so today a removed connection's token is not revoked at the vendor.
 - The firm Microsoft 365 app lets a member send and invite from their own mailbox, never held. A member's agent's send is held at that member's own Gate. Standing permissions for it are not tested end to end yet.
 
 ### Vyre on a Mac as the server
