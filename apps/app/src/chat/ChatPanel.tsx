@@ -8,6 +8,7 @@ import { Platform, Pressable, View } from "react-native";
 import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, SectionLabel, Sheet, Switch, Tabs, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
 import { useRouter } from "expo-router";
 import { ComputerTab } from "./ComputerTab";
+import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
@@ -139,7 +140,10 @@ export function ChatPanel(p: ChatPanelProps) {
 
       {agents.length ? <>
         <SectionLabel>{agents.length === 1 ? "Agent" : "Agents"}</SectionLabel>
-        {agents.map((a) => <Row key={a.id} dense lead={<Face name={a.name} family="assistant" size={32} id={a.id} />} title={a.name} sub="Its work, routines, instructions and models" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(a.name)}?tab=activity` as never); }} accessibilityLabel={`${a.name}: open its page`} />)}
+        {agents.map((a) => <View key={a.id} style={{ gap: 4 }}>
+          <Row dense lead={<Face name={a.name} family="assistant" size={32} id={a.id} />} title={a.name} sub="Its work, routines, instructions and models" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(a.name)}?tab=activity` as never); }} accessibilityLabel={`${a.name}: open its page`} />
+          <StandingRows agent={a.name} />
+        </View>)}
       </> : null}
 
       <SectionLabel>About</SectionLabel>
