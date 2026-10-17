@@ -263,3 +263,28 @@ test("a chat message queued behind a turn survives a restart and then runs under
   const turn = await until(turnOf, "the queued message's own turn to be open", 20_000);
   assert.deepEqual([turn.person, turn.chat], [owner, chat.id], "under its own asker, in its chat");
 });
+
+// A chat turn's words reach the switchboard as module:stream (the caller stays the module; the person's surface is only the call's origin), so the switchboard's chip and #Name
+// resolution, which answers under the OWNER's access, is never run for a chat turn today: personTurn("module:stream") is false. This pins that. The day a chat turn is let through to
+// resolution, `memberTurn` (only a record and an account chip for someone who is not staff, core/switchboard/member-chips.test.js) has to be computed from the verified asker
+// for that case first, and this test is the one that fails to say so.
+test("a chat turn's vault chip, Drive chip and #Name are not resolved under the owner's access, whoever asked (the stream's calls are module:stream)", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const chat = await d.kernel.gateway.grants.chats.create(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" }), {});
+  const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
+  const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(r.data, JSON.stringify(r));
+  await fin(r.data.id, 1);
+  const chips = [{ kind: "vault", id: "owner-secret" }, { kind: "drive", id: "owner-file" }, { kind: "github", id: "owner/repo" }];
+  const sent = await d.registry.call("threads.send", { thread: r.data.id, text: "use #owner-secret and the file", surface: "deck", chat: chat.id, asker: owner, mentions: chips }, "module:stream");
+  assert.ok(sent.data && !sent.error, JSON.stringify(sent));
+  await fin(r.data.id, 2);
+  const seen = await events(r.data.id);
+  assert.deepEqual(seen.filter(e => e.type === "thread.mentioned"), [], "no chip or #Name was resolved for a chat turn");
+});
