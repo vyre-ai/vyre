@@ -430,6 +430,8 @@ export class Pool {
       // many times /agents/reload is called afterward. Always the CURRENT member list, the same
       // "reseed with the latest, every start" pattern .boot's own seed() just above already uses.
       if (s.kind === "browser") await this.seedMembersBeforeStart(agent, id);
+      // agentd's own token, fresh each start, in agentd's directory (the entrypoint starts agentd only when it is there). vyred never needs to know it: it reaches agentd by running agentd's client in the computer, which reads the file itself.
+      if (s.kind === "browser" && typeof d.seedAgentd === "function") await d.seedAgentd(id, crypto.randomBytes(32).toString("base64url"));
       await d.start(id);
     }
     await this.boot(agent, id);

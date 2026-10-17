@@ -71,6 +71,12 @@ export class FakeDriver {
     this.calls.push({ op: "seedAgentTokens", id });
   }
 
+  /** agentd's token (kept, not logged as a call: the order of calls other tests pin stays as it was) @param {string} id @param {string} token */
+  async seedAgentd(id, token) {
+    const c = this.must(id);
+    c.agentdToken = token;
+  }
+
   async start(id) {
     const c = this.must(id);
     if (c.state === "paused") throw new Error(`container ${id} is paused; unpause it first`);
