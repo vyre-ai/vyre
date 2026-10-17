@@ -16,6 +16,7 @@
 // The pid, group and session are reported before the process can run a tool: at once for a
 // direct spawn, and for the spawner as soon as it answers, before anything is written to stdin.
 
+import { CREDENTIAL_VARS } from "../../lib/credential-env.js";
 import { lentOrBox } from "./lent-spawn.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -65,9 +66,10 @@ export function takeCredentialForFd(env) {
   return undefined;
 }
 
+const CREDENTIAL_SET = new Set(CREDENTIAL_VARS);
 /** Remove every credential variable, and the variables that name a descriptor for one, from an environment a terminal shell will get. @param {Record<string, string|undefined>} env changed in place */
 export function stripCredentials(env) {
-  for (const k of Object.keys(env)) if (/^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_API_KEY|OPENAI_API_KEY)$|FILE_DESCRIPTOR$/.test(k)) delete env[k];
+  for (const k of Object.keys(env)) if (CREDENTIAL_SET.has(k) || /FILE_DESCRIPTOR$/.test(k)) delete env[k];
 }
 
 export function spawnSession(command, args, o = {}) {
