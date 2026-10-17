@@ -23,6 +23,7 @@
       {"name": "computers.agent.status", "effect": "read", "reach": "person"},
       {"name": "computers.agent.wake", "effect": "write", "reach": "person"},
       {"name": "computers.agent.sleep", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.watch", "effect": "write", "reach": "person"},
       {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
       {"name": "computers.endpoint", "reach": "modules"},
       {"name": "computers.may-act", "reach": "modules"},

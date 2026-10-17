@@ -25,6 +25,7 @@ function setup(t, { level = "edit" } = {}) {
   /** @type {string[]} */ const asked = [];
   let held = false;
   registerAgentTools({ tool: (name, _d, _i, run) => tools.set(name, run), users, callers: ["deck"], held: () => held,
+    watch: (agent, slow) => { ran.push(`ticket ${agent}${slow ? " slow" : ""}`); return { ticket: "tk", path: "/glass?ticket=tk", width: 1280, height: 800 }; },
     call: async (tool, input) => { asked.push(`${tool} ${input.agent}`); return tool === "agents.level" ? { data: { agent: input.agent, level } } : { error: { code: "no_such_tool", message: tool } }; } });
   return { users, tools, ran, asked, hold: (/** @type {boolean} */ v) => { held = v; } };
 }
@@ -42,7 +43,7 @@ test("status of an agent with no place yet says none; wake makes the place and o
 
 test("a caller the agents module refuses gets its refusal, and nothing starts", async t => {
   const w = setup(t, { level: "none" });
-  for (const name of ["computers.agent.status", "computers.agent.wake", "computers.agent.sleep", "computers.agent.reset"]) {
+  for (const name of ["computers.agent.status", "computers.agent.wake", "computers.agent.sleep", "computers.agent.reset", "computers.agent.watch"]) {
     await assert.rejects(() => call(w, name, { agent: "ads" }), /cannot use that agent/, name);
   }
   assert.deepEqual(w.ran, []);
@@ -69,4 +70,14 @@ test("sleep is refused while a person watches or has taken over, and a bad agent
   assert.equal(w.users.status("ads").state, "live");
   await assert.rejects(() => call(w, "computers.agent.status", { agent: "../root" }), /not an agent/);
   assert.ok(!w.asked.some(x => x.includes("../root")), "a bad name never reaches the agents module");
+});
+
+test("watching an agent wakes it and hands back a ticket for that agent alone; a caller without access gets neither", async t => {
+  const w = setup(t);
+  const r = await call(w, "computers.agent.watch", { agent: "ads", slow: true });
+  assert.deepEqual(r, { ticket: "tk", path: "/glass?ticket=tk", width: 1280, height: 800 });
+  assert.deepEqual(w.ran, ["create ag20000", "start ag20000", "ticket ads slow"]);
+  const none = setup(t, { level: "none" });
+  await assert.rejects(() => call(none, "computers.agent.watch", { agent: "ads" }), /cannot use that agent/);
+  assert.deepEqual(none.ran, [], "no place, no screen and no ticket");
 });

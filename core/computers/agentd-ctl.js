@@ -3,6 +3,7 @@
 // token, each agent's VNC password) are derived or held in memory by the caller and never logged or put in an error.
 
 import crypto from "node:crypto";
+export { RELAY_PORT } from "./image/agentd-relay.js";
 
 /** An agent's VNC password, derived from a vault-held key so it is never stored: stable for the agent, different for every agent. @param {string} key @param {string} agentId */
 export const vncPasswordFor = (key, agentId) => {

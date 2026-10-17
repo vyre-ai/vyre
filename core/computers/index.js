@@ -15,10 +15,11 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
+import crypto from "node:crypto";
 import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
 import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
-import { agentdCtl, execTransport } from "./agentd-ctl.js";
+import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
@@ -116,9 +117,26 @@ export default {
     let glass = null;
     /** @type {BrowserGlass|null} */
     let browserGlass = null;
+    // How many viewers have each agent's own screen open: a watched agent is not put to sleep for being idle.
+    /** @type {Map<string, number>} */
+    const screenViewers = new Map();
+    /** The agent's own screen for Glass: its relay on the space's computer, a ticket agentd was told about, and the agent's own VNC password. (agentUsers is made below; this runs on a connection, long after.) */
+    const agentScreen = {
+      open: async (/** @type {string} */ agent) => {
+        await agentUsers.wake(agent);
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        const hello = crypto.randomBytes(24).toString("base64url");
+        await agentUsers.screenTicket(agent, hello);
+        const password = vncPasswordFor(await ctx.vault.fetch(MEMBER_TOKEN_ITEM), agent);
+        screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+        let released = false;
+        return { host: h.host, port: RELAY_PORT, password, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+      },
+    };
     try {
       const { Glass } = await import("./glass.js");
-      glass = new Glass({ pool, keyboard, log: ctx.log });
+      glass = new Glass({ pool, keyboard, log: ctx.log, screen: agentScreen });
       ctx.upgrade("glass", (req, socket, head, info) => glass.handle(req, socket, head, info));
       browserGlass = new BrowserGlass({ pool, agentBrowser, keyboard, log: ctx.log });
       ctx.upgrade("browser-glass", (req, socket, head, info) => browserGlass.handle(req, socket, head, info));
@@ -137,7 +155,7 @@ export default {
     // SPEC's floor on polling an install that isn't using computers at all (found by perf).
     const sweepMs = Number(cfg.sweepMs ?? 5_000);
     const idleSweepMs = Number(cfg.idleSweepMs ?? 60_000);
-    const sweep = async () => { keyboard.sweep(); await pool.sweep(); await agentUsers.sweep(agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent)).catch(e => ctx.log(`agent screens: ${/** @type {Error} */ (e).message}`)); };
+    const sweep = async () => { keyboard.sweep(); await pool.sweep(); await agentUsers.sweep(agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0).catch(e => ctx.log(`agent screens: ${/** @type {Error} */ (e).message}`)); };
     const busy = () => pool.checkouts.size > 0 || pool.idle.size > 0 || keyboard.takeovers.size > 0;
     let sweeping = false, timer = null;
     const schedule = () => {
@@ -222,7 +240,12 @@ export default {
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(), emit,
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
-    registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) });
+    registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+      watch: (agent, slow, surface) => {
+        const ticket = pool.ticket(agent, isSurface(surface) ? surface : "glass:viewer", { slow, perAgent: true });
+        const { w, h } = pool.size(agent);
+        return { ticket, path: `${agentBrowser.glassPath()}?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
+      } });
 
     tool("computers.rename", "Rename an agent's computer: the person's own label for it, shown wherever the computer appears. An empty name goes back to the agent's name.",
       obj({ computer: str, name: str }, ["computer", "name"]), async (i, { caller }) => {
