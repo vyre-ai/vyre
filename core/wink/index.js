@@ -472,7 +472,8 @@ export function createWink(inject = {}) {
           // The compute offer is kept per Space: the kernel's offers port knows the home's own Space id, never an identity id (a build without a kernel keeps the identity as the personal Space's key, as before).
           if (ctx.kernel && !wd.nodeKey) throw fail("unavailable", "that computer has not given this server its key yet, so it cannot lend its compute; pair it again from the computer");
           const offerSpace = ctx.kernel && typeof ctx.kernel.space === "string" && ctx.kernel.space ? ctx.kernel.space : wd.identity;
-          await pairing.compute.set(offerSpace, wd.id, "member", true, { member: (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner) || wd.identity, device_key: wd.nodeKey || undefined, meta });
+          // The member's side is the person who is sharing, from the VERIFIED chain of this call: with a kernel no member is named here (the offers port takes it from the proven caller and refuses any other), and wink.share's own owner gate above still decides who may share. Without a kernel the identity is the member, as before.
+          await pairing.compute.set(offerSpace, wd.id, "member", true, { ...(ctx.kernel ? {} : { member: wd.identity }), device_key: wd.nodeKey || undefined, meta });
           allowed = await pairing.computeAllowed({ device: wd.id, space: offerSpace });
         }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });

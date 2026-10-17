@@ -1217,6 +1217,9 @@ shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.loc
   const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
   const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
   const { WORDS } = await import("../relay/client/words.js");
+  // CUT (e98f7fb5c, sec53 signed it): this test used to end by enrolling a phone's key into the PC's identity list, signed by the passkey (enrolDevice, apps/app/src/identity/enrol-device.js), and checked that the phone
+  // was on the list, the PC's own entry was a full device and the change was signed by the passkey. That flow went with the device-add removal (a phone now signs in), so only the passkey identity, the team join and
+  // the member's reach remain. BACKLOG: "Windows Hello presence for the Windows app" / "enrol a phone key under a passkey identity".
   const { ident, made, hosted, ownerChain, linkFor } = await teamRig(t, { release: true });
   const auth = authenticator({ rp: "vyreapp.localhost" });
   const pc = await ident.anotherPasskey("winhello", auth, "vyreapp.localhost");
