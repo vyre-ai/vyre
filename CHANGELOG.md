@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- docs: removed the sentence that `<name>.vyre.run` redirects to a person's `vyre.run/u/<name>` (nothing does; one namespace means a label is a person's or a space's, and `<name>.vyre.run` is a space's address). Source `docs/for-agents/START-HERE.md` and `docs/using/master-password.md`; the agent pages are regenerated.
 - fix(app): the in-page host no longer imports relay/client/pair-install.js and setup.js by relative path (that pulled the relay client's JavaScript into the app's strict typecheck, about 120 errors). mintPairCode, createSetupKey and setupFingerprint now come in through SpacePorts, bound in host/space-ports.ts with the @vyre/relay-client alias (typed by its .d.ts); the test passes the real functions.
 - ci: golden-refresh also builds the generated docs on the CI platform and uploads them with the golden files, and runs on the self-hosted runners when CI_SELF_HOSTED is 1.
 - feat(identity): the relay's GitHub sign-in public key is pinned in lib/relay-keys.js (RELAY_ASSERT_KEY). Its private half is the deploy environment secret GH_ASSERT_KEY, set on the relay as GITHUB_ASSERT_KEY by relay-deploy.yml. `github.assertKey` in a box's config still replaces it for development and tests.
