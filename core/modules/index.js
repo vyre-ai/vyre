@@ -1746,7 +1746,7 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && !switchedOff && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+    } else if (presence && !switchedOff && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input, { caller, meta }))) {
       if (SIGN_IN.has(tool)) {
         // Signing in is authentication, not one of the three moments: the passkey or device key that opens a person session is checked by the presence verifier, as before (BACKLOG 0.3.2: move sign-in to the yes form too).
         const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });

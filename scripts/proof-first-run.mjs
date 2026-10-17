@@ -91,7 +91,7 @@ async function browserDriver() {
       });
       page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
-    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | the add-server stages: ${stageTrail.join("; ") || "none seen"} | console errors: ${consoleErrors.slice(-3).join(" || ") || "none"}`); }); return body(); },
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen starts: ${b.slice(0, 260)} | The screen ends: ${b.slice(-260)} | the add-server stages: ${stageTrail.join("; ") || "none seen"} | console errors: ${consoleErrors.slice(-3).join(" || ") || "none"}`); }); return body(); },
     async click(/** @type {string} */ t) {
       // By role first, in this order, and the words only when no control has that name: a union of all of them takes the first in the page, which for a switch is the words beside it (they toggle nothing).
       const candidates = [page.getByRole("button", { name: t }), page.getByRole("radio", { name: t }), page.getByRole("switch", { name: t }), page.getByText(t, { exact: true })];
@@ -141,7 +141,7 @@ async function macDriver() {
         await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
         const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
         const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
-        throw new Error(`${e.message} | this window to the relay: ${probe} | the screen ends: ${body.slice(-300)}`);
+        throw new Error(`${e.message} | this window to the relay: ${probe} | the screen starts: ${body.slice(0, 300)} | the screen ends: ${body.slice(-300)}`);
       }
     },
     async click(t) {

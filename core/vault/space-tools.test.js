@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { x25519Pair } from "../../kernel/identity/wrap.js";
 import { registerSpaceTools } from "./space-tools.js";
+import { noteFirstAdopt, FIRST_ADOPT_MS } from "../../lib/first-adopt.js";
 
 const SPACE = "spc_aaaaaaaaaa";
 const ALICE = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -31,7 +32,7 @@ function rig(o = {}) {
   };
   registerSpaceTools(ctx, o.fetch ? { fetch: o.fetch } : {});
   const call = (/** @type {string} */ name, /** @type {any} */ input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { call, tools, events, logs };
+  return { call, tools, events, logs, root };
 }
 
 test("the space vault key is shared only with a member of that space, and only one key per member", async () => {
@@ -99,4 +100,50 @@ test("a lent value never reaches the response, the audit line, the log or an err
   assert.equal(used[2][1].host, "evil.example");
   assert.equal(JSON.stringify(r.events).includes(SECRET), false, "no event carries the value");
   assert.equal(r.logs.join("\n").includes(SECRET), false, "no log line carries the value");
+});
+
+const ADOPTER = "device:adopter1";
+/** Does the registry ask this caller for a fresh approval before vault.space.create? (The tool's own `when`, as presence.required calls it.) */
+const asks = (/** @type {any} */ r, /** @type {string} */ caller, /** @type {string} */ space = SPACE, /** @type {any} */ meta = {}) => Boolean(r.tools.get("vault.space.create").presence.when({ space }, { caller, meta }));
+
+test("the device that finished the first adoption makes this server's space vault without a fresh approval, once, and nothing else is opened up", async () => {
+  const r = rig();
+  noteFirstAdopt(r.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(r, ADOPTER), false, "the adopter, inside the window, for this server's own space, with no vault yet");
+  const made = await r.call("vault.space.create", { space: SPACE }, ADOPTER);
+  assert.equal(made.generation, 1);
+  assert.deepEqual(r.events.find((e) => e[0] === "vault.space-created")?.[1], { space: SPACE, device: ADOPTER, firstRun: true });
+  assert.ok(r.logs.some((l) => /space vault made for/.test(l) && !/key/i.test(l)), "an audit line, no key material");
+  assert.deepEqual((await r.call("vault.space.status", { space: SPACE })).members, [], "the new vault has no member grant");
+  // A second call needs the approval again, and the tool itself refuses a vault that is already there.
+  assert.equal(asks(r, ADOPTER), true);
+  await assert.rejects(() => r.call("vault.space.create", { space: SPACE }, ADOPTER), (/** @type {any} */ e) => e.code === "exists");
+  // Putting, granting and rotating are never narrowed: they declare presence with no `when`.
+  for (const n of ["vault.space.put", "vault.space.grant", "vault.space.rotate"]) {
+    const p = r.tools.get(n).presence;
+    assert.ok(p && typeof p.when !== "function", `${n} always asks`);
+  }
+});
+
+test("the exemption holds only inside its bounds: late, another device, an agent or MCP caller, another space, no record of an adoption", async () => {
+  const late = rig();
+  noteFirstAdopt(late.root, ADOPTER, Date.now() - FIRST_ADOPT_MS - 5000);
+  assert.equal(asks(late, ADOPTER), true, "after ten minutes");
+
+  const r = rig();
+  noteFirstAdopt(r.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(r, "device:someoneelse"), true, "another paired device");
+  assert.equal(asks(r, "cli"), true, "a local caller is not the adopter");
+  assert.equal(asks(r, "mcp:agent:kit"), true, "an agent");
+  assert.equal(asks(r, "mcp"), true, "an MCP caller");
+  assert.equal(asks(r, ADOPTER, SPACE, { agent: "kit" }), true, "the adopter's device acting for an agent");
+  assert.equal(asks(r, ADOPTER, "spc_bbbbbbbbbb"), true, "a space that is not this server's own");
+  assert.equal(asks(r, ADOPTER, "not-a-space"), true, "an id that is not a space id");
+  assert.equal(Boolean(r.tools.get("vault.space.create").presence.when({ space: SPACE })), true, "a caller the registry did not name");
+
+  const none = rig();
+  assert.equal(asks(none, ADOPTER), true, "no first adoption is on record");
+  const noKernel = rig({ noKernel: true });
+  noteFirstAdopt(noKernel.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(noKernel, ADOPTER), true, "a server that cannot say which space is its own");
 });
