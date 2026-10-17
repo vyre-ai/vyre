@@ -390,15 +390,19 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
 const busyAs = async (d, ctxt, asker) => {
   const sent = await d.registry.call("threads.send", { thread: ctxt.thread, text: "demo", surface: "deck", chat: ctxt.chat, asker }, "module:stream");
   assert.ok(sent.data && !sent.error, JSON.stringify(sent));
-  // busy: the demo turn waits on its Edit ask, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
-  await until(async () => {
-    // the turn running is THIS asker's: a stopped turn's Edit ask or asker may still be listed for a moment, and the vault is asked who asked the turn running now (threads.turn-asker, the vault's alone)
-    const who = await d.registry.call("threads.turn-asker", { thread: ctxt.thread }, "module:vault");
-    if (!who.data || who.data.asker !== asker) return false;
-    if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
-    const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 1 }, "cli")).data.thread.status;
-    return st === "working" || st === "waiting";
-  }, `${asker}'s turn to be busy`);
+  // busy: the turn running is THIS asker's (a stopped turn's Edit ask or asker may still be listed for a moment, and the vault is asked who asked the turn running now: threads.turn-asker, the vault's alone), and its Edit ask is
+  // waiting, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
+  let seen = "";
+  try {
+    await until(async () => {
+      const who = await d.registry.call("threads.turn-asker", { thread: ctxt.thread }, "module:vault");
+      const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 6 }, "cli")).data;
+      seen = JSON.stringify({ sent: sent.data, asker: who.data ? who.data.asker : who.error, status: st.thread.status, last: (st.events || []).slice(-6).map(e => [e.type, e.payload && (e.payload.via || e.payload.reason || e.payload.code)]) });
+      if (!who.data || who.data.asker !== asker) return false;
+      if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
+      return st.thread.status === "working" || st.thread.status === "waiting";
+    }, `${asker}'s turn to be busy`);
+  } catch (e) { throw new Error(`${/** @type {Error} */ (e).message}; last seen: ${seen}`); }
 };
 const endTurn = async (d, ctxt) => {
   await d.registry.call("threads.stop", { thread: ctxt.thread }, "cli");
@@ -434,6 +438,7 @@ test("an item the owner tags in a chat is usable on the owner's turns and not on
 test("a member's turn that is stopped leaves no asker behind, and the owner's turn that was waiting behind it runs as the owner: the vault is asked as the owner", { timeout: 120_000 }, async t => {
   const c = await chipChat(t);
   const { d, owner, BOB, thread, chat } = c;
+  await ownSignIn(d, owner);   // the owner has a sign-in of their own, as a member does: a message to a chat running on another member's sign-in is otherwise refused
   const asker = async () => (await d.registry.call("threads.turn-asker", { thread }, "module:vault")).data.asker;
   await busyAs(d, c, BOB);
   assert.equal(await asker(), BOB, "Ben's turn is the one running");

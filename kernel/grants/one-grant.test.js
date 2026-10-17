@@ -109,7 +109,7 @@ test("edit level: a person with Edit and rotate reads, changes and rotates, and 
 });
 
 test("teams hold agents: a listed agent reaches the team's grant with use only, an unlisted one does not, an unknown one cannot be listed, and taking it out ends it", async () => {
-  const { gw, g } = await rig();
+  const { gw, g, gs } = await rig();
   await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
   await g.addActor(owner(), actor("agent", "juno"), P.actor(actor("agent", "juno")));
   await assert.rejects(() => g.teams.set(owner(), { name: "Ops", members: [], agents: ["nope"] }), { code: "bad_input" }, "an agent that is not the Space's cannot be listed");
@@ -119,7 +119,8 @@ test("teams hold agents: a listed agent reaches the team's grant with use only, 
   // the agent acts for the owner here, who holds everything: what limits it is the agent's own hop, which is the team's grant
   const kit = assistantOf(OWNER, "kit"), juno = assistantOf(OWNER, "juno");
   const listed = await ask(gw, kit, "vault.read", item());
-  assert.equal(listed.effect, "allow", `the listed agent uses what the team holds (the authorizer said: ${JSON.stringify(listed)})`);
+  const why = () => JSON.stringify({ inTeam: gs.inTeam(team.id, actor("agent", "kit"), kit), forSubject: gs.provider.forSubject(actor("agent", "kit"), null, { chain: kit }).map(x => [x.subject, x.status, x.source]), team, hops: kit.hops.map(h => [h.actor, h.via]), grants: [...(g.list ? [] : [])] });
+  assert.equal(listed.effect, "allow", `the listed agent uses what the team holds (the authorizer said: ${JSON.stringify(listed)}; seen from the store: ${why()})`);
   for (const a of ["vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate"]) assert.notEqual((await ask(gw, kit, a, item())).effect, "allow", `${a} is never an agent's, even listed in a team that holds manage`);
   assert.equal((await ask(gw, juno, "vault.read", item())).effect, "deny", "an agent the team does not list has nothing");
   // listing again without the agents field keeps them; an empty list takes them out at once
