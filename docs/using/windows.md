@@ -54,7 +54,7 @@ checksums before it runs. The app lives in the system tray. Alt+Space opens a sm
 anywhere in Windows; if another app already holds Alt+Space, Vyre uses Ctrl+Alt+Space and tells
 you once. The panel shows the same Vyre app your server
 serves, at its address, and the app shows a notification for what needs you. It can start at
-logon, and it updates itself. It pairs with your server by a code shown as a QR and 13 words.
+logon, and it updates itself. It signs in to your server with your Vyre's address, your username and your master password.
 There is no Windows version of the Mac's screen context, computer use or voice yet.
 
 The Windows app is Authenticode signed only when the release was built with a Windows certificate
@@ -73,7 +73,4 @@ refuses files over 50 MB by default. Larger files fail to open until you raise t
 `FileSizeLimitInBytes` under `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters` and
 restart the WebClient service (this needs an administrator, so Vyre does not do it for you).
 
-Pairing this PC shows a code as 13 words and a QR. "Copy the words" puts the words on the clipboard for a
-Vyre open on the same PC. The words stay on the clipboard (Vyre does not read it back), and clipboard history or cloud
-clipboard sync on Windows may keep a copy. The code stops working after 5 minutes or on first use, so a
-kept copy is harmless once pairing ends.
+Connecting this PC asks for your Vyre's address, then your username and your master password. There is no pairing code to copy or scan.

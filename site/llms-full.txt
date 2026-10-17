@@ -102,8 +102,8 @@ Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, R
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
-- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
-- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
+- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Signs in with your Vyre's address, your username and your master password. The server does not run on Windows yet.
+- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), signed in with your Vyre's address, your username and your master password, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
