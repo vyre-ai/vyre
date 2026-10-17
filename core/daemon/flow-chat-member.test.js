@@ -24,7 +24,8 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", VYRE_SESSION_SANDBOX_OFF: "1", FAKE_CLAUDE_LOG: path.join(root, "claude.log") });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const logs = /** @type {string[]} */ ([]);
+  const d = await start({ root, log: (/** @type {any} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
@@ -63,7 +64,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
     const th = (await asOwner("threads.get", { thread: ok.data.thread, limit: 30 })).data || {};
     const flat = (/** @type {any} */ o) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => !["cwd", "name", "id", "chat", "agent", "project"].includes(k) && (v === null || ["string", "number", "boolean"].includes(typeof v))).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 160) : v]));
     const g = JSON.stringify({ thread: flat(th.thread), last: ((th.turns || th.items || th.messages || []).slice(-3)).map((/** @type {any} */ x) => flat(x)) });
-    throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}`);
+    throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}; the daemon log (threads, sessions, switchboard, launch): ${logs.filter((l) => /threads|session|launch|account|switchboard|refus|spawn/i.test(l)).slice(-25).join(" || ")}`);
   });
   assert.equal(s.runas, BEN, "the job acts as the member who wrote");
   assert.notEqual(s.runas, OWNER, "never as the owner");
