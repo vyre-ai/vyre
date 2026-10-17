@@ -411,8 +411,6 @@ test("a person's connection: its key is theirs, its token is an item in their va
   hub.db.prepare("INSERT INTO mcp_servers (name, transport, url, auth, scope, tools, added, updated, owner, connection, label) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .run(personKey("notes", B), "http", row.url, JSON.stringify({ type: "oauth", connection: "notes-bob" }), "{}", "{}", 1, 1, B, "notes-bob", "notes");
   await assert.rejects(() => hub.add({ name: "notes", transport: "http", url: row.url, auth: { type: "oauth", connection: "notes-alice" } }, { owner: B }), { code: "conflict" }, "the same person cannot add it twice");
-  hub.db.prepare("UPDATE mcp_servers SET owner = ? WHERE name = ?").run(B, personKey("notes", A));
-  hub.db.prepare("DELETE FROM mcp_servers WHERE name = ?").run(personKey("notes", A));
   hub.db.prepare("INSERT INTO mcp_servers (name, transport, url, auth, scope, tools, added, updated, owner, connection, label) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .run(personKey("notes", A), "http", row.url, JSON.stringify({ type: "oauth", connection: "notes-bob" }), "{}", "{}", 1, 1, B, "notes-bob", "notes");
   await assert.rejects(() => hub.add({ name: "notes", transport: "http", url: row.url, auth: { type: "oauth", connection: "notes-alice" } }, { owner: A }), { code: "conflict" }, "a collision with another owner's row is refused");
