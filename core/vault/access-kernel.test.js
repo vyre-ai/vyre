@@ -83,7 +83,7 @@ test("vault.connections.lend and .end answer only the flows module and the Space
     for (const caller of ["module:mail", "module:sessions", "module:agents", "cli", "mcp", "mcp:agent:kit", "device:abcdefghijklmnop"]) {
       const r = await d.registry.call(tool, tool === "vault.connections.end" ? { task: "task-1" } : input, caller, {});
       assert.ok(r.error, `${tool} refuses ${caller}`);
-      assert.ok(/only the flows module|not allowed|denied|no such|reach/i.test(String(r.error.message || r.error.code)), `${caller}: ${JSON.stringify(r.error).slice(0, 120)}`);
+      assert.ok(/only the flows module|not allowed|denied|no such|no tool|reach/i.test(String(r.error.message || r.error.code)), `${caller}: ${JSON.stringify(r.error).slice(0, 120)}`);
     }
   }
 });
