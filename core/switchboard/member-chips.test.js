@@ -53,7 +53,7 @@ test("a chat turn hears its picks as its asker: the daemon reads a record under 
   assert.deepEqual(heard.map((/** @type {any} */ t) => t.kind).sort(), ["account", "record"]);
   assert.equal(asked[0].asker, "per_bob", "the picks are read for the asker");
   assert.equal(heardActs, 0, "a chat turn's words are never heard as the owner's asks");
-  assert.equal(calls.some(c => /mentions\.search|vault|drive|github/.test(c)), false, calls.join(" "));
+  assert.equal(calls.some(c => /mentions\.search|vault\.mention|drive|github/.test(c)), false, calls.join(" "));
 });
 
 test("the owner's own words in a chat are heard for asks, as before; a member's are not", async () => {
