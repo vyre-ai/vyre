@@ -244,12 +244,12 @@ export class Access {
 
   /**
    * The items a model holds a grant for, of any kind, by the same check a call makes: an API credential it may read, a login lent to it at one of its sites, an item it may read or take a code from.
-   * Names and kinds (an API credential also its description and hosts), never a value. @param {string} name
+   * Names and kinds (an API credential also its description and hosts), never a value. The calling thread (from the registry, never from input) lets a lease held to that thread show. @param {string} name @param {string} [thread]
    */
-  async listFor(name) {
+  async listFor(name, thread) {
     const out = [];
     for (const it of this.v.list().items) {
-      let ok = (await this.effectFor(name, it.name, "vault.read")) !== "deny" || (await this.effectFor(name, it.name, "vault.totp")) !== "deny";
+      let ok = (await this.effectFor(name, it.name, "vault.read", undefined, thread)) !== "deny" || (await this.effectFor(name, it.name, "vault.totp", undefined, thread)) !== "deny";
       for (const h of ok ? [] : it.hosts || []) if ((await this.effectFor(name, it.name, "vault.fill", h)) !== "deny") { ok = true; break; }
       if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
     }

@@ -241,13 +241,13 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
+      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind, thread }) => {
         const r = cli.list(vault.list(input), input);
         // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
         const model = isAsker(caller);   // the one predicate for "this caller is a model" (asker.js): list, item and the request cap agree
         if (!model || !r || !Array.isArray(r.items)) return r;
         if (vault.access && vault.access.K) {
-          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
+          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)), thread);
           return { ...r, items: mine };
         }
         // SHIM(no kernel): the older rule, an agent sees what is granted to its project.

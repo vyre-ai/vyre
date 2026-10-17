@@ -236,6 +236,11 @@ test("a lease held to a job's thread works in that thread only: another session 
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "job-1" })).kind, "read", "the job's own thread uses it");
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "another session of the same agent");
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "a call that names no thread");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "a thread named in the input is ignored: only the registry's thread counts");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit"), /needs a grant/, "and with no registry thread, the input's name buys nothing");
+  assert.deepEqual((await v.access.listFor("kit", "job-1")).map(i => i.name), ["conn-cn1"], "the job's thread sees the connection it may use");
+  assert.deepEqual(await v.access.listFor("kit", "other"), [], "another session does not");
+  assert.deepEqual(await v.access.listFor("kit"), [], "nor a list that names no thread");
   await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "bad thread!" }), /thread/);
   // the task ends: the bound lease goes with it, and a retry of the same task can be lent again
   await v.access.leaseEnd({ task: "task-1" });
