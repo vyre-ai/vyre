@@ -16,6 +16,10 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
+### Long runs of rows you may not see
+
+A list or a search of a type whose rows are private by project looks through up to 20 pages of hidden rows before it gives up. If more than that lie between you and the next row you may read, the page comes back empty with no way to continue. Nothing hidden is shown; ask an owner or an admin, or filter the list.
+
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.
