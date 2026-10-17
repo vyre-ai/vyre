@@ -15,8 +15,9 @@ const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh
 test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
   assert.ok(!steps.some(x => /useradd|groupadd|chown/.test(x)), "agentd never adds a user or chowns: it has no capability to");
-  assert.ok(steps.every(x => x.startsWith("/usr/bin/setpriv --reuid=20000 --regid=20000")), "every step runs as the agent");
-  assert.ok(steps.some(x => x.endsWith("/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000")));
+  assert.ok(steps.every(x => x.startsWith("/usr/bin/setpriv --reuid=20000 --regid=20000") || x.startsWith("/usr/bin/setpriv --reuid=21000 --regid=21000")), "every step runs as the agent or as its browser uid, and as no one else");
+  assert.ok(steps.some(x => x.startsWith("/usr/bin/setpriv --reuid=20000 ") && x.endsWith("/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000")));
+  assert.ok(steps.some(x => x.startsWith("/usr/bin/setpriv --reuid=21000 ") && x.endsWith("/usr/bin/chmod 0700 /var/lib/vyre/browsers/agb21000/profile /var/lib/vyre/browsers/agb21000")), "the browser's folders are the browser uid's");
 });
 
 test("every agent process runs through setpriv as that uid, with absolute paths: no groups, every capability set emptied, no new privileges, limited, and an environment built from nothing", () => {
@@ -30,21 +31,23 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
 });
 
 test("the screen is its own display on a unix socket (no TCP port), the password is a file in the agent's own folder and never on the command line", () => {
-  const [xvnc, wm, chrome] = planStartScreen(U);
+  const [, , xvnc, wm, chrome] = planStartScreen(U);
   const s = xvnc.join(" ");
   assert.match(s, / \/usr\/bin\/Xvnc :20 /);
   assert.match(s, /-rfbport -1 -rfbunixpath \/var\/lib\/vyre\/agents\/ag20000\/vnc\.sock -rfbunixmode 0600/);
   assert.match(s, /-rfbauth \/var\/lib\/vyre\/agents\/ag20000\/vnc\.pass/);
   assert.equal(socketOf(U), "/var/lib/vyre/agents/ag20000/vnc.sock");
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /password=|-passwd/i);
-  assert.match(wm.join(" "), /DISPLAY=:20 \/usr\/bin\/fluxbox$/);
-  assert.match(chrome.join(" "), /DISPLAY=:20 \/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py$/, "Chrome is started by the holder as the agent, with no argument and no debug port");
+  assert.match(wm.join(" "), /DISPLAY=:20 XAUTHORITY=\/var\/lib\/vyre\/x\/ag20000\/xauth \/usr\/bin\/fluxbox$/);
+  assert.match(s, /-auth \/var\/lib\/vyre\/x\/ag20000\/xauth /, "the display lets in whoever holds the cookie");
+  assert.match(chrome.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 .* \/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py$/, "Chrome is started by the holder as the agent's browser uid, with no argument and no debug port");
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /remote-debugging-port|--user-data-dir/, "no TCP debug port, and no flag to steer from outside the holder");
 });
 
 test("the long-running steps are marked in the plan, and the others are not", () => {
-  const [xvnc, wm, chrome] = planStartScreen(U);
+  const [cookie, mode, xvnc, wm, chrome] = planStartScreen(U);
   for (const step of [xvnc, wm, chrome]) assert.equal(/** @type {any} */ (step).detach, true);
+  assert.equal(/** @type {any} */ (cookie).detach, undefined); assert.equal(/** @type {any} */ (mode).detach, undefined);
   for (const step of [...planStopScreen(U), ...planWipeHome(U), ...planCreate(U), ...planRemove(U)]) assert.equal(/** @type {any} */ (step).detach, undefined, step.join(" "));
 });
 
@@ -54,21 +57,26 @@ test("two agents get two displays, sockets and profiles that never overlap", () 
   assert.doesNotMatch(a, /ag20001|:21 |=20001/); assert.doesNotMatch(b, /ag20000|:20 |=20000/);
 });
 
-test("sleeping signals as the agent, only its uid, and never its tmux server", () => {
+test("sleeping signals only the agent's uid and its browser uid, each as itself, and never the tmux server", () => {
   const steps = planStopScreen(U);
-  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && x.includes("/usr/bin/pkill") && x.includes("-u") && x.includes("20000") && x.includes("-x")));
+  const [browser, wm, xvnc] = steps;
+  assert.ok(browser.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && browser.slice(-5).join(" ") === "-TERM -u 21000 -x chromium");
+  for (const x of [wm, xvnc]) assert.ok(x.join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && x.includes("20000"));
   assert.deepEqual(steps.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
   assert.ok(!steps.flat().includes("tmux"));
 });
 
-test("reset empties the home as the agent and keeps the folder and its mode; it names no other path", () => {
-  const steps = planWipeHome(U);
-  assert.deepEqual(steps.map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" ")), ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/find /var/lib/vyre/agents/ag20000/home -mindepth 1 -delete", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home"]);
+test("reset empties the home as the agent and the browser's profile as the browser uid; each keeps its folder and mode, and no other path is named", () => {
+  const steps = planWipeHome(U).map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" "));
+  assert.deepEqual(steps, ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/pkill -KILL -u 21000", "/usr/bin/find /var/lib/vyre/agents/ag20000/home -mindepth 1 -delete", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home",
+    "/usr/bin/find /var/lib/vyre/browsers/agb21000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/browsers/agb21000/profile", "/usr/bin/chmod 0700 /var/lib/vyre/browsers/agb21000/profile /var/lib/vyre/browsers/agb21000"]);
 });
 
-test("remove empties exactly its run folder (its home is inside it) as the agent, makes the home again and leaves the image user", () => {
+test("remove empties its run folder, its browser's folder and its downloads, each as the uid that owns them, and makes the folders again for the next agent", () => {
   const steps = planRemove(U).map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" "));
-  assert.deepEqual(steps, ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/find /var/lib/vyre/agents/ag20000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/agents/ag20000/home", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000"]);
+  assert.deepEqual(steps, ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/pkill -KILL -u 21000", "/usr/bin/find /var/lib/vyre/agents/ag20000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/agents/ag20000/home",
+    "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000", "/usr/bin/find /var/lib/vyre/browsers/agb21000 /var/lib/vyre/downloads/ag20000 -mindepth 1 -delete",
+    "/usr/bin/mkdir /var/lib/vyre/browsers/agb21000/profile", "/usr/bin/chmod 0700 /var/lib/vyre/browsers/agb21000/profile /var/lib/vyre/browsers/agb21000"]);
 });
 
 test("a triple that is not exactly user ag<uid>, a uid the image made and that uid's display is refused before anything runs", () => {
@@ -94,10 +102,11 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
 
 test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
   const holder = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
-  assert.match(holder, /HOME = "\/var\/lib\/vyre\/agents\/ag%d\/home" % uid/);
-  assert.match(holder, /--user-data-dir=%s\/\.chrome" % HOME/);
+  assert.match(holder, /PROFILE = BASE \+ "\/profile"/);
+  assert.match(holder, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
+  assert.match(holder, /"--user-data-dir=" \+ PROFILE/);
   assert.match(holder, /--restore-last-session/, "the tabs and their logins come back when Chrome does");
   assert.ok(planStopScreen(U).every(x => x.includes("/usr/bin/pkill") && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
-  assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/agents/ag20000/home")));
+  assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/browsers/agb21000")), "only a reset empties the browser profile");
   assert.ok(planRemove(U).some(x => x.includes("-delete")));
 });

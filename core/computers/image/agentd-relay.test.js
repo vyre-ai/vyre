@@ -107,9 +107,12 @@ test("agentd takes a ticket only for a real agent triple, and only with its bear
 test("the pipe takes no argument and no environment: it builds the agent's socket from its own uid", () => {
   const py = fs.readFileSync(new URL("./agentd-pipe.py", import.meta.url), "utf8");
   assert.match(py, /os\.geteuid\(\)/);
-  assert.match(py, /"\/var\/lib\/vyre\/agents\/ag%d\/vnc\.sock" % uid/);
-  assert.doesNotMatch(py, /sys\.argv|os\.environ|getenv/);
-  assert.match(py, /uid < 20000 or uid > 20063/);
+  assert.match(py, /"vnc": \(20000, "\/var\/lib\/vyre\/agents\/ag%d\/vnc\.sock"\)/);
+  assert.match(py, /"cdp": \(21000, "\/var\/lib\/vyre\/browsers\/agb%d\/cdp\.sock"\)/, "the debugging socket is the browser uid's, in the browser uid's folder");
+  assert.doesNotMatch(py, /os\.environ|getenv/);
+  assert.equal((py.match(/sys\.argv/g) || []).length, 3, "the one argument is a word looked up in a closed table, nothing else");
+  assert.match(py, /sys\.argv\[1\] not in KINDS/);
+  assert.match(py, /uid < base or uid > base \+ 63/, "each kind has its own uid range");
 });
 
 test("a peer that is not vyred's address is closed before it can send a ticket; with no pin yet, nobody is let in", async t => {
@@ -169,6 +172,7 @@ test("a debugging ticket starts the pipe with the word cdp and can only be a cdp
   const s = await connect(w.port, `${T1}\n`);
   await new Promise(r => setTimeout(r, 100));
   assert.ok(w.spawned[0].join(" ").endsWith(`/usr/bin/python3 -I ${PIPE} cdp`));
+  assert.match(w.spawned[0].join(" "), /^\/usr\/bin\/setpriv --reuid=21003 --regid=21003 /, "a debugging ticket runs as the agent's BROWSER uid, never the agent's");
   s.destroy();
   assert.throws(() => w.tickets.add(T2, U, "root"), /not a ticket kind/);
   assert.throws(() => w.tickets.add(T2, U, "cdp", "work"), /names its terminal/);
@@ -189,13 +193,17 @@ test("agentd registers a cdp ticket only as exactly that kind, and the holder's 
   assert.equal((await call({ ...U, ticket: T1, kind: "pipe" })).status, 400);
   assert.equal((await call({ ...U, ticket: T1, kind: "cdp", session: "work" })).status, 400);
   const py = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
-  assert.match(py, /uid < 20000 or uid > 20063 or uid != os\.getuid\(\) or len\(sys\.argv\) != 1/);
+  assert.match(py, /uid < 21000 or uid > 21063 or uid != os\.getuid\(\) or len\(sys\.argv\) != 1/, "it runs as a browser uid only");
+  assert.match(py, /SOCK = BASE \+ "\/cdp\.sock"/);
+  assert.match(py, /"autofill": \{"profile_enabled": False, "credit_card_enabled": False\}/);
+  assert.match(py, /"password_manager_enabled": False/);
+  assert.match(py, /"--disable-sync"/);
+  assert.match(py, /ENV = \{/, "its environment is built here, not inherited");
   assert.match(py, /"--remote-debugging-pipe"/);
   assert.doesNotMatch(py, /remote-debugging-port|os\.environ|getenv|shell=True/);
   assert.match(py, /MAX_MSG = 16 \* 1024 \* 1024/);
   assert.match(py, /MAX_PENDING = /);
   assert.match(py, /IDLE = 600/);
-  assert.match(py, /RUN \+ "\/cdp\.sock"/);
   assert.match(py, /os\.chmod\(SOCK, 0o600\)/);
   assert.match(py, /else:\n\s+c\.close\(\)/, "a second client is refused, never allowed to replace the first");
 });

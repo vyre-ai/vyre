@@ -1,19 +1,57 @@
 #!/usr/bin/python3 -I
-# agentd-chrome: runs AS one agent's uid. Starts the agent's Chrome with its debugging PIPE (no TCP debug port exists for any agent) and exposes that pipe on a unix socket in the agent's own
-# 0700 run folder. No argument and no environment steer it: the socket, the profile and Chrome's flags are fixed here and built from the uid, and nothing a client sends reaches Chrome's command
-# line. One client at a time: a second connection is refused, never allowed to replace the first. CDP messages are NUL-terminated JSON; one message is capped, so is what waits to be written
-# to a slow client, and a client that says nothing for ten minutes is dropped. When Chrome ends, this ends, and so does the socket.
-import os, select, signal, socket, subprocess, sys, time
+# agentd-chrome: runs AS an agent's BROWSER uid (agb21000..agb21063), never the agent's own. Starts that agent's Chrome with its debugging PIPE (no TCP debug port exists for any agent) and exposes
+# the pipe on a unix socket in the browser uid's own 0700 folder, so the agent's shell can reach neither the socket, the profile nor the browser's memory. No argument and no environment steer it: the
+# socket, the profile, the downloads folder, the display and Chrome's flags are fixed here and built from the uid, and nothing a client sends reaches Chrome's command line. One client at a time: a second
+# connection is refused, never allowed to replace the first. CDP messages are NUL-terminated JSON; one message is capped, so is what waits to be written to a slow client, and a client that says nothing for
+# ten minutes is dropped. When Chrome ends, this ends, and so does the socket. The password manager, autofill and sync are off in the profile (and by Chrome's managed policy); downloads go to a folder
+# the agent can read and the browser cannot open anything from.
+import json, os, select, signal, socket, subprocess, sys, time
 
 uid = os.geteuid()
-if uid < 20000 or uid > 20063 or uid != os.getuid() or len(sys.argv) != 1:
+if uid < 21000 or uid > 21063 or uid != os.getuid() or len(sys.argv) != 1:
     sys.exit(2)
-RUN = "/var/lib/vyre/agents/ag%d" % uid
-HOME = "/var/lib/vyre/agents/ag%d/home" % uid
-SOCK = RUN + "/cdp.sock"
+N = uid - 1000                      # the agent's own uid
+BASE = "/var/lib/vyre/browsers/agb%d" % uid
+PROFILE = BASE + "/profile"
+SOCK = BASE + "/cdp.sock"
+DOWNLOADS = "/var/lib/vyre/downloads/ag%d" % N
 MAX_MSG = 16 * 1024 * 1024
 MAX_PENDING = 32 * 1024 * 1024
 IDLE = 600
+ENV = {"HOME": BASE, "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "DISPLAY": ":%d" % (20 + N - 20000), "XAUTHORITY": "/var/lib/vyre/x/ag%d/xauth" % N}
+
+# What the profile says before Chrome reads it: no password store, no autofill, no sign-in or sync, and where downloads go (a fixed folder, no prompt).
+PREFS = {
+    "credentials_enable_service": False, "credentials_enable_autosignin": False,
+    "profile": {"password_manager_enabled": False, "password_manager_leak_detection": False},
+    "autofill": {"profile_enabled": False, "credit_card_enabled": False},
+    "signin": {"allowed": False}, "sync": {"requested": False},
+    "download": {"default_directory": DOWNLOADS, "prompt_for_download": False, "directory_upgrade": True},
+    "savefile": {"default_directory": DOWNLOADS},
+}
+
+
+def merge(into, extra):
+    for k, v in extra.items():
+        if isinstance(v, dict) and isinstance(into.get(k), dict):
+            merge(into[k], v)
+        else:
+            into[k] = v
+
+
+os.makedirs(PROFILE + "/Default", mode=0o700, exist_ok=True)
+prefs_file = PROFILE + "/Default/Preferences"
+try:
+    with open(prefs_file) as f:
+        prefs = json.load(f)
+except (OSError, ValueError):
+    prefs = {}
+merge(prefs, PREFS)
+with open(prefs_file, "w") as f:
+    json.dump(prefs, f)
+os.chmod(prefs_file, 0o600)
+
+os.umask(0o027)   # a download is readable by the agent (the folder's group), never writable by it
 
 to_chrome_r, to_chrome_w = os.pipe()
 from_chrome_r, from_chrome_w = os.pipe()
@@ -25,9 +63,9 @@ def into_place():
 
 
 chrome = subprocess.Popen(
-    ["/usr/bin/chromium", "--user-data-dir=%s/.chrome" % HOME, "--no-first-run", "--restore-last-session",
-     "--disk-cache-dir=%s/.cache/chrome" % HOME, "--remote-debugging-pipe"],
-    preexec_fn=into_place, pass_fds=(3, 4), close_fds=True)
+    ["/usr/bin/chromium", "--user-data-dir=" + PROFILE, "--no-first-run", "--restore-last-session", "--disk-cache-dir=" + BASE + "/cache",
+     "--password-store=basic", "--disable-sync", "--disable-extensions", "--no-default-browser-check", "--remote-debugging-pipe"],
+    env=ENV, preexec_fn=into_place, pass_fds=(3, 4), close_fds=True)
 os.close(to_chrome_r)
 os.close(from_chrome_w)
 
@@ -36,8 +74,9 @@ try:
 except OSError:
     pass
 srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-os.umask(0o177)
+old = os.umask(0o177)
 srv.bind(SOCK)
+os.umask(old)
 os.chmod(SOCK, 0o600)
 srv.listen(1)
 

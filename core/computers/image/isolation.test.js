@@ -439,3 +439,35 @@ test("isolation (static): agentd starts with no new privileges and the root lock
   assert.match(tail, /chmod 0644 \/opt\/agentd\/\*\.js/);
   assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
 });
+
+test("isolation (static): each agent's browser is its own uid, whose profile, debugging socket and memory the agent's shell cannot reach; only the X cookie and the downloads cross, by group", () => {
+  const loop = DOCKERFILE.split("RUN for n in $(seq 20000 20063)")[1].split("COPY agentd.js")[0];
+  assert.match(loop, /b=\$\(\(n \+ 1000\)\)/, "the browser uid is the agent's plus 1000");
+  assert.match(loop, /groupadd -g "\$b" "agb\$b" && useradd -M -u "\$b" -g "\$b" -s \/usr\/sbin\/nologin -d "\/var\/lib\/vyre\/browsers\/agb\$b" "agb\$b"/, "its own group, no login");
+  assert.doesNotMatch(loop, / -G /, "no user belongs to another's group");
+  assert.match(loop, /chown -R "\$b:\$b" "\/var\/lib\/vyre\/browsers\/agb\$b" && chmod 0700 "\/var\/lib\/vyre\/browsers\/agb\$b" "\/var\/lib\/vyre\/browsers\/agb\$b\/profile"/, "profile and socket folder: the browser's, 0700");
+  assert.match(loop, /chown "\$n:\$b" "\/var\/lib\/vyre\/x\/ag\$n" && chmod 2750/, "the X cookie folder: the agent's, read by the browser's group only");
+  assert.match(loop, /chown "\$b:\$n" "\/var\/lib\/vyre\/downloads\/ag\$n" && chmod 2750/, "downloads: written by the browser, read by the agent's group only");
+  assert.doesNotMatch(loop, /chmod [0-7]*[1-7][0-7]{0,2} "\/var\/lib\/vyre\/browsers/, "no one else gets any right on the browser's folders");
+  const chrome = fs.readFileSync(path.join(HERE_DIR, "agentd-chrome.py"), "utf8");
+  assert.match(chrome, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
+  assert.match(chrome, /os\.chmod\(SOCK, 0o600\)/);
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.match(agentd, /\.\.\.asBrowser\(u, lim\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
+  assert.doesNotMatch(agentd, /asAgent\([^)]*\)[^\n]*agentd-chrome/, "never as the agent");
+});
+
+test("isolation (static): Chrome keeps no passwords, addresses or sync, and its password and autofill pages are closed by policy; nothing else is shut to the agent's DevTools", () => {
+  const m = /printf '%s\\n' (.*?)\n\s+> \/etc\/chromium\/policies\/managed\/vyre\.json/s.exec(DOCKERFILE);
+  assert.ok(m, "the policy is written in the Dockerfile");
+  const json = JSON.parse([...m[1].matchAll(/'([^']*)'/g)].map(x => x[1]).join(""));
+  assert.equal(json.PasswordManagerEnabled, false);
+  assert.equal(json.AutofillAddressEnabled, false);
+  assert.equal(json.AutofillCreditCardEnabled, false);
+  assert.equal(json.SyncDisabled, true);
+  assert.equal(json.BrowserSignin, 0);
+  for (const u of ["chrome://password-manager*", "chrome://settings/passwords*", "chrome://settings/autofill*"]) assert.ok(json.URLBlocklist.includes(u), u);
+  assert.ok(!json.URLBlocklist.includes("chrome://*") && !json.URLBlocklist.includes("view-source:*") && !json.URLBlocklist.includes("devtools://*"), "ordinary chrome:// pages and DevTools stay open to the agent");
+  assert.equal(json.DeveloperToolsAvailability, undefined, "DevTools are not switched off");
+  assert.equal(json.DownloadDirectory, undefined, "the downloads folder is the holder's, per agent");
+});

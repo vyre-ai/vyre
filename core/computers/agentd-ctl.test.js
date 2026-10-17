@@ -44,7 +44,7 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   assert.ok(w.ran.some(a => a.includes("/usr/bin/Xvnc")));
   assert.ok(w.ran.some(a => a.includes("/usr/bin/pkill") && a.includes("chromium")));
   assert.ok(w.ran.some(a => a.includes("/usr/bin/find") && a.includes("/var/lib/vyre/agents/ag20000")));
-  assert.ok(w.ran.filter(a => a.includes("/usr/bin/find")).length === 2, "wipe and remove each empty folders");
+  assert.ok(w.ran.filter(a => a.includes("/usr/bin/find")).length === 4, "wipe and remove each empty the agent's folders and the browser's");
 });
 
 test("the VNC password reaches a helper that runs as the agent, on standard input, is derived per agent, and is on no command line", async t => {
