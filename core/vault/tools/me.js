@@ -46,7 +46,7 @@ export const SHARED_ME_TOOLS = ["vault.me.shared.reveal", "vault.me.shared.updat
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
+export const ME_MODULE_TOOLS = ["vault.me.mention.search", "vault.me.mention.resolve", "vault.me.release", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,

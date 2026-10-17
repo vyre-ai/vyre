@@ -18,6 +18,8 @@
       { "name": "vault.approve", "effect": "write", "reach": "person" },
       { "name": "vault.release", "reach": "modules" },
       { "name": "vault.me.release", "reach": "modules" },
+      { "name": "vault.me.mention.search", "reach": "modules" },
+      { "name": "vault.me.mention.resolve", "reach": "modules" },
       { "name": "vault.connection.token", "reach": "modules" },
       { "name": "vault.me.connect.put", "reach": "modules" },
       { "name": "vault.me.who", "reach": "modules" },
