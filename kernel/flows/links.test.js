@@ -166,10 +166,10 @@ test("a Flow-written change carries the starter of the run that wrote it: Bob's 
   w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
   await install(w, copyFlow("trigger.after.spouse.name"));
   // Flow A (approved by Alex) writes the "Main" record that links to Sam: its change fires Flow B, which reads Sam through the link
-  const a = await install(w, { format: 1, name: "make_main", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "mk", kind: "create", type: "kin", set: { name: "Main", spouse: { expr: "trigger.kin.urn" } } }] });
-  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as({ kind: "person", id: "per_bob" }));
+  const a = await install(w, { format: 1, name: "make_main", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "mk", kind: "create", type: "kin", set: { name: "Main", spouse: { expr: "trigger.kin" } } }] });
+  await w.runner.start(a.id, { kin: urn(sam).urn }, w.kernel.as({ kind: "person", id: "per_bob" }));
   await settle(w);
-  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as(ALEX));
+  await w.runner.start(a.id, { kin: urn(sam).urn }, w.kernel.as(ALEX));
   await settle(w);
   const all = await w.runner.listRuns();
   const bRuns = all.filter(r => r.flow !== a.id);
