@@ -116,7 +116,8 @@ test("teams hold agents: a listed agent reaches the team's grant with use only, 
   const team = await g.teams.set(owner(), { name: "Ops", members: [ALICE], agents: ["kit"] });
   assert.deepEqual([...team.agents], ["kit"]);
   await give(g, { kind: "group", id: team.id }, "manage");
-  // the agent acts for the owner here, who holds everything: what limits it is the agent's own hop, which is the team's grant
+  // the agent acts for the owner here, who is given the vault whole (an owner holds nothing of a vault by being the owner): what limits the agent is its own hop, which is the team's grant
+  await give(g, { kind: "actor", actor: actor("person", OWNER) }, "manage");
   const kit = assistantOf(OWNER, "kit"), juno = assistantOf(OWNER, "juno");
   const listed = await ask(gw, kit, "vault.read", item());
   const why = () => JSON.stringify({ inTeam: gs.inTeam(team.id, actor("agent", "kit"), kit), forSubject: gs.provider.forSubject(actor("agent", "kit"), null, { chain: kit }).map(x => [x.subject, x.status, x.source]), team, hops: kit.hops.map(h => [h.actor, h.via]), grants: [...(g.list ? [] : [])] });
