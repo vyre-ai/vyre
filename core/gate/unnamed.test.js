@@ -66,7 +66,7 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   const callAs = async (/** @type {any} */ args) => d.registry.call("mcp.call", { server: "web", tool: "send_message", arguments: args }, "mcp:agent:juno", await agentTok());
 
   // A hub server with one outward tool, on a real vyred (stdio child, its calls logged to a file).
-  await ok("mcp.add", { name: "web", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"],
+  await ok("mcp.add", { name: "web", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], scope: { agents: ["juno"] },   // no written scope names the assistant only; juno is a plain agent
     vars: { FAKE_MCP_LOG: logFile, FAKE_MCP_TOOLS: JSON.stringify([{ name: "send_message", inputSchema: { type: "object" } }]) } });
   // The person gives juno a standing permission to send to example.com addresses through this server.
   await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mcp:web", to: { patterns: ["*@example.com"] }, daily_cap: 5 });
