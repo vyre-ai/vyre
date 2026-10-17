@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}" }
       - run: npm ci --no-audit --no-fund
+      - name: per-module heap cost (each module entry imported alone, after a GC)
+        run: node scripts/heap-probe.mjs 2>&1 | head -25
       - name: three idle runs, whole report
         run: |
           git log -1 --format='measuring %h %s'
