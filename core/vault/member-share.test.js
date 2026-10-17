@@ -218,3 +218,36 @@ test("a copy that cannot be brought up to date with its login is deleted with it
   assert.equal((await w.rig.K.mint.list({ source: "vault:member-share:" })).length, 0, "and no grant");
   await assert.rejects(w.fill(ref), e => /** @type {any} */ (e).code === "not_found", "and the agent cannot use it");
 });
+
+test("the share is the grant, and the kernel still has its say: a deny on the agent refuses a live share; a member no longer in the Space refuses it; a share is only valid while she may instruct the agent", async t => {
+  const w = await world(t);
+  const r = await w.share();
+  const K = /** @type {any} */ (w.v.access.K);
+  await stops(w.fill(r.shared.ref));   // live: starts
+  // the kernel's whole answer for this agent says no (a deny or a freeze on it) while the share and its grant are still live: refused
+  const was = K.agentMay;
+  K.agentMay = async () => false;
+  await denied(w.fill(r.shared.ref));
+  K.agentMay = was;
+  await stops(w.fill(r.shared.ref));   // and with the kernel's yes again, it starts
+  // the member is no longer in the Space (the kernel's membership question says nobody), the share and grant not yet swept: refused
+  const hadMembership = K.membership;
+  K.membership = async () => null;
+  await denied(w.fill(r.shared.ref));
+  if (hadMembership) K.membership = hadMembership; else delete K.membership;
+  await stops(w.fill(r.shared.ref));
+  // her access to the agent was taken back: her shares with it end, the grant and the copy go, and the fill finds nothing
+  assert.equal(await w.M.agentLost(BEN, "juno"), 1);
+  assert.equal(w.lentStore.get(BEN)?.size, 0, "the sealed copy is gone");
+  await assert.rejects(w.fill(r.shared.ref), e => /** @type {any} */ (e).code === "not_found");
+});
+
+test("staff instruct every agent, so losing a share of an agent does not end an admin's or the owner's shares with it", async t => {
+  const w = await world(t);
+  const r = await w.share();
+  const K = /** @type {any} */ (w.v.access.K);
+  K.membership = async () => "admin";
+  assert.equal(await w.M.agentLost(BEN, "juno"), 0);
+  delete K.membership;
+  await stops(w.fill(r.shared.ref));
+});

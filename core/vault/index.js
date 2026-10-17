@@ -537,6 +537,8 @@ export default {
     vault.access.members.people = people;
     people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
     memberShareTools.register({ access: vault.access, tool });
+    // her access to an agent was taken back: her shares of items with it end (the share is only valid for an agent she may instruct)
+    try { ctx.events.on("agent.access-changed", (/** @type {any} */ e) => { const p = (e && e.payload) || e || {}; if (!p.level && p.person && p.agent) vault.access.members.agentLost(String(p.person), String(p.agent)).catch((err) => ctx.log(`vault: a member's shares with an agent she can no longer instruct were not all ended (${err.message})`)); }); } catch { /* no event bus in a bare test */ }
     setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
     namedTools.register({ ctx, vault, tool });

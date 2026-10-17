@@ -89,11 +89,44 @@ export class MemberShare {
     return { shares: await this.copies.ofOwner(owner), notice: NOTICE };
   }
 
-  /** May this agent sign in with this copy at this origin: the kernel's grant, asked every time. @param {{ ref: string, owner: string, uid: string, origin: string }} copy @param {string} origin */
+  /** May this agent sign in with this copy at this origin: the share's own live grant and the member still in the Space, asked every time. @param {{ ref: string, owner: string, uid: string, origin: string }} copy @param {string} origin */
   async allowedCopy(copy, origin) {
     const o = exactOrigin(origin), K = this.access.K;
-    if (!K || !o || o !== copy.origin || typeof K.agentMay !== "function") return false;
-    return Boolean(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o));
+    if (!K || !o || o !== copy.origin) return false;
+    try {
+      // The kernel's whole answer for this agent first (it is still a registered agent of the Space, no deny or freeze on it, the member-narrowing and group rules): the answer is yes only when it AND the share both say yes.
+      // Where the kernel handle has no agentMay (a bare test rig) the share checks alone decide.
+      if (typeof K.agentMay === "function" && !(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o))) return false;
+      // The share is the grant (no per-conversation lend): the copy is live (find() already drops an expired or removed one), and the grant the share made for exactly this agent and site has not been taken back or
+      // run out (the vault module made it and lists it by its source; only active, unexpired grants are listed).
+      const live = (await K.mint.list({ source: `${SOURCE}:${copy.ref}` })) || [];
+      const grantOk = live.some((/** @type {any} */ g) => g && g.subject && g.subject.actor && String(g.subject.actor.id) === String(copy.uid) && Array.isArray(g.actions) && g.actions.includes("vault.fill")
+        && g.conditions && g.conditions.where && Array.isArray(g.conditions.where.origins) && g.conditions.where.origins.includes(o));
+      if (!grantOk) return false;
+      return await this.memberStill(K, copy.owner);
+    } catch { return false; }
+  }
+
+  /** Whether the member is still in the Space: the kernel's own membership question where the handle has it, else the member list read under the home's own chain (K.chain({}) with no call is the module's service chain). @param {any} K @param {string} person */
+  async memberStill(K, person) {
+    if (typeof K.membership === "function") return Boolean(await K.membership(person));
+    const ms = K.grants && K.grants.members ? await K.grants.members.list(await K.chain({})) : null;
+    return Array.isArray(ms) && ms.some((/** @type {any} */ m) => String(m.person) === String(person));
+  }
+
+  /**
+   * She can no longer instruct this agent (its sharing with her was taken back): her shares with it end, and with them the grants and the copies. Staff (owner, admin) instruct every agent, so nothing ends for
+   * them. A share is only valid for an agent she may instruct, and that can change after the share.
+   * @param {string} owner @param {string} agent the agent's name @returns {Promise<number>}
+   */
+  async agentLost(owner, agent) {
+    const K = this.access.K;
+    if (!K) return 0;
+    let role = null;
+    try { role = typeof K.membership === "function" ? await K.membership(owner) : null; } catch { role = null; }
+    const name = role && typeof role === "object" ? role.role : role;
+    if (name === "owner" || name === "admin") return 0;
+    return this.end({ owner, agent: String(agent).toLowerCase() }, "you can no longer instruct the agent");
   }
 
   /** The member changed or removed a login of theirs: every copy of it is refreshed from the new one, or deleted if it is gone or no longer a login with a password. @param {string} owner @param {string} item */
