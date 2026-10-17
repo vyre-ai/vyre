@@ -239,7 +239,7 @@ export function FirstRun() {
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
