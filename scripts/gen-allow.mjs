@@ -26,6 +26,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "microsoft.accounts": "read-only, and scoped in code by the call's verified chain (actingPerson): a member sees only her own provisioned Microsoft account (app, address, domain), the owner the firm app (name, domain, the NAME of the vault item, never a secret); a call with no person on it is refused in the body; narrower than microsoft.mail.read, which is already open",
   "update.whats-new": "reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words",
   "identity.status": "reads whether a username exists and whether the directory may show it; no key and no password",
   "identity.card": "reads the public card for the username; private unless the person opted in, and no key",
