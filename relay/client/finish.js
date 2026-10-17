@@ -30,6 +30,9 @@ export async function pairToProofMessage(box, device, ticket) {
   return new TextEncoder().encode(`vyre-wink-pair-to-v1\n${box}\n${device}\n${await ticketTag(ticket)}`);
 }
 
+/** Did the server record the identity that is pairing as its owner? Both ways a first adoption ends (at once, or after the words) answer `owner`; a success for anyone else is not this pairing's. */
+export const ownerIs = (/** @type {any} */ data, /** @type {string} */ id) => Boolean(data && data.owner && typeof data.owner.id === "string" && data.owner.id === id);
+
 /**
  * A server's waiting pairing: wink.server.adopt. The first call carries the claimed owner, its proof and the pairing's commit; the server answers with its nonce; the app reveals its own, both derive
  * the same three words, and the person at the server picks them (a typed code's ack is that pick already, so the owner comes back at once).
@@ -56,7 +59,7 @@ export async function adoptServer(paired, o) {
     const code = e && e.code;
     throw fail(code === "busy" ? "busy" : code === "expired" ? "expired" : code === "denied" ? "denied" : code === "denied_no_proof" || code === "denied_wrong_proof" || code === "no_pin" ? code : code === "bad_input" ? "bad_owner" : code === "not_hardware" ? "not_hardware" : code === "owned_by_other" ? "owned_by_other" : code === "unavailable" ? "cannot_check" : "unreachable", (e && e.message) || "The server refused.");
   };
-  const done = (/** @type {any} */ data) => { stop(); return { paired: /** @type {true} */ (true), relay: o.relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name || "", owner: data.owner, session: data.session !== false }; };
+  const done = (/** @type {any} */ data) => { stop(); if (!ownerIs(data, o.owner.id)) throw fail("bad_owner", "The server named a different owner than the one pairing, so nothing was connected. Start again."); return { paired: /** @type {true} */ (true), relay: o.relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name || "", owner: data.owner, session: data.session !== false }; };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(o.ticket);
     const mark = o.typed ? { typed_tag: tag } : { tag };
