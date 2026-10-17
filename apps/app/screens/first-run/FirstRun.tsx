@@ -11,7 +11,7 @@ import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   addComputer, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, removeSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "ready";
@@ -41,6 +41,7 @@ export function FirstRun() {
   const [command, setCommand] = useState(shot?.command || "");
   const [waitId, setWaitId] = useState("");
   const [online, setOnline] = useState(false);
+  const [paired, setPaired] = useState<{ id: string; name: string; address: string } | null>(null);
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [invite, setInvite] = useState(shot?.link || "");
@@ -148,7 +149,7 @@ export function FirstRun() {
         if (r.failed) { setFailure(typeof r.message === "string" ? r.message : "The space could not be made."); return; }
         if (r.expired) { setFailure(typeof r.message === "string" ? r.message : "The install window ended. Go back and show a new command."); setOnline(false); return; }
         if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
-        if (r.online) setOnline(true);
+        if (r.online) { setOnline(true); if (r.server) setPaired({ id: String(r.space || ""), name: String(r.server.name || r.server.hostname || "Your server"), address: String(r.server.address || "") }); }
       });
     };
     tick();
@@ -371,7 +372,7 @@ export function FirstRun() {
   if (screen === "create.wait") {
     return (
       <FlowStep steps={steps} onBack={back} mark={online ? "done" : "working"} title={online ? "Your space is online" : "Waiting for it to come online"}
-        lead="Run this one line there. Nothing else. This screen updates when it is up."
+        lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
         primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => go("ready") }}>
@@ -388,7 +389,18 @@ export function FirstRun() {
             })} />
           </>
         ) : null}
-        {command ? <CodeBlock code={command} lang="sh" /> : null}
+        {online && paired ? (
+          <>
+            <Text strong>{paired.name}</Text>
+            {paired.address ? <Text tone="muted">{paired.address}</Text> : null}
+            <Button kind="ghost" label="Not your server? Remove it" onPress={() => void run(async () => {
+              const r = await removeSpace(paired.id);
+              if (!r.ok) { setFailure(r.message || "That server could not be removed. Try again."); return; }
+              setOnline(false); setPaired(null); setCommand(""); back?.();
+            })} />
+          </>
+        ) : null}
+        {command && !online ? <CodeBlock code={command} lang="sh" /> : null}
         {expiresAt && !online ? <Text tone="muted">{`Install link expires ${new Date(expiresAt).toLocaleString()}`}</Text> : null}
       </FlowStep>
     );

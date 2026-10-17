@@ -129,7 +129,8 @@ async function macDriver() {
   if (!fs.existsSync(bin)) throw new Error(`no app at ${appPath}`);
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-first-run-"));
   /** @type {MacPage | null} */ let page = null;
-  const start = async () => { page?.stop(); page = new MacPage(bin, { VYRE_HOME: home, VYRE_SOCKET: path.join(home, "no-vyred.sock"), VYRE_NO_DIALOGS: "1" }); await page.started(60_000); await page.open(); };
+  const hookStages = () => need().evaluate(() => { const w = /** @type {any} */ (window); if (w.__vyreStages) return true; w.__vyreStages = []; const f = console.info.bind(console); console.info = (...a) => { try { const s = String(a[0]); if (s.startsWith("vyre:stage ")) w.__vyreStages.push(new Date().toISOString().slice(11, 19) + " " + s.slice(11)); } catch {} f(...a); }; return true; }).catch(() => false);
+  const start = async () => { page?.stop(); page = new MacPage(bin, { VYRE_HOME: home, VYRE_SOCKET: path.join(home, "no-vyred.sock"), VYRE_NO_DIALOGS: "1" }); await page.started(60_000); await page.open(); await hookStages(); };
   const need = () => /** @type {MacPage} */ (page);
   return {
     open: start,
@@ -141,7 +142,8 @@ async function macDriver() {
         await need().shot(path.join(out, `fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}.png`)).catch(() => {});
         const probe = await need().evaluate((/** @type {string} */ url) => new Promise((res) => { let ws; try { ws = new WebSocket(url + "/v1/diag"); } catch (x) { return res("constructor threw " + x); } const tm = setTimeout(() => { res("no answer in 6 s (state " + ws.readyState + ")"); try { ws.close(); } catch {} }, 6000); ws.onopen = () => { clearTimeout(tm); res("open"); ws.close(); }; ws.onerror = () => { clearTimeout(tm); res("error event"); }; ws.onclose = (c) => { clearTimeout(tm); res("closed " + c.code); }; }), `ws://127.0.0.1:${PORTS.relay}`).catch((x) => "probe failed: " + x.message);
         const body = (await need().text().catch(() => "")).replace(/\s+/g, " ");
-        throw new Error(`${e.message} | this window to the relay: ${probe} | the screen starts: ${body.slice(0, 300)} | the screen ends: ${body.slice(-300)}`);
+        const stages = await need().evaluate(() => (/** @type {any} */ (window).__vyreStages || []).join("; ")).catch(() => "");
+        throw new Error(`${e.message} | stages: ${stages || "none seen"} | this window to the relay: ${probe} | the screen starts: ${body.slice(0, 300)} | the screen ends: ${body.slice(-300)}`);
       }
     },
     async click(t) {
