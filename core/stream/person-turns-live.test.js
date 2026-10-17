@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -547,6 +548,7 @@ test("lent key: with two members in one chat, the second asker's process is hand
   const adas = r.answers().find(a => a.text === "ada second");
   assert.equal(adas && adas.pid, second.pid);
   assert.notEqual(adas && adas.pid, first[0].pid, "carol's live, idle process did not run ada's turn");
+  assert.deepEqual(r.answers().filter(x => x.pid === first[0].pid).map(x => x.text), ["carol first"], "carol's process never received ada's turn");
   // each key was lent to its own person, once, for that person's own turn
   assert.deepEqual(r.lends.map(l => [l.person, l.account]), [[CAROL, r.carolsAcct], [ADA, r.adasAcct]]);
   await r.b.stop();
@@ -562,12 +564,17 @@ test("lent key: after the turns the key string is in no thread event, log line, 
   const events = (await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli")).data.events;
   const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
   const accounts = r.b.reg.deps.db.prepare("SELECT * FROM sessions_accounts").all();
-  const names = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"];
   /** every text the home keeps: the files under its folder (the fake claude's own launch log holds hashes only) */
   const walk = (/** @type {string} */ d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
+  /** every table of every database file the home keeps, as text (the module databases and the registry's own) */
+  const tablesOf = (/** @type {string} */ file) => { const db = new DatabaseSync(file, { readOnly: true }); try { return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((/** @type {any} */ x) => `${file}:${x.name}=${JSON.stringify(db.prepare(`SELECT * FROM "${String(x.name).replace(/"/g, '""')}"`).all(), (_k, v) => typeof v === "bigint" ? String(v) : v)}`).join("\n"); } catch { return ""; } finally { db.close(); } };
+  const dbFiles = [...walk(r.w.paths.root), ...walk(r.w.work)].filter(f => /\.(db|sqlite3?)$/.test(f));
+  assert.ok(dbFiles.length > 0, "there are database files to search");
+  const everyTable = dbFiles.map(tablesOf).join("\n");
+  const names = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"];
   const files = [...walk(r.w.paths.root), ...walk(r.w.work)].filter(f => f !== r.log);
   for (const [who, key] of [["carol", r.KC], ["ada", r.KA]]) {
-    const hay = { events: JSON.stringify(events), rows: JSON.stringify(rows), accounts: JSON.stringify(accounts), logs: LOGS.join("\n") };
+    const hay = { events: JSON.stringify(events), rows: JSON.stringify(rows), accounts: JSON.stringify(accounts), "every table of every database": everyTable, logs: LOGS.join("\n") };
     for (const [where, text] of Object.entries(hay)) {
       assert.ok(!text.includes(key), `${who}'s key is in ${where}`);
       for (const n of names) assert.ok(!text.includes(`${n}=${key}`), `${n}=<${who}'s key> is in ${where}`);
