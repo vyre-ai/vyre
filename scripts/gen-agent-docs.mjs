@@ -52,6 +52,7 @@ export const NEXT = {
   field_required: "A required field is missing. Fill it or ask the person.",
   field_not_allowed: "That field may not be set by you. Leave it out.",
   field_not_shown: "The field is not shown to this caller. Leave it out.",
+  field_locked: "The field is write-once and already holds a value. Leave it as it is.",
   sealed: "The value is sealed. Use the placeholder; never ask for the value.",
   sealed_value_refused: "A sealed value was refused where it may not go. Use the placeholder.",
   placeholder_unreadable: "The placeholder could not be resolved for this act. Do not guess; tell the person which field.",

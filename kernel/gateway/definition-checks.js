@@ -3,6 +3,7 @@
 // grant and read no record, so they sit outside the counted trusted base; records.js calls them from `define` and the gateway still gates the define itself.
 import { KernelError } from "../core/errors.js";
 import { exprNames } from "../../lib/expr/expr.js";
+import { writeOnceShape } from "./write-once.js";
 import { stageNamesOf } from "../../lib/expr/conditions.js";
 
 export const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
@@ -132,6 +133,7 @@ export function createDefinitionChecks({ store, parseComputed }) {
         if (f.group !== undefined && (!groupName(f.group) || !(t.groups || []).some((/** @type {any} */ g) => g.name === f.group))) throw bad(`${f.name}.group is one of the type's groups`);
         if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
         if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
+        const wo = writeOnceShape(f); if (wo) throw bad(wo);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
         if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
         if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);

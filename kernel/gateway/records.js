@@ -19,6 +19,7 @@ import { actsAsPerson } from "../core/chain.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/expr/conditions.js";
 import { createDefinitionChecks, TYPE_NAME } from "./definition-checks.js";
+import { writeOnceBreach, writeOnceNames } from "./write-once.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
@@ -559,6 +560,7 @@ export function createRecords(cfg) {
     }
     // a link names live records of its type: the gateway checks, so every store holds only links that stand
     if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
+    const locked = op === "update" && writeOnceBreach(linkFields, before, input, type); if (locked) throw new KernelError("field_locked", locked);
     let stage = {};
     if (op === "create" || op === "update") await conditionGate(type, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input), input, op === "create");
     if (op === "create" || op === "update") stage = await stageGate(type, u, before ? before.data : null, op === "create" ? input : mergePatch(before ? before.data : {}, input));
@@ -1073,12 +1075,13 @@ export function createRecords(cfg) {
       const sealed_left = [];
       const present = (/** @type {any} */ v) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length);
       const join = (/** @type {any[]} */ a, /** @type {any[]} */ b) => { const seen = new Set(a.map(x => canonical(x))); return [...a, ...b.filter(x => !seen.has(canonical(x)))]; };
-      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
+      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { if (writeOnceNames(def).has(name) && present(keep.data[name])) { conflicts[name] = vals; return; } const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
       for (const f of def.fields) {
         const kv = keep.data[f.name], dv = drop.data[f.name];
         if (f.kind === "sealed") { if (present(dv)) sealed_left.push(f.name); continue; }
         if (!present(dv)) continue;
         if (!present(kv)) { patch[f.name] = dv; continue; }
+        if (f.write_once === true) { if (canonical(kv) !== canonical(dv)) conflicts[f.name] = dv; continue; }   // a write-once value is never changed, not even by a merge
         if (LISTS.has(f.kind)) { addTo(f.name, dv); continue; }
         if (canonical(kv) === canonical(dv)) continue;
         const comp = def.fields.find((/** @type {any} */ x) => x.name === `other_${f.name}s` && LISTS.has(x.kind));
@@ -1141,8 +1144,8 @@ export function createRecords(cfg) {
       try { keep = await store.get(m.type, m.keep); } catch (e) { throw mapError(e); }
       if (!keep) throw new KernelError("not_found", "no such record");
       // fields still holding what the merge put there go back; ones someone edited since stay as they are
-      const back = {}, edited = [];
-      for (const [k, v] of Object.entries(m.merged)) { if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
+      const back = {}, edited = [], once = writeOnceNames((await store.types().catch(() => [])).find((/** @type {any} */ t) => t.name === m.type));
+      for (const [k, v] of Object.entries(m.merged)) { if (once.has(k)) { edited.push(k); continue; } if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
       if (Object.keys(back).length) await api.update(chain, m.type, m.keep, back, keep.version);
       const restored = await api.restore(chain, m.type, m.drop);
       let relinked = 0;
