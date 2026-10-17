@@ -1088,7 +1088,7 @@ export class FlowRunner {
    */
   async #preview(ctx, s, input) {
     if (ctx.dry || typeof this.ports.preview !== "function") return input;
-    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
+    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.started_by ? String(ctx.run.started_by) : ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
     catch (e) { throw new StepFail(String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e)); }
   }
 

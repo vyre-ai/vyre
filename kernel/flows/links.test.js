@@ -133,3 +133,15 @@ test("an event-triggered run reads a linked record under the lesser of the Flow'
   assert.match(String(runs.find(r => r.state === "failed")?.error.message), /not there, or is not yours to see/);
   assert.deepEqual(await payments(w, chain), ["Sam"], "only Alex's change wrote it");
 });
+
+test("a manual start with a person on its chain records who started the run (run.started_by), which is what the linked-record read and the file preview compare against", async () => {
+  const { w, urn, chain } = await setup();
+  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
+  const flow = { format: 1, name: "read_kin2", label: "Read kin", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "put", kind: "create", type: "payment", set: { amount: 1, client: { expr: "trigger.kin.name" } } }] };
+  const { id } = await install(w, flow);
+  await w.runner.start(id, { kin: urn(sam) }, w.kernel.as({ kind: "person", id: "per_bob" }));
+  await settle(w);
+  const runs = await w.runner.listRuns();
+  assert.deepEqual(runs.map(r => r.started_by), ["per_bob"], "the starter is recorded on the run, not on the trigger");
+  assert.equal(runs[0].trigger.by, undefined, "and the trigger does not carry it");
+});
