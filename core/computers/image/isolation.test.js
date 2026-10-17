@@ -394,7 +394,7 @@ test("isolation (static): the image makes the 64 agent users itself, each in its
   assert.match(DOCKERFILE, /groupadd -g "\$n" "ag\$n" && useradd -M -u "\$n" -g "\$n" -s \/bin\/bash -d "\/var\/lib\/vyre\/agents\/ag\$n\/home" "ag\$n"/);
   assert.doesNotMatch(DOCKERFILE.split("for n in $(seq 20000")[1].split("COPY agentd.js")[0], / -G /, "an agent user belongs to no other group");
   assert.match(DOCKERFILE, /mkdir -p "\/var\/lib\/vyre\/agents\/ag\$n\/home"/, "each home and run folder is made at build");
-  assert.match(DOCKERFILE, /chown "\$n:\$n" "\/home\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n" && chmod 0700/, "owned by its own uid, 0700");
+  assert.match(DOCKERFILE, /chown "\$n:\$n" "\/var\/lib\/vyre\/agents\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n\/home" && chmod 0700/, "owned by its own uid, 0700");
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
   assert.doesNotMatch(agentd, /"(useradd|groupadd|userdel|sudo|su|chown)"/, "the root is read-only, agentd has no CAP_CHOWN and no agent gets admin");
 });
@@ -418,7 +418,7 @@ test("isolation (static): agentd's control channel is a unix socket; the one TCP
   assert.match(relay, /\.\.\.asBrowser\(u\), "\/usr\/bin\/python3", "-I", PIPE, u\.kind === "cdp" \? "cdp" : "vnc"/, "the screen and Chrome pipes run as the screen's owner (the browser uid), with one fixed word and no path");
   assert.match(relay, /plain\(sock\.remoteAddress\) !== want\) return void sock\.destroy\(\)/, "only vyred's pinned address is let in, before a byte is read");
   assert.match(fs.readFileSync(path.join(HERE_DIR, "computerd", "index.js"), "utf8"), /gate\.pin\(req\.socket\.remoteAddress\); publishPeer\(gate\.pinned\)/, "computerd writes the pin the relay reads");
-  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-chrome\.py \/opt\/agentd\//, "both helpers are in the image, root's");
+  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-run\.py agentd-chrome\.py \/opt\/agentd\//, "both helpers are in the image, root's");
   assert.match(relay, /"\/usr\/bin\/python3", "-I", TERM, String\(u\.session\)/, "a terminal runs as the agent with only its checked name");
   assert.doesNotMatch(relay, /vnc\.sock|socketOf/, "the relay never names a socket: the pipe builds it from its uid");
 });
@@ -455,7 +455,7 @@ test("isolation (static): each agent's browser is its own uid, whose profile, de
   assert.match(chrome, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
   assert.match(chrome, /os\.chmod\(SOCK, 0o600\)/);
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
-  assert.match(agentd, /\.\.\.asBrowser\(u, lim\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
+  assert.match(agentd, /\.\.\.bs\(\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
   assert.doesNotMatch(agentd, /asAgent\([^)]*\)[^\n]*agentd-chrome/, "never as the agent");
 });
 
