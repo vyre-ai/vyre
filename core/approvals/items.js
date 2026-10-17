@@ -112,6 +112,13 @@ export const fromStuckTasks = rows => rows.map(t => ({ id: `tasks:${t.task}`, ki
  * vault.health.summary (R031-80s): the vault's Watchtower findings as ONE calm row, never a row per item: how many need to be rotated and how many to be fixed, counts only. Dismissing it is vault.health.dismiss;
  * the row opens the Vault, where each item is named.
  */
+/** A space vault rotation that failed when a member left. The retry is automatic. The card names the space and the title, never a key. */
+export const fromSpaceVault = (/** @type {any} */ d) => (d && Array.isArray(d.items) ? d.items : []).filter(r => r && r.space && r.title).map(r => ({
+  id: `space-vault:${clean(r.space, 80)}`, kind: "task", title: clean(r.title) || "A space vault key still needs to rotate",
+  detail: "Vyre will try again on its own.", at: at(r.at), source: "space-vault",
+  answer: { tool: "vault.space.status", input: { space: String(r.space) }, fill: /** @type {string[]} */ ([]) },
+}));
+
 export const fromHealth = (/** @type {any} */ h) => {
   const total = h && Number.isFinite(h.total) ? Number(h.total) : 0;
   if (!total) return [];
@@ -185,6 +192,7 @@ export const OWNERS = [
   { name: "publish-jobs", tool: "publish.job.attention", map: d => fromJobs(d && Array.isArray(d.jobs) ? d.jobs : []), quiet: true, watch: [
     ["deployment.*", (t, p) => (t === "deployment.job-ran" && p && p.deployment ? [`publish:${p.deployment}`, p.ok ? "ran again" : "failed"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
+  { name: "space-vault", tool: "vault.space.attention", map: fromSpaceVault, quiet: true, watch: [] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [

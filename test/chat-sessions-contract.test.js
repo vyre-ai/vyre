@@ -124,7 +124,7 @@ test("the payload fields chat keys on are the ones the server sends", () => {
 });
 
 test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, background tasks", () => {
-  const sb = read("core/switchboard/index.js");
+  const sb = read("core/switchboard/index.js") + read("core/switchboard/composer-slash.js");
   const tr = read("core/switchboard/translate.js");
   const st = read("apps/app/src/chat/core/session-state.js");
   // Chat's side: the session state the app's chat core keeps. (The Deck's composer and session view that these checked for images, ! shell, # memory, thinking and background tasks are gone; the app's composer is covered by apps/app/src/chat/composer-model.test.js.)

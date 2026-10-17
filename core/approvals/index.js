@@ -9,6 +9,7 @@ import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp, REUSE_OPS } from "../../lib/one-yes.js";
 import { yesDeviceOf } from "../../lib/caller.js";
 import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
+import { stripSecrets } from "../../lib/master-secret.js";
 import { createItems } from "./items.js";
 import { clean } from "../../lib/waiting-text.js";
 
@@ -143,31 +144,45 @@ export default {
         return { id, payload_hash, expires_in_s: ASK_MS / 1000 };
       },
     });
+    // A Needs-you hold for a device or an invite is not always on the outward list. The registry names the moment; the fields stay plain, the same shape a card already requires.
+    const plainHold = (/** @type {string} */ op, /** @type {any} */ fields) => {
+      if (typeof op !== "string" || !/^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/.test(op)) return null;
+      const f = fields && typeof fields === "object" && !Array.isArray(fields) ? fields : null;
+      if (!f) return null;
+      const keys = Object.keys(f);
+      if (keys.length > 12) return null;
+      /** @type {Record<string, string | number | boolean>} */ const out = {};
+      for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; out[k] = v; }
+      return { op, fields: out };
+    };
     // The registry holds an outward tool's call from an agent, a model, a module or a guest here (core/modules, one yes): the same card as a device's, bound to the asker the registry names (never anything the
-    // asker said) and to the call's input by digest. The registry alone calls this; the asker later retries its call with the card's id and the registry spends it (yes, `{ card }`).
+    // asker said) and to the call's input by digest. The registry alone calls this; the asker later retries its call with the card's id and the registry spends it (yes, `{ card }`). A device or invite
+    // call passes moment "pair" or "vault"; omitted stays outward, so a send is unchanged.
     ctx.tool("approvals.hold", {
       internal: true,
       description: "The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.",
-      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" }, input: { type: "object" } }, ["tool", "fields", "from"]),
+      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" }, input: { type: "object" }, moment: { type: "string", enum: ["pair", "vault", "outward"] } }, ["tool", "fields", "from"]),
       callers: ["module"],
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry holds a call", "denied");
         sweep();
-        const request = cardRequest("outward", { op: input.tool, fields: input.fields });
-        if (!request) throw refuse("that call does not fit an outward card", "bad_input");
+        const moment = input.moment === "pair" || input.moment === "vault" || input.moment === "outward" ? input.moment : "outward";
+        const request = cardRequest(moment, { op: input.tool, fields: input.fields }) || (moment === "outward" ? null : plainHold(input.tool, input.fields));
+        if (!request) throw refuse(moment === "outward" ? "that call does not fit an outward card" : "that call does not fit a card", "bad_input");
         const from = String(input.from || "");
         const same = [...open.values()].find(a => a.moment && a.from === from && a.state === "waiting" && a.request.op === request.op && canon(a.request.fields) === canon(request.fields));
-        if (same) return { id: same.id, line: same.line, ...(same.group ? { group: same.group } : {}) };
+        if (same) return { id: same.id, line: same.line, moment: same.moment || moment, ...(same.group ? { group: same.group } : {}) };
         if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
-        const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
+        const sg = signOf(moment, request), space = String((ctx.kernel && ctx.kernel.space) || "");
         const payload_hash = payloadHash(sg.op, space, sg.fields);
         const id = `ap_${newId()}`;
         const line = lineOfOp(request.op, request.fields, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`);
         // The call's own input (the registry's, the asker's words never reach it any other way) lets the person read every word and change some of them. It is held only if it is what the card's digest covers.
-        const held = input.input && typeof input.input === "object" && !Array.isArray(input.input) && holdFields(input.input).input_sha256 === request.fields.input_sha256 ? input.input : null;
+        const shown = input.input && typeof input.input === "object" && !Array.isArray(input.input) ? stripSecrets(input.input) : null;
+        const held = shown && holdFields(shown).input_sha256 === request.fields.input_sha256 ? shown : null;
         const group = groupFor(from);
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
-        return { id, line, group };
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment, request, line, short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
+        return { id, line, group, moment };
       },
     });
     ctx.tool("approvals.local-yes", {

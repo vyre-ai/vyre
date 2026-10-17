@@ -77,9 +77,10 @@ test("vyre-core forward: the vault module forwards to core, refuses plain values
   const run = (tool, input, meta = {}) => tools.get(tool).run(input, meta);
   const header = (tool, input) => { const p = proof(tool, input); return `device key=${p.key} ts=${p.ts} nonce=${p.nonce} sig=${p.sig}`; };
 
-  // Every tool the manifest declares is here, each marked for core.
+  // Every tool the manifest declares is here, each marked for core. Space vault tools stay on this machine: the vault module registers them beside the forwarder, and the forwarder does not replace them with a core stub.
   const declared = JSON.parse(fs.readFileSync(new URL("../vault/module.json", import.meta.url), "utf8")).does.tools.map(t => (typeof t === "string" ? t : t.name));
-  assert.deepEqual([...tools.keys()].sort(), [...declared].sort());
+  const forwarded = declared.filter(t => !String(t).startsWith("vault.space."));
+  assert.deepEqual([...tools.keys()].sort(), [...forwarded].sort());
   assert.ok([...tools.values()].every(d => d.core === true));
 
   const put = await run("vault.put", { name: "orders-imap", kind: "secret", fields: { value: "imap-pass-1042" } });

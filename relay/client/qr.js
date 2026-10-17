@@ -1,11 +1,11 @@
 // @ts-check
 // A QR code for a terminal, with no dependency and no network call: the encoder is the vendored qrcode-generator (./vendor, pinned in
-// vendor/PINS-qr.json, MIT). Used by the box to draw the pairing QR that i.sh prints, so a phone can pair a server by scanning it. The QR
-// carries a long secret (see core/wink/pairing.js, wink.server.code with qr), so it needs no PAKE.
+// vendor/PINS-qr.json, MIT). Used by the box to draw the pairing QR a phone scans (core/wink/pairing.js, wink.server.code with qr). The QR
+// carries a long secret, so it needs no PAKE.
 //
 // The art is plain text of four glyphs, two QR rows per text row, and says nothing about colour: ' ' is light over light, the upper half
 // block is dark over light, the lower half block is light over dark, the full block is dark over dark. A caller that wants it to scan on
-// any terminal theme prints it as black on white (ESC[30;47m ... ESC[0m); i.sh does.
+// any terminal theme prints it as black on white (ESC[30;47m ... ESC[0m).
 
 import qrcode from "./vendor/qrcode-generator.js";
 

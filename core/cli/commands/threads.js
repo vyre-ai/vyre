@@ -341,20 +341,8 @@ export function pendingQueue(events) {
 /** What a rewind put back, in words. @param {string} restore */
 export const restored = restore => (restore === "code" ? "the files (the conversation stays)" : restore === "both" ? "the conversation and the files" : "the conversation");
 
-/**
- * Where a composer line goes, as Claude Code's shortcuts do: "!ls" runs in the thread's folder
- * (threads.shell), "/remember prefer tabs" is a line for CLAUDE.md (threads.remember), anything else is a
- * message (a leading # is a tag now, never a memory). raw sends it as typed.
- * @param {string} text @param {boolean} [raw]
- * @returns {{ tool: "threads.send"|"threads.shell"|"threads.remember", body: string }}
- */
-export function routeLine(text, raw = false) {
-  const t = String(text ?? "");
-  if (!raw && t.startsWith("!")) return { tool: "threads.shell", body: t.slice(1).trim() };
-  const m = !raw && /^\/remember(\s+([\s\S]*))?$/.exec(t);
-  if (m) return { tool: "threads.remember", body: (m[2] || "").trim() };
-  return { tool: "threads.send", body: t };
-}
+import { routeLine } from "../../../lib/thread-composer-route.js";
+export { routeLine };
 
 /**
  * threads.send's images from files: the media type from the extension, at most IMAGES.count of

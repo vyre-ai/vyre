@@ -83,8 +83,10 @@ export function createChainAdmit(o) {
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
       // the client hears only `bad_proof` for all three of these (so a probe cannot tell a member from a stranger); `detail` is for this server's own log
       const refuse = (/** @type {string} */ detail) => ({ ok: false, why: "bad_proof", detail });
-      // members only, by identity id; the same words as a bad signature when there is none
-      const role = await o.roleOf(h.identity);
+      // members only, by identity id; the same words as a bad signature when there is none.
+      // An install line records the owner as per_ plus the signing key's id, which is this entry. The chain's own id is the genesis id. Both name that same device, so a hello for the genesis id is the owner's when the entry's key id is the owner.
+      let role = await o.roleOf(h.identity);
+      if (!role && typeof h.entry === "string") { const keyed = await o.roleOf(`per_${h.entry}`); if (keyed === "owner") role = "owner"; }
       if (!role) return refuse("no_role: this identity is neither the owner nor a member here");
       const box = await o.boxId().catch(() => null);
       if (!box) return { ok: false, why: "cannot_check" };

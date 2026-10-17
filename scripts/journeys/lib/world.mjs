@@ -78,21 +78,16 @@ export async function bringUp(o) {
     srv = o.kind === "box" ? await startInstallerServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store: o.store, ownerId: mac.identity.id });
     return srv.kind;
   }, { needs: [S("add a server: the app shows the install line")] });
-  await run.step(S("the app finds the server and the four words match"), async () => {
-    await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
-    assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
-    assert.equal(flow.state.box.words.join(" "), await srv.words());
-  }, { needs: [S(`the server installs from that line (${o.kind})`)] });
-  await run.step(S("confirm the words in the app: adopt and pair"), async () => {
-    await flow.confirmWords();
+  await run.step(S("the server adopts this identity and the app is ready"), async () => {
+    await mac.until(() => flow.state.stage === "done" || flow.state.stage === "stopped", 120_000, "the app to finish pairing");
     assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
     assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
-  }, { needs: [S("the app finds the server and the four words match")] });
+  }, { needs: [S(`the server installs from that line (${o.kind})`)] });
   await run.step(S("the app reaches the server and calls a tool"), async () => {
     if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id, srv.kind === "installer" ? mac.presenceSigner : undefined));
     await mac.openSession();
     assert.ok(await mac.callTool("system.info"), "system.info answered");
-  }, { needs: [S("confirm the words in the app: adopt and pair")] });
+  }, { needs: [S("the server adopts this identity and the app is ready")] });
   if (o.store === "records") {
     await run.step(S("the record store answers"), async () => {
       let last = "";

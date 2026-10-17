@@ -53,11 +53,11 @@ line.
 
 ### "That code ran out of time", or "That code was already used"
 
-The code the server prints works for one pairing and for five minutes. Run the install line on the server again for a new one, or, if Vyre is already installed, run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh code. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first, then paste the line again. Your data stays.
+The pair code in the install line works for one pairing and for 30 minutes. In the app, press **Show the install command** (or go back to **Create a space**) for a new line, and run it on the server. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first, then paste the line again. Your data stays.
 
-### "The words were not the same", or "Nothing was paired"
+### "Another server answered this install line first"
 
-The three words in the app did not match the ones your server's terminal showed, so the pairing stopped. Start again from your server with a new code. Do not confirm words for a code you did not start yourself.
+Two servers used the same install line, and the app does not know which one is yours, so it paired neither. Make a new install line in the app and run it only on your own server. Do not paste an install line into a server you do not own, and do not share one.
 
 ### "Your phone cannot reach your Vyre right now"
 
@@ -69,11 +69,11 @@ Pick another name. Service names such as `app`, `login` and `vault`, well-known 
 
 ### You did not save the recovery code
 
-It is shown once, so nothing can show it again. It is the only way back in if you lose every device. If you still have a device signed in to your name, add the new device from it with **Add a device**.
+It is shown once, so nothing can show it again. It is the only way back in if you forget the master password. If you remember the master password, you do not need it: sign in on the new device with your space address, your username and your master password.
 
 ### Signing in on a new device by your name
 
-On the new device, type your name and ask to sign in. Every device already signed in to that name asks "Someone typed your name to sign in on ..." with three words to pick. Read the three words off the new device's own screen, never from a message, and decline if you did not just ask. A request lasts 2 minutes. If nobody answers, the new device says so; it cannot tell you whether the name has a device online. A name can be asked about only a few times a minute, so wait a minute and try again.
+On the new device, open the Vyre app and choose **Sign in**. Type your space address (like `juniper.vyre.run`), your username and your master password. Or press **Sign in with GitHub** and then type the master password, which still unlocks your vault. The password is stretched on the device; the server never sees it. If it says the settings are too weak or too heavy, check the space address: the app refuses a server that asks for that. If it says the password is wrong, try again or use your recovery key.
 
 ## The box
 
@@ -111,11 +111,7 @@ The reason follows on the same line:
 
 ### The pairing code expired
 
-The long code the server shows is good for five minutes and for one use. Run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh one, then run `vyre link pair <code>` on the Mac.
-
-### "Those were not the words the app shows, so nothing was paired."
-
-The server's terminal asked you to pick the three words the pairing device shows, and you picked a different set. Nothing was paired. Choose again when it offers, and compare the words with the screen of the device you are pairing.
+The code `vyre link pair <address>` shows is good for a short time and for one use. Run the command again for a new one, then approve it in the Vyre app or with `vyre link approve <code>` on the server.
 
 ### A Mac's sessions show "offline" on the box
 

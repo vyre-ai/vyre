@@ -431,7 +431,7 @@
   },
   "onboard.machine": {
    "module": "onboard",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "onboard.name": {
    "module": "onboard",

@@ -18,7 +18,7 @@ function res() {
 const get = (/** @type {string} */ p) => { const r = res(); const hit = serveWeb(r, p, {}); return { hit, r }; };
 
 test("web: the pre-app pages are answered from web/ with the Deck's headers", () => {
-  for (const [p, needle] of [["/onboard", "onboard.js"], ["/onboard/", "onboard.js"], ["/onboard/passkey", "passkey.js"], ["/onboard/device", "device.js"], ["/person/signin", "signin.js"]]) {
+  for (const [p, needle] of [["/onboard", "Continue setup"], ["/onboard/", "Continue setup"], ["/person/signin", "signin.js"]]) {
     const { hit, r } = get(p);
     assert.equal(hit, true, p);
     assert.equal(r.status, 200, p);
@@ -29,7 +29,7 @@ test("web: the pre-app pages are answered from web/ with the Deck's headers", ()
 });
 
 test("web: the code, styles and fonts the pages load come from web/ too", () => {
-  for (const [p, type] of [["/onboard/onboard.js", "javascript"], ["/js/api.js", "javascript"], ["/css/tokens.css", "text/css"], ["/fonts/instrument-sans-latin.woff2", "font/woff2"], ["/vendor/qrcode.js", "javascript"], ["/icon.svg", "svg"]]) {
+  for (const [p, type] of [["/js/api.js", "javascript"], ["/css/tokens.css", "text/css"], ["/fonts/instrument-sans-latin.woff2", "font/woff2"], ["/vendor/qrcode.js", "javascript"], ["/icon.svg", "svg"]]) {
     const { hit, r } = get(p);
     assert.equal(hit, true, p);
     assert.match(r.headers["content-type"], new RegExp(type), p);
@@ -49,7 +49,7 @@ for (const root of [false, true]) {
     const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
       http.get({ socketPath: paths(home).socket, path: p }, r => { let b = ""; r.on("data", c => { b += c; }); r.on("end", () => resolve({ status: r.statusCode, type: r.headers["content-type"], body: b })); }).on("error", reject);
     });
-    for (const [p, needle] of [["/onboard", "/onboard/onboard.js"], ["/onboard/passkey", "/onboard/passkey/passkey.js"], ["/onboard/device", "/onboard/device/device.js"], ["/person/signin", "/person/signin/signin.js"], ["/onboard/onboard.js", "import {"], ["/js/api.js", "export"], ["/css/tokens.css", "--"]]) {
+    for (const [p, needle] of [["/onboard", "Continue setup"], ["/person/signin", "/person/signin/signin.js"], ["/js/api.js", "export"], ["/css/tokens.css", "--"]]) {
       const r = /** @type {any} */ (await hit(p));
       assert.equal(r.status, 200, p);
       assert.ok(r.body.includes(needle), `${p} holds ${needle}`);

@@ -15,7 +15,7 @@ the passkey prompt it draws (in closed shadow roots) are the Vyre UI in browsers
 ## Install
 
 1. Set `vault.fill` in `config.json` (for example `{ "host": "127.0.0.1", "port": 7788 }`) and
-   restart vyred. On a box, put it behind `tailscale serve` and use your `https://<you>.vyre.run` address (or the `https://*.ts.net` name).
+   restart vyred. On a box, use your `https://<you>.vyre.run` address.
 2. Load the extension:
    - **Chrome, Arc, Edge, Brave**: open the extensions page (`chrome://extensions`,
      `arc://extensions`, `edge://extensions` or `brave://extensions`), turn on Developer mode,
@@ -166,7 +166,7 @@ browser's own authenticator. The private key never leaves vyred; only signatures
 
 ## Addresses
 
-The manifest's CSP allows `http://127.0.0.1:*`, `http://localhost:*`, `https://*.vyre.run` and `https://*.ts.net`.
+The manifest's CSP allows `http://127.0.0.1:*`, `http://localhost:*`, and `https://*.vyre.run`.
 Any other address needs those two lines of `manifest.json` changed. No build step is needed and
 there is no remote code. In Firefox the fill listener answers the extension's `moz-extension://`
 origin with CORS, so a fetch works even before the host permission is granted.

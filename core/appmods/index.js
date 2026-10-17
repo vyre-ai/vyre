@@ -18,6 +18,7 @@ import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
 import { publishedManifest, checkPublished } from "./published.js";
 import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting } from "./signing.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -286,7 +287,7 @@ export default {
           if (m.connection) {
             try {
               const form = connectionForm(m, item(m.name, m.connection.credential.replace(/_/g, "-")));
-              const made = await ctx.call("connectors.connection.create", form, { as: meta && meta.caller });
+              const made = await ctx.call("connectors.connection.create", form, personCallOpts(meta && meta.caller, meta) || { as: meta && meta.caller });
               if (made.error) throw new Error(made.error.message);
               connection = made.data && made.data.id ? String(made.data.id) : null;
               if (connection) db.prepare("UPDATE appmods_apps SET connection_id = ? WHERE name = ?").run(connection, m.name);
@@ -335,7 +336,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
         if (known(r.name)["x-publish"]) throw refuse(`${r.name} is a site Publish runs; retire it in Publish`, "unsupported");
-        if (r.connection_id) await ctx.call("connectors.connection.delete", { id: r.connection_id }, { as: meta && meta.caller }).catch(() => {});
+        if (r.connection_id) await ctx.call("connectors.connection.delete", { id: r.connection_id }, personCallOpts(meta && meta.caller, meta) || { as: meta && meta.caller }).catch(() => {});
         await driver.down({ space: r.space, manifest: known(r.name), hookPort: r.hook_port }, { data: i.data === true });
         const l = listeners.get(r.name); if (l) { l.close(); listeners.delete(r.name); }
         db.prepare("DELETE FROM appmods_apps WHERE name = ?").run(r.name);

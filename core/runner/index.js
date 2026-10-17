@@ -14,7 +14,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createLenderHost } from "./lender-host.js";
-import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
+import { registerPlaceTools, settingsReader, SETTING_DEFAULTS, MODE_KEY } from "./place-tools.js";
 import { startPump } from "./pipe-pump.js";
 import { within, withinOrThrow } from "../../lib/within.js";
 /** The folder this Vyre is installed in: its MCP server (harness/mcp/run.js) is what a chat's session on this computer talks to. */
@@ -134,7 +134,7 @@ export default {
     const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
       const p = lenders.get(space)?.ports; if (!p) return;
       // a chat's process (lent spawn) says how it ended through its pump first, so the SDK hears the exit it really had; the home forgetting the session comes after
-      if (why === "stopped" || why === "finished") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session)).catch(() => {}); }
+      if (why === "stopped" || why === "finished") { const epoch = p.epochOf?.(session); const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session, epoch)).catch(() => {}); }   // the epoch of the stint that ended, taken now: a newer stint may have started by the time the pump is done
       else if (why === "crashed") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.requestServer?.(space, session, "crash")).catch(() => {}); }   // the SDK hears the exit code the program really had, then the home takes the session (reason crash) to carry on from the last whole turn
     };
     const forSpace = async space => {
@@ -143,7 +143,7 @@ export default {
       if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available; pair this computer with the space's home first"), { code: "unavailable" });
       let r = runners.get(space);
       if (!r) {
-        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync, seedFile: async (/** @type {string} */ work, /** @type {string} */ cwd, /** @type {string} */ session) => { try { const x = /** @type {any} */ (await ctx.call("threads.work-transcript", { work, cwd, session })); return x && x.data && x.data.file ? String(x.data.file) : null; } catch { return null; } },
+        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync, seedFile: async (/** @type {string} */ work, /** @type {string} */ cwd, /** @type {string} */ session, /** @type {string | undefined} */ provider) => { try { const x = /** @type {any} */ (await ctx.call("threads.work-transcript", { work, cwd, session, ...(provider ? { provider } : {}) })); return x && x.data && x.data.file ? String(x.data.file) : null; } catch { return null; } },
           grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), ...(seam.now ? { now: seam.now } : {}), ...(seam.state ? { state: seam.state } : {}), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
@@ -167,9 +167,14 @@ export default {
       run: async ({ space, pinned }) => (await forSpace(space)).decide({ pinnedToServer: Boolean(pinned) }),
     });
     /** The limits the person set for this computer, as last read. */
-    const limits = { ...SETTING_DEFAULTS };
+    const limits = { ...SETTING_DEFAULTS, mode: "always" };
     const readSettings = settingsReader(key => ctx.call("settings.get", { key }));
-    const refreshSettings = async () => { Object.assign(limits, await readSettings()); return limits; };
+    const refreshSettings = async () => {
+      Object.assign(limits, await readSettings());
+      // what the computer does on its own: a read that fails changes nothing, and anything but "ask" is Always allow, as it always was
+      try { const m = /** @type {any} */ (await ctx.call("settings.get", { key: MODE_KEY })); const v = m && m.data && m.data.value; if (v === "ask" || v === "always") limits.mode = v; } catch { /* the last good value stands */ }
+      return limits;
+    };
     /** Is running here switched on? A settings module that has never answered gives no switch to honour (nothing moves for want of one); one that answers is believed. */
     const enabledNow = () => !readSettings.known() || limits.enabled;
     /** Titles of the chats the sessions here belong to, as the home told this computer when it lent them. @type {Map<string, string>} */ const titles = new Map();
@@ -192,7 +197,7 @@ export default {
         const folder = spec.folder ? folders.resolve(String(spec.folder)) : null;
         // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
         const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules(), ...(harnessThere() ? { plugin: path.join(VYRE_ROOT, "harness") } : {}) } : undefined;
-        h = await r.start({ session, resume: Boolean(resume), ...(folder ? { folder } : {}), ...(spec.preview === true && spec.pipe === true ? { preview: true } : {}), ...(spec.seed ? { seed: spec.seed } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}), ...(spec.memberMcp && typeof spec.memberMcp === "object" ? { memberMcp: spec.memberMcp } : {}) });
+        h = await r.start({ session, resume: Boolean(resume), ...(folder ? { folder } : {}), ...(spec.preview === true && spec.pipe === true ? { preview: true } : {}), ...(spec.seed ? { seed: spec.seed } : {}), ...(spec.provider ? { provider: spec.provider } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}), ...(spec.memberMcp && typeof spec.memberMcp === "object" ? { memberMcp: spec.memberMcp } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
         // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
@@ -451,7 +456,7 @@ export default {
       const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
       /** @type {{ fenced: string[], directives: any[] }} */ const got = { fenced: [], directives: [] };
       for (let at = 0; at === 0 || at < mine.length; at += per) {
-        const ans = await p.beat({ sessions: mine.slice(at, at + per), well, folders: folders.visible() });
+        const ans = await p.beat({ sessions: mine.slice(at, at + per), well, auto: limits.mode !== "ask", folders: folders.visible() });
         if (ans && Array.isArray(ans.fenced)) got.fenced.push(...ans.fenced);
         if (ans && Array.isArray(ans.directives)) got.directives.push(...ans.directives);
       }

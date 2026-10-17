@@ -23,7 +23,7 @@ export function Chip({ children, tone = "plain", icon, className, onPress, selec
   const { phone } = useUiTheme();
   const t = selected ? "selected" : tone;
   const body = (
-    <View style={{ minHeight: phone ? 26 : 24 }} className={cn(chip({ tone: t }), onPress && "border border-transparent", selected && "border-primary", className)}>
+    <View style={{ minHeight: onPress ? (phone ? 44 : 32) : phone ? 26 : 24 }} className={cn(chip({ tone: t }), onPress && "border border-transparent", selected && "border-primary", className)}>
       {icon ? <Icon name={icon} size={12} tone={t === "plain" ? "text-2" : t === "selected" ? "text" : t === "sealed" ? "warn" : t === "space" ? "text-2" : t} /> : null}
       <Text size="caption" medium tone={ink[t]}>{children}</Text>
     </View>

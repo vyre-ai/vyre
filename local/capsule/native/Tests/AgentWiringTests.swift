@@ -14,7 +14,7 @@ private func world(_ v: FakeVyred) {
     v.tool("projects.catalog") { _ in ["sessions": [Any]()] }
     v.tool("agents.list") { _ in [["name": "kit", "kind": "agent", "computer": true, "thread": "tk"]] }
     v.tool("threads.list") { _ in [["id": "th1", "name": "Harlow intake", "cwd": "/home/alex/Work/harlow"]] }
-    v.tool("wink.server.home") { _ in ["linked": true, "box": ["address": "https://box.example.ts.net"]] }
+    v.tool("wink.server.home") { _ in ["linked": true, "box": ["address": "https://box.example.wink.example"]] }
     // A linked Mac asks its server for the agents (BoxLink.swift): the fake server answers through wink.server.call.
     v.tool("wink.server.call") { i in
         switch (i["tool"] as? String) ?? "" {
@@ -111,7 +111,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
             return (row, box, menu)
         }
         t.eq(got?.0, "Open Glass · kit")
-        t.eq(got?.1, "https://box.example.ts.net")
+        t.eq(got?.1, "https://box.example.wink.example")
         t.eq(got?.2, 0, "↓ wraps round the verbs")
     }
 }

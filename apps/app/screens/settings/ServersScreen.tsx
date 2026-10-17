@@ -8,7 +8,6 @@ import { listPairings, loadPairing, subscribePairings } from "../../src/api/rela
 import { peerWanted } from "../../src/real/peer";
 import { tool } from "../../src/real/box";
 import { AddServerCard } from "./AddServerCard";
-import { TypeCode, redeemPairing } from "../devices/TypeCode";
 import { ADD, FOUND, foundLine, foundRows, serverRows, serversLine } from "./servers-model.js";
 
 export default function ServersScreen() {
@@ -70,13 +69,6 @@ export default function ServersScreen() {
           <Text strong>{ADD.title}</Text>
           <Text tone="muted">{ADD.body}</Text>
           <View className="flex-row"><Button label={ADD.action} onPress={() => setAdding(true)} /></View>
-        </Card>
-      )}
-      {adding ? null : (
-        <Card className="gap-s2">
-          <Text strong>Have a code from another device?</Text>
-          <Text tone="muted">On a device already paired to that server, open Devices, Add a device, and type the code it shows here.</Text>
-          <TypeCode redeem={redeemPairing} onDone={() => { void load(); }} />
         </Card>
       )}
     </Page>
