@@ -44,7 +44,8 @@ test("a terminal ticket opens the stream once; a screen ticket, an unknown one a
   }
 });
 
-test("what the person types reaches the relay after its hello, and what the relay prints reaches the person; leaving releases the hold", async t => {
+test("what the person types reaches the relay after its hello, and what the relay prints reaches the person; leaving releases the hold", async t => { try { await body(t); } catch (e) { console.log("PROBE-T", e && e.stack); throw e; } });
+async function body(t) {
   /** @type {Buffer[]} */ const relayGot = [];
   const relay = await serve(sock => { sock.on("data", d => { relayGot.push(d); sock.write("$ ready"); }); });
   t.after(() => relay.server.close());
@@ -70,7 +71,7 @@ test("what the person types reaches the relay after its hello, and what the rela
   b.destroy();
   await new Promise(r => setTimeout(r, 150));
   assert.deepEqual(events, ["open kit work-1", "release"]);
-});
+}
 
 test("Glass refuses a terminal's ticket", async t => {
   const pool = fakePool();
