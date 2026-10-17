@@ -99,6 +99,7 @@ export default {
 
     const offer = async acct => {
       const r = await ctx.call("gate.offer", { name: `google:${acct.name}`, tool: "google.release", kinds: ["send"], content: CONTENT });
+      if (acct.firm) await ctx.call("gate.offer", { name: `google-firm:${acct.name}`, tool: "google.release", kinds: ["send"], content: CONTENT });
       if (r.error) ctx.log(`could not offer the google:${acct.name} sender: ${r.error.message}`);
     };
     for (const a of accounts.all()) await offer(a);
@@ -115,10 +116,10 @@ export default {
       if (acct.member) content = { from: acct.email, ...content };
       const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
       const thread = b.thread || (meta && meta.thread) || undefined;
-      const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.key || acct.name}`, to, content,
+      const r = await ctx.call("gate.request", { kind: "send", via: acct.key ? `google-firm:${acct.key}` : `google:${acct.name}`, to, content,
         ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
-      return r.data.id;
+      return r.data.state === "sent" ? { sent: true, by: r.data.by } : r.data.id;
     };
 
     // ---- accounts ----
@@ -371,6 +372,7 @@ export default {
         }
         if (acct.member && await isOwnAct(ctx.kernel, meta)) { const event = await cal.write(acct, { op: "create", fields, attendees: to, sendUpdates: "all" }); ctx.events.emit("google.sent", { account: acct.name, what: "invite" }); return { event }; }
         const id = await hold(acct, to, heldEvent("create", input), input, meta);
+        if (id && typeof id === "object") return { sent: true, covered_by: id.by };   // inside a standing permission the member gave: it went out
         return { held: id, message: `Held at the Gate: the invite goes to ${to.join(", ")} from ${acct.email} once the user approves it in Vyre. Nothing was created yet.` };
       }),
     });
@@ -393,6 +395,7 @@ export default {
         }
         if (acct.member && await isOwnAct(ctx.kernel, meta)) { const event = await cal.write(acct, { op: "update", event_id: input.id, fields, attendees: to, sendUpdates: "all" }); ctx.events.emit("google.sent", { account: acct.name, what: "invite" }); return { event }; }
         const id = await hold(acct, to, heldEvent("update", input), input, meta);
+        if (id && typeof id === "object") return { sent: true, covered_by: id.by };   // inside a standing permission the member gave: it went out
         return { held: id, message: `Held at the Gate: the updated invite goes to ${to.join(", ")} from ${acct.email} once the user approves it in Vyre. Nothing was changed yet.` };
       }),
     });
@@ -488,6 +491,7 @@ export default {
         // a member's own send from their own mailbox goes out at once; it is their own act, so it is not held
         if (acct.member && await isOwnAct(ctx.kernel, meta)) { const out = await gm.send(acct, to, c); ctx.events.emit("google.sent", { account: acct.name, what: "email" }); return out; }
         const id = await hold(acct, to, c, input, meta);
+        if (id && typeof id === "object") return { sent: true, covered_by: id.by };   // inside a standing permission the member gave: it went out
         return { held: id, message: `Held at the Gate: "${c.subject}" to ${to.join(", ")} from ${acct.email} goes out once the user approves it in Vyre.` };
       }),
     });
@@ -551,7 +555,7 @@ export default {
         if (caller !== "module:gate") throw fail("only the Gate releases what goes out", "denied");
         const item = await ctx.call("gate.get", { id });
         const via = item.data && item.data.via;
-        const m = /^google:([a-z][a-z0-9-]{0,31})$/.exec(String(via || ""));
+        const m = /^google(?:-firm)?:([a-z][a-z0-9-]{0,31})$/.exec(String(via || ""));
         if (!m) throw fail(`${id} is not held for a Google account`);
         let acct = accounts.get(m[1]);
         if (!acct) throw fail(`the Google account ${m[1]} was removed; add it again to send this`, "no_account");

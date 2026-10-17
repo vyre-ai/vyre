@@ -12,6 +12,8 @@
 export const MEMBER_MAY = Object.freeze(new Set([
   // A member's own held items (what their agent asked to send from their mailbox): the handler shows and answers only the items they asked for, never the owner's or another member's (core/gate/requester.js).
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.revise",
+  // A member may give a permission for their own agent over their own mailbox (the handler limits them to agents they made and connections they hold) and list or end their own.
+  "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
@@ -72,7 +74,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
-  "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "about.text",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",

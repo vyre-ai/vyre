@@ -378,6 +378,8 @@ export default {
         // nobody grants a connection they do not have themselves
         const via = i.via ? String(i.via) : "";
         if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
+        // a member (not an owner or admin) gives one only for their own mailbox or a connection they hold, never for the Space's own sender or for "any"
+        if (!["owner", "admin"].includes(K.roleOf(person)) && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
         if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });

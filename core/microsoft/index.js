@@ -143,7 +143,7 @@ export default {
       if (!(await actingPerson(ctx.kernel, meta))) throw fail("there is no person behind this call, so there is no mailbox to send from", "denied");
       const r = await ctx.call("gate.request", { kind: "send", via: `microsoft:${acct.name}`, to, content: { from: acct.mailbox, ...content }, ...(typeof input.why === "string" && input.why.trim() ? { why: input.why.trim().slice(0, 1000) } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
-      return r.data.id;
+      return r.data;
     };
     const addrs = (v, what, max = 50) => {
       if (!Array.isArray(v) || v.length > max || !v.every(a => typeof a === "string" && EMAIL.test(a) && a.length <= 254)) throw fail(`${what} must be up to ${max} email addresses`);
@@ -161,7 +161,7 @@ export default {
         if (!subject || subject.length > 255 || /[\r\n]/.test(subject)) throw fail("the subject is one line, up to 255 characters");
         if (!body || body.length > 100_000) throw fail("the body is up to 100,000 characters");
         const acct = await first(meta);
-        if (!own) { const id = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
+        if (!own) { const h = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); if (h.state === "sent") return { sent: true, from: acct.mailbox, to, subject, covered_by: h.by }; const id = h.id; return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
         const out = await g.mailSend(acct, { to, cc, subject, body });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
         return out;
@@ -183,7 +183,9 @@ export default {
         const acct = await first(meta);
         if (!own) {
           if (!attendees.length) throw fail("an agent can only put an event with guests on your calendar, held for your approval; for one with no guests, add it yourself", "denied");
-          const id = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input, meta);
+          const h = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input, meta);
+          if (h.state === "sent") return { created: true, attendees, covered_by: h.by };
+          const id = h.id;
           return { held: id, message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
         }
         const out = await g.eventCreate(acct, { title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}), attendees });
