@@ -132,6 +132,19 @@ shardTest("a browser whose identity is a passkey pairs a fresh server: the owner
   assert.equal(st.owner_proof, "passkey");
 });
 
+shardTest("a pick with no deviceKind makes a device row named as given and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
+  const f = await pairFreshServer(t, { kind: "" });
+  const { w, done } = f;
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "Alex's iPhone", "the device is recorded under the name it gave");
+  assert.equal(await deviceRow(w, done.device), undefined, "no relay device row");
+  const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
+  assert.ok(!rec || (!rec.key && rec.confirmed !== true), "no presence key and no confirmed record");
+  const live = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
+  assert.equal((live.sessions || live).filter((/** @type {any} */ x) => x.paired).length, 0, "no paired session");
+  const links = linksFor(t, f);
+  await assert.rejects(() => links.startPaired("srv"), "the device cannot sign in, so it cannot call any tool");
+});
+
 shardTest("a pick with deviceKind phone still records the phone by name (the kind-less pick above is the only new case)", async t => {
   const f = await pairFreshServer(t, { kind: "phone" });
   const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
