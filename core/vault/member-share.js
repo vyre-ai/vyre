@@ -1,8 +1,8 @@
 // @ts-check
 // member-share: a member shares one of their own logins with one agent, at Fill in, so the agent's Chrome can sign in while the member is away (V3a).
 //
-// What the server then holds: a copy of that one login in its own store (member-copies.js), bound to a kernel grant (vault.fill on the copy's address, at one origin, until an expiry). The grant is made by the
-// vault module; the copy is opened only by agentFill. The copy and the grant live and die together: unshare, expiry, the member changing the login, or the member leaving deletes the copy (and ends the grant);
+// What the server then holds: a copy of that one login in the member's OWN vault, in the folder of what she lends, sealed under her lend key (PeopleVaults.lent: the server opens that key and nothing else of hers;
+// member-copies.js keeps only the record that finds and ends it), bound to a kernel grant (vault.fill on the copy's address, at one origin, until an expiry). The grant is made by the vault module; the copy is opened only by agentFill. The copy and the grant live and die together: unshare, expiry, the member changing the login, or the member leaving deletes the copy (and ends the grant);
 // a copy whose grant is gone is not used (allowedCopy asks the kernel every time).
 //
 // Only the member, alone in the call's chain (no assistant acting for them, not the owner), explicitly, for a login of their own vault, at an origin they name, for an agent that exists and is not the default
@@ -20,7 +20,7 @@ export const NOTICE = "Your agent can use this login while you're away.";
 
 export class MemberShare {
   /** @param {import("./access.js").Access} access */
-  constructor(access) { this.access = access; this.copies = new MemberCopies(access.v); /** @type {any} */ this.people = null; }
+  constructor(access) { this.access = access; /** @type {any} */ this.people = null; this.copies = new MemberCopies(access.v, () => this.people); }
 
   get K() { return this.access.need(); }
   clock() { return this.access.v.clock(); }
@@ -46,13 +46,13 @@ export class MemberShare {
     if (!agent || agent === "assistant") throw bad("name one of your agents; the default assistant takes no shared login", "bad_input");
     const uid = await this.access.uidOf(agent);
     if (!uid) throw bad(`no agent named ${agent.slice(0, 60)}`, "not_found");
-    this.copies.sweep();
+    await this.copies.sweep();
     // Open the login in the member's own vault: this needs them unlocked, which is why the copy exists at all.
     const it = await this.people.get(owner, { name: String(i.item || "") });
     const f = it.fields || {};
     if (it.kind !== "login" || !f.password) throw bad("only a login with a password can be shared with an agent", "bad_input");
     const ref = await this.copies.put({ owner, item: String(i.item), agent, uid, origin, expires, fields: f });
-    try { await this.grant({ ref, owner, uid, origin, expires }); } catch (e) { this.copies.remove(ref); throw e; }
+    try { await this.grant({ ref, owner, uid, origin, expires }); } catch (e) { await this.copies.remove(ref); throw e; }
     v.audit("member-share", ref, `person:${owner}`, true, `agent:${agent}`, { origin });
     v.emit("vault.member-shared", { ref, agent, origin });
     return { shared: { ref, item: String(i.item), agent, origin, expires }, notice: NOTICE };
@@ -68,11 +68,10 @@ export class MemberShare {
 
   /** Delete the copies that match and end their grants. @param {{ owner: string, item?: string, agent?: string, origin?: string }} q @param {string} why @returns {Promise<number>} */
   async end(q, why) {
-    const rows = /** @type {any[]} */ (this.access.db.prepare("SELECT ref, agent, origin FROM vault_member_copies WHERE owner = ?" + (q.item ? " AND item = ?" : "") + (q.agent ? " AND agent = ?" : "") + (q.origin ? " AND origin = ?" : ""))
-      .all(...[q.owner, q.item, q.agent, q.origin].filter(x => x !== undefined)));
+    const rows = this.copies.match(q);
     for (const r of rows) {
       try { await this.K.mint.end({ source: `${SOURCE}:${r.ref}`, reason: why }); } catch { /* an older end already took it */ }
-      this.copies.remove(r.ref);
+      await this.copies.remove(r.ref);
       this.access.v.audit("member-unshare", r.ref, `person:${q.owner}`, true, `agent:${r.agent}`, { origin: r.origin, why });
       this.access.v.emit("vault.member-unshared", { ref: r.ref, agent: r.agent, origin: r.origin, why });
     }
@@ -82,8 +81,8 @@ export class MemberShare {
   /** What the member has shared: the login's name (it is their own), the agent, the site, the expiry. Never a value. @param {any} meta */
   async list(meta) {
     const owner = await memberOf(this.K, meta);
-    this.copies.sweep();
-    return { shares: this.copies.ofOwner(owner).map(({ ref, ...r }) => ({ ref, ...r })), notice: NOTICE };
+    await this.copies.sweep();
+    return { shares: await this.copies.ofOwner(owner), notice: NOTICE };
   }
 
   /** May this agent sign in with this copy at this origin: the kernel's grant, asked every time. @param {{ ref: string, owner: string, uid: string, origin: string }} copy @param {string} origin */
@@ -95,13 +94,13 @@ export class MemberShare {
 
   /** The member changed or removed a login of theirs: every copy of it is refreshed from the new one, or deleted if it is gone or no longer a login with a password. @param {string} owner @param {string} item */
   async changed(owner, item) {
-    const rows = /** @type {any[]} */ (this.access.db.prepare("SELECT ref, agent, uid, origin, expires FROM vault_member_copies WHERE owner = ? AND item = ?").all(owner, item));
+    const rows = this.copies.match({ owner, item });
     if (!rows.length || !this.people) return 0;
     let it = null;
     try { it = await this.people.get(owner, { name: item }); } catch { it = null; }
     const f = it && it.kind === "login" && it.fields && it.fields.password ? it.fields : null;
     if (!f) return this.end({ owner, item }, "the login was removed or is no longer a login");
-    for (const r of rows) await this.copies.put({ owner, item, agent: r.agent, uid: r.uid, origin: r.origin, expires: Number(r.expires), fields: f });
+    for (const r of rows) { const m = /** @type {any} */ (this.copies.find(r.ref)); if (m) await this.copies.put({ owner, item, agent: m.agent, uid: m.uid, origin: m.origin, expires: m.expires, fields: f }); }
     return 0;
   }
 

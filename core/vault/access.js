@@ -282,7 +282,7 @@ export class Access {
       if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
     }
     // The logins members shared with this agent: a reference to fill with and the label the member gave it, never a value. They are not items of the Space's vault, so the owner's lists never show them.
-    try { const uid = await this.uidOf(name); if (uid) for (const c of this.copies.forAgent(uid)) out.push({ name: c.ref, kind: "login", label: c.label, origin: c.origin }); } catch { /* the agents module is not running yet */ }
+    try { const uid = await this.uidOf(name); if (uid) for (const c of await this.copies.forAgent(uid)) out.push({ name: c.ref, kind: "login", label: c.label, origin: c.origin }); } catch { /* the agents module is not running yet */ }
     return out;
   }
 
