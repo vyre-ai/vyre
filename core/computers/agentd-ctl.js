@@ -32,8 +32,16 @@ export function agentdCtl(deps) {
     screenTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket }),
     /** register a one-use ticket for the agent's Chrome (its debugging pipe, through the relay) */
     cdpTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "cdp" }),
+    /** register a one-use ticket to run one command as the agent and stream it (a harness session): what to run rides with the ticket, checked again by the helper */
+    runTicket: (u, ticket, spec) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "run", argv: spec.argv, cwd: spec.cwd, env: spec.env }),
     /** register a one-use ticket for one terminal (a tmux session of the agent) */
     terminalTicket: (u, ticket, session) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, session }),
+    /** run a command as the agent (agentd.js planExec): { code, signal, stdout, stderr, truncated } */
+    exec: async (u, req) => {
+      const r = await deps.transport("exec", { user: u.user, uid: u.uid, display: u.display, limits: deps.limits ? deps.limits() : {}, ...req });
+      if (r.status < 200 || r.status >= 300 || !r.json) throw new Error(`the agent computer could not run that (${r.status}${r.json && r.json.error ? `: ${r.json.error.message}` : ""})`);
+      return r.json;
+    },
     /** the agent's tmux sessions */
     terminals: async u => {
       const r = await deps.transport("terminals", { user: u.user, uid: u.uid, display: u.display });

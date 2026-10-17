@@ -96,7 +96,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // beyond being the person.
   "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
   // Bringing the space's agent computer to this Vyre's image closes every agent's screen: the owner's own action.
-  "computers.update",
+  "computers.update", "computers.update.status",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a

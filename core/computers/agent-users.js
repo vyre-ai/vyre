@@ -44,6 +44,8 @@ export const userNameOf = uid => `ag${uid}`;
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
+ *   runTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, spec: { argv: string[], cwd?: string, env?: Record<string, string> }): Promise<void>,
+ *   exec?(u: { agentId: string, user: string, uid: number, display: number }, req: { argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }): Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
 
@@ -127,6 +129,24 @@ export class AgentUsers {
     this.touchNow(id);
   }
 
+  /** Register a one-use ticket with the relay to run one command as this agent and stream it; the agent's place is made if needed, and the screen need not be up. @param {string} id @param {string} ticket @param {{ argv: string[], cwd?: string, env?: Record<string, string> }} spec */
+  async runTicket(id, ticket, spec) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.runTicket !== "function") throw new Error("this computer cannot run a session as an agent");
+    await this.ctl.runTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket, spec);
+    this.touchNow(id);
+  }
+
+  /** Run a command as the agent's own Linux user inside the computer; counts as use. The screen need not be up. @param {string} id @param {{ argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }} req */
+  async exec(id, req) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.exec !== "function") throw new Error("this computer cannot run commands as an agent");
+    this.touchNow(id);
+    return this.ctl.exec({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, req);
+  }
+
   /** The agent's terminals (tmux sessions; they outlive the screen). @param {string} id */
   async terminals(id) {
     const r = this.row(id);
@@ -159,6 +179,11 @@ export class AgentUsers {
       this.emit("computer.agent-asleep", { agent: id, why });
       return this.row(id);
     });
+  }
+
+  /** The computer was remade or is not running: no screen or Chrome exists in it, whatever the rows said. Nothing is asked of the computer. */
+  asleepAll() {
+    for (const r of this.list()) if (r.state !== "asleep") { this.set(r.agent_id, { state: "asleep" }); this.emit("computer.agent-asleep", { agent: r.agent_id, why: "computer not running" }); }
   }
 
   /** Put to sleep every live agent that has been idle long enough. `held(id)` is true while a person watches or has taken over. @param {(id: string) => boolean} [held] @returns {Promise<string[]>} */

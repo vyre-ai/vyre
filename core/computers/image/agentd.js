@@ -53,24 +53,25 @@ export const browserOf = u => {
 /**
  * The argv prefix that runs something as the agent's uid with nothing extra: every capability set emptied (inheritable, ambient, bounding), no new privileges, no groups, limited
  * and niced, with an environment built from nothing. Absolute paths throughout, so no PATH can be bent. @param {{ user: string, uid: number }} u
- * @param {{ memoryMb?: number, procs?: number }} [lim] @param {Record<string, string>} [env] extra variables for the child (DISPLAY, HOME)
+ * @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim] @param {Record<string, string>} [env] extra variables for the child (DISPLAY, HOME)
  */
 export function asAgent(u, lim = {}, env = {}) {
   return asUid(u.uid, u.user, homeOf(u.user), lim, env);
 }
 
-/** The same, for the agent's browser uid (its own home, its own name; no group of the agent's). @param {{ uid: number, user: string }} u @param {{ memoryMb?: number, procs?: number }} [lim] @param {Record<string, string>} [env] */
+/** The same, for the agent's browser uid (its own home, its own name; no group of the agent's). @param {{ uid: number, user: string }} u @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim] @param {Record<string, string>} [env] */
 export function asBrowser(u, lim = {}, env = {}) {
   const b = browserOf(u);
   return asUid(b.uid, b.user, b.home, lim, env);
 }
 
-/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number }} lim @param {Record<string, string>} env */
+/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} lim @param {Record<string, string>} env */
 function asUid(uid, user, home, lim, env) {
   const vars = { HOME: home, USER: user, LOGNAME: user, PATH: PATH_SAFE, LANG: "C.UTF-8", ...env };
   const u = { uid };
   return ["/usr/bin/setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs",
-    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, "/usr/bin/nice", "-n", "5",
+    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
+    ...(lim.cpuSeconds ? [`--cpu=${lim.cpuSeconds}`] : []), "/usr/bin/nice", "-n", "5",
     "/usr/bin/env", "-i", ...Object.entries(vars).map(([k, v]) => `${k}=${v}`)];
 }
 
@@ -204,3 +205,45 @@ export function parseTerminals(text) {
   }
   return out.slice(0, 50);
 }
+
+/** Names an exec may not set: agentd builds these itself, or they change what the loader or the shell runs. */
+const EXEC_FORBIDDEN = /^(PATH|HOME|USER|LOGNAME|SHELL|DISPLAY|XAUTHORITY|IFS|ENV|BASH_ENV|LD_.*|DYLD_.*|PYTHON.*|NODE_OPTIONS|PERL.*|RUBY.*)$/;
+export const EXEC_LIMITS = Object.freeze({ argc: 64, argvBytes: 4096, stdinBytes: 8192, envCount: 16, envValueBytes: 1024, timeoutMs: 25_000, defaultTimeoutMs: 20_000, stdoutBytes: 16 * 1024, stderrBytes: 8 * 1024 });
+
+/** Check a request to run a command as the agent (shared by the one-shot exec and the streaming run): the argv, the folder and the extra variables, exactly as planExec and the run helper use them. @param {{ user: string, uid: number, display: number }} u @param {{ argv?: any, cwd?: any, env?: any }} req @param {number} [maxArgvBytes] @returns {{ argv: string[], cwd: string, env: Record<string, string> }} */
+export function validateRun(u, req, maxArgvBytes = EXEC_LIMITS.argvBytes) {
+  check(u);
+  const argv = req.argv;
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > EXEC_LIMITS.argc || argv.some(x => typeof x !== "string" || x.includes("\0"))) throw new Error("a command is 1 to 64 text arguments");
+  if (!/^\/[A-Za-z0-9_.\/+-]{1,200}$/.test(argv[0]) || argv[0].includes("..")) throw new Error("the command must be an absolute path");
+  if (argv.reduce((n, x) => n + Buffer.byteLength(x) + 1, 0) > maxArgvBytes) throw new Error("the command is too long");
+  const home = homeOf(u.user);
+  const cwd = req.cwd === undefined || req.cwd === null ? home : String(req.cwd);
+  if (!/^\/[A-Za-z0-9_.\/ +@=-]{1,300}$/.test(cwd) || cwd.split("/").includes("..") || !(cwd === home || cwd.startsWith(home + "/"))) throw new Error("the folder must be inside the agent's home");
+  /** @type {Record<string, string>} */ const env = {};
+  const given = req.env === undefined || req.env === null ? {} : req.env;
+  if (typeof given !== "object" || Array.isArray(given) || Object.keys(given).length > EXEC_LIMITS.envCount) throw new Error("env is a few NAME: value pairs");
+  for (const [k, v] of Object.entries(given)) {
+    if (!/^[A-Z][A-Z0-9_]{0,40}$/.test(k) || EXEC_FORBIDDEN.test(k)) throw new Error(`${k} cannot be set`);
+    if (typeof v !== "string" || v.includes("\0") || Buffer.byteLength(v) > EXEC_LIMITS.envValueBytes) throw new Error(`the value of ${k} is not usable`);
+    env[k] = v;
+  }
+  return { argv, cwd, env };
+}
+
+/**
+ * Run a command as the agent: its uid, no groups, no capabilities, no new privileges, the usual memory and process limits, a clean environment (HOME, USER, PATH, LANG, the agent's display and cookie, and
+ * the named variables the caller asked for, none of the forbidden names), in a folder under the agent's own home. Nothing is passed through a shell.
+ * @param {{ user: string, uid: number, display: number }} u
+ * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} [lim]
+ * @returns {string[]}
+ */
+export function planExec(u, req, lim = {}) {
+  const { argv, cwd, env } = validateRun(u, req);
+  const b = browserOf(u);
+  // the fixed variables are laid over the caller's, never the reverse
+  return [...asAgent(u, { cpuSeconds: 120, ...lim }, { ...env, DISPLAY: `:${u.display}`, XAUTHORITY: b.xauth }), "/usr/bin/env", "-C", cwd, ...argv];
+}
+
+/** A streaming run (a harness session) may carry a longer command line than a one-shot exec. */
+export const RUN_ARGV_BYTES = 10_000;

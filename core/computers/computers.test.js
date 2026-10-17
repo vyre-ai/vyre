@@ -473,7 +473,7 @@ test("computers: all four member tools are on the PERSON_ONLY floor -- the same 
 
 test("computers: the admin tools are a person's alone: an agent and a module are refused, the person is not", async t => {
   const s = await boot(t);
-  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"];
+  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose", "computers.update", "computers.update.status"];
   for (const tool of person) {
     const input = { agent: "kit", computer: "browser-abc123", name: "alice", mode: "off", on: false, minutes: 5 };
     for (const [who, call] of [["an agent", s.kit], ["the assistant", s.juno], ["a module", s.module]]) {

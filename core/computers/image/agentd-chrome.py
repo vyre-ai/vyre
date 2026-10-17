@@ -26,7 +26,8 @@ PREFS = {
     "profile": {"password_manager_enabled": False, "password_manager_leak_detection": False},
     "autofill": {"profile_enabled": False, "credit_card_enabled": False},
     "signin": {"allowed": False}, "sync": {"requested": False},
-    "download": {"default_directory": DOWNLOADS, "prompt_for_download": False, "directory_upgrade": True},
+    "download": {"default_directory": DOWNLOADS, "prompt_for_download": False, "directory_upgrade": True, "extensions_to_open": ""},
+    "plugins": {"always_open_pdf_externally": False},
     "savefile": {"default_directory": DOWNLOADS},
 }
 

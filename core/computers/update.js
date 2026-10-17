@@ -13,9 +13,10 @@
 
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { userNameOf } from "./agent-users.js";
+import { LAYOUT_VERSION } from "./driver/policy.js";
 
-/** The shape of the state volume this code expects. Raise it when the image starts expecting something new inside the volume, so a box on the old shape migrates once. */
-export const LAYOUT = 2;
+/** The shape of the state volume this code expects (driver/policy.js owns the number and the folders). A computer recorded with less has its folders put right once. */
+export const LAYOUT = LAYOUT_VERSION;
 
 export const MIGRATIONS = [
   `CREATE TABLE computers_update (
@@ -31,8 +32,48 @@ export const MIGRATIONS = [
 /**
  * @typedef {{ id: string, user: string, uid: number, display: number }} Place
  * @typedef {{ db: import("node:sqlite").DatabaseSync, pool: import("./pool.js").Pool, users: import("./agent-users.js").AgentUsers,
- *   version: string, wait?: (ms: number) => Promise<void>, held?: (agent: string) => boolean, log?: (m: string) => void, emit?: (type: string, payload: any) => void, now?: () => number }} Deps
+ *   version: string, turns?: () => number, wait?: (ms: number) => Promise<void>, held?: (agent: string) => boolean, log?: (m: string) => void, emit?: (type: string, payload: any) => void, now?: () => number }} Deps
  */
+
+/**
+ * Is this call the Space's owner, in person and nobody else? One hop on the chain, a person, whose canonical id is the kernel's owner. An admin, a member, an agent, the owner's assistant (two hops), a module and
+ * an MCP caller all fail, and so does a chain that cannot be read. A build with no kernel denies too: a packaged daemon always has one, and a dev build must not have a weaker door.
+ * @param {any} kernel ctx.kernel @param {any} meta the tool call's meta
+ */
+export async function assertOwner(kernel, meta) {
+  const deny = () => Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
+  if (!kernel || typeof kernel.chain !== "function") throw deny();
+  const chain = await kernel.chain(meta).catch(() => null);
+  const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+  if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1) throw deny();
+  const canon = typeof kernel.canonicalPerson === "function" ? (/** @type {string} */ x) => kernel.canonicalPerson(x) : (/** @type {string} */ x) => x;
+  if (!kernel.owner || canon(String(hop.actor.id)) !== canon(String(kernel.owner))) throw deny();
+}
+
+/**
+ * The global "any agent mid-turn" signal: the switchboard's own events (thread.sent starts a turn; thread.finished or thread.stopped ends it), kept as a set of thread ids. A turn that never reports its end stays in the set, which is why the automatic update caps its wait.
+ * @param {(pattern: string, fn: (e: any) => void) => () => void} on ctx.events.on
+ * @returns {{ size: () => number, stop: () => void }}
+ */
+export function trackTurns(on) {
+  const running = new Set();
+  // The thread id rides on the event itself (the switchboard emits type, payload, thread, project), not in the payload. A message put back after a restart ("restored") is not a turn running.
+  const idOf = (/** @type {any} */ e) => (e && e.thread) ? String(e.thread) : null;
+  const end = (/** @type {any} */ e) => { const t = idOf(e); if (t) running.delete(t); };
+  const offs = [
+    on("thread.sent", e => { const t = idOf(e); if (t && !(e.payload && e.payload.via === "restored")) running.add(t); }),
+    on("thread.finished", end), on("thread.stopped", end),
+  ];
+  return { size: () => running.size, stop: () => { for (const off of offs) if (typeof off === "function") off(); } };
+}
+
+/**
+ * When the Space's computer stops or dies, no agent's screen is up: every agent reads asleep. Other computers' events are ignored.
+ * @param {(pattern: string, fn: (e: any) => void) => () => void} on ctx.events.on @param {{ asleepAll: () => void }} users
+ */
+export function sleepAgentsWhenStopped(on, users) {
+  return on("computer.stopped", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) users.asleepAll(); });
+}
 
 export class ComputerUpdater {
   /** @param {Deps} d */
@@ -41,6 +82,8 @@ export class ComputerUpdater {
     this.pool = d.pool;
     this.users = d.users;
     this.version = String(d.version || "0.0.0");
+    /** How many agent turns are running now. */
+    this.turns = d.turns || (() => 0);
     this.held = d.held || (() => false);
     this.log = d.log || (() => {});
     this.emit = d.emit || (() => {});
@@ -85,6 +128,35 @@ export class ComputerUpdater {
     if (!box || !box.container) return { present: false, current: true, want, have };
     const image = Boolean(have) && have.container === box.container && have.image === want.image && have.version === want.version;
     return { present: true, current: image && have.layout === want.layout, image, want, have };
+  }
+
+  /** What an update would interrupt: agent turns in progress and agents with a terminal job open. */
+  async activity() {
+    let terminals = 0;
+    for (const r of this.users.list()) { try { if ((await this.users.terminals(r.agent_id)).length) terminals++; } catch { /* nothing answers, so nothing runs */ } }
+    return { turns: this.turns(), terminals };
+  }
+
+  /**
+   * The run that starts by itself: when the computer is behind it waits until no agent is mid-turn and no terminal job is open, looking once a minute, for at most `capMs` (30 minutes).
+   * After that it updates anyway and says what it interrupted.
+   * @param {{ capMs?: number, pollMs?: number }} [o]
+   */
+  async auto(o = {}) {
+    const capMs = o.capMs ?? 30 * 60_000, pollMs = o.pollMs ?? 60_000, t0 = this.now();
+    let said = false;
+    for (;;) {
+      const s = this.status();
+      if (!s.present || s.current) return this.run();
+      const busy = await this.activity();
+      if (!busy.turns && !busy.terminals) return this.run();
+      if (this.now() - t0 >= capMs) {
+        const r = await this.run();
+        return { ...r, interrupted: busy, message: `${r.message} It waited 30 minutes for work to finish; ${busy.turns} agent turn(s) and ${busy.terminals} agent(s) with a terminal job were interrupted.` };
+      }
+      if (!said) { said = true; this.log("agent computer update waits for running agent work to finish (at most 30 minutes)"); }
+      await this.wait(pollMs);
+    }
   }
 
   /**
@@ -134,7 +206,14 @@ export class ComputerUpdater {
         await pool.ensure(SHARED_COMPUTER_ID);
       });
     }
-    else await pool.serial(SHARED_COMPUTER_ID, () => pool.ensure(SHARED_COMPUTER_ID));   // a frozen or stopped computer is started, so agentd can be asked
+    else {
+      // a frozen or stopped computer is started, so agentd can be asked; the folders an older volume lacks are put there (directories only, fixed owners: driver/policy.js layoutTar)
+      await pool.serial(SHARED_COMPUTER_ID, async () => {
+        await pool.ensure(SHARED_COMPUTER_ID);
+        const d = /** @type {any} */ (pool.driver);
+        if (typeof d.migrateLayout === "function") await d.migrateLayout(String(pool.row(SHARED_COMPUTER_ID).container));
+      });
+    }
     // What the new image expects in the volume, made true as each agent's own user (planCreate is safe to repeat).
     /** @type {Array<{ agent: string, why: string }>} */
     const failed = [];

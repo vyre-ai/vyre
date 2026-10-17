@@ -11,14 +11,14 @@ import { Tickets, createRelay, RELAY_PORT } from "./agentd-relay.js";
 export const SOCKET = "/var/lib/vyre/agentd/agentd.sock";
 export const TOKEN_FILE = "/var/lib/vyre/agentd/token";
 
-/** @param {{ socket?: string, tokenFile?: string, run?: (argv: string[]) => Promise<void>, relayPort?: number, spawn?: Parameters<typeof createRelay>[0]["spawn"] }} [o] */
+/** @param {{ socket?: string, tokenFile?: string, run?: (argv: string[]) => Promise<void>, exec?: Parameters<typeof createAgentd>[0]["exec"], relayPort?: number, spawn?: Parameters<typeof createRelay>[0]["spawn"] }} [o] */
 export function startAgentd(o = {}) {
   const socket = o.socket || SOCKET;
   const token = fs.readFileSync(o.tokenFile || TOKEN_FILE, "utf8").trim();
   if (token.length < 32) throw new Error("agentd: the token file holds no token");
   try { fs.unlinkSync(socket); } catch { /* none left */ }
   const tickets = new Tickets();
-  const server = createAgentd({ token, tickets, ...(o.run ? { run: o.run } : {}) });
+  const server = createAgentd({ token, tickets, ...(o.run ? { run: o.run } : {}), ...(o.exec ? { exec: o.exec } : {}) });
   // the screens' way in: a TCP port that says nothing to a connection without a ticket vyred registered over the channel above
   const relay = createRelay({ tickets, ...(o.spawn ? { spawn: o.spawn } : {}) });
   relay.listen(o.relayPort ?? RELAY_PORT);

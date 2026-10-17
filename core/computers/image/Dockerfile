@@ -144,7 +144,7 @@ RUN for n in $(seq 20000 20063); do \
       && chown "$b:$n" "/var/lib/vyre/downloads/ag$n" && chmod 2750 "/var/lib/vyre/downloads/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads && chmod 0711 /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads
-COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-chrome.py /opt/agentd/
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-run.py agentd-chrome.py /opt/agentd/
 RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
     && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
     && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
@@ -153,7 +153,30 @@ COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 # agentd's code is root's: neither agentctl nor an agent can write a file it runs.
 RUN chmod 0755 /usr/local/bin/agentd-vncpass \
     && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
-    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
+    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
+# The harnesses an agent's sessions run (owner decision, 18 Oct 2026: Claude Code, Codex and Grok run as the agent's own Linux user in its computer). The same pins as the box's own image
+# (box/Dockerfile) for Codex and Grok. Claude Code is an exact version here, never `latest` (the agent computer runs untrusted tasks): agentd-run.test.js refuses `latest` or a range, and the version is recorded in the image label below. They are root's, on PATH, and no agent can change them.
+# curl is needed only for Grok's one static binary and is removed again.
+ARG CLAUDE_CODE_VERSION=2.1.286
+ARG CODEX_VERSION=0.159.3
+ARG CODEX_ACP_VERSION=2.1.0
+ARG GROK_VERSION=1.0.46
+ARG GROK_SHA256_AMD64=41626a53292324140b92556b9d42ff5542e3dcd04aff85eafb8689dd4adb44fc
+ARG GROK_SHA256_ARM64=45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+ && npm cache clean --force \
+ && arch=$(dpkg --print-architecture) \
+ && case "$arch" in amd64) sum=$GROK_SHA256_AMD64; garch=x86_64 ;; arm64) sum=$GROK_SHA256_ARM64; garch=aarch64 ;; *) echo "no pinned grok for $arch" >&2; exit 1 ;; esac \
+ && curl -fsSL --retry 3 -o /tmp/grok "https://x.ai/cli/grok-${GROK_VERSION}-linux-${garch}" \
+ && echo "$sum  /tmp/grok" | sha256sum -c - \
+ && install -m 0755 /tmp/grok /usr/local/bin/grok \
+ && rm /tmp/grok \
+ && claude --version && codex --version && grok --version \
+ && apt-get purge -y --auto-remove curl \
+ && rm -rf /var/lib/apt/lists/*
+LABEL vyre.harness.claude-code="${CLAUDE_CODE_VERSION}" vyre.harness.codex="${CODEX_VERSION}" vyre.harness.codex-acp="${CODEX_ACP_VERSION}" vyre.harness.grok="${GROK_VERSION}"
+
 COPY computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R a+rX,go-w /opt/computerd && chmod 0755 /usr/local/bin/entrypoint.sh /opt/computerd/atspi.py

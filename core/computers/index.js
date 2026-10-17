@@ -22,9 +22,10 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
-import { ComputerUpdater, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, trackTurns, sleepAgentsWhenStopped, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
+import { makeAgentRun } from "./agent-run.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -291,6 +292,8 @@ export default {
       // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
       emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
+    // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
+    { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
     const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
@@ -306,29 +309,20 @@ export default {
     // Bring the space's computer to the image this Vyre wants (update.js). It runs by itself when the server starts after an update; the owner can run it too.
     const runningVersion = () => { try { return String(JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version); } catch { return "0.0.0"; } };
     const updater = new ComputerUpdater({ db: ctx.store.db, pool, users: agentUsers, version: runningVersion(), log: ctx.log, emit,
-      held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent) });
+      held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent),
+      turns: () => turnsRunning.size() });
+    const turnsRunning = trackTurns(ctx.events.on);
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
-    /** Only the Space's owner, and no agent: the update stops every agent's screen for a moment. @param {any} meta */
-    const ownerOnly = async meta => {
-      const K = ctx.kernel;
-      if (K && typeof K.chain === "function") {
-        const chain = await K.chain(meta).catch(() => null);
-        const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
-        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
-        if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1 || canon(String(hop.actor.id)) !== canon(String(K.owner))) {
-          throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
-        }
-        return;
-      }
-      if (agentClaim(String(meta && meta.caller || ""))) throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
-    };
+    // The computer died or was stopped while vyred runs: its screens went with it.
+    const offStopped = sleepAgentsWhenStopped(ctx.events.on, agentUsers);
+    const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
       obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });
     tool("computers.update.status", "Whether the Space's agent computer matches this version of Vyre: what it was made from and what this Vyre wants. Owner only.",
       obj({}), async (_i, meta) => { await ownerOnly(meta); return updater.status(); });
     // After an update the server starts on the new Vyre while the computer is still the old one: bring it along once the rest is up, never blocking the start.
     if (driver && cfg.autoUpdate !== false) {
-      const t0 = setTimeout(() => { updater.run().then(r => { if (r.updated) ctx.log(`agent computer: ${r.message}`); else if (r.state === "busy") ctx.log(`agent computer: ${r.message}`); }).catch(e => ctx.log(`agent computer update failed: ${/** @type {Error} */ (e).message}`)); }, Number(cfg.updateDelayMs ?? 20_000));
+      const t0 = setTimeout(() => { updater.auto().then(r => { if (r.updated) ctx.log(`agent computer: ${r.message}`); else if (r.state === "busy") ctx.log(`agent computer: ${r.message}`); }).catch(e => ctx.log(`agent computer update failed: ${/** @type {Error} */ (e).message}`)); }, Number(cfg.updateDelayMs ?? 20_000));
       t0.unref();
       autoUpdateTimer = t0;
     }
@@ -478,6 +472,18 @@ export default {
         return { helper: ep.helper };
       }, { internal: true });
 
+    const agentRun = makeAgentRun({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place,
+      ticket: (agent, hello, spec) => agentUsers.runTicket(agent, hello, spec),
+      where: async () => {
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        // the relay lets in vyred's address only: have the computer pin this vyred's address first
+        await pool.pin(SHARED_COMPUTER_ID);
+        return { host: h.host, port: RELAY_PORT };
+      } });
+    tool("computers.run.open", "Start a command as an agent's own Linux user inside its computer, as a stream: answers { host, port, hello } for agentd's relay. Connect, send hello, then use frames (stdin down; stdout, stderr and exit up). For a harness session; the caller is the agent's own session, or needs the right to edit the agent.",
+      obj({ agent: str, argv: { type: "array", items: str }, cwd: str, env: { type: "object" } }, ["argv"]), async (i, { caller }) => agentRun(i, caller), { internal: true });
+
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
       obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
@@ -565,6 +571,8 @@ export default {
         if (timer) clearTimeout(timer);
         if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
         if (typeof offCreated === "function") offCreated();
+        turnsRunning.stop();
+        if (typeof offStopped === "function") offStopped();
         keyboard.stop();
         shield.stop();
         fills.stop();
