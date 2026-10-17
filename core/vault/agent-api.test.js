@@ -203,6 +203,21 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
 });
 
+test("a task lease dies with its task: once the task is withdrawn the doer is refused at use, before anything takes the lease back", async t => {
+  const open = new Set(["task-1"]);
+  const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
+  const { cred, ask, GET, v, rig, net } = await mk(t, { taskOpen: id => open.has(id), call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : tool === "connectors.connection.get" ? (i.id === "cn1" ? { data: { id: i.id } } : { error: { code: "not_found", message: "no" } }) : undefined) });
+  await cred("conn-cn1");
+  await v.access.convertScopes();
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 60_000, approver: rig.K.owner });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while the task is open the doer uses it");
+  open.delete("task-1");   // the task is withdrawn at its due time; nothing has taken the lease back yet
+  assert.equal((await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1").length, 1, "the lease grant is still there");
+  const calls = net.calls.length;
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "but it holds nothing");
+  assert.equal(net.calls.length, calls, "and nothing went out");
+});
+
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
   const { cred, ask, give, agent, net, GET, v } = await mk(t);
   await cred("graph-api");

@@ -39,8 +39,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9820 (integrate/0.6, 16 Oct 2026): standing grants in gate kernel hooks, flows.actions and skills/chrome tools on the registry, and browser-access unification land in the trusted base together (+125 on 9695).
 // 9842 (integrate/0.6, 16 Oct 2026): gate standing list tools and flows.actions read path in the registry (+22 measured at ab0d8a54f).
 
-// 9873 (flow6b, 17 Oct 2026, lead ruling for roadmap 0.6 item 3, [kernel +31: tasks.withdraw and the flow_deadline transition (tasks.js +26), the use-time end of a task-scoped lend (authorize.js +3, index.js +2); ADR 0057], carried onto the 0.5.3 train: 9842 + 31, recount on CI).
-const CAP = 9873;
+// 9819 (flow6b, 17 Oct 2026, lead ruling: no raise): the item 3 deadline lines (+31: tasks.withdraw, the use-time end of a task-scoped lend) fit because kernel/tasks/scrub.js (the task-text forgetting, 50 lines, no grant decided) left the base.
+const CAP = 9819;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
@@ -54,6 +54,7 @@ const BASE_FILES = [
 const NOT_BASE_FILES = {
   "modules/child.js": "runs INSIDE the module's sandbox, as the module's own host: the supervisor does not trust it (it is the confined side of the bridge, and everything it does is a message the host-side door checks)",
   "audit/verify.js": "checks over public data that no kernel path calls yet (a device verifying a Space-key endorsement or revocation, two devices comparing checkpoints): it decides no grant and reads no secret, so it needs no kernel authority; kept for the device side that may still come",
+  "tasks/scrub.js": "forgets stored task words when a value is sealed or a record is erased (TR-1): it decides no grant, approves nothing and reads only the text it removes; tasks.js hands it the stores",
   "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
 };
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */
