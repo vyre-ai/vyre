@@ -32,3 +32,13 @@ test("an empty list when the firm has no key for her; the owner and an assistant
   await assert.rejects(rig({ data: [] }).as(BOB, { hops: [{ actor: { kind: "person", id: BOB } }, { actor: { kind: "agent", id: "kit" } }] }), /member's own vault|denied/);
   for (const c of ["module", "mcp", "harness", "tailnet"]) assert.ok(!rig({ data: [] }).reg.get("vault.me.provisioned").callers.includes(c), c);
 });
+
+test("two members each see only their own address, and the firm key's own account is never listed", async () => {
+  const all = { data: [
+    { name: "firm-m1", email: "bob@juniperstudio.example.com", member: BOB },
+    { name: "firm-m2", email: "eve@juniperstudio.example.com", member: "per_eve" },
+    { name: "firm", email: "owner@juniperstudio.example.com", firm: true },
+  ] };
+  assert.deepEqual((await rig(all).as(BOB)).accounts.map((/** @type {any} */ a) => a.account), ["bob@juniperstudio.example.com"]);
+  assert.deepEqual((await rig(all).as("per_eve")).accounts.map((/** @type {any} */ a) => a.account), ["eve@juniperstudio.example.com"]);
+});
