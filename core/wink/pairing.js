@@ -18,7 +18,9 @@ import { deviceIdOf } from "../../lib/caller.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { finishJoin } from "../../relay/client/join.js";
-import { b64url, unb64url } from "../../relay/client/code.js";
+import { base64url as b64url, fromBase64url } from "../../relay/client/bytes.js";
+/** Decodes base64url, or null when it is not. @param {string} x */
+const unb64url = x => { try { return fromBase64url(x); } catch { return null; } };
 import { qrArt } from "../../relay/client/qr.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
 import { connect as relayConnect, resolveTicket } from "../../relay/client/client.js";
