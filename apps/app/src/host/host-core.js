@@ -10,8 +10,6 @@ import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
-import { mintPairCode } from "../../../../relay/client/pair-install.js";
-import { createSetupKey, setupFingerprint } from "../../../../relay/client/setup.js";
 import { createAddServer } from "../real/add-server.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
@@ -41,7 +39,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  * The outside things the space steps need (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
- * @typedef {{ client: any, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, forget: (box: string) => Promise<void> }} SpacePorts
+ * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
 /**
@@ -321,9 +319,9 @@ export function createHost(o) {
       const run = createAddServer({
         client: ports.client, relay: ports.relay, autoPair: true,
         issue: async () => {
-          const setupKey = await createSetupKey();
+          const setupKey = await ports.createSetupKey();
           const secret = random(16);
-          const minted = await mintPairCode({ person: k.id, publicKey: key.publicKey, secret, fingerprint: await setupFingerprint(setupKey.spki), sign: (m) => key.sign(m), ...(o.now ? { now: o.now } : {}), random });
+          const minted = await ports.mintPairCode({ person: k.id, publicKey: key.publicKey, secret, fingerprint: await ports.setupFingerprint(setupKey.spki), sign: (m) => key.sign(m), ...(o.now ? { now: o.now } : {}), random });
           return { code: minted.code, secret, key: setupKey, expiresAt: minted.exp * 1000 };
         },
         identity: async () => ({ id: k.id }),

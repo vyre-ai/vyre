@@ -6,6 +6,8 @@ import { createHost } from "./host-core.js";
 import { verifyPairCode } from "../../../../lib/pair-code.js";
 import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { commandOk } from "../../../../lib/first-run-shape.js";
+import { mintPairCode } from "../../../../relay/client/pair-install.js";
+import { createSetupKey, setupFingerprint } from "../../../../relay/client/setup.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
 
@@ -41,6 +43,7 @@ function ports() {
       mailboxReader: async () => ({ next: async () => { await nap(); return ["Installing Vyre"]; } }),
       setupWords: async () => [],
     },
+    mintPairCode, createSetupKey, setupFingerprint,
     relay: "wss://relay.example",
     connect: async () => ({ call: async (tool) => (tool === "wink.server.setup-offer" ? { qr: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=wss%3A%2F%2Frelay.example" } : {}), close() {} }),
     pair: async (qr, ctx, who) => {
