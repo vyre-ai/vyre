@@ -882,7 +882,8 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     const K = /** @type {any} */ (vault).access && /** @type {any} */ (vault).access.K;
     const person = await memberOf(K, meta);
     const chain = await K.chain(meta);
-    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { return (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect === "allow"; } catch { return false; } };
+    // An outward call (vault.call) at the Fill in level answers "ask": the grant matches and only the Gate's yes is missing. That counts as held (the share allows the act; the act itself waits at the Gate), the same rule the kernel's personMay applies with `asks`.
+    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { const e = (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect; return e === "allow" || (action === "vault.call" && e === "ask"); } catch { return false; } };
     return { person, may };
   };
   /** What she may do with an item: use it, show it (Read), change and rotate it (Edit and rotate). A credential is only ever used through Vyre. */

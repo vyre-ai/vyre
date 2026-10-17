@@ -238,7 +238,6 @@ test("a connection may be used by the caller's own chain at the level the kernel
   await v.access.convertScopes();
   const ben = { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } };
   const may = (who, level, over = {}) => v.access.mayUseConnection({ connection: "clio-token", level, ...over }, { chain: who });
-  console.log("[diag] owner authorize", JSON.stringify(await rig.K.authorize({ chain: rig.owner(), action: "vault.call", resource: await v.access.urn("clio-token") }).catch(e => ({ threw: String(e && e.message) }))), "hops", JSON.stringify(rig.owner().hops));
   assert.equal(await may(rig.owner(), "call"), true, "the owner of the vault holds their own item");
   assert.equal(await may(rig.person("per_ben"), "read"), false, "a member with no grant holds nothing");
   const g = await give("clio-token", ben, { actions: ["vault.read"] });

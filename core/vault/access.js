@@ -70,7 +70,8 @@ export class Access {
       }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
-      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
+      const effect = (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect;
+      return effect === "allow" || (level === "call" && effect === "ask");   // a call that only waits for the Gate's yes is held, as in personMay
     } catch { return false; }
   }
 
