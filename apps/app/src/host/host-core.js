@@ -47,6 +47,10 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
  *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null }} o
  */
+/** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
+let lastTrace = "";
+const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; try { if (typeof console !== "undefined") console.info(`vyre:stage step ${line}`); } catch { /* no console */ } };
+
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
   const base = o.directory.replace(/\/+$/, "");
@@ -64,7 +68,7 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
-  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean }>} */
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null }>} */
   const waits = new Map();
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
@@ -146,6 +150,68 @@ export function createHost(o) {
 
   /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
   let pendingGithub = null;
+
+  /** One answer to onboard.space.poll: where the install is, and once the server is paired, the steps that make the space usable. */
+  const pollSpaceOnce = async (/** @type {any} */ { id }) => {
+      const w = waits.get(String(id || ""));
+      if (!w) throw bad("That install is not one this device started.");
+
+      const st = w.run.state;
+      const base = { id: String(id), kind: w.kind, expiresAt: new Date(st.expiresAt || 0).toISOString() };
+      if (st.stage === "done") {
+        const { k, ports, key } = await spaceCtx();
+        const p = w.paired;
+        const hostname = (p && p.name) || (st.box && st.box.name) || "";
+        if (w.failed) return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: Boolean(p && p.box), canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
+        if (!w.saved) {
+          // The server is paired. Now the space is usable: the paired server names its own space and the directory gets the record signed by this identity (so <space>.vyre.run signs in), the space vault is made on
+          // that server, and the space is added to the person's list in the directory so GitHub sign-in finds it. Each step is done once; only the last (the directory being unreachable) is tried again on the next poll.
+          trace(`poll: paired server ${p ? (p.box ? "has a box id" : "has NO box id") : "is missing"}`);
+          if (!p || !p.box) { w.failed = { code: "pair", message: "Your server did not finish connecting. Start again." }; return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: false }; }
+          if (!w.space) {
+            trace("poll: claiming the space name");
+            try { w.space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } }); }
+            catch (e) {
+              const x = /** @type {any} */ (e);
+              w.failed = { code: String((x && x.code) || "claim"), message: String((x && x.message) || "The space could not be made.").slice(0, 300) };
+              return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true, canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
+            }
+          }
+          if (!w.vault) {
+            trace("poll: making the space vault");
+            try { await ports.call("vault.space.create", { space: w.space }, p.box); }
+            catch (e) {
+              const x = /** @type {any} */ (e);
+              if (!x || x.code !== "exists") {
+                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || "The space vault could not be made.").slice(0, 300) };
+                return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true };
+              }
+            }
+            w.vault = true;
+          }
+          trace("poll: publishing the space to the directory");
+          try { await api.publishSpace(w.name, "add"); }
+          catch (e) {
+            const x = /** @type {any} */ (e);
+            return { ...base, online: false, expired: false, failed: true, code: String((x && x.code) || "directory"), message: String((x && x.message) || "The names directory did not take the space. Trying again.").slice(0, 300), canRemove: true, retrying: true };
+          }
+          await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
+          w.saved = true;
+        }
+        const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
+        return { ...base, online: true, expired: false, space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
+      }
+      if (st.stage === "stopped") {
+        const code = st.error ? st.error.code : "stopped";
+        const message = st.error ? st.error.message : "The install stopped. Show a new command.";
+        // Two servers answered one line: nothing was paired and nothing will be. The only way on is a new line.
+        if (code === "contested") return { ...base, online: false, expired: false, contested: true, message };
+        if (code === "expired") return { ...base, online: false, expired: true, message: "The install window ended. Go back and show a new command." };
+        return { ...base, online: false, expired: false, failed: true, code, message };
+      }
+      if (st.stage === "found" || st.stage === "pairing") return { ...base, online: false, expired: false, connecting: true, ...(st.box ? { found: { name: st.box.name } } : {}) };
+      return { ...base, online: false, expired: false };
+  };
 
   /** @type {Record<string, (input: any) => Promise<any>>} */
   const tools = {
@@ -346,60 +412,15 @@ export function createHost(o) {
       return { id, command: st.installLine, expiresAt: new Date(st.expiresAt).toISOString(), kind: place, name: label, spaceId: spaceKey("", label) || null, role: "owner" };
     },
 
-    "onboard.space.poll": async ({ id }) => {
-      const w = waits.get(String(id || ""));
-      if (!w) throw bad("That install is not one this device started.");
-      const st = w.run.state;
-      const base = { id: String(id), kind: w.kind, expiresAt: new Date(st.expiresAt || 0).toISOString() };
-      if (st.stage === "done") {
-        const { k, ports, key } = await spaceCtx();
-        const p = w.paired;
-        const hostname = (p && p.name) || (st.box && st.box.name) || "";
-        if (w.failed) return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: Boolean(p && p.box), canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
-        if (!w.saved) {
-          // The server is paired. Now the space is usable: the paired server names its own space and the directory gets the record signed by this identity (so <space>.vyre.run signs in), the space vault is made on
-          // that server, and the space is added to the person's list in the directory so GitHub sign-in finds it. Each step is done once; only the last (the directory being unreachable) is tried again on the next poll.
-          if (!p || !p.box) { w.failed = { code: "pair", message: "Your server did not finish connecting. Start again." }; return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: false }; }
-          if (!w.space) {
-            try { w.space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } }); }
-            catch (e) {
-              const x = /** @type {any} */ (e);
-              w.failed = { code: String((x && x.code) || "claim"), message: String((x && x.message) || "The space could not be made.").slice(0, 300) };
-              return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true, canRename: w.failed.code === "taken" || w.failed.code === "name_taken" };
-            }
-          }
-          if (!w.vault) {
-            try { await ports.call("vault.space.create", { space: w.space }, p.box); }
-            catch (e) {
-              const x = /** @type {any} */ (e);
-              if (!x || x.code !== "exists") {
-                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || "The space vault could not be made.").slice(0, 300) };
-                return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true };
-              }
-            }
-            w.vault = true;
-          }
-          try { await api.publishSpace(w.name, "add"); }
-          catch (e) {
-            const x = /** @type {any} */ (e);
-            return { ...base, online: false, expired: false, failed: true, code: String((x && x.code) || "directory"), message: String((x && x.message) || "The names directory did not take the space. Trying again.").slice(0, 300), canRemove: true, retrying: true };
-          }
-          await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
-          w.saved = true;
-        }
-        const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
-        return { ...base, online: true, expired: false, space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
-      }
-      if (st.stage === "stopped") {
-        const code = st.error ? st.error.code : "stopped";
-        const message = st.error ? st.error.message : "The install stopped. Show a new command.";
-        // Two servers answered one line: nothing was paired and nothing will be. The only way on is a new line.
-        if (code === "contested") return { ...base, online: false, expired: false, contested: true, message };
-        if (code === "expired") return { ...base, online: false, expired: true, message: "The install window ended. Go back and show a new command." };
-        return { ...base, online: false, expired: false, failed: true, code, message };
-      }
-      if (st.stage === "found" || st.stage === "pairing") return { ...base, online: false, expired: false, connecting: true, ...(st.box ? { found: { name: st.box.name } } : {}) };
-      return { ...base, online: false, expired: false };
+    // The screen asks every few seconds and a step here (the claim, the vault, the directory) can take longer than that: one answer is worked out at a time, and a later ask gets the same one, so
+    // no step is started twice.
+    "onboard.space.poll": async (input) => {
+      const w0 = waits.get(String((input && input.id) || ""));
+      if (!w0) throw bad("That install is not one this device started.");
+      if (w0.pending) return w0.pending;
+      const mine = pollSpaceOnce(input);
+      w0.pending = mine;
+      try { return await mine; } finally { if (w0.pending === mine) w0.pending = null; }
     },
 
     // The directory said the name is taken: pick another and the claim is tried again on the same paired server.
@@ -491,7 +512,12 @@ export function createHost(o) {
     async call(name, input = {}) {
       const fn = tools[name];
       if (!fn) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
-      return fn(input || {});
+      if (name !== "onboard.space.poll") return fn(input || {});
+      try {
+        const r = await fn(input || {});
+        trace(`poll answered: online ${Boolean(r.online)}${r.failed ? ` failed ${String(r.code || "")}` : ""}${r.connecting ? " connecting" : ""}${r.expired ? " expired" : ""}${r.contested ? " contested" : ""}`);
+        return r;
+      } catch (e) { trace(`poll threw ${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).code || "no code")}`); throw e; }
     },
     /**
      * The body that registers this identity's sign-in record at a space (op "register"), signed by the identity key: K is the password key of the stored master record (its own salt and cost), so the
