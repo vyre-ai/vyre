@@ -524,7 +524,7 @@
  "core/wink/node/real.test.js": 1,
  "core/wink/node/relay-peer.test.js": 3,
  "core/wink/node/shim.test.js": 6,
- "core/wink/pairing.test.js": 66,
+ "core/wink/pairing.test.js": 67,
  "core/wink/reset.test.js": 16,
  "core/wink/storage/bridge.test.js": 18,
  "core/wink/storage/discover.test.js": 6,
@@ -1041,5 +1041,6 @@
  "core/work/member-files.test.js": 8,
  "apps/app/src/real/place-tag.test.js": 5,
  "test/finish-owner.test.js": 1,
- "core/vault/space-create-presence.test.js": 1
+ "core/vault/space-create-presence.test.js": 1,
+ "test/first-adopt.test.js": 1
 }

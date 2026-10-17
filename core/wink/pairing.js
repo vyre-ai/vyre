@@ -17,7 +17,7 @@
 
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
-import { noteFirstAdopt, clearFirstAdopt } from "../../lib/first-adopt.js";
+import { noteFirstAdopt, clearFirstAdopt, firstAdoptOf } from "../../lib/first-adopt.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
@@ -1180,6 +1180,16 @@ export function createPairing(o) {
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
         try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind, ownerEnclave); } catch (e) { clearOwner(); throw e; }
         stepLog(caller.slice(7), `device recorded (session ${session ? "open" : "not open"})`);
+        // The server's first device: on the install-line path the boot redeem set the owner before any device paired, so applyAdopt took its "another device" return and wrote nothing. The record is made here,
+        // once the identity proof checked out, when no record exists and no other device of the owner is paired yet (lib/first-adopt.js: the vault key may be made by this device for ten minutes).
+        try {
+          const root = ctx.paths && ctx.paths.root ? ctx.paths.root : "";
+          if (root && mine.proven && !firstAdoptOf(root)) {
+            const identity = mine.proven || String(mine.input.identity || mine.input.owner.id);
+            const others = devices.list(identity).filter((/** @type {any} */ x) => x.id !== caller.slice(7) && x.id !== "self" && ["phone", "computer", "web"].includes(String(x.kind)));
+            if (!others.length) { noteFirstAdopt(root, caller, now()); meta.set("adopted_at", now()); }
+          }
+        } catch (e) { ctx.log(`wink: could not record the first device: ${/** @type {Error} */ (e).message}`); }
         return { ...adopted, session };
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)

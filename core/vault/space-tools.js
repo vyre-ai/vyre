@@ -25,7 +25,8 @@ export function registerSpaceTools(ctx, seam = {}) {
   const firstRun = (/** @type {any} */ input, /** @type {any} */ who) => {
     try {
       const space = String((input && input.space) || "");
-      if (!/^spc_[a-z2-7]{8,}$/.test(space) || !ctx.paths || !ctx.paths.root || !ctx.kernel) return false;
+      // The cheap checks first, before anything touches the disk: this server's own space (so also a space id's shape), then the verified device caller with no agent.
+      if (!ctx.paths || !ctx.paths.root || !ctx.kernel || !space || space !== String(ctx.kernel.space || "") || !/^spc_[a-z2-7]{8,}$/.test(space)) return false;
       const caller = String((who && who.caller) || "");
       if (!caller.startsWith("device:") || (who.meta && who.meta.agent)) return false;
       if (SV.status(dirOf({ space })).exists !== false) return false;
