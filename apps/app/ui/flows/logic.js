@@ -294,7 +294,8 @@ export function fieldValue(o, type, current) {
  * `brand` is the Space's own and is never asked for. @param {string[]} names @returns {{ values: string[], aliases: string[] }}
  */
 export function placeholderPlan(names) {
-  /** @type {string[]} */ const values = [], aliases = [];
+  /** @type {string[]} */ const values = [];
+  /** @type {string[]} */ const aliases = [];
   for (const n of [...new Set((names || []).map(String))]) {
     const dot = n.indexOf(".");
     if (dot < 0) values.push(n);
