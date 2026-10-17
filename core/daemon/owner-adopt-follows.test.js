@@ -30,6 +30,7 @@ test("adopt changes the owner, and the owner's rows follow: agents, planner, pro
   const todo = await call("planner.add", { kind: "todo", title: "census todo" });
   const vaultMade = await call("vault.put", { name: "census-secret", kind: "secret", fields: { value: "v" } });
   const setting = await call("settings.set", { key: "census.test", value: "1" });
+  for (const [what, r] of /** @type {[string, any][]} */ ([["agents.create", agent], ["projects.create", proj], ["planner.add", todo], ["vault.put", vaultMade], ["settings.set", setting]])) assert.ok(!r.error, `before adoption ${what} did not work: ${JSON.stringify(r.error)}`);
   noted.push(`before: agent=${agent.error ? "x" : "ok"} project=${proj.error ? "x" : "ok"} todo=${todo.error ? "x" : "ok"} vault=${vaultMade.error ? "x" : "ok"} setting=${setting.error ? "x" : "ok"}`);
   const oldChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-old", person: old, path: "direct", session: "s" });
   const token = (await d.kernel.surfaces.open(oldChain, {})).token;
