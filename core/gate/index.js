@@ -202,9 +202,11 @@ export default {
         // The person already said yes to this send on their phone: the registry redeemed a card bound to the very call a first-party module (mail) is filing this send for. The Gate does not take the
         // mark's word: it asks the approvals queue whether that card was redeemed for this tool, this input and this asker, within its life, and not yet used, and the queue uses it up as it answers.
         // Anything else (no mark, a module that is not Vyre's own, another kind, a card already used, a made-up one) is held as ever.
+        console.error("DBG covered", input.via, caller, firstParty, JSON.stringify(covered && { tool: covered.tool, via: covered.via, card: covered.card }));
         if (covered && firstParty === true && input.kind === "send" && (caller === `module:${String(covered.tool).split(".")[0]}` || (Array.isArray(covered.via) && covered.via.some((/** @type {string} */ m) => caller === `module:${m}`)))) {
           const { via: _via, ...mark } = covered;
           const r = await ctx.call("approvals.cover", mark).catch(() => null);
+          console.error("DBG cover", JSON.stringify(r).slice(0, 300), JSON.stringify(mark).slice(0, 300));
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
