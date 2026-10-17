@@ -36,6 +36,14 @@ unset VYRE_HOME
 
 `--json` keeps `vyre up` on a Mac from asking where your box runs. A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
 
+## Branches
+
+- `main` is what has been released. Nothing else lands on it except a finished release branch.
+- `release/<x.y>` (for example `release/0.6`) holds a version while it is built. It is cut from `main`, and the version's CI runs against it.
+- `work/<x.y>/<who>/<item>` holds one item. Cut it from the current release branch, open a pull request into that release branch, and merge it once CI is green and a second person has read the diff.
+- A patch is `x.y.z`. It is cut from the release tag, carries fixes only, and merges back into `main` and into any open release branch.
+- Work that was parked and not finished is kept under `refs/archive/<branch name>` and listed on the `archive` branch.
+
 ## Where things live
 
 | Folder | What is in it |
