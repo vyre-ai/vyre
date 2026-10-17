@@ -60,3 +60,13 @@ test("a closed prompt gives no yes, so no chip carries one and nothing is lent",
   assert.deepEqual(withYes({ kind: "vault", id: "clio", name: "clio" }, await lendYes(F)), { kind: "vault", id: "clio", name: "clio" }, "a chip without a yes lends nothing");
   setLendSigner(null);
 });
+
+test("an origin is signed into her yes exactly when the tag names one, and a malformed one gives no yes", async () => {
+  const seen = [];
+  setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
+  await lendYes({ ...F, origin: "https://app.clio.com" });
+  await lendYes(F);
+  assert.deepEqual(seen, [{ ...F, origin: "https://app.clio.com" }, F]);
+  assert.equal(await lendYes({ ...F, origin: "not a site" }), null);
+  setLendSigner(null);
+});

@@ -12,7 +12,8 @@ import { b64url } from "../auth/person.ts";
 
 export const LEND_OP = "vault.me.mention.lend";
 
-export type LendFields = { asker: string; id: string; thread: string; agent: string };
+/** The fields her yes covers: the four, and `origin` exactly when the tag names a site (a login with several). The Vault checks the same set. */
+export type LendFields = { asker: string; id: string; thread: string; agent: string; origin?: string };
 /** What signs: the platform's prompt and the device's presence key over these exact fields (the app wires it where one exists). Returns the yes, or null when she closed the prompt. */
 export type LendSigner = (op: string, fields: LendFields) => Promise<string | null>;
 
@@ -26,9 +27,10 @@ const WORD = /^[A-Za-z0-9._:-]{1,120}$/;
 /** Her yes for lending `id` to `agent` on `thread`, or null: no signer, a field that is not what the Vault will check, or the prompt closed. Never throws. */
 export async function lendYes(f: LendFields): Promise<string | null> {
   if (!signer) return null;
+  if (f.origin !== undefined && !(typeof f.origin === "string" && /^https?:\/\/[^\s/]{1,200}$/.test(f.origin))) return null;
   if (!PER.test(f.asker) || !f.id || f.id.length > 200 || !WORD.test(f.thread) || !/^[a-z][a-z0-9_-]{0,39}$/.test(f.agent)) return null;
   try {
-    const yes = await signer(LEND_OP, { asker: f.asker, id: f.id, thread: f.thread, agent: f.agent });
+    const yes = await signer(LEND_OP, { asker: f.asker, id: f.id, thread: f.thread, agent: f.agent, ...(f.origin ? { origin: f.origin } : {}) });
     return typeof yes === "string" && yes && yes.length <= 4096 ? yes : null;
   } catch { return null; }
 }
