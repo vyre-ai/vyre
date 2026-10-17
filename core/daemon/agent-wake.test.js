@@ -190,3 +190,28 @@ test("a job that ends before its agent started the task is woken once more, quie
   assert.equal(stuck.length, 1, "the second end marks it stuck, in words");
   assert.match(stuck[0].info.reason, /juno stopped before it finished/);
 });
+
+test("a wake that is refused leaves nothing lent: the lend made for the job is ended before the task is marked stuck", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const gw = { ask: { get: async () => task(), edit: async () => {}, stuck: async () => { calls.push("stuck"); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {},
+    lend: async t => { calls.push(`lend ${t.id}`); }, reclaim: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async tool => { if (tool === "agents.wake") throw new Error("this agent has too many jobs running"); return {}; } });
+  await onEvent(created("t1"));
+  assert.deepEqual(calls, ["lend t1", "reclaim t1", "stuck"]);
+});
+
+test("a job thread that ends with its task still open ends what was lent for it, whether the task is woken again or marked stuck", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const t = task({ id: "r1" });
+  const gw = { ask: { get: async () => t, edit: async () => {}, stuck: async () => { calls.push("stuck"); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {},
+    lend: async x => { calls.push(`lend ${x.id}`); }, reclaim: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async tool => (tool === "agents.woken" ? { task: "r1", agent: "juno" } : tool === "agents.wake" ? { thread: "job", already: false } : {}) });
+  await onEvent(created("r1"));
+  await onEvent.threadEnded("job", "stopped");
+  assert.deepEqual(calls, ["lend r1", "reclaim r1", "lend r1"], "ended with the first job, lent again for the retry");
+  calls.length = 0;
+  await onEvent.threadEnded("job", "stopped");
+  assert.deepEqual(calls, ["reclaim r1", "stuck"], "the second end ends the lend, then marks it stuck");
+});

@@ -34,6 +34,9 @@ export function createAgentWake(o) {
     } catch (err) { log(`agent wake ${o.space}: task ${t.id} could not be marked stuck (${/** @type {Error} */ (err).message})`); }
   }
 
+  /** End what was lent for a task (best effort: the task's own end reclaims it again). @param {string} id */
+  const drop = async id => { if (typeof o.reclaim !== "function") return; try { await o.reclaim(id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${id} was not ended (${/** @type {Error} */ (err).message})`); } };
+
   /** A wake job's thread ended (finished or stopped): a task still open that the agent has not handed in, flagged or moved is stuck. @param {string} thread @param {string} [reason] */
   async function threadEnded(thread, reason) {
     try {
@@ -41,6 +44,7 @@ export function createAgentWake(o) {
       if (!w || !w.task) return;
       const t = await o.gw.ask.get(o.chain(), w.task);
       if (!t || !["ready", "working"].includes(t.state)) return;
+      await drop(t.id);   // the job is gone: what was lent for it (the task grant and the connections) ends with it; a retry lends again
       // A job that ended before the agent ever started its task (the moment the lend is held to the job's thread, a refusal there, a crash at launch) is woken once more, quietly: the task is not stuck yet.
       if (t.state === "ready" && !retried.has(t.id)) {
         retried.add(t.id);
@@ -83,6 +87,7 @@ export function createAgentWake(o) {
       }
     } catch (err) {
       log(`agent wake ${o.space}: task ${id} did not wake its agent (${/** @type {Error} */ (err).message})`);
+      await drop(id);   // no job runs: nothing stays lent
       try { const t = await o.gw.ask.get(o.chain(), id); if (wakes(t, clock())) await stick(t, /** @type {Error} */ (err).message); } catch { /* the task could not be read: the log line above is all there is */ }
     }
   }
