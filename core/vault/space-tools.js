@@ -85,7 +85,9 @@ export function registerSpaceTools(ctx, seam = {}) {
       if (!isPerson(caller) && !caller.startsWith("module:")) throw refuse("Enter the value on your device. An agent cannot supply it.", "secret_refused");
       if (modelSuppliedSecret(caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
       // The first thing stored in this server's own space: its vault key is made in the same call. The put is already presence-gated, so one approval covers both. Any other space id still answers "no vault yet".
-      if (SV.status(dirOf(input)).exists === false && ctx.kernel && String(ctx.kernel.space || "") === String(input.space)) {
+      // A person's put only (a module's call is not asked for presence by the registry), and only once the item itself is acceptable, so a refused put leaves no empty key behind.
+      if (isPerson(caller) && SV.status(dirOf(input)).exists === false && ctx.kernel && String(ctx.kernel.space || "") === String(input.space)) {
+        SV.checkItem({ id: input.id, name: input.name, value: input.value, hosts: input.hosts });
         SV.create(dirOf(input));
         try { ctx.events.emit("vault.space-created", { space: String(input.space), by: "first put" }); } catch { /* an undeclared event: skipped */ }
         ctx.log(`vault: space vault made for ${String(input.space)} (by the first put)`);

@@ -39,3 +39,22 @@ test("the server refuses vault.space.create to a session that cannot give presen
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal((await asDevice("vault.space.status", { space: SPACE })).data.exists, true);
 });
+
+test("vault.space.put in the server's own space: refused without approval and nothing is made; with the approval it makes the key and stores the item; another space id still makes nothing", async (t) => {
+  const { d, pres } = await boot(t);
+  const own = String(d.registry.deps.homeSpace);
+  const item = { id: "stripe", name: "Stripe key", value: "vyre-test-secret-77", hosts: ["api.stripe.com"] };
+  const refused = await d.registry.call("vault.space.put", { space: own, ...item }, "cli", {});
+  assert.equal(refused.error && refused.error.code, "presence_required");
+  assert.equal((await d.registry.call("vault.space.status", { space: own }, "cli", {})).data.exists, false, "a refused put makes no key");
+  pres.deny = false;
+  const proof = { proof: { method: "tty", id: "t", code: "C" } };
+  const stored = await d.registry.call("vault.space.put", { space: own, ...item }, "cli", proof);
+  assert.ok(!stored.error, JSON.stringify(stored.error));
+  assert.equal((await d.registry.call("vault.space.status", { space: own }, "cli", {})).data.exists, true);
+  assert.deepEqual((await d.registry.call("vault.space.list", { space: own }, "cli", {})).data.items.map((/** @type {any} */ i) => i.id), ["stripe"]);
+  const other = "spc_bbbbbbbbbb";
+  const elsewhere = await d.registry.call("vault.space.put", { space: other, ...item }, "cli", proof);
+  assert.equal(elsewhere.error && elsewhere.error.code, "not_found");
+  assert.equal((await d.registry.call("vault.space.status", { space: other }, "cli", {})).data.exists, false);
+});

@@ -176,3 +176,15 @@ test("the exemption holds only inside its bounds: late, another device, an agent
   noteFirstAdopt(noKernel.root, ADOPTER, Date.now() - 1000);
   assert.equal(asks(noKernel, ADOPTER), true, "a server that cannot say which space is its own");
 });
+
+test("a put that is refused leaves no key behind, and a module-labelled put makes none", async () => {
+  const r = rig();
+  const ok = { id: "stripe", name: "Stripe key", value: SECRET, hosts: ["api.stripe.com"] };
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, id: "bad id!" }), (/** @type {any} */ e) => e.code === "bad_input");
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, value: "" }), (/** @type {any} */ e) => e.code === "bad_input");
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, hosts: ["not a host!!"] }), (/** @type {any} */ e) => e.code === "bad_input" || e.code === "host_refused");
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, false, "no empty key from a refused put");
+  // A module caller is not asked for presence by the registry, so it may not make the key.
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok }, "module:planner"), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, false);
+});
