@@ -348,6 +348,8 @@ try {
   // The sidebar's own words (Now, Projects, Records, Sites ...) are on every screen, so a screen counts as shown only by what its own pane says, and by the picture.
   const BAD = /You may not do that|Pair first|member's own vault|did not answer|did not load|went wrong|not allowed|forbidden/i;
   const READY = [S("the server pairs to the creator, the screen names it, and the app reaches Ready")];
+  /** The Mac window has a sidebar; the browser at phone width has a tab bar with only Now, Chat, Projects, Records and More. So a screen the tab bar does not carry is opened by its route. @param {string} text @param {string} path @param {boolean} inTabBar */
+  const open = async (text, path, inTabBar) => { if (client === "mac-app" || inTabBar) await drv.click(text); else await drv.go(path); };
   /** Open a screen and wait until its own pane says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} before */
   const look = async (name, file, shows, ms, before) => {
     let t = "";
@@ -364,13 +366,13 @@ try {
     return t;
   };
   await run.step(S("owner walk: Now loads, with no skeleton after 90 s"), async () => {
-    await look("Now", "07-now", /Good (morning|afternoon|evening)/i, 90_000, async () => { await drv.click("Now"); });
+    await look("Now", "07-now", /Good (morning|afternoon|evening)/i, 90_000, async () => { await open("Now", "/u/now", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Records shows its list, or says it is setting up"), async () => {
-    await look("Records", "08-records", /Contacts|All objects|No records|setting up|still starting/i, 90_000, async () => { await drv.click("Records"); });
+    await look("Records", "08-records", /Contacts|All objects|No records|setting up|still starting/i, 90_000, async () => { await open("Records", "/u/records/contact", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Sites lists, with no refusal"), async () => {
-    await look("Sites", "09-sites", /No sites|New site|Create a site|Your sites|Published|Visit|Add a site|site/i, 60_000, async () => { await drv.click("Sites"); });
+    await look("Sites", "09-sites", /No sites|New site|Create a site|Your sites|Published|Visit|Add a site|site/i, 60_000, async () => { await open("Sites", "/u/sites", false); });
   }, { needs: READY });
   await run.step(S("owner walk: Vault, Mine, opens"), async () => {
     await look("Vault Mine", "10-vault-mine", /Nothing here|Make your own vault|is locked|Add (a|your|an)|No item|Add item/i, 60_000, async () => { await drv.go("/u/vault"); try { await drv.click("Mine"); } catch { /* it shows Mine already */ } });
@@ -381,10 +383,10 @@ try {
     await drv.fill("Job", "Answer questions about the Space.");
     await drv.click("Create");
     await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
-    await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await drv.click("Agents"); });
+    await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await open("Agents", "/u/agents", false); });
   }, { needs: READY });
   await run.step(S("owner walk: Projects has a Personal or default project"), async () => {
-    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await drv.click("Projects"); });
+    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await open("Projects", "/u/projects", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
     await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
