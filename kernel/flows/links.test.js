@@ -131,7 +131,7 @@ test("an event-triggered run reads a linked record under the lesser of the Flow'
   await w.kernel.records.create(w.kernel.as(ALEX), "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
   const runs = await w.runner.listRuns();
-  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"]);
+  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], JSON.stringify(runs.map(r => ({ state: r.state, started_by: r.started_by, actor: r.trigger && r.trigger.event && r.trigger.event.actor, kind: r.trigger && r.trigger.kind }))));
   assert.match(String(runs.find(r => r.state === "failed")?.error.message), /not there, or is not yours to see/);
   assert.deepEqual(await payments(w, chain), ["Sam"], "only Alex's change wrote it");
 });

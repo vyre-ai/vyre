@@ -44,7 +44,7 @@ test("a run started by a member who may not read an attached file stops at the p
 
   const mine = await ok(BEN, "flows.start", { id: def.id });
   const benRun = String(mine.id || (mine.run && mine.run.id) || mine.run);
-  const ben = await finalState(BEN, benRun);
+  const ben = await finalState(OWNER, benRun);
   assert.equal(ben.state, "failed", JSON.stringify(ben));
   assert.match(JSON.stringify(ben), /Rota\/week1\.pdf cannot be attached: it is not in your Files, or you may not read it/, "the plain error, from the preview as the starter");
   assert.deepEqual(await questions(), [], "nobody was asked about a file the starter could not read");
