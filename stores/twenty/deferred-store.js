@@ -28,8 +28,8 @@ export function createDeferredStore(o) {
   let attaching = false;
   /** @type {Promise<void> | null} a replayed definition that timed out and may still be running on the store */ let abandoned = null;
   const refuse = () => unavailable(o.reason());
-  const waitMs = o.waitMs ?? 56_000;
-  /** After boot, a caller that needs the store waits for it a bounded while (the first start is about a minute) rather than failing on the first second. True once attached. */
+  const waitMs = o.waitMs ?? 4_000;   // a first start takes minutes: a call waits a few seconds for a store that is nearly there, then answers `unavailable` ("Records is setting up") so the app shows it and asks again, never a call that hangs
+  /** After boot, a caller that needs the store waits for it a short while rather than failing on the first second. True once attached. */
   const settle = () => real ? Promise.resolve(true) : (o.waits ? o.waits() : false) && waitMs > 0 ? new Promise(res => { const t = setTimeout(() => res(false), waitMs); if (t.unref) t.unref(); ready.push(() => { clearTimeout(t); res(true); }); }) : Promise.resolve(false);
   /** @type {Array<() => any>} work the kernel could not do while the store was away (its task records), run once the real store is attached */
   const ready = [];

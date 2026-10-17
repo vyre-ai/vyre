@@ -42,3 +42,20 @@ test("an agent's record carries its folder, its projects and who may use it, so 
   assert.equal(recordOf({ ...ROW, projects: "*" }).projects, "*");
   for (const f of ["folder", "projects", "users"]) assert.ok(AGENT.fields.some(x => x.name === f), `${f} is a field of the type`);
 });
+
+test("soon() lets a call go on after a moment when the record store is still setting up, and the mirror follows once it joins", async () => {
+  const made = /** @type {any[]} */ ([]);
+  let open = false;
+  /** @type {() => void} */ let release = () => {};
+  const gate = new Promise(res => { release = () => res(undefined); });
+  const k = { serviceChain: () => ({}), records: {
+    query: async () => { await gate; return { rows: [] }; },
+    create: async (/** @type {any} */ _c, /** @type {string} */ _t, /** @type {any} */ d) => { made.push(d); open = true; return d; } } };
+  const m = createMirror({ kernel: () => k, rows: () => [ROW], retryMs: 5 });
+  const t0 = Date.now();
+  await m.soon(60);
+  assert.ok(Date.now() - t0 < 1_000, "the call was not held for the store");
+  assert.equal(open, false, "nothing was made yet: the store is still setting up");
+  release();
+  await until(() => made.length === 1, "the agent record to follow once the store joined");
+});

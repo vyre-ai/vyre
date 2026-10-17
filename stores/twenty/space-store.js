@@ -118,7 +118,7 @@ export function startingWords(phase, sinceMs) {
   const doing = phase ? (PHASE_WORDS.find(([re]) => re.test(phase)) || [null, phase])[1] : "getting ready";
   const secs = Math.round(sinceMs / 1000);
   const took = secs < 90 ? `${Math.max(1, secs)} second${Math.max(1, secs) === 1 ? "" : "s"}` : `${Math.round(secs / 60)} minutes`;
-  return `the record store is still starting: ${doing} (${took} so far)`;
+  return `Records is setting up, this takes a few minutes: ${doing} (${took} so far)`;
 }
 
 export function createStoreFor(cfg) {
@@ -237,7 +237,7 @@ export function createStoreFor(cfg) {
       // The store opened at once. A record left by an earlier process that could not (this one has no waiting entry to clear it) is no longer true.
       if (got !== LATE) { if (!waiting.has(space)) { try { fs.rmSync(stateFile(dir), { force: true }); } catch { /* none */ } } return got; }
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
-      w.reason = "the record store is still starting"; w.running = true; w.starting = true;
+      w.reason = "Records is setting up, this takes a few minutes"; w.running = true; w.starting = true;
       if (!w.store) w.store = createDeferredStore({ onProgress: (words) => { const g = progress.get(space); if (g) g.phase = words; }, ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
