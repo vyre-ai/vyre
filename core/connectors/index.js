@@ -60,10 +60,10 @@ export default {
         if (r.error) throw fail(`could not save the sign-in in your vault: ${r.error.message}`, r.error.code || "vault");
       },
       addServer: async (input, as) => data(await ctx.call("mcp.add", input, as && as.member ? { relay: true } : undefined)),   // a member's row is hers: mcp.add reads the person from the relayed call. The owner's own connect (which also finishes from the vendor's redirect, with no session on it) stays the Space's, as before
-      testServer: async name => data(await ctx.call("mcp.test", { name })),
+      testServer: async (name, as) => data(await ctx.call("mcp.test", { name }, as && as.member ? { relay: true } : undefined)),
       // A member's hub row is listed under its key; her label is the name she knows it by. The owner's own row is the one with no owner, so a member's row of the same name is never mistaken for it.
       hasServer: async (name, member) => {
-        const list = data(await ctx.call("mcp.servers", {}));
+        const list = data(await ctx.call("mcp.servers", {}, member ? { relay: true } : undefined));
         return (Array.isArray(list) ? list : list.servers || []).find(s => (member ? s.owner === member && s.label === name : s.name === name && !s.owner)) || null;
       },
       updateServer: async (input, as) => { data(await ctx.call("mcp.update", input, as && as.member ? { relay: true } : undefined)); },

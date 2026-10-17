@@ -89,7 +89,12 @@ export default {
       cancel: async (id, reason) => { const r = await ctx.call("gate.reject", { id, reason }); if (r && r.error) throw new Error(r.error.message); return r.data; },
       // The vendor is told to drop the token too, where the connection names how; best effort, and the hub says when it was not.
       revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
-      mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
+      mayUseConnection: async c => {
+        // Asked as the person on this call when there is one (a member's connect reaches here through a module hop that carries no token of its own); a call with no person asks as the hub, as before.
+        let r = await ctx.call("vault.connection.may", c, { relay: true }).catch(() => null);
+        if (!r || r.error) r = await ctx.call("vault.connection.may", c);
+        return Boolean(r && r.data && r.data.allow === true);
+      },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
         return (t.data && t.data.thread && t.data.thread.project) || null;

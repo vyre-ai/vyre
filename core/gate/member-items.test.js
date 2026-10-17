@@ -153,10 +153,12 @@ test("every Gate path, for each kind of caller: the requester, another member, a
   // a member's item
   for (const [tool, input] of paths) {
     const id = await memberItem();
-    for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["owner", (tl, i) => as(OWNER, tl, i)], ["admin", (tl, i) => as(ADA, tl, i)], ["Cy", (tl, i) => as(CY, tl, i)], ["no person", noPerson], ["module", asModule]]))
+    for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["owner", (tl, i) => as(OWNER, tl, i)], ["admin", (tl, i) => as(ADA, tl, i)], ["Cy", (tl, i) => as(CY, tl, i)], ["no person", noPerson], ...(tool === "gate.revise" ? [["module", asModule]] : [])]))
       assert.equal((await call(/** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error?.code, "not_found", `${who} ${tool} on a member's item`);
     assert.ok(!(await as(BEN, /** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error, `the requester ${tool}`);
   }
+  // the module whose sender holds the item reads it (to release it) and takes it back; it cannot change it
+  for (const tool of ["gate.get", "gate.reject"]) { const id = await memberItem(); assert.ok(!(await asModule(tool, { id })).error, `the item's own sender module ${tool}`); }
   // held, with the count
   const ben1 = await memberItem(), legacy = await legacyItem();
   const ids = async (/** @type {Promise<any>} */ p) => ((await p).data || []).map((/** @type {any} */ i) => i.id).sort();
