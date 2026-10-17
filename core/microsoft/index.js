@@ -30,6 +30,11 @@ export default {
     const gr = graph({ creds });
     const g = graphTools(gr);
     const memberOf = id => emails.get(id);
+    /** What a held item of a microsoft:<app> sender carries, for gate.senders. */
+    const CONTENT = { from: "the member's own mailbox the message leaves from", subject: "string (an email)", body: "string, plain text (an email)", cc: "email[]? (an email)",
+      op: "invite (a calendar event; `to` is the attendees)", summary: "the event title (an invite)", start: "ISO time (an invite)", end: "ISO time (an invite)", time_zone: "IANA zone? (an invite)", where: "string? (an invite)", description: "string? (an invite)" };
+    const offer = async a => { const r = await ctx.call("gate.offer", { name: `microsoft:${a.name}`, tool: "microsoft.release", kinds: ["send"], content: CONTENT }); if (r && r.error) ctx.log(`could not offer the microsoft:${a.name} sender: ${r.error.message}`); };
+    for (const a of accounts.all()) await offer(a);
     /** Who attested an email, for the audit trail: the person on the call's chain, else the call's own label. */
     const attester = async meta => {
       try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null; const h = c && Array.isArray(c.hops) ? c.hops.find(x => x.actor && x.actor.kind === "person") : null; if (h) return String(h.actor.id); } catch {}
@@ -69,6 +74,7 @@ export default {
         const problem = check(input); if (problem) throw fail(problem);
         const acct = accounts.put(input, now());
         for (const a of [acct]) creds.invalidate(a.auth, ["https://graph.microsoft.com/.default"]);
+        await offer(acct);
         ctx.events.emit("microsoft.added", { name: acct.name });
         return { name: acct.name, domain: acct.domain, item: acct.auth.item };
       }),
@@ -96,6 +102,35 @@ export default {
       }),
     });
 
+    ctx.tool("microsoft.release", {
+      internal: true,
+      description: "The Gate's call once the member approved a held email or invite: sends exactly the approved content from the requester's own mailbox, if it is still theirs.",
+      input: obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id", "to", "content"]),
+      run: safe(async ({ id, to, content }, meta) => {
+        if (String(meta && meta.caller) !== "module:gate") throw fail("only the Gate releases what goes out", "denied");
+        const got = await ctx.call("gate.get", { id });
+        const item = got && got.data;
+        const m = item && /^microsoft:([a-z][a-z0-9-]{0,31})$/.exec(String(item.via || ""));
+        if (!m) throw fail(`${id} is not held for a Microsoft 365 app`);
+        if (!item.requester) throw fail("this item does not say whose mailbox it leaves from, so it is not sent");
+        // The mailbox is the REQUESTER'S, derived again now from the owner-attested email: if it was removed or changed since the ask, the send is refused (a revoke wins), and what was approved must name that very mailbox.
+        const rec = memberOf(item.requester);
+        let acct;
+        try { acct = forMember(accounts.all().filter(a => a.name === m[1]), rec)[0]; } catch (e) { throw fail(`the mailbox this was asked from is no longer set up for the person who asked (${/** @type {Error} */ (e).message}); ask again`, "denied"); }
+        if (!acct || String(content && content.from || "").toLowerCase() !== acct.mailbox) throw fail("the approved message names a different mailbox than the requester's now; ask again", "denied");
+        const dest = addrs(to, "to");
+        if (content.op === "invite") {
+          if (!dest.length) throw fail("an invite needs at least one guest");
+          const out = await g.eventCreate(acct, { title: String(content.summary || ""), start: String(content.start), end: String(content.end), time_zone: String(content.time_zone || "UTC"), ...(content.where ? { where: String(content.where) } : {}), ...(content.description ? { description: String(content.description) } : {}), attendees: dest });
+          ctx.events.emit("microsoft.sent", { account: acct.name, what: "invite" });
+          return out;
+        }
+        const out = await g.mailSend(acct, { to: dest, cc: Array.isArray(content.cc) ? addrs(content.cc, "cc") : [], subject: String(content.subject || ""), body: String(content.body || "") });
+        ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
+        return out;
+      }),
+    });
+
     ctx.tool("microsoft.check", {
       description: "Check the firm Microsoft 365 setup in order and name the first step that is missing: the app, its sign-in, each recorded work email, and whether the tenant lets the app read that mailbox. Reads only (one token request per app and one inbox-folder read per person). Owner only.",
       input: obj({}), callers: PEOPLE,
@@ -103,7 +138,12 @@ export default {
     });
 
     const ownAct = meta => isOwnAct(ctx.kernel, meta);
-    const AGENT_REFUSAL = "an agent cannot send or invite from your mailbox yet: it will wait for your own approval once that is open. Write it yourself, or ask for a draft in your own Outlook.";
+    /** An agent's send in a member's turn is held at that member's own Gate, showing the address it leaves from; the owner never sees or approves it. @param {any} acct @param {string[]} to @param {any} content @param {any} input */
+    const holdForMember = async (acct, to, content, input) => {
+      const r = await ctx.call("gate.request", { kind: "send", via: `microsoft:${acct.name}`, to, content: { from: acct.mailbox, ...content }, ...(typeof input.why === "string" && input.why.trim() ? { why: input.why.trim().slice(0, 1000) } : {}) });
+      if (r.error) throw fail(r.error.message, r.error.code || "failed");
+      return r.data.id;
+    };
     const addrs = (v, what, max = 50) => {
       if (!Array.isArray(v) || v.length > max || !v.every(a => typeof a === "string" && EMAIL.test(a) && a.length <= 254)) throw fail(`${what} must be up to ${max} email addresses`);
       return v.map(a => a.trim().toLowerCase());
@@ -113,13 +153,14 @@ export default {
       description: "Send an email from your own Microsoft 365 mailbox, as you: { to: [addresses], cc?: [addresses], subject, body (plain text) }. It goes out at once, because it is your own send; an agent's send is not allowed yet.",
       input: obj({ to: { type: "array", items: str }, cc: { type: "array", items: str }, subject: str, body: str }, ["to", "subject", "body"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
-        if (!(await ownAct(meta))) throw fail(AGENT_REFUSAL, "denied");
+        const own = await ownAct(meta);
         const to = addrs(input.to, "to"), cc = input.cc === undefined ? [] : addrs(input.cc, "cc");
         if (!to.length) throw fail("name at least one recipient");
         const subject = String(input.subject ?? ""), body = String(input.body ?? "");
         if (!subject || subject.length > 255 || /[\r\n]/.test(subject)) throw fail("the subject is one line, up to 255 characters");
         if (!body || body.length > 100_000) throw fail("the body is up to 100,000 characters");
         const acct = await first(meta);
+        if (!own) { const id = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input); return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
         const out = await g.mailSend(acct, { to, cc, subject, body });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
         return out;
@@ -130,7 +171,7 @@ export default {
       description: "Put an event on your own Microsoft 365 calendar: { title, start, end (ISO times), time_zone? (IANA, default UTC), where?, description?, attendees?: [addresses] }. Microsoft mails the invite to each attendee at once, because it is your own act; an agent's is not allowed yet.",
       input: obj({ title: str, start: str, end: str, time_zone: str, where: str, description: str, attendees: { type: "array", items: str } }, ["title", "start", "end"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
-        if (!(await ownAct(meta))) throw fail(AGENT_REFUSAL, "denied");
+        const own = await ownAct(meta);
         const title = String(input.title ?? "");
         if (!title || title.length > 255) throw fail("the title is up to 255 characters");
         const s0 = new Date(String(input.start)), e0 = new Date(String(input.end));
@@ -139,6 +180,11 @@ export default {
         try { new Intl.DateTimeFormat("en", { timeZone: tz }); } catch { throw fail("time_zone must be an IANA zone such as Europe/London"); }
         const attendees = input.attendees === undefined ? [] : addrs(input.attendees, "attendees");
         const acct = await first(meta);
+        if (!own) {
+          if (!attendees.length) throw fail("an agent can only put an event with guests on your calendar, held for your approval; for one with no guests, add it yourself", "denied");
+          const id = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input);
+          return { held: id, message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
+        }
         const out = await g.eventCreate(acct, { title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}), attendees });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: attendees.length ? "invite" : "event" });
         return out;

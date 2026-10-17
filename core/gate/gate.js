@@ -40,6 +40,8 @@ export const MIGRATIONS = [
   // that asked (when the caller knows it) and the id of the gate.held event.
   `ALTER TABLE gate_items ADD COLUMN tool_use_id TEXT;
    ALTER TABLE gate_items ADD COLUMN event INTEGER;`,
+  // The person whose verified chain asked (a member's own agent, or a member's own surface): set by the Gate's tool from the kernel's chain, never from input. A member's item is theirs alone to see and answer.
+  `ALTER TABLE gate_items ADD COLUMN requester TEXT;`,
 ];
 
 /**
@@ -177,24 +179,24 @@ export class Gate {
   /**
    * An agent asks for something to go out. It is held, never sent from here.
    * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
-   * @param {{ agent?: string|null }} [who]
+   * @param {{ agent?: string|null, requester?: string|null }} [who]
    */
   request(input, who = {}) {
     const { kind, via, content, why, thread, project, tool_use_id } = input;
-    const agent = who.agent ?? null;
+    const agent = who.agent ?? null, requester = who.requester || null;
     const { s, dest, t } = this.prepare(input);
     // The same ask again while the first still waits is the same item: a turn that was cut and re-run from its start (a session that moved to the server) asks for what it asked before, and the person
     // sees one draft, not two. Only a held item in the same chat from the same agent, to the same places, with the same words; once it is sent or discarded, asking again is a new ask.
     // Only an ask that comes from a chat's session can be a re-run of one (a person's own send from a terminal has no chat, and two of those are two sends).
     let want = null; try { want = thread ? canonical({ kind, via, dest, content }) : null; } catch { want = null; }   // words that cannot be compared are never merged
-    for (const r of want === null ? [] : /** @type {any[]} */ (this.db.prepare("SELECT id, kind, via, dest, draft, agent, thread FROM gate_items WHERE state = 'held' AND thread IS ? AND agent IS ?").all(thread || null, agent))) {
+    for (const r of want === null ? [] : /** @type {any[]} */ (this.db.prepare("SELECT id, kind, via, dest, draft, agent, thread FROM gate_items WHERE state = 'held' AND thread IS ? AND agent IS ? AND requester IS ?").all(thread || null, agent, requester))) {
       let same = false; try { same = canonical({ kind: r.kind, via: r.via, dest: JSON.parse(r.dest), content: JSON.parse(r.draft) }) === want; } catch { same = false; }
       if (same) return { id: r.id, state: "held", message: `Held at the Gate as ${r.id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
     }
     const id = crypto.randomBytes(9).toString("hex");
-    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module, tool_use_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
-      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null);
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module, tool_use_id, requester)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
+      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, requester);
     const summary = t.summary(dest, content);
     const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
     if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
@@ -223,14 +225,14 @@ export class Gate {
    * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
    * @param {{ agent?: string|null, intent?: string|null, by?: string }} who `by` names a person's confirmation ("asked:capsule") when no intent covers it
    */
-  async sendNow(input, { agent = null, intent = null, by: byWho }) {
+  async sendNow(input, { agent = null, intent = null, by: byWho, requester = null }) {
     const { kind, via, content, why, thread, project, tool_use_id } = input;
     const { s, t, dest } = this.prepare(input);
     const id = crypto.randomBytes(9).toString("hex");
     const by = byWho || `said:${intent}`;
-    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, final, why, agent, thread, project, state, sender_module, tool_use_id, by)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'sending', ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content), JSON.stringify(content),
-      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, by);
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, final, why, agent, thread, project, state, sender_module, tool_use_id, by, requester)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'sending', ?, ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content), JSON.stringify(content),
+      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, by, requester || null);
     const w = where(thread, project);
     try {
       const result = await t.send(dest, content, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch, call: this.deps.call, id });
@@ -272,19 +274,19 @@ export class Gate {
   }
 
   /** Held items, oldest first: what has waited longest should be answered first. */
-  held({ thread, project } = {}) {
+  held({ thread, project, visible } = {}) {
     let sql = "SELECT * FROM gate_items WHERE state = 'held'";
     const args = [];
     if (thread) { sql += " AND thread = ?"; args.push(thread); }
     if (project) { sql += " AND project = ?"; args.push(project); }
-    return this.db.prepare(sql + " ORDER BY at").all(...args).map(r => this.brief(r));
+    return this.db.prepare(sql + " ORDER BY at").all(...args).filter(r => typeof visible !== "function" || visible(r)).map(r => this.brief(r));
   }
 
   brief(r) {
     const draft = json(r.final, null) || json(r.draft, {});
     const t = this.senderConfig[r.via] || this.offered[r.via] ? this.sender(r.via).t : null;
     return { id: r.id, kind: r.kind, via: r.via, to: json(r.dest, []), summary: t ? t.summary(json(r.dest, []), draft) : "",
-      why: r.why, agent: r.agent, thread: r.thread, project: r.project, at: r.at, ...(r.error ? { error: r.error } : {}),
+      why: r.why, agent: r.agent, thread: r.thread, project: r.project, at: r.at, requester: r.requester || null, ...(r.error ? { error: r.error } : {}),
       // Where it sits in its session. Without a tool_use_id (a model's MCP call rarely knows its
       // own), a surface finds it by thread and at, or by the gate.held event.
       anchor: { tool_use_id: r.tool_use_id || null, event: r.event == null ? null : Number(r.event), thread: r.thread || null, at: r.at } };

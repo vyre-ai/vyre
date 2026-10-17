@@ -10,6 +10,8 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A member's own held items (what their agent asked to send from their mailbox): the handler shows and answers only the items they asked for, never the owner's or another member's (core/gate/requester.js).
+  "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.revise",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
@@ -121,7 +123,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.linked.mentions.resolve",
   "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
   "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
-  "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.request", "gate.revise", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
+  "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
   "github.project.add-repo", "github.project.detect", "github.project.issue.get", "github.project.issue.list", "github.project.local-init", "github.project.of",
@@ -134,7 +136,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "google.accounts", "google.add", "google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today",
   "google.calendar.update", "google.connect", "google.connect.cancel", "google.connect.finish", "google.drive.read", "google.drive.search", "google.find", "google.mail.draft", "google.mail.read",
   "google.mail.search", "google.mail.send", "google.members.email", "google.open", "google.remove", "google.test",
-  "microsoft.accounts", "microsoft.add", "microsoft.calendar.list", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.members.email", "microsoft.remove",
+  "microsoft.accounts", "microsoft.add", "microsoft.calendar.create", "microsoft.calendar.list", "microsoft.check", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.mail.send", "microsoft.members.email", "microsoft.remove",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
   "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",
   "identity.card", "identity.create", "identity.discover", "identity.github.link", "identity.lock", "identity.migrate", "identity.status", "identity.unlock",
@@ -282,7 +284,7 @@ export const PLUMBING = Object.freeze(new Set([
 /**
  * Owner-scoped group tools (GROUP_OF, group not in SCOPED_GROUPS) that a member's named agent may pass the member door for. Each must be outward or ask-first and is held at the Gate as that member, never run as the owner. Every other tool in those groups stays door-refused for a member's agent.
  */
-export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send"]));
+export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send", "microsoft.mail.send"]));
 
 export const MEMBER_OUTWARD = Object.freeze({
   "onboard.agent.signin": "the person's yes: signing an AI provider into the person's own vault is held for one tap when an assistant asks; her own call from her device needs only her.",
@@ -314,8 +316,8 @@ export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
  * Left out on purpose until each is scoped to the person: the planner's event tools (agenda, get, update, delete, done, snooze, dismiss, calendar.*), which show any person's events.
  */
 export const TOOL_GROUPS = Object.freeze({
-  mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send"]),
-  calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "connectors.calendar.today"]),
+  mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send", "microsoft.mail.send"]),
+  calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "microsoft.calendar.create", "connectors.calendar.today"]),
   documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
     "documents.signing.waiting", "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
