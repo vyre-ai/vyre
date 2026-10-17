@@ -348,3 +348,16 @@ test("mail: on_behalf is heard only from Vyre's own modules, and its thread must
   assert.equal((await own("mail.accounts", { on_behalf: { surface: "agent", agent: "juno", thread: "t-kit" } })).error.code, "denied");
   assert.equal(w.fake.sent.length, 0);
 });
+
+test("mail: an Apps Script or MCP account refuses files in plain words and holds nothing", async t => {
+  const fake = await startFakeAppsScript(t, { token: TOKEN, address: "alex@harlow.example" });
+  const w = await world(t, {
+    connections: [conn("cn_script", "vault", "google-apps-script", "script-alex", "alex@harlow.example")],
+    items: { "script-alex": { granted: true, fields: { url: fake.url, token: TOKEN } } },
+  });
+  const r = await w.as("capsule")("mail.send", { to: "dana@northwind-bakery.example", subject: "Friday", body: "See the file.",
+    attachments: [{ path: "/Files/rota.pdf" }] });
+  assert.equal(r.error && r.error.code, "unsupported", JSON.stringify(r));
+  assert.match(r.error.message, /Only Google and IMAP accounts take attachments/);
+  assert.equal(w.held.size, 0, "nothing was held");
+});
