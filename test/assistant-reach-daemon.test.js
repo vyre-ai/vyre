@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present, kernelCaller, stopDaemonBounded } from "./helpers.js";
+import { tempHome, present, kernelCaller, startDaemonBounded } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
@@ -23,8 +23,7 @@ async function rig(/** @type {any} */ t) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on", max_live: 60 } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
-  stopDaemonBounded(t, d); // a failing test must not hold the file open, and a daemon that will not stop or a child it leaves fails the test
+  const d = await startDaemonBounded(t, { root, presence: present, log: () => {}, kernel: true });
   const mk = (/** @type {string} */ n) => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, `vyre-${n}-`))); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
   const work = mk("work"), p1 = mk("p1"), p2 = mk("p2");
   const ok = (/** @type {any} */ r) => { assert.ok(!r.error, JSON.stringify(r)); return r.data; };
