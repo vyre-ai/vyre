@@ -422,7 +422,7 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   const read = async () => Object.fromEntries(await Promise.all((await d.registry.deps.dataStores()).map(async s => [s.name, await s.holds().catch(() => undefined)])));
   const fresh = await read();
   // when it fails, say what is there: the kernel's event types with counts, and the home's files
-  const seen = () => { try { return JSON.stringify({ events: d.registry.deps.db.prepare("SELECT type, COUNT(*) n FROM kernel_events GROUP BY type").all(), files: (fs2walk(root)) }); } catch (e) { return String(e); } };
+  const seen = () => { try { return JSON.stringify({ events: d.registry.deps.db.prepare("SELECT type, COUNT(*) n FROM kernel_events GROUP BY type").all(), files: fs2walk(root), revoked: d.registry.deps.db.prepare("SELECT event FROM kernel_events WHERE type = 'grant.revoked' LIMIT 3").all() }); } catch (e) { return String(e); } };
   assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh) + " " + seen());
   assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
   assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh) + " " + seen());
