@@ -82,6 +82,11 @@
    "@anthropic-ai/claude-agent-sdk": "the SDK the sessions proof compares against",
    "@openai/codex-linux-x64": "the platform binary Codex ships separately; the wire proof installs it beside the CLI"
   },
+  "core/computers/image/Dockerfile": {
+   "@anthropic-ai/claude-code": "the Claude Code CLI an agent's session runs as the agent's own Linux user in its computer (exact version, recorded in an image label)",
+   "@openai/codex": "the Codex CLI for agent sessions in the agent computer (pinned like the box's)",
+   "@agentclientprotocol/codex-acp": "Codex's ACP adapter for agent sessions in the agent computer (pinned like the box's)"
+  },
   "box/Dockerfile": {
    "@anthropic-ai/claude-code": "a provider CLI in the box image (pinned by CLAUDE_CODE_VERSION)",
    "@openai/codex": "a provider CLI in the box image (pinned)",
