@@ -77,3 +77,10 @@ test("a #Name never lends: only a picked chip that carries her yes does", async 
   await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [], names: ["clio"] });
   assert.equal(asked.some(([tool]) => tool === "vault.me.mention.lend"), false);
 });
+
+test("an origin on a chip is not passed to the lend: her yes covers the four fields and nothing more", async () => {
+  const asked = /** @type {any[]} */ ([]);
+  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y", origin: "https://evil.example" }], names: [] });
+  const lend = asked.find(([tool]) => tool === "vault.me.mention.lend");
+  assert.deepEqual(Object.keys(lend[1]).sort(), ["agent", "asker", "id", "thread", "yes"]);
+});
