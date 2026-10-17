@@ -63,6 +63,7 @@ In the order `vyre help` lists them.
 | [`vyre words`](#vyre-words) | the four words to compare with the Vyre app while it adds this server |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
+| [`vyre skills`](#vyre-skills) | skills and plugins library (browse, draft, approve, decline, rollback) |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre phone`](#vyre-phone) | install the app on a phone, list, remove and test the phones the box has |
@@ -610,6 +611,14 @@ Run a program with vault values in its environment; reads ./.env references.
 
 ```
 vyre run [--env-file f] [<item...>] -- <command...>
+```
+
+### vyre skills
+
+Skills and plugins library (browse, draft, approve, decline, rollback).
+
+```
+vyre skills <browse|draft|approve|decline|rollback> ...
 ```
 
 ### vyre hooks

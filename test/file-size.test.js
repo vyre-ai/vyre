@@ -18,7 +18,7 @@ function overLimit() {
   /** @type {Record<string, number>} */ const out = {};
   const walk = (/** @type {string} */ dir) => {
     for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
-      if (["node_modules", ".git", "dist", "vendor", "dist-shots"].includes(e.name)) continue;
+      if (["node_modules", ".git", "dist", "dist-mock", "vendor", "dist-shots", "generated"].includes(e.name)) continue;
       const rel = dir ? `${dir}/${e.name}` : e.name;
       if (e.isDirectory()) { walk(rel); continue; }
       if (!/\.(m?js|cjs|ts|tsx)$/.test(e.name) || /\.test\./.test(e.name)) continue;

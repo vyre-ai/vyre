@@ -227,18 +227,66 @@ export function createPeerDoor(o) {
         watcher = setInterval(async () => { if (finished) { clearInterval(watcher); return; } if (!(await memberStillOk(a))) { finished = true; clearInterval(watcher); end("not a member any more"); } }, watchMs);
         if (watcher.unref) watcher.unref();
       }, () => {});
+      const pipe = streamPipe(stream);
+      const memberDoor = head && head.invite === "member";
+      /** @type {Map<string, { seq: number, cleanup: (() => void) | null, win: number[] }>} */ const open = new Map();
+      /** @type {any} */ let memberAdmit = null;
+      let streamActive = true;
+      const memberLive = () => streamActive && !finished && Boolean(memberAdmit);
+      const sendCtrl = (/** @type {number} */ type, /** @type {any} */ body) => { try { session && session.sendControl(type, body); } catch { /* closed */ } };
+      const finishStream = (/** @type {string} */ sid, /** @type {string} */ why, /** @type {boolean} */ tell) => {
+        const st = open.get(sid);
+        if (!st) return;
+        open.delete(sid);
+        openByDevice.set(inviteeId, Math.max(0, (openByDevice.get(inviteeId) || 1) - 1));
+        if (tell) sendCtrl(T.streamEnd, { id: sid, why });
+        try { if (st.cleanup) st.cleanup(); } catch { /* the producer must not break the door */ }
+      };
+      const endAllStreams = (/** @type {string} */ why, /** @type {boolean} */ tell) => { for (const sid of [...open.keys()]) finishStream(sid, why, tell); };
+      /** @type {any} */ const memberPeerStream = memberDoor ? Object.freeze({
+        open(sid, producer) {
+          if (typeof sid !== "string" || !STREAM_ID.test(sid)) throw err("bad_input", "a stream id is 8 to 64 letters, digits, - and _");
+          if (open.has(sid)) throw err("conflict", "that stream is already open");
+          if ((openByDevice.get(inviteeId) || 0) >= STREAM_LIMITS.perDevice) throw err("rate_limited", "this device has too many streams open");
+          if (!memberLive()) throw err("denied", "this member stream is not live");
+          const st = { seq: 0, cleanup: /** @type {(() => void) | null} */ (null), win: /** @type {number[]} */ ([]) };
+          open.set(sid, st);
+          openByDevice.set(inviteeId, (openByDevice.get(inviteeId) || 0) + 1);
+          const emit = (/** @type {any} */ data) => {
+            if (!open.has(sid)) return false;
+            if (!memberLive()) { finishStream(sid, "session_ended", true); return false; }
+            let text; try { text = JSON.stringify({ id: sid, seq: st.seq + 1, data }); } catch { finishStream(sid, "bad_frame", true); return false; }
+            if (Buffer.byteLength(text) > STREAM_LIMITS.frameBytes) { finishStream(sid, "too_large", true); return false; }
+            if (pipe.buffered() > STREAM_LIMITS.queuedBytes) { finishStream(sid, "slow", true); return false; }
+            const nowMs = Date.now();
+            while (st.win.length && nowMs - st.win[0] > 1000) st.win.shift();
+            if (st.win.length >= STREAM_LIMITS.framesPerSecond) { finishStream(sid, "slow", true); return false; }
+            st.win.push(nowMs);
+            st.seq += 1;
+            sendCtrl(T.stream, { id: sid, seq: st.seq, data });
+            return true;
+          };
+          /** @type {any} */ let cleanup;
+          try { cleanup = producer({ emit, end: (why = "done") => finishStream(sid, String(why).slice(0, 40), true), alive: () => open.has(sid) && memberLive() }); }
+          catch (e) { finishStream(sid, "failed", false); throw e; }
+          if (typeof cleanup === "function") { if (open.has(sid)) st.cleanup = cleanup; else { try { cleanup(); } catch { /* gone */ } } }
+          return { id: sid };
+        },
+      }) : null;
+      if (memberDoor) admit().then(a => { if (a.ok && a.member) memberAdmit = a; }, () => {});
       const handle = async (/** @type {string} */ tool, /** @type {any} */ input) => {
         const a = await admit();
         if (!a.ok) { finished = true; end("not admitted"); throw a.why === "rate_limited" ? err("rate_limited", "this device is calling the team's server too often: wait a minute and try again") : err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
         if (a.member === true) {
+          memberAdmit = a;
           // a member's stream: the space's kernel calls and nothing else (no registry tool, no other space); the invite calls are not a member's
           if (input.space !== a.space || INVITEE_CALLS.has(String(input.call))) throw err("denied", "a member stream opens this space's kernel calls and nothing else");
           // every call: the device must still be on the identity's signed list (the same key it was admitted with) and the person must still be a member; otherwise the stream ends now
           if (!(await memberStillOk(a))) { finished = true; end("not a member any more"); throw err("denied", "this device or this membership is gone"); }
           const sv = serverFor(a.space);
           if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
-          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry });
+          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(memberPeerStream ? { peerStream: memberPeerStream } : {}) });
         }
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
@@ -251,12 +299,17 @@ export function createPeerDoor(o) {
         if (asksPresence) wait = lim.presenceMs;
         return r;
       };
-      session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      session = peerSession(pipe, { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
         if (finished) throw err("denied", "this invite's stream is finished");
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         wait = lim.idleMs;
         try { return await handle(tool, input); } finally { if (!finished) arm(wait); }
-      } });
+      }, ...(memberPeerStream ? { onframe: (/** @type {{ type: number, payload: Buffer }} */ f) => {
+        if (f.type !== T.streamEnd) return false;
+        try { const j = JSON.parse(f.payload.toString("utf8")); if (j && typeof j.id === "string") finishStream(j.id, "client", false); } catch { /* not a frame */ }
+        return true;
+      } } : {}) });
+      session.onclose = () => { streamActive = false; endAllStreams("closed", false); };
       log(`peer door: invitee ${inviteeId} opened a stream`);
     },
     /** @param {any} stream @param {{ deviceId: string }} who */

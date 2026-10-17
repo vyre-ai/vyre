@@ -43,7 +43,7 @@ test("peers: openPeer refuses not_reachable for a device with no reported tailne
 });
 
 test("peers: openPeer builds a peer with a call() once the device has a tailnet node", async () => {
-  const ctx = fakeCtx({ "relay.devices.node": () => ({ stableId: "abc123", staticKey: "k", name: "x", node: { stableId: "n-1", name: "alex-box.tail0000.ts.net" } }) });
+  const ctx = fakeCtx({ "relay.devices.node": () => ({ stableId: "abc123", staticKey: "k", name: "x", node: { stableId: "n-1", name: "alex-box.tail0000.wink.example" } }) });
   const peer = await openPeer(ctx)({ stableId: "abc123", staticKey: "k" });
   assert.equal(typeof peer.call, "function");
 });

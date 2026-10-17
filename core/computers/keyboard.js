@@ -45,7 +45,7 @@ export const isSurface = s => SURFACE.test(String(s || ""));
 
 /**
  * @typedef {{ surface: string, thread: string|null, since: number, beat: number, input: number, leased?: number, by?: string,
- *   warned?: number, cancel?: (() => void) | null }} Takeover
+ *   warned?: number, cancel?: (() => void) | null, private?: boolean, personId?: string|null, browserSnap?: any }} Takeover
  */
 
 export class Keyboard extends EventEmitter {
@@ -53,11 +53,14 @@ export class Keyboard extends EventEmitter {
    * @param {{ pool: import("./pool.js").Pool, call: (tool: string, input: any) => Promise<any>,
    *   emit: (type: string, payload: any, where?: any) => any, on?: (pattern: string, fn: (e: any) => void) => () => void,
    *   log?: (m: string) => void, now?: () => number, idleMs?: () => number,
-   *   schedule?: (fn: () => void, ms: number) => () => void }} deps
+   *   schedule?: (fn: () => void, ms: number) => () => void,
+   *   onHandback?: (agent: string, t: Takeover) => void | Promise<void> }} deps
    */
   constructor(deps) {
     super();
     this.pool = deps.pool;
+    /** @type {import("./shared-browser.js").SharedBrowser|null} */
+    this.shared = deps.shared || null;
     this.call = deps.call;
     this.send = deps.emit;
     this.log = deps.log || (() => {});
@@ -71,6 +74,7 @@ export class Keyboard extends EventEmitter {
     /** Threads whose lease we are moving ourselves: their lease.changed is our own echo. */
     this.quiet = new Set();
     this.off = deps.on ? deps.on("lease.changed", e => { try { this.onLease(e); } catch (err) { this.log(`lease.changed: ${err.message}`); } }) : () => {};
+    this.onHandback = deps.onHandback || null;
     this.pool.heldBy = agent => this.holder(agent);
   }
 
@@ -114,6 +118,10 @@ export class Keyboard extends EventEmitter {
   async threadFor(agent) {
     const co = this.pool.checkouts.get(agent);
     if (co && co.thread) return co.thread;
+    if (this.shared && this.shared.enabled()) {
+      const h = this.shared.holder(agent);
+      if (h && h.thread) return h.thread;
+    }
     const r = await this.call("agents.threads", { agent });
     const list = r && Array.isArray(r.data) ? r.data : [];
     return list.length && list[0] && list[0].id ? String(list[0].id) : null;
@@ -128,13 +136,15 @@ export class Keyboard extends EventEmitter {
    * for take-over (core/presence PERSON_ONLY). `giveback` requires the same caller, so a second
    * person cannot end someone else's take-over.
    * @param {string} agent @param {string} surface @param {string} [caller]
+   * @param {{ private?: boolean, personId?: string|null, browserSnap?: any }} [extra]
    * @returns {Promise<{ agent: string, surface: string, thread: string|null, previous: string|null }>}
    */
-  async takeover(agent, surface, caller) {
+  async takeover(agent, surface, caller, extra = {}) {
     if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
     const before = this.holder(agent);
-    // A take-over needs the screen: it checks out (and thaws), and holds the checkout while it lasts.
-    await this.pool.checkout(agent, { why: "take-over" });
+    // A take-over needs the computer running: shared browser hold or a desktop checkout.
+    if (this.shared && this.shared.enabled()) await this.shared.hold(agent, { why: "take-over" });
+    else await this.pool.checkout(agent, { why: "take-over" });
     const thread = await this.threadFor(agent);
     let previous = before;
     let leased = thread;
@@ -149,13 +159,19 @@ export class Keyboard extends EventEmitter {
     }
     const at = this.now();
     const t = this.takeovers.get(agent);
+    const priv = extra.private === true;
+    const personId = extra.personId || null;
+    const browserSnap = extra.browserSnap;
     if (t && t.surface === surface) {
-      Object.assign(t, { beat: at, thread: leased, by: caller || t.by });
+      Object.assign(t, { beat: at, thread: leased, by: caller || t.by, ...(priv ? { private: true, personId, browserSnap } : {}) });
       this.touched(agent, t, at);
       return { agent, surface, thread: leased, previous };
     }
     if (t) this.disarm(t);
-    this.takeovers.set(agent, { surface, thread: leased, since: at, beat: at, input: at, by: caller });
+    this.takeovers.set(agent, {
+      surface, thread: leased, since: at, beat: at, input: at, by: caller,
+      ...(priv ? { private: true, personId, browserSnap } : {}),
+    });
     this.arm(agent);
     this.send("computer.taken-over", { agent, surface, thread: leased }, leased ? { thread: leased } : {});
     this.log(`${surface} took over ${agent}'s computer`);
@@ -210,6 +226,10 @@ export class Keyboard extends EventEmitter {
    */
   finish(agent, t, why, idle, how) {
     this.disarm(t);
+    if (this.onHandback && t.private && t.personId && t.browserSnap) {
+      Promise.resolve(this.onHandback(agent, t))
+        .catch(e => this.log(`member browser handback for ${agent}: ${/** @type {Error} */ (e).message}`));
+    }
     // Structured, for surfaces to phrase: who had it (only the owner can take over; guests and
     // agents are refused), from what kind of device, and the reason in one word.
     const reason = why === "gave back" ? "gave back" : why === "idle" ? "idle" : why === "lease expired" ? "expired" : how === "chat" ? "chat" : "released";

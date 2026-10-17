@@ -11,7 +11,7 @@ const ASSISTANT = { title: "Create your assistant", body: "It reads your mail.",
 test("a new Mac with no phone and no assistant gets one card with the two steps in order", () => {
   const c = getStarted(GAP.mac, ASSISTANT);
   assert.equal(c && c.title, "Get started");
-  assert.deepEqual(c && c.steps.map((s) => [s.title, s.action, s.route]), [["Add your phone", "Add your phone", "/u/install/phone"], ["Create your assistant", "Create", "/u/settings/assistants/new"]]);
+  assert.deepEqual(c && c.steps.map((s) => [s.title, s.action, s.route]), [["Add your phone", "Add your phone", "/onboard?path=phone"], ["Create your assistant", "Create", "/u/settings/assistants/new"]]);
 });
 
 test("with only one of the two, or a device that cannot reach a Vyre, nothing is combined", () => {

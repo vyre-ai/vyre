@@ -25,7 +25,6 @@ const ALLOWED = new Map([
   ["apps/app/screens/vault/data.ts", "mock data for screenshots"],
   ["apps/app/screens/vault/sample-redesign.ts", "sample rows with made-up secrets for the vault design gallery, never a real key"],
   ["apps/app/scripts/onboard-walk.mjs", "a walk-through script that types a made-up key into the onboarding screen, never shipped"],
-  ["web/onboard/onboard.js", "a placeholder in an input box"],
   ["core/runner/testing/", "test support: fake secrets"],
   ["lib/connectors/testing/", "test support: fake secrets"],
   ["lib/publish/test-kit.js", "test support: fake secrets"],

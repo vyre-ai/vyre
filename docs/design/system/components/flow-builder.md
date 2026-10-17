@@ -25,7 +25,7 @@ Owner's words: Flows are "process automation and project automation", and the ol
 ## Anatomy
 
 1. **One sentence** at the top, live: "When a record is created in RefundRequests, create a RefundRequests record, then hand it to the Refunds agent with your instructions." The Flows list shows the same sentence under each name.
-2. **When** card: what starts the Flow (a record is created, a record enters a stage, a person signs up, a form is submitted, a schedule, someone runs it).
+2. **When** card: what starts the Flow (a record is created, a record moves to a stage, a person signs up, a form is submitted, a schedule, someone runs it).
 3. **Step** cards in order, joined by a line. Closed, a card is its kind and one plain sentence. Open, it shows its settings and Move up, Move down, Remove step. A card that still needs something shows a warning chip in words.
 4. **Add a step** opens the palette. A step the engine cannot do yet is shown with a Coming chip and cannot be picked.
 
