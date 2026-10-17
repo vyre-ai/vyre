@@ -1006,10 +1006,12 @@ export class Hub {
   /**
    * A person approves the tool text that was held: exactly the list they read (the one stored with the hold, never a fresh listing), named by its FULL hash (a prefix is not enough: a server could search for a
    * second list that starts the same) so a second change in between is not taken by mistake.
-   * @param {{ name: string, seen: string }} input
+   * Whose it is to approve: a person's own connection (`o.owner`) only by that person, whose call named the row; a Space owner's row (no owner) only by a call with no owner, and never a person's.
+   * @param {{ name: string, seen: string }} input @param {{ owner?: string }} [o]
    */
-  async repin({ name, seen }) {
+  async repin({ name, seen }, o = {}) {
     const r = this.must(name);
+    if (o.owner !== undefined ? r.owner !== o.owner : Boolean(r.owner)) throw fail(o.owner !== undefined ? "not_found" : "denied", o.owner !== undefined ? `you have no server named ${String(name).slice(0, 40)}` : `${r.name} is a connection its person made for themselves, so they approve its changes`);
     if (!r.pinSeen) throw fail("bad_state", `${r.name} has no changed tool text waiting for you`);
     if (!seen || String(seen) !== r.pinSeen) throw fail("conflict", `${r.name}'s tools changed again since you read them: read mcp.servers and approve what it shows now`);
     this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = ?, pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(JSON.stringify(r.toolsSeen || []), this.now(), r.pinSeen, this.now(), name);

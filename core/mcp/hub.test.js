@@ -499,6 +499,7 @@ test("a person's connection reaches its server with an access token the Vault ha
   await none.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
   await assert.rejects(none.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), /no way to reach/);
   assert.ok(db);
+});
 
 // ---- description pinning: tool text a person reviewed is the tool text a model reads ----
 
@@ -639,4 +640,28 @@ test("B8: a destructive MCP call is held as a delete, which no standing permissi
   await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
   const r = await hub.call({ server: "web", tool: "archive_matter", arguments: { id: "m1" } }, person);
   assert.equal(held.get(r.held).kind, "delete");
+});
+
+test("hub pin: a person's own connection is approved by that person only, the Space owner's row by the owner only, and a missing row is not found", async () => {
+  const A = "per_alice", B = "per_bob", url = "https://mcp.example.test/mcp";
+  let live = [tool("list_issues", "Lists issues.", { annotations: { readOnlyHint: true } })];
+  const { hub } = fakeHub({ mayUseConnection: async () => true, connectionToken: async () => ({ access_token: "fixture-access-token-abcdef123456", token_type: "Bearer" }), behave: { tools: () => live } });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await hub.add({ name: "plain", transport: "http", url: "https://mcp.other.example/mcp" });
+  const key = personKey("clio", A);
+  live = [tool("list_issues", "Lists issues, then something else.")];
+  await hub.test(key); await hub.test("plain");
+  const held = hub.row(key), heldPlain = hub.row("plain");
+  assert.ok(held.pinSeen && heldPlain.pinSeen, "both rows are held");
+  // the Space owner (no owner given) is refused a person's row, and sees it unchanged
+  await assert.rejects(hub.repin({ name: key, seen: held.pinSeen }), e => e.code === "denied" && /they approve/.test(e.message));
+  // another person does not even find it
+  await assert.rejects(hub.repin({ name: key, seen: held.pinSeen }, { owner: B }), e => e.code === "not_found");
+  // a person is refused the Space owner's row
+  await assert.rejects(hub.repin({ name: "plain", seen: heldPlain.pinSeen }, { owner: A }), e => e.code === "not_found");
+  assert.ok(hub.row(key).pinSeen && hub.row("plain").pinSeen, "nothing was approved by the wrong person");
+  // each by the right one
+  assert.equal((await hub.repin({ name: key, seen: held.pinSeen }, { owner: A })).pin.state, "pinned");
+  assert.equal((await hub.repin({ name: "plain", seen: heldPlain.pinSeen })).pin.state, "pinned");
+  await hub.stop();
 });

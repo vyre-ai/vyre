@@ -19,6 +19,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
+  "mcp.repin",
   "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
   "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
@@ -147,7 +148,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "link.macs", "link.pair.approve", "link.pair.deny", "link.pair.poll", "link.pair.request", "link.peers", "link.pending", "link.rename", "link.reply", "link.serve",
   "link.status", "link.unpair",
   "mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "mail.test",
-  "mcp.add", "mcp.call", "mcp.remove", "mcp.repin", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
+  "mcp.add", "mcp.call", "mcp.remove", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
   "memory.backup.restore", "memory.backup.run", "memory.backup.status", "memory.contradictions", "memory.correct", "memory.corrections", "memory.curate", "memory.device",
   "memory.follow", "memory.heard", "memory.identity.enroll", "memory.identity.grant", "memory.identity.lock", "memory.identity.move", "memory.identity.revoke",
   "memory.identity.status", "memory.identity.unlock.begin", "memory.identity.unlock.finish", "memory.markers", "memory.me", "memory.merge", "memory.mute",

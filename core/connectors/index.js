@@ -17,6 +17,7 @@ import { personCallOpts } from "../../lib/person-relay.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
+import { createWho } from "./who.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
@@ -39,14 +40,8 @@ export default {
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
 
     const curated = catalogFrom(ctx.config);
-    // Who is asking: a member's id when the call carries a claim the Vault names as a member's (her connection is hers), "" for the owner and for work with no claim (the home's own).
-    const memberOf = async (/** @type {any} */ meta) => {
-      const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
-      if (!claims) return "";
-      const w = await ctx.call("vault.me.who", {}, { relay: true });
-      if (w.error) throw fail(w.error.message, w.error.code || "denied");
-      return w.data && w.data.kind === "member" ? String(w.data.person) : "";
-    };
+    // Who is asking (core/connectors/who.js): a member's id when the Vault names the caller as one, "" for the owner and for work with no claim.
+    const { memberOf, viewerOf } = createWho(ctx);
     const conn = connections({
       db: ctx.store.db,
       catalog: curated,
@@ -99,14 +94,14 @@ export default {
       effect: "read",
       description: "Every app Vyre can connect: id, label, group, who can use it, sign-in setup, and which of the person's connections use it.",
       input: obj({ group: str, all: { type: "boolean", description: "also list the vendors checked and ruled out, each with the reason" } }),
-      run: async (input, meta) => conn.catalog(input, { member: await memberOf(meta) }),
+      run: async (input, meta) => conn.catalog(input, { member: await viewerOf(meta) }),
     });
 
     ctx.tool("connectors.list", {
       effect: "read",
       description: "The person's connections: name, the app, how it signs in, and when it was made.",
       input: obj({}),
-      run: async (_, meta) => conn.list({ member: await memberOf(meta) }),
+      run: async (_, meta) => conn.list({ member: await viewerOf(meta) }),
     });
 
     ctx.tool("connectors.connect", {

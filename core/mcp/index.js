@@ -26,6 +26,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
+import { ownRow } from "../../lib/own-row.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey } from "./hub.js";
 
@@ -185,16 +186,15 @@ export default {
 
     // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.
     // The Space owner, and a call with no claim (the home's own work), reach a row by its name as before.
-    const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => {
+    /** The member's person id when the call carries a claim the Vault names as a member's; "" for the owner and for home work with no claim. A claim the Vault cannot name is refused, never served as the owner's. */
+    const callerMember = async (/** @type {any} */ meta) => {
       const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
-      if (!claims) return name;
+      if (!claims) return "";
       const w = await ctx.call("vault.me.who", {}, { relay: true });
       if (w.error) throw Object.assign(new Error(w.error.message), { code: w.error.code || "denied" });
-      if (!w.data || w.data.kind !== "member") return name;
-      const key = personKey(String(name), w.data.person), r = hub.row(key);
-      if (!r || r.owner !== w.data.person) throw Object.assign(new Error(`you have no server named ${String(name).slice(0, 40)}`), { code: "not_found" });
-      return key;
+      return w.data && w.data.kind === "member" ? String(w.data.person) : "";
     };
+    const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => ownRow(hub, personKey, name, await callerMember(meta));
 
     ctx.tool("mcp.update", {
       effect: "write",
@@ -217,7 +217,12 @@ export default {
       description: "Approve the tool descriptions an MCP server changed since you reviewed them: { name, seen } where seen is the hash mcp.servers shows. Until then its tools are held.",
       input: obj({ name: str, seen: str }, ["name", "seen"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "approves changed MCP tool descriptions"); return hub.repin(input); },
+      run: async (input, meta) => {
+        refuseNonPerson(meta, "approves changed MCP tool descriptions");
+        // A member approves the change to her own connection only; the Space owner approves the Space's own rows and is refused a member's.
+        const person = await callerMember(meta);
+        return person ? hub.repin({ ...input, name: personKey(String(input.name), person) }, { owner: person }) : hub.repin(input);
+      },
     });
 
     ctx.tool("mcp.test", {
