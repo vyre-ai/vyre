@@ -646,6 +646,8 @@ const RELAY_ALLOWED = Object.freeze({
   connectors: ["vault.me.who"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
+  // the computers module asks agents.level what the person behind the call may do with an agent (use or edit), as that person: agents.level judges the relayed person and refuses a caller that is not one
+  computers: ["agents.level"],
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
   ...FIRST_RUN_RELAY,
 });
