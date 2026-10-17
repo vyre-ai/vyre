@@ -29,10 +29,6 @@ import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { Face } from "./Face";
-import { lendWithSite, lendSignerFor, setLendSigner } from "./lend-yes";
-import { yesSigner } from "../personal/signer";
-import { loadIdentity } from "../identity/store";
-import { useSpaces } from "../../screens/shell/state";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
@@ -257,11 +253,6 @@ export function ChatScreen(p: ChatScreenProps) {
   }, []);
   useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
-  const [canLend, setCanLend] = useState(false);
-  /** The sites the Vault lists for one of her own items (origins only, names only): empty when it lists none. */
-  const ownSites = async (item: string): Promise<string[] | null> => { try { const r = await tool<{ items?: { name?: string; sites?: unknown }[] }>("vault.me.list", { filter: item }); const it = (r.items ?? []).find((x) => x.name === item); return Array.isArray(it?.sites) ? it!.sites.filter((x): x is string => typeof x === "string").slice(0, 12) : null; } catch { return null; } };
-  // Her yes for lending one of her own vault items: where this device can sign one (the phone's key, a browser's passkey), tagging asks for it; elsewhere there is none and a tag lends nothing.
-  useEffect(() => { if (allowsMock()) return; let on = true; void (async () => { const device = await yesSigner().catch(() => null); const me = await loadIdentity().catch(() => null); const space = useSpaces.getState().space; if (on && device && me && space && space !== "all") { setLendSigner(lendSignerFor({ device, person: me.id, space })); setCanLend(true); } })(); return () => { on = false; setLendSigner(null); }; }, []);
   // A chat with one other has no face or name on its messages; a group shows them when the sender changes.
   const solo = new Set([...store.group.participants(), ...(here.members ?? [])].filter((f) => f.id !== viewer).map((f) => f.id)).size <= 1;
   const rowsRef = useRef(rows);
@@ -536,9 +527,6 @@ export function ChatScreen(p: ChatScreenProps) {
           onKey={p.onKey}
           onSend={onSend}
           groupChat={sharedChat}
-          onAddSite={(item) => router.push({ pathname: "/u/vault", params: { item, site: "1" } } as never)}
-          lendLater={canLend && !here.thread}
-          onLendYes={here.thread && /^per_/.test(String(viewerId).replace(/^person:/, "")) && /^[a-z][a-z0-9_-]{0,39}$/.test(store.group.assistantName()) ? async (item, choose) => lendWithSite({ asker: String(viewerId).replace(/^person:/, ""), id: item, thread: here.thread as string, agent: store.group.assistantName() }, await ownSites(item), choose) : undefined}
           canStop={meta.canStop}
           stopping={meta.stopping}
           onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}

@@ -17,13 +17,12 @@ import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
-import { withYes } from "./lend-yes";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant"; doing?: string };
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
 export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
-export type PickedMention = { kind: string; id: string; name: string; /** The site she picked for a login with several (signed into her yes). */ origin?: string; /** Her yes for lending a vault item to the chat's agent for this turn (src/chat/lend-yes.ts); only a vault chip has one. */ yes?: string };
+export type PickedMention = { kind: string; id: string; name: string };
 export type ModelChoice = { id: string; label: string; fit: number | null };
 export type ComposerProps = {
   state: string;
@@ -41,12 +40,6 @@ export type ComposerProps = {
   runsOnDefault?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
-  /** Asks for her yes when she picks one of her own vault items in a chat that has an agent and a thread: the platform prompt, then a signed yes over exactly that lend. Null: nothing is lent. */
-  onLendYes?: (item: string, choose: (sites: readonly string[]) => Promise<string | null>) => Promise<{ yes: string; origin?: string } | { needsSite: true } | null>;
-  /** Opens one of her own vault items to edit, so she can add its site. */
-  onAddSite?: (item: string) => void;
-  /** This device can sign her yes but the chat has no thread yet (its first message is not sent): a picked vault item is only named for now, and the composer says so. */
-  lendLater?: boolean;
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
   /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
   onTyping?: () => void;
@@ -125,11 +118,6 @@ export function ChatComposer(p: ComposerProps) {
   const lastTyping = useRef(0);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
-  const [lendNote, setLendNote] = useState(false);
-  // A login with no saved site cannot be lent: the item's name, until she adds the site or sends.
-  const [siteNeeded, setSiteNeeded] = useState<string | null>(null);
-  // A login with several saved sites: which one the agent signs in to (the Vault's own list of origins, names only).
-  const [sitePick, setSitePick] = useState<{ sites: readonly string[]; resolve: (site: string | null) => void } | null>(null);
   const slots = p.slots ?? [];
   const input = useRef<TextInput>(null);
   const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);
@@ -279,11 +267,10 @@ export function ChatComposer(p: ComposerProps) {
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
     if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
-    if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
-    // Tagging one of her own vault items asks for her presence once, here, at the tag; the yes rides on the chip to the message.
-    if (o.kind === "vault" && o.urn && !p.onLendYes && p.lendLater) setLendNote(true);
-    if (o.kind === "vault" && o.urn && p.onLendYes) { const item = o.urn, name = o.pick; void p.onLendYes(item, (sites) => new Promise<string | null>((resolve) => setSitePick({ sites, resolve }))).then((r) => { if (r && "needsSite" in r) { setSiteNeeded(item); return; } const m = picked.current.get(name); if (r && m && m.id === item) picked.current.set(name, withYes({ ...m, ...(r.origin ? { origin: r.origin } : {}) }, r.yes)); }).catch(() => {}); }
-    const r = pick(text, trig, o.pick);
+    // One of her own vault items goes into the message as the plain text #Vault.<Name>: nothing is lent and no yes is made; Vyre fills the value in only where it leaves, and asks her there.
+    const ref = o.kind === "vault" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(o.pick);
+    if (trig.kind !== "command" && trig.kind !== "person" && o.urn && o.kind !== "vault") picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
+    const r = pick(text, trig, ref ? "Vault." + o.pick : o.pick);
     setText(r.text);
     setCaret(r.caret);
     input.current?.focus();
@@ -311,8 +298,6 @@ export function ChatComposer(p: ComposerProps) {
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
     if (target.to.length || mentions.length || working) p.onSend(t, { ...target, ...(mentions.length ? { mentions } : {}), ...(working ? { mode: over ?? mode } : {}) }); else p.onSend(t);
     picked.current.clear();
-    setLendNote(false);
-    setSiteNeeded(null);
     setText("");
     setCaret(0);
     setAnswering([]);
@@ -459,18 +444,6 @@ export function ChatComposer(p: ComposerProps) {
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
-        {sitePick ? (
-          <Sheet open onClose={() => { sitePick.resolve(null); setSitePick(null); }} title="Which site?">
-            {sitePick.sites.map((site) => <Row key={site} title={site} onPress={() => { sitePick.resolve(site); setSitePick(null); }} />)}
-          </Sheet>
-        ) : null}
-        {siteNeeded ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Text size="caption" tone="label">This login has no saved site, so the agent cannot sign in with it yet.</Text>
-            {p.onAddSite ? <Button kind="secondary" size="sm" label="Add the site to this login" onPress={() => p.onAddSite?.(siteNeeded)} /> : null}
-          </View>
-        ) : null}
-        {lendNote ? <Text size="caption" tone="label">Send a message first to let the agent use this.</Text> : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Tip label="Add: files, commands, who answers" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: files, commands, who answers" onPress={() => openPop("plus")} /></Tip>
           {field}

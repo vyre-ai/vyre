@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- refactor(app): vault references replace the turn lend. Picking one of her own vault items in the composer writes the plain text `#Vault.<Name>` and makes no chip and no yes. Removed `lend-yes.ts` and its test, the "Which site?" picker, the no-site button and the lend wiring in `ChatScreen` (DESIGN-vault-references.md).
 - test(app): `siteUpdate` (redesign.js) builds the site-save call; a login's own `url` is never in it, only `urls`. Tested.
 - fix(app): saving a site on a login writes the merged origins to `urls` and leaves the login's own `url` alone. `originOf` (redesign.js) also refuses an address with a path, query or fragment; test added.
 - fix(app): the chat's "Add the site to this login" opens `/u/vault?item=<name>&site=1`, the member's own vault with that login selected. Mine now lists each login's saved sites and saves a new one (`vault.me.update` url, bare https origin only). The old link into the unrouted RealVault screen is removed.
