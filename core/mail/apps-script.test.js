@@ -318,7 +318,7 @@ test("send with files: the script gets each file as a blob, a reply carries them
   assert.deepEqual(JSON.parse(JSON.stringify(fake.sent.at(-1).files)), [{ name: "rota.pdf", type: "application/pdf", text: "PDF-1" }]);   // the fake script runs in its own realm: compare the plain data
   await a.send(cfg, fields(fake.url), { to: [DANA], subject: "Re: Order for Friday", body: "Here.", in_reply_to: "<order-2@northwind-bakery.example>", attachments: files });
   assert.equal(fake.sent.at(-1).kind, "reply");
-  assert.deepEqual(fake.sent.at(-1).files.map(f => f.name), ["rota.pdf"]);
+  assert.deepEqual([...fake.sent.at(-1).files.map(f => f.name)], ["rota.pdf"]);   // the fake script runs in its own realm: copy the names into this one
   const old = await startFakeAppsScript(t, { token: TOKEN, address: ALEX, legacy: true });
   await assert.rejects(a.send(cfg, fields(old.url), { to: DANA, subject: "Rota", body: "Attached.", attachments: files }), /older version that cannot carry files, so nothing was sent/);
   assert.equal(old.sent.length, 0, "nothing went out");

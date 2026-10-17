@@ -23,8 +23,8 @@ import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
 import { personOnChain, mayHandle, fromModule } from "./requester.js";
 import { chainPerson } from "../../lib/member-scope.js";
-import { roleAtLeast } from "../../lib/spaces/members.js";
 import { inputHash } from "../presence/index.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -242,7 +242,7 @@ export default {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module", "tailnet", "device"],
-      run: async (input, meta) => { await handled(input.id, meta); const c = mayApprove(meta.caller); return gate.revise({ ...input, by: c }); },   // whose item it is is judged first: a caller who may not handle it is told there is no such item
+      run: async (input, meta) => { const c = mayApprove(meta.caller); await handled(input.id, meta); return gate.revise({ ...input, by: c }); },
     });
 
     ctx.tool("gate.approve", {
@@ -410,10 +410,10 @@ export default {
         const via = i.via ? String(i.via) : "";
         if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it: ask the owner to share it with you first"), { code: "denied" });
         // a member (not an owner or admin) gives one only for their own mailbox or a connection they hold, never for the Space's own sender or for "any"
-        if (!roleAtLeast(String(K.roleOf(person)), "admin") && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
+        if (!roleAtLeast(K.roleOf(person), "admin") && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
-        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}: check the name of an agent you can instruct`), { code: "not_found" });
+        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)} (agents.list shows the agents you can instruct)`), { code: "not_found" });
         const id = await K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(uid), space: K.space } }, actions: ["gate.act-standing"], resource: { prefix: `vyre://${K.space}/outbox/${i.kind}${via ? `/${via}` : ""}` }, conditions, source: `gate:standing:${agentName}:${person}`, reason: "a person's standing permission for an agent" });
         return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount, currency: conditions.currency }), ...(i.follow_lists === true && lists.length ? { following: lists, warning: `Anyone who can edit these lists can change who ${agentName} sends to.` } : {}) };
       },
@@ -426,7 +426,7 @@ export default {
         const K = needK();
         // the one person on the verified chain (lib/member-scope.js); a member sees only the permissions they gave, staff see all
         const me = (await chainPerson(K, meta)) || "";
-        const staff = roleAtLeast(String(K.roleOf(me)), "admin");
+        const staff = roleAtLeast(K.roleOf(me), "admin");
         const rows = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => !i.agent || String(g.source).split(":")[2] === String(i.agent));
         const out = [];
         for (const g of rows) {
@@ -446,7 +446,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission: ask the owner which ones exist"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };
