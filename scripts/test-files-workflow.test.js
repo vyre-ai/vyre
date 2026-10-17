@@ -12,12 +12,12 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const yml = fs.readFileSync(path.join(ROOT, ".github/workflows/test-files.yml"), "utf8");
 
-test("it is a by-hand workflow with read-only contents, no secret, and two slots", () => {
+test("it is a by-hand workflow with read-only contents, no secret, and a group of its own per run", () => {
   assert.match(yml, /\non:\n  workflow_dispatch:\n/);
   assert.ok(!/\n  (push|pull_request|pull_request_target|schedule|workflow_call):/.test(yml), "nothing else starts it");
   assert.match(yml, /\npermissions:\n  contents: read\n/);
   assert.ok(!/secrets\./.test(yml) && !/environment:/.test(yml));
-  assert.match(yml, /group: test-files-\$\{\{ github\.run_number % 2 \}\}/, "two groups, so two at a time");
+  assert.match(yml, /group: test-files-\$\{\{ github\.run_id \}\}/, "a group of its own per run, so proofs never wait for each other");
   assert.match(yml, /cancel-in-progress: false/);
 });
 

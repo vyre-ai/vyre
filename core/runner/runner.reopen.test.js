@@ -17,7 +17,11 @@ test("a chase that is still waiting when the lease is taken again does not unmou
     unmount: async () => { unmounts++; if (failUnmount) throw new Error("busy"); mounted = false; }, isMounted: () => mounted, destroy: async () => { mounted = false; } };
   /** @type {(() => Promise<void>)[]} */ const steps = [];
   const r = createRunner({ base, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), requestServer: () => {}, retryMs: 5, lockRetryMs: 1, driver,
-    setTimer: (/** @type {() => Promise<void>} */ f) => { steps.push(f); return { unref() {} }; } });
+    // only the close chase's timers (2 s, then 5 s) are held back for the test to fire late; the lease's own renew and expiry timers (also routed through setTimer) are real ones, left alone
+    setTimer: (/** @type {() => Promise<void>} */ f, /** @type {number} */ ms) => {
+      if (ms === 2000 || ms === 5000) { steps.push(f); return /** @type {any} */ ({ unref() {} }); }
+      const t = setTimeout(f, ms); t.unref?.(); return t;
+    } });
   t.after(async () => { failUnmount = false; try { await r.lock(); } catch { /* closed */ } });
   assert.equal((await r.contact()).ok, true);
   assert.equal(mounted, true);

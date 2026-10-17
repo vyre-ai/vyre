@@ -63,7 +63,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcpconn`](#mcpconn) | `core/mcpconn` | `box`, `local` | 9 | 3 | cli |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
-| [`microsoft`](#microsoft) | `core/microsoft` | `box`, `local` | 13 | 2 | none |
+| [`microsoft`](#microsoft) | `core/microsoft` | `box`, `local` | 13 | 3 | none |
 | [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
@@ -659,7 +659,7 @@ The # tag: one picker over everything the person may mention, from the modules t
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
 - Tools: [13](tools.md#microsoft), 1 of them only for other modules
-- Emits: [2 events](events.md#microsoft)
+- Emits: [3 events](events.md#microsoft)
 - Shows on: no surface
 - Needs vault: `per-connection`
 
