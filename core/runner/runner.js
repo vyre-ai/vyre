@@ -125,8 +125,10 @@ export function createRunner(o) {
   /** Keep trying in the background while it is still mounted, so a held file cannot leave it readable for ever. */
   function chase(what) {
     if (pending) return;
+    const g = gen;
     const step = async () => {
       pending = null;
+      if (gen !== g) return;   // the workspace was opened again since: this closing is over
       if (!driver.isMounted(dir)) { mnt = null; await settled(what); return; }
       try { await driver.unmount(dir); } catch {}
       if (!driver.isMounted(dir)) { mnt = null; await settled(what); return; }
@@ -134,6 +136,8 @@ export function createRunner(o) {
     };
     pending = (o.setTimer || setTimeout)(step, 2000); pending.unref?.();
   }
+  /** A newer opening supersedes a background chase of an older closing: the chase must not unmount the workspace that has just been opened again. */
+  const stopChase = () => { if (pending) { try { clearTimeout(pending); } catch { /* a seam timer */ } pending = null; } };
   async function settled(what) {
     if (what === "revoked") { await destroyHard(); return; }
     emit({ type: "locked", why: what });
@@ -176,6 +180,7 @@ export function createRunner(o) {
   async function open() {
     if (mnt && lease.key() && driver.isMounted(dir)) return mnt;
     gen = crypto.randomBytes(6).toString("hex");   // a new opening supersedes any older watchdog
+    stopChase();
     const r = await lease.acquire();
     if (!r.ok) throw new Error(r.why);
     const key = lease.key();
@@ -411,7 +416,7 @@ export function createRunner(o) {
     /** Access ended: lock and delete. Called when the kernel withdraws an offer or removes the member, not by a tool. */
     async revoke() { await lease.revoke(); },
     /** Ask the vault again. If access ended while this computer was locked or offline, the workspace is deleted now. */
-    async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
+    async contact() { const r = await lease.acquire(); if (r.ok) { stopChase(); if (!mnt) await open(); } return r; },   // the lease is held again: a background closing of the old one is over
     moveToServer,
     /** The sessions running here, with what each uses now. */
     /**
