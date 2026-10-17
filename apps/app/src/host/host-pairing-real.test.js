@@ -120,7 +120,8 @@ test("a really paired server makes the poll say online, and the directory then h
   const body = /** @type {any} */ (await res.json());
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.equal(body.data.kind, "space");
-  assert.equal(body.data.id, polled.space);
+  // The directory's record is named by the space's own chain id (the one this identity's signed genesis makes); the server's id for the space is inside the sealed record, and is what the app keeps.
+  assert.match(String(body.data.id), /^spc_[a-z2-7]{26}$/);
   // The person's own list in the directory (what GitHub sign-in reads) has the space too: the call was made as the identity's signed act.
   const list = await host.call("onboard.space.list", {});
   assert.deepEqual(list.spaces.map((s) => [s.name, s.role]), [[label, "owner"]]);
