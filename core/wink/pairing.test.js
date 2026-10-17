@@ -416,7 +416,7 @@ test("a server's QR is a fresh 128-bit ticket seed: minted at the relay, drawn a
   const b = await w.call("wink.server.code", { qr: true });
   assert.notEqual(parseServerQr(b.qr).seed.toString(), q.seed.toString(), "a new secret every time");
   assert.ok((await w.call("wink.server.code", {})).qr, "the ticket text is returned whether or not the drawing was asked for");
-  assert.equal(w.minted.length, 2);
+  assert.equal(w.minted.length, 3, "one ticket for each of the three calls");
   for (const [n, e] of w.events) assert.ok(!JSON.stringify(e).includes(a.qr), `${n} never carries the QR`);
 });
 
@@ -1365,14 +1365,14 @@ test("the home server is the newest COMPLETED pairing: a channel with no complet
 test("a pairing that fails AFTER the server was adopted gives back the channel it wrote, so the failed server is never this computer's home; a completed pairing is the home", async () => {
   const rows = (w) => /** @type {any[]} */ (w.db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' OR k LIKE 'probe:%' OR k LIKE 'paired:%'").all()).map(r => r.k);
   const bad = world({ failEmit: "wink.server-paired" });
-  const r = await bad.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  const r = await bad.call("wink.pair.server", { payload: QR, target: { kind: "identity", id: ME } });
   await settle();
   assert.equal((await bad.call("wink.pair.status", { pairing: r.pairing })).state, "failed");
   assert.deepEqual(rows(bad), [], "a failed pairing leaves no channel, probe or completion mark");
   assert.equal(bad.p.homeServerId(), null, "and no home");
   assert.equal(bad.p.devices.list(ME).length, 0);
   const good = world();
-  const g = await good.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  const g = await good.call("wink.pair.server", { payload: QR, target: { kind: "identity", id: ME } });
   await settle();
   assert.equal((await good.call("wink.pair.status", { pairing: g.pairing })).state, "done");
   const [d] = good.p.devices.list(ME);

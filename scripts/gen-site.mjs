@@ -616,7 +616,7 @@ devicePage({
 devicePage({
   slug: 'phone', os: 'iOS, Android', name: 'Vyre on your phone', crumb: 'Phone',
   title: 'Vyre on your phone: your agents in your pocket',
-  desc: 'Put the Vyre app on your Android phone from the release file, or on your iPhone from a build you install with Xcode, and sign in with your address, username and master password. Approve, deny and answer from anywhere.',
+  desc: 'Put the Vyre app on your Android phone from the release file, or on your iPhone from an Xcode build, then sign in with your address, username and password. Approve and answer from anywhere.',
   h1: 'Your agents, <b>in your pocket.</b>',
   lead: 'Install the Vyre app from a file, sign in with your address, username and master password, and approve what your agents wait on with Face ID or a fingerprint.',
   ogSub: 'Install the Vyre app from a file, sign in, and approve what your agents wait on.',
