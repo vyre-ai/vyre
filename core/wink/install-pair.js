@@ -112,7 +112,7 @@ function finishInstall(o, meta, person, now) {
  * The install tools (one definition each: MCP, HTTP and CLI) and the setup page.
  * Issue and complete are outward, so an agent is held at the Gate. The person's own call runs now. Status is a read.
  * `wink.install.issue` is the mint. The Create step's name, `spaces.pair.install`, lives on the spaces module and calls this mint.
- * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, ticket?: (session: any) => Promise<string>, directory?: { resolveById: (id: string) => Promise<any> }, askServer?: () => Promise<{ space?: string, owned?: boolean, locked?: boolean, person?: string } | null> }} o
+ * @param {{ ctx: any, meta: { get: Function, set: Function, del: Function }, now?: () => number, log?: Function, pair?: (qr: string, person: string) => any, serverOf?: (pairing: string) => string | null, ticket?: (session: any) => Promise<string>, directory?: { resolveById: (id: string) => Promise<any> }, askServer?: () => Promise<{ space?: string, owned?: boolean, locked?: boolean, person?: string } | null> }} o
  */
 export function registerInstallPair(o) {
   const now = o.now || Date.now;
@@ -177,6 +177,7 @@ export function registerInstallPair(o) {
       o.meta.set("install_client", { person, exp: minted.exp, os, at: now() });
       o.meta.del("install_remote");
       o.meta.del("install_space");
+      o.meta.del("install_pairing");
       const line = installCommand(os, minted.code);
       return { command: line, code: minted.code, line, expires: minted.exp, person, os };
     },
@@ -208,7 +209,10 @@ export function registerInstallPair(o) {
           if (remote && (remote.owned || remote.locked || remoteSpace)) { owned = owned || Boolean(remote.owned || remoteSpace); lockedNow = lockedNow || Boolean(remote.locked); if (owned) o.meta.set("install_remote", { at: now() }); }
         } catch { /* the server is not paired yet; the next read asks again */ }
       }
-      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null };
+      // The server THIS line paired, by the pairing this line started (not the newest server): what a caller names when it acts on that server.
+      const link = o.meta.get("install_pairing");
+      const server = row && link && typeof link.id === "string" && typeof o.serverOf === "function" ? o.serverOf(link.id) : null;
+      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null, server };
     },
   });
 
@@ -227,6 +231,7 @@ export function registerInstallPair(o) {
       const qr = typeof o.ticket === "function" ? await o.ticket(session) : await offerTicket(ctx, session);
       if (typeof o.pair !== "function") throw fail("unavailable", "This computer could not finish pairing. Open the Vyre app and it will finish.");
       const started = await o.pair(String(qr || ""), session.person);
+      if (started && started.pairing) o.meta.set("install_pairing", { id: String(started.pairing), at: now() });
       return { ok: true, person: session.person, expires: session.exp, ...(started && started.pairing ? { pairing: String(started.pairing) } : {}) };
     },
   });

@@ -605,7 +605,7 @@ export function createPairing(o) {
           }
         }
         // the pairing is complete: only now is this server one this computer is paired to, and the newest such is the home
-        if (channelMade) meta.set(`paired:${channelMade.sid}`, { at: now() });
+        if (channelMade) { meta.set(`paired:${channelMade.sid}`, { at: now() }); p.server = channelMade.sid; }
         p.state = "done";
         ctx.events.emit("wink.pair-done", { pairing: id, kind: i.kind, target: i.target, ...(p.device ? { device: p.device } : {}) });
       } catch (e) {
@@ -707,7 +707,7 @@ export function createPairing(o) {
         const p = pending.get(String(input.pairing));
         if (!p) throw fail("not_found", "no such pairing");
         if (p.state === "waiting" && now() >= p.expires) p.state = "expired";
-        return { state: p.state, kind: p.kind, ...(p.device ? { device: p.device } : {}), ...(p.reason ? { reason: p.reason } : {}), ...(p.invite ? { invite: p.invite } : {}), ...(p.kind === "invite" && p.state === "waiting" && p.ack ? { ack: p.ack } : {}), ...(p.state === "confirm" && p.words ? { words: p.words, message: words(p.kind === "phone" ? "phoneConfirm" : "pairConfirm", { words: p.words }) } : {}) };
+        return { state: p.state, kind: p.kind, ...(p.server ? { server: p.server } : {}), ...(p.device ? { device: p.device } : {}), ...(p.reason ? { reason: p.reason } : {}), ...(p.invite ? { invite: p.invite } : {}), ...(p.kind === "invite" && p.state === "waiting" && p.ack ? { ack: p.ack } : {}), ...(p.state === "confirm" && p.words ? { words: p.words, message: words(p.kind === "phone" ? "phoneConfirm" : "pairConfirm", { words: p.words }) } : {}) };
       },
     });
 
@@ -1692,7 +1692,9 @@ export function createPairing(o) {
       return best;
     } catch { return null; }
   };
-  return { typedAck: (/** @type {string} */ tag) => { typedAcks.set(String(tag), now() + 5 * 60_000); }, forgetTypedAck: (/** @type {string} */ tag) => { typedAcks.delete(String(tag)); }, autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  /** The server device a finished pairing made (null until it is done, or for a pairing that made none): the exact server a given install line paired, never a guess from the newest. */
+  const serverOf = (/** @type {string} */ id) => { const p = pending.get(String(id)); return p && p.state === "done" && p.server ? String(p.server) : null; };
+  return { serverOf, typedAck: (/** @type {string} */ tag) => { typedAcks.set(String(tag), now() + 5 * 60_000); }, forgetTypedAck: (/** @type {string} */ tag) => { typedAcks.delete(String(tag)); }, autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

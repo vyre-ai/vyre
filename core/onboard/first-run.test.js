@@ -93,7 +93,6 @@ function harness(opt = {}) {
       made.add(input.space);
       return { generation: 1 };
     }
-    if (name === "spaces.servers") return { servers: [{ id: "srv_old", name: "first" }, { id: "srv_new", name: "second" }] };
     if (name === "spaces.publish-server-space") {
       if (opt.publish) return opt.publish(input);
       return { space: "spc_aaaaaaaaaa", name: input.name };
@@ -334,7 +333,7 @@ test("one identity is owner of one space and admin of another, and a computer si
 
 test("a person poll makes the space vault once the server has adopted the creator", async () => {
   const space = "spc_aaaaaaaaaa";
-  const status = { issued: true, owned: true, locked: true, space, expires: Math.floor(Date.now() / 1000) + 1800 };
+  const status = { issued: true, owned: true, locked: true, space, server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
   const { tools, calls } = harness({ status });
   const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
@@ -394,21 +393,22 @@ test("a poll stops hard when another server answered the install line first", as
   assert.equal(p.contested, undefined, "an ordinary wait is not a hard stop");
 });
 
-test("a person poll names the server's space in the directory, once, on the newest paired server, so <name>.vyre.run answers a sign-in", async () => {
-  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", expires: Math.floor(Date.now() / 1000) + 1800 };
+test("a person poll names the server's space in the directory, once, on the server this install line paired, so <name>.vyre.run answers a sign-in", async () => {
+  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
   const { tools, calls } = harness({ status });
   const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
   assert.equal(polled.online, true);
+  assert.equal(calls.some((c) => c.name === "spaces.servers"), false, "the server is the one the install status names, never picked from a list");
   const published = calls.filter((c) => c.name === "spaces.publish-server-space");
   assert.equal(published.length, 1);
-  assert.deepEqual(published[0].input, { server: "srv_new", name: "juniper" });
+  assert.deepEqual(published[0].input, { server: "srv_mine", name: "juniper" });
   await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
   assert.equal(calls.filter((c) => c.name === "spaces.publish-server-space").length, 1, "published once for this install line");
 });
 
 test("a person poll that is refused the name does not say online and says what to do; an agent's poll publishes nothing", async () => {
-  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", expires: Math.floor(Date.now() / 1000) + 1800 };
+  const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
   const refused = harness({ status, publish: () => { throw Object.assign(new Error("someone else has that name"), { code: "taken" }); } });
   const opened = await refused.tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
   const polled = await refused.tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
@@ -421,4 +421,11 @@ test("a person poll that is refused the name does not say online and says what t
   const o2 = await agent.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "mcp" });
   await agent.tools.get("onboard.space.poll").run({ id: o2.id }, { caller: "mcp" });
   assert.equal(agent.calls.some((c) => c.name === "spaces.publish-server-space"), false);
+  // Adopted but this line has paired no server yet: nothing is guessed, nothing is published, and the poll says so instead of online.
+  const unpaired = harness({ status: { ...status, server: null } });
+  const o3 = await unpaired.tools.get("onboard.space.open").run({ kind: "linux", name: "studio" }, { caller: "cli" });
+  const p3 = await unpaired.tools.get("onboard.space.poll").run({ id: o3.id }, { caller: "cli" });
+  assert.equal(p3.online, false);
+  assert.equal(p3.failed, true);
+  assert.equal(unpaired.calls.some((c) => c.name === "spaces.publish-server-space"), false);
 });

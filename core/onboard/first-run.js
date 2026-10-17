@@ -359,11 +359,10 @@ export function registerFirstRun(ctx, io) {
         // The server's space gets its name in the names directory, so <name>.vyre.run answers a sign-in from another device. Once per install line; a refusal (a name taken) stops here with the way on.
         if (!row.published) {
           try {
-            const servers = await personCall("spaces.servers", {});
-            const list = servers && Array.isArray(servers.servers) ? servers.servers : [];
-            const newest = list.length ? list[list.length - 1] : null;
-            if (!newest) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
-            await personCall("spaces.publish-server-space", { server: String(newest.id), name: row.name });
+            // The server this install line paired, named by the pairing the line started: never the newest or the only one.
+            const server = status && typeof status.server === "string" && status.server ? status.server : "";
+            if (!server) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
+            await personCall("spaces.publish-server-space", { server, name: row.name });
             row.published = true;
           } catch (e) {
             const x = /** @type {any} */ (e);
