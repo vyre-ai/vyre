@@ -403,9 +403,9 @@ test("a server that asks for the person's approval before it makes the space vau
 test("a page with no daemon offers the AI sign-in once its space is online, and forwards it to the paired server without anything secret coming back", async (t) => {
   const { pp, host, store } = await ready(t);
   // an identity that already has another paired server, listed first: the sign-in must go to the one made now
-  { const k = await store.load(); await store.save({ ...k, spaces: [{ id: "spc_zzzzzzzzzzzz", name: "older", role: "owner", server: null, paired: { box: "boxOLD", route: "r", relay: "x" } }] }); }
   assert.deepEqual((await host.call("onboard.agent.list", {})).providers.map((p) => p.id), ["claude", "codex", "grok"]);
   await assert.rejects(() => host.call("onboard.agent.signin", { provider: "claude", label: "Claude" }), (e) => e.code === "no_server", "no server yet, no sign-in");
+  { const k = await store.load(); await store.save({ ...k, spaces: [{ id: "spc_zzzzzzzzzzzz", name: "older", role: "owner", server: null, paired: { box: "boxOLD", route: "r", relay: "x" } }] }); }
   const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
   pp.seen.resolveAs = "one";
   await until(host, open.id, (r) => r.online);
