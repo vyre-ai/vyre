@@ -70,7 +70,9 @@ test("every surface label is known, and so is the first word of every label the 
     const src = fs.readFileSync(f, "utf8");
     for (const m of src.matchAll(/\bcaller(?::|\s*=)\s*[`"']([a-z][a-z0-9-]*)(?=[:`"'\s])/g)) if (!KNOWN_LABELS.has(m[1])) unknown.push(`${path.relative(REPO, f)}: ${m[1]}`);
   }
-  assert.deepEqual([...new Set(unknown)].sort(), [], "a label the code builds has a first word the registry would refuse; add it to KNOWN_LABELS in core/modules/index.js");
+  // Audit-only labels: a `caller:` the code writes that never reaches the registry, so the registry never has to know it. Adding "member" to KNOWN_LABELS would let a socket client claim `member:<id>` as its own label.
+  const AUDIT_ONLY = new Set(["core/vault/request.js: member"]);   // vault.me.request's act by a person, written to the Vault's own audit as member:<person> (core/vault/request.js, next to shared.js's member:<name> sync entries)
+  assert.deepEqual([...new Set(unknown)].filter(u => !AUDIT_ONLY.has(u)).sort(), [], "a label the code builds has a first word the registry would refuse; add it to KNOWN_LABELS in core/modules/index.js");
 });
 
 test("a bare mobile caller is refused on a tool whose callers list still names mobile; the phone's device:<id> passes", () => {
