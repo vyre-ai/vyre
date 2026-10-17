@@ -85,8 +85,17 @@ export default {
     const cfg = (ctx.config && ctx.config.computers) || {};
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
+    // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
+    // once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
+    /** @type {Promise<string> | null} */ let memberKeyP = null;
+    const memberKey = () => memberKeyP || (memberKeyP = (async () => {
+      try { const v = await ctx.vault.fetch(MEMBER_TOKEN_ITEM); if (v) return String(v); } catch { /* not there yet */ }
+      const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value: crypto.randomBytes(32).toString("base64url") }, grants: ["computers"] });
+      if (r && r.error) throw new Error(r.error.message);
+      return String(await ctx.vault.fetch(MEMBER_TOKEN_ITEM));
+    })().catch(e => { memberKeyP = null; throw e; }));
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
-      memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      memberTokenKey: () => memberKey() });
     const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");
     pool.browserProfiles = new BrowserProfiles({
       pool,
@@ -139,7 +148,7 @@ export default {
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
         await agentUsers.screenTicket(agent, hello);
-        const password = vncPasswordFor(await ctx.vault.fetch(MEMBER_TOKEN_ITEM), agent);
+        const password = vncPasswordFor(await memberKey(), agent);
         screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
         let released = false;
         return { host: h.host, port: RELAY_PORT, password, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
@@ -274,7 +283,7 @@ export default {
       const box = pool.row(SHARED_COMPUTER_ID);
       if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
       const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
-      const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
       return /** @type {any} */ (ctl)[name](u);
     };
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
