@@ -46,7 +46,8 @@ async function world(t) {
   /** A share of the login with an agent, as the sharing tools make it: the actions of a level, on the login's own address. */
   const share = (/** @type {string} */ agent, /** @type {readonly string[]} */ actions = ACCESS_LEVELS.use, over = {}) =>
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
-  const fill = (/** @type {string} */ agent, /** @type {any} */ extra = {}) => agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra });
+  const diag = async () => { const r = await rig.gw.authorize({ chain: rig.assistant(rig.uid("kit"), rig.owner ? "per_alex" : "x", "t"), action: "vault.fill", resource: urn, origin: ORIGIN }).catch(e => ({ threw: String(e && e.message) })); console.log("[fill-diag] authorize", JSON.stringify(r), "grants", JSON.stringify((await rig.gw.grants.list(rig.owner(), {}).catch(e => String(e))).slice ? (await rig.gw.grants.list(rig.owner(), {})).slice(-2) : "n/a")); };
+  const fill = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => { if (agent === "kit") await diag(); return agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra }); };
   const began = () => calls.filter(c => c.name === "computers.fill.begin").length;
   return { v, rig, db, events, calls, share, fill, began };
 }
