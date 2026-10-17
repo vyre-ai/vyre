@@ -33,6 +33,9 @@ test("the join path never names a server, and identity leads to the path the per
   for (const text of Object.values(JOIN_COPY)) assert.equal(mentionsServer(text), false, text);
   assert.deepEqual(PHASES, ["Identity", "Space", "Ready"]);
   assert.equal(afterRecovery({}), "id.ai");
+  assert.equal(afterRecovery({ skipAi: true, path: "create" }), "create.kind", "a page with no daemon skips the AI step before its space and keeps the path");
+  assert.equal(afterRecovery({ skipAi: true, heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
+  assert.equal(afterAi({ then: "ready" }), "ready", "the AI step offered after the space is online goes on to Ready");
   assert.equal(afterAi({ path: "join" }), "join.link");
   assert.equal(afterAi({ path: "join", heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
   assert.equal(afterAi({ path: "create" }), "create.kind");

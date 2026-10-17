@@ -1,6 +1,7 @@
 // @ts-check
 // The only door the first-run screens use. Every name is a registry tool (core/onboard/first-run.js), which the MCP server forwards as itself.
 import { MOCK, tool } from "../../src/real/box";
+import { hostWanted } from "../../src/host";
 import * as mock from "./mock-api.js";
 
 /** @param {any} e */
@@ -164,3 +165,6 @@ export async function unlockGithub(password) {
   try { return done(await tool("onboard.signin.unlock", { password })); }
   catch (e) { return fail(e); }
 }
+
+/** Is this page one with no daemon of its own (the hosted web app, or the Mac or Windows window with no vyred)? Its AI accounts are made on its server, so the AI step comes after the space is online. */
+export const pageHasNoDaemon = () => !MOCK && hostWanted();
