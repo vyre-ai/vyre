@@ -37,9 +37,20 @@ export const MIGRATIONS = [
   // One meaning of "no scope": the person and the assistant only. A server stored before that has an explicit open scope
   // (the old default was written out on every row); any row without one is kept open, so nothing that works breaks.
   `UPDATE mcp_servers SET scope = '{"projects":"*","agents":"*"}' WHERE scope IS NULL OR scope = '' OR scope = '{}' OR scope = 'null';`,
+  // A connection a person made for themselves: `owner` is that person's id (null for the Space owner's own rows, as before), `connection` the item in their vault that holds the token, `label` the
+  // name they gave it. The row's `name` stays the one key everything else in the hub uses; for a person's row it is personKey(label, owner), so two people can each have a "clio".
+  `ALTER TABLE mcp_servers ADD COLUMN owner TEXT; ALTER TABLE mcp_servers ADD COLUMN connection TEXT; ALTER TABLE mcp_servers ADD COLUMN label TEXT;`,
 ];
 
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
+/** The person's id as the kernel writes it. */
+const PERSON = /^per_[A-Za-z0-9_-]{1,64}$/;
+/** The key of a row a person made: their label, cut to leave room, and six hex digits of their id, so two people can each connect "clio" and the key still fits a server name. @param {string} label @param {string} person */
+export const personKey = (label, person) => {
+  if (!NAME.test(String(label || ""))) throw bad("a server name is a lowercase letter, then up to 31 lowercase letters, digits or dashes");
+  if (!PERSON.test(String(person || ""))) throw bad("a connection belongs to a person");
+  return `${String(label).slice(0, 25).replace(/-+$/, "")}-${crypto.createHash("sha256").update(String(person)).digest("hex").slice(0, 6)}`;
+};
 /** Vault item names, as core/vault/vault.js. */
 const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -250,7 +261,7 @@ function ownServer(command, args) {
 /**
  * The stored row for an add or update, checked. Refuses anything that would put a value in the
  * table: a sensitive header, an env value that is not a vault item, a credential in a url.
- * @param {any} i @param {{ httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null) }} [opts]
+ * @param {any} i @param {{ httpHosts?: string[], own?: boolean, boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null) }} [opts]
  */
 export function normalize(i, opts = {}) {
   if (!NAME.test(String(i.name || ""))) throw bad("a server name is a lowercase letter, then up to 31 lowercase letters, digits or dashes");
@@ -293,7 +304,7 @@ export function normalize(i, opts = {}) {
       out.vars[k] = v;
     }
   }
-  out.auth = normalizeAuth(i.auth, out);
+  out.auth = normalizeAuth(i.auth, out, opts.own === true);
   if (out.url && out.auth.item) {
     // A connector preset's own prefix wins over the older hand-listed ones (google-gmail before google-).
     const lower = String(out.auth.item).toLowerCase();
@@ -308,7 +319,7 @@ export function normalize(i, opts = {}) {
   return out;
 }
 
-function normalizeAuth(a, out) {
+function normalizeAuth(a, out, own = false) {
   const stdio = out.transport === "stdio";
   const envRefs = Object.keys(out.env).length > 0;
   if (a === undefined || a === null) a = { type: envRefs ? "env" : "none" };
@@ -324,6 +335,14 @@ function normalizeAuth(a, out) {
     return { type: "env" };
   }
   if (stdio) throw bad(`${a.type} auth is for http and sse servers; a stdio server takes env`);
+  if (a.connection !== undefined) {
+    // A person's own connection: the token is an item in THEIR vault, reached only by the hub's token tool. No item name, no header: the hub adds the token at the boundary.
+    if (!own) throw bad("auth.connection is for a connection a person made for themselves");
+    if (!["oauth", "bearer"].includes(a.type) || a.item !== undefined) throw bad("a connection takes auth { type: oauth | bearer, connection } and no item");
+    if (typeof a.connection !== "string" || !ITEM.test(a.connection) || looksSecret(a.connection)) throw bad("auth.connection must name an item in your vault");
+    return { type: a.type, connection: a.connection };
+  }
+  if (own) throw bad("a person's connection names its item with auth.connection");
   if (typeof a.item !== "string" || !ITEM.test(a.item) || looksSecret(a.item)) throw bad("auth.item must name a vault item");
   const r = { type: a.type, item: a.item };
   if (a.field !== undefined) { if (typeof a.field !== "string" || !a.field) throw bad("auth.field must be a field name"); r.field = a.field; }
@@ -433,7 +452,8 @@ export class Hub {
     return { name: r.name, transport: r.transport, command: r.command, args: json(r.args, []), cwd: r.cwd, url: r.url,
       headers: json(r.headers, {}), env: json(r.env, {}), vars: json(r.vars, {}), auth: json(r.auth, { type: "none" }),
       scope: json(r.scope, { projects: "*", agents: "*" }), tools: json(r.tools, {}), idle: r.idle,
-      cache: json(r.tools_cache, null), cachedAt: r.cached_at, lastUsed: r.last_used, added: r.added, updated: r.updated };
+      cache: json(r.tools_cache, null), cachedAt: r.cached_at, lastUsed: r.last_used, added: r.added, updated: r.updated,
+      owner: r.owner || null, connection: r.connection || null, label: r.label || null };
   }
 
   rows() { return this.db.prepare("SELECT name FROM mcp_servers ORDER BY name").all().map(r => this.row(r.name)); }
@@ -455,7 +475,8 @@ export class Hub {
     const s = this.live.get(r.name);
     const base = { name: r.name, transport: r.transport, state: s ? s.state : "stopped", tools: r.cache ? this.visibleTools(r).length : null,
       ...(s && s.error ? { error: s.error } : {}), lastUsed: r.lastUsed || null,
-      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope };
+      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope,
+      ...(r.owner ? { owner: r.owner, label: r.label || r.name } : {}) };
     if (!full) return base;
     const origin = r.url ? (() => { const u = new URL(r.url); return u.origin + u.pathname; })() : null;
     return { ...base, ...(r.command ? { command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) } : {}), ...(origin ? { url: origin } : {}),
@@ -480,13 +501,23 @@ export class Hub {
     return { granted: true };
   }
 
-  async add(input) {
-    const n = normalize(input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
-    if (this.row(n.name)) throw fail("conflict", `there is already a server ${n.name}; mcp.update changes it`);
+  /**
+   * Add a server. `o.owner` is a person's id, given by the caller that read it from the kernel's chain (never from the input), and makes the row that person's own: remote servers only, the token an item in
+   * their vault (auth.connection), and the row's key personKey(name, owner) so it cannot collide with another person's.
+   * @param {any} input @param {{ owner?: string }} [o]
+   */
+  async add(input, o = {}) {
+    if (input && (input.owner !== undefined || input.connection !== undefined || input.label !== undefined)) throw bad("owner, connection and label are not inputs: a connection belongs to the person who made the call");
+    const own = o.owner !== undefined;
+    if (own && input.transport === "stdio") throw bad("a connection a person makes is a remote server: http or sse");
+    const label = String(input.name || "");
+    const n = normalize(own ? { ...input, name: personKey(label, /** @type {string} */ (o.owner)) } : input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor, own });
+    if (this.row(n.name)) throw fail("conflict", `there is already a server ${own ? label : n.name}; mcp.update changes it`);
     const now = this.now();
-    this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(n.name, n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url, JSON.stringify(n.headers),
-      JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, now, now);
+    this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated, owner, connection, label)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(n.name, n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url, JSON.stringify(n.headers),
+      JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, now, now,
+      own ? o.owner : null, own ? /** @type {any} */ (n.auth).connection : null, own ? label : null);
     await this.deps.offer?.(n.name);
     this.deps.emit("mcp.added", { name: n.name, transport: n.transport, auth: n.auth.type });
     // Fill the tool cache now, so the first session lists tools without a spawn. A server whose
@@ -502,7 +533,7 @@ export class Hub {
     if (input.transport && input.transport !== r.transport) {
       for (const k of ["command", "args", "cwd", "url", "headers", "env", "vars", "auth"]) if (input[k] === undefined) delete merged[k];
     }
-    const n = normalize(merged, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
+    const n = normalize(merged, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor, own: Boolean(r.owner) });
     const how = ["transport", "command", "args", "cwd", "url", "headers", "env", "vars", "auth"];
     const changed = Object.keys(input).filter(k => k !== "name");
     const reconnect = how.some(k => JSON.stringify(n[k]) !== JSON.stringify(r[k]));

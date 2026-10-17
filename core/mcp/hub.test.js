@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { Credentials } from "../../lib/connectors/auth.js";
 import { McpError } from "./client.js";
-import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl, sends } from "./hub.js";
+import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl, sends, personKey } from "./hub.js";
 
 test("classify: reads by verb or readOnlyHint, never with a send, write or delete word; unknown is outward", () => {
   const out = (name, annotations, mode) => classify({ name, annotations }, mode);
@@ -386,4 +386,29 @@ test("hub: no scope means you and the assistant only; an explicit open scope sta
   assert.deepEqual(scopes.c, { projects: "*", agents: "*" });
   assert.deepEqual(scopes.d, { projects: ["harlow"], agents: ["kit"] }, "a written scope is never touched");
   void db;
+});
+
+test("a person's connection: its key is theirs, its token is an item in their vault, and nothing in the input can name an owner", async () => {
+  const A = "per_alice", B = "per_bob";
+  assert.notEqual(personKey("clio", A), personKey("clio", B), "two people can each connect clio");
+  assert.equal(personKey("clio", A), personKey("clio", A));
+  assert.ok(personKey("a".repeat(32), A).length <= 32, "the key still fits a server name");
+  assert.throws(() => personKey("Clio", A), { code: "bad_input" });
+  assert.throws(() => personKey("clio", "alice"), { code: "bad_input" });
+  const row = { name: personKey("clio", A), transport: "http", url: "https://mcp.example.test/mcp", auth: { type: "oauth", connection: "clio-alice" } };
+  assert.deepEqual(normalize(row, { own: true }).auth, { type: "oauth", connection: "clio-alice" });
+  assert.throws(() => normalize(row), /for a connection a person made for themselves/, "a Space row cannot name a connection");
+  assert.throws(() => normalize({ ...row, auth: { type: "oauth", item: "some-item" } }, { own: true }), /auth.connection/, "a person's row cannot name an item");
+  assert.throws(() => normalize({ ...row, auth: { type: "oauth", connection: "x", item: "y" } }, { own: true }), { code: "bad_input" });
+  assert.throws(() => normalize({ ...row, auth: { type: "env", connection: "x" } }, { own: true }), { code: "bad_input" });
+  const { hub } = fakeHub({ values: { "clio-alice": "fixture-alice-token-0123456789", "clio-bob": "fixture-bob-token-0123456789" } });
+  await assert.rejects(() => hub.add({ name: "clio", transport: "http", url: row.url, auth: row.auth, owner: B }, { owner: A }), { code: "bad_input" }, "an owner in the input is refused");
+  await assert.rejects(() => hub.add({ name: "clio", transport: "stdio", command: "node" }, { owner: A }), { code: "bad_input" }, "a person's connection is remote");
+  await hub.add({ name: "clio", transport: "http", url: row.url, auth: row.auth }, { owner: A });
+  await hub.add({ name: "clio", transport: "http", url: row.url, auth: { type: "oauth", connection: "clio-bob" } }, { owner: B });
+  await assert.rejects(() => hub.add({ name: "clio", transport: "http", url: row.url, auth: row.auth }, { owner: A }), { code: "conflict" });
+  const mine = hub.row(personKey("clio", A));
+  assert.equal(mine.owner, A); assert.equal(mine.connection, "clio-alice"); assert.equal(mine.label, "clio");
+  assert.equal(hub.row(personKey("clio", B)).connection, "clio-bob");
+  assert.deepEqual(hub.view(mine).auth, { type: "oauth" }, "the view names no item and no token");
 });
