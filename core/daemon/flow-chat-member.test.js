@@ -42,7 +42,13 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   // an agent not shared with Ben, and a Flow not shared with Ben: refused, and nothing wakes
   const seen = /** @type {any[]} */ ([]);
   const real = d.registry.deps.kernelSession;
-  d.registry.deps.kernelSession = async (/** @type {any} */ q) => { seen.push({ thread: q.thread, runas: q.runas, asker: q.asker, optsKeys: q.rec && q.rec.opts ? Object.keys(typeof q.rec.opts === "string" ? JSON.parse(q.rec.opts) : q.rec.opts) : null, purpose: q.rec && q.rec.purpose }); return real(q); };
+  d.registry.deps.kernelSession = async (/** @type {any} */ q) => {
+    const out = await real(q);
+    // what the session's own token says (the kernel's verified facts), read now, while the session is open
+    const facts = out && out.token ? await K.surfaces.verify(out.token).catch(() => null) : null;
+    seen.push({ thread: q.thread, runas: q.runas, asker: q.asker, ...(facts ? { person: facts.person, agent: facts.agent, chat: facts.chat } : {}) });
+    return out;
+  };
   assert.equal((await asBen("agents.flow-say", { agent: "juno", flow: open, text: "hi" })).error?.code, "denied", "an agent not shared with him");
   assert.ok(!(await asOwner("agents.access.set", { agent: "juno", kind: "person", subject: BEN, level: "use" })).error);
   assert.ok((await asBen("agents.flow-say", { agent: "juno", flow: hidden, text: "hi" })).error, "a Flow he may not read");
@@ -67,6 +73,10 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
     throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}; the daemon log (threads, sessions, switchboard, launch): ${logs.filter((l) => /threads|session|launch|account|switchboard|refus|spawn/i.test(l)).slice(-25).join(" || ")}`);
   });
   assert.equal(s.runas, BEN, `the job acts as the member who wrote (the call: ${JSON.stringify(s)}; all calls: ${JSON.stringify(seen)}; launch lines: ${logs.filter((l) => /launch input|launch keeps|kernel session/.test(l)).join(" || ")})`);
+  // the job's token: the member is the person, the agent hop is the agent's, and it is in no chat (the thread's own chat is the home's)
+  assert.equal(s.person, BEN, "the token's person is the member");
+  assert.ok(typeof s.agent === "string" && s.agent, "the token carries the agent hop");
+  assert.ok(!s.chat, "the job's session is in no chat");
   assert.notEqual(s.runas, OWNER, "never as the owner");
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
   assert.equal(row?.flow_origin?.flow, open, "the thread joins that Flow's chat");
