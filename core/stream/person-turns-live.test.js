@@ -536,6 +536,8 @@ test("lent key: with two members in one chat, the second asker's process is hand
   catch (e) {
     // what actually happened, before the timeout hides it: which key went to which process, who lent what, and what the thread says
     const evs = await r.b.reg.call("threads.get", { thread: kitThreadOf(r), limit: 100 }, "cli").then((/** @type {any} */ x) => (x.data && x.data.events || []).map((/** @type {any} */ ev) => `${ev.type}:${String(ev.payload && (ev.payload.text || ev.payload.error || ev.payload.reason || ev.payload.via) || "").slice(0, 120)}`)).catch((/** @type {any} */ x) => [String(x)]);
+    const dbq = (/** @type {string} */ q) => { try { return r.b.reg.deps.db.prepare(q).all(); } catch (x) { return String(x); } };
+    console.log("[lentkey-diag2]", JSON.stringify({ inbox: dbq("SELECT thread, via, text, delivered_at FROM threads_inbox LIMIT 10"), runs: dbq("SELECT * FROM threads_runs LIMIT 5"), threads: dbq("SELECT id, status, account FROM threads_threads2 LIMIT 5"), accounts: dbq("SELECT id, kind, person, signed_in_at, vault_item FROM sessions_accounts"), tables: dbq("SELECT name FROM sqlite_master WHERE name LIKE 'threads%'") }));
     console.log("[lentkey-diag]", JSON.stringify({ launches: r.launches(), lends: r.lends, answers: r.answers(), events: evs, framesTail: textOf(r.watch.frames).slice(-400) }));
     throw e;
   }
