@@ -1,10 +1,10 @@
 // @ts-check
 // finish: the last step of a pairing whose ticket the box GATED (X-1): the device redeemed it and is a waiting pairing, not yet a device, until it finishes over its own channel. Which
 // tool finishes it depends on the gate the box names in its reply (`gate`): a server's ticket ends with wink.server.adopt (the app says who will own the server and proves it, and the
-// person at the server says yes), a phone's or a computer's with wink.phone.wait (the person on the showing device says yes). This file is the one place that does either, for the QR and long
-// code (serverpair.js, phonepair.js) and for the typed code (join.js) alike; before it the typed code redeemed the ticket and stopped, and the waiting pairing was dropped.
+// person at the server says yes), a device's waiting pairing (the person on the showing device says yes). This file is the one place that does either, for the QR and long
+// code (serverpair.js) and for the typed code (join.js) alike; before it the typed code redeemed the ticket and stopped, and the waiting pairing was dropped.
 //
-// Both resolve what the pairing then holds, or reject with an Error whose `code` is one of the codes serverpair.js and phonepair.js list.
+// Both resolve what the pairing then holds, or reject with an Error whose `code` is one of the codes serverpair.js lists.
 import { connect } from "./client.js";
 import { nonceCommit, ticketTag, newNonce, pairWords } from "./pairwords.js";
 

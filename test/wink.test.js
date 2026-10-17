@@ -380,9 +380,6 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
 
 
 
-// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
-
-
 // ---- a recovered phone (tailnet, 4 Oct): its key is on the identity's list by recovery and was never paired with this server ----
 
 
