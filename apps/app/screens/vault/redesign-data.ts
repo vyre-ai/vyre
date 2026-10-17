@@ -5,6 +5,7 @@ import { daysLeftOf, groupOf, siteUpdate, valueField, type VItem } from "./redes
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
+import { isOwnerRefusal, toolScope } from "./owner-mine.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
@@ -106,16 +107,23 @@ export function realData(call: Call): VaultData {
     return null;
   }
   const fieldsOf: Record<string, string[]> = {};
+  let owner = false;
+  /** The owner's vault (vault.list), shown under Space, or under Mine for the owner. */
+  async function loadSpace(scope0: Scope) {
+        const r = await ask<{ items?: ListRow[]; locked?: boolean }>("vault.list");
+        for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
+        const items = (r.items ?? []).map(spaceItem);
+        return { items: scope0 === "mine" ? items.map((i) => ({ ...i, sp: "mine" as const })) : items, locked: Boolean(r.locked), ...((await spaceVaultId()) === null ? {} : { noSpaceVault: true }) };
+      
+  }
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
     real: true,
-    async load(scope) {
-      if (scope === "space") {
-        const r = await ask<{ items?: ListRow[]; locked?: boolean }>("vault.list");
-        for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
-        return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked), ...((await spaceVaultId()) === null ? {} : { noSpaceVault: true }) };
-      }
-      if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
+    async load(scope0) {
+      // The owner has no member vault: once vault.me.* has refused the owner, the Mine tab shows the owner's own vault (vault.*), and every later call on it uses the same tools.
+      const scope = toolScope(owner, scope0);
+      if (scope === "space") return loadSpace(scope0);
+      try { if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true }; } catch (e) { if (isOwnerRefusal(e)) { owner = true; return loadSpace(scope0); } throw e; }
       try {
         const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number; sites?: string[] }[] }>("vault.me.list");
         const own = r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, ...(i.kind === "login" ? { sites: i.sites ?? [] } : {}), secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; });
@@ -128,7 +136,8 @@ export function realData(call: Call): VaultData {
         throw e;
       }
     },
-    async read(scope, item) {
+    async read(scope0, item) {
+      const scope = toolScope(owner, scope0);
       if (scope === "space") return String((await ask<{ value?: string }>("vault.reveal", { name: item.id, field: valueField(fieldsOf[item.id] ?? []) })).value ?? "");
       const r = await ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id });
       return r.fields[valueField(Object.keys(r.fields))] ?? "";
@@ -139,9 +148,9 @@ export function realData(call: Call): VaultData {
     async lock() { await ask("vault.me.account.lock"); },
     async addSite(item, site) { const u = siteUpdate(item, site); await ask("vault.me.update", u.input); return u.origin; },
     async add(_scope, req) { await ask(req.tool, req.input); },
-    async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
+    async remove(scope, item) { await ask(toolScope(owner, scope) === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
-      if (scope !== "space") return [];
+      if (toolScope(owner, scope) !== "space") return [];
       const r = await ask<{ uses?: UseRow[] }>("vault.uses", { item: item.id, limit: 20 });
       return (r.uses ?? []).map((u, i) => ({ id: `u${i}`, item: item.id, who: u.who, what: `${u.action}${u.ok ? "" : " (refused)"}`, when: when(u.at) }));
     },
