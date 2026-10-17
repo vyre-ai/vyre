@@ -56,7 +56,7 @@ test("what the person types reaches the relay after its hello, and what the rela
   t.after(() => front.server.close());
   const b = net.connect(front.port, "127.0.0.1");
   await new Promise(r => b.once("connect", r));
-  /** @type {Buffer[]} */ const frames = []; const parser = new FrameParser();
+  /** @type {Buffer[]} */ const frames = []; const parser = new FrameParser({ masked: false });   // these are the server's frames: unmasked
   let head = Buffer.alloc(0), upgraded = false;
   const got = new Promise(resolve => b.on("data", d => {
     if (!upgraded) { head = Buffer.concat([head, d]); const i = head.indexOf("\r\n\r\n"); if (i < 0) return; upgraded = true; d = head.subarray(i + 4); }
