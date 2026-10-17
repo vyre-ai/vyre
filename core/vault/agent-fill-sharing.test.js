@@ -12,7 +12,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
-import { kernelRig, SPACE } from "./kernel-rig.js";
+import { kernelRig, SPACE, OWNER } from "./kernel-rig.js";
 import { SaidIntents } from "./said.js";
 import { agentFill } from "./agent-fill.js";
 import { ACCESS_LEVELS } from "../../kernel/seal/uses.js";
@@ -42,6 +42,8 @@ async function world(t) {
     return { data: { agent: input.agent, ended: true } };
   } };
   const urn = await v.access.urn("northwind-app");
+  // The agent acts for the owner, and an owner holds nothing of a vault by being the owner: the hop for the owner is the vault's own manage grant (what making the vault gives its maker).
+  await rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: SPACE } }, actions: [...ACCESS_LEVELS.manage], resource: { prefix: urn.split("/item/")[0] + "/*" }, conditions: {}, source: "vault:share" }, { presence: { n: Math.random() } });
   /** A share of the login with an agent, as the sharing tools make it: the actions of a level, on the login's own address. */
   const share = (/** @type {string} */ agent, /** @type {readonly string[]} */ actions = ACCESS_LEVELS.use, over = {}) =>
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
