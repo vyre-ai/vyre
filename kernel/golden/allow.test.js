@@ -40,8 +40,24 @@ test("a note exists only for a tool that is still classified", () => {
   for (const t of Object.keys(FLOWS_NOTES)) assert.ok(flows.has(t), `${t} has a flows note but is not a reach anyone flows tool`);
 });
 
-test("the six declared-anyone tools of 4 Oct are not in the allow file", () => {
-  for (const t of ["bridges.continue", "bridges.copy", "bridges.resolve", "bridges.view.read", "spaces.code.submit", "spaces.invites.redeem"]) assert.equal(committed().some(e => e.tool === t), false, t);
+test("the two declared-anyone tools of 4 Oct that are guarded in their own handlers are not in the allow file", () => {
+  for (const t of ["spaces.code.submit", "spaces.invites.redeem"]) assert.equal(committed().some(e => e.tool === t), false, t);
+});
+
+test("the four bridges tools of 4 Oct are classified, not declared: the reads of a share are open to the person's assistant, copying and handing on are held for the person's tap, and each has its allow entry", () => {
+  // They were declared anyone on 4 Oct and kept out of the allow file. The golden refresh refused them as tools that run for a model (18 Oct), and the lead ruled them onto the lists: a change to any of
+  // these four is a change to what an assistant may do with a bridge, so it fails here until it is ruled again.
+  for (const t of ["bridges.resolve", "bridges.view.read"]) {
+    assert.equal(OPEN.has(t), true, `${t} is open`);
+    assert.equal(ASK_FIRST.has(t), false, `${t} is not ask first`);
+    assert.equal(PERSON_ONLY.has(t), false, `${t} is not person only`);
+  }
+  for (const t of ["bridges.copy", "bridges.continue"]) {
+    assert.equal(ASK_FIRST.has(t), true, `${t} is ask first`);
+    assert.equal(OPEN.has(t), false, `${t} is not open`);
+    assert.equal(PERSON_ONLY.has(t), false, `${t} is not person only`);
+  }
+  for (const t of ["bridges.resolve", "bridges.view.read", "bridges.copy", "bridges.continue"]) assert.equal(committed().some(e => e.tool === t), true, `${t} has its allow entry`);
 });
 
 test("the generator refuses a person-only tool and an open tool with no note", () => {
