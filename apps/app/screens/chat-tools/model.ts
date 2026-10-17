@@ -25,11 +25,11 @@ export function appliedOr(d: any, key: string, fallback: string): Result {
   return { ok: true };
 }
 
-export type Task = { id: string; title: string; status: string };
+export type Task = { id: string; title: string; status: string; kind: string };
 /** threads.tasks' answer: the thread's background tasks, only the ones still running first. */
 export function tasksOf(d: any): Task[] {
   const list = Array.isArray(d) ? d : Array.isArray(d?.tasks) ? d.tasks : [];
-  const rows = list.filter((t: any) => t && (t.id != null)).map((t: any) => ({ id: String(t.id), title: String(t.title ?? t.description ?? t.command ?? t.id), status: String(t.status ?? "running") }));
+  const rows = list.filter((t: any) => t && (t.id != null)).map((t: any) => ({ id: String(t.id), title: String(t.title ?? t.description ?? t.command ?? t.id), status: String(t.status ?? "running"), kind: String(t.kind ?? "") }));
   const live = (s: string) => /^(running|working|started|pending)$/i.test(s);
   return [...rows.filter((t: Task) => live(t.status)), ...rows.filter((t: Task) => !live(t.status))];
 }
@@ -121,3 +121,6 @@ export function versionsOf(d: any): Version[] {
 
 /** threads.edit's input: the text a person changed a queued message to, with its mentions. */
 export const editInput = (thread: string, queued: number, text: string, mentions: unknown[] = [], pasted: unknown[] = []) => ({ thread, queued, text, ...(mentions.length ? { mentions } : {}), pasted });
+
+/** The background tasks that are subagents: helpers the agent started to work for it. */
+export const subagentsOf = (tasks: readonly Task[]): Task[] => tasks.filter((t) => /agent/i.test(t.kind));

@@ -84,6 +84,11 @@ export default {
       // A person's connection is used by whoever the Vault says holds its item; the call inherits the turn's chain, so the Vault reads the caller from the kernel.
       // The access token for a person's connection, asked of the Vault at the moment of the request: the call inherits the turn, so the Vault checks the asker again. Only the short-lived token comes back.
       connectionToken: async c => { const r = await ctx.call("vault.connection.token", c); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      // What the Gate holds for this module's own sender, and the module taking its own items back: how a revoke cancels what is waiting.
+      heldOf: async via => { const r = await ctx.call("gate.held-of", { via }); return (r && r.data) || []; },
+      cancel: async (id, reason) => { const r = await ctx.call("gate.reject", { id, reason }); if (r && r.error) throw new Error(r.error.message); return r.data; },
+      // The vendor is told to drop the token too, where the connection names how; best effort, and the hub says when it was not.
+      revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
       mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
@@ -202,6 +207,19 @@ export default {
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
       run: async (input, meta) => { refuseNonPerson(meta, "changes an MCP server"); const name = await rowName(input.name, meta); refuseProcess(input, meta, (hub.row(name) || {}).transport); return hub.update({ ...input, name }); },
+    });
+
+    // The Vault tells the hub a share or grant on a person's connection ended: whoever asked for something held there and no longer holds the connection has it discarded.
+    ctx.tool("mcp.sweep", {
+      internal: true,
+      description: "A share or grant on a person's connection ended: discard what its requesters, who no longer hold it, left waiting at the Gate. { owner, connection } -> { cancelled }. Only the vault module asks.",
+      input: obj({ owner: str, connection: str }, ["connection"]),
+      run: async (input, meta) => {
+        if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module reports that a connection was shared out or taken back"), { code: "denied" });
+        let cancelled = 0;
+        for (const r of hub.rows()) if (r.owner && r.connection === String(input.connection) && (input.owner === undefined || r.owner === String(input.owner))) cancelled += await hub.sweep(r.name);
+        return { cancelled };
+      },
     });
 
     ctx.tool("mcp.remove", {

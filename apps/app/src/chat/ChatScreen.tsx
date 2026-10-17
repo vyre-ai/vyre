@@ -28,6 +28,7 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
+import { Face } from "./Face";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
@@ -149,6 +150,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
+  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">("details");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
@@ -249,9 +251,20 @@ export function ChatScreen(p: ChatScreenProps) {
   }, []);
   useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
+  // A chat with one other has no face or name on its messages; a group shows them when the sender changes.
+  const solo = new Set([...store.group.participants(), ...(here.members ?? [])].filter((f) => f.id !== viewer).map((f) => f.id)).size <= 1;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const before = useCallback((key: string): string | null => {
+    const list = rowsRef.current;
+    for (let j = list.findIndex((r) => r.key === key) - 1; j >= 0; j--) { const kind = store.item(list[j].key)?.kind; if (kind === "user" || kind === "text") return list[j].key; }
+    return null;
+  }, [store]);
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
+      solo,
+      before,
       diffSplit: !phone && threadW >= 560,
       hideVaultNames: Math.max(store.group.participants().filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1,
       ...(actions
@@ -290,7 +303,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api, solo, before],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -338,7 +351,6 @@ export function ChatScreen(p: ChatScreenProps) {
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
-  const line = head.line + (muted ? (head.line ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // The sealed note speaks of the AI in the chat: with none here (a chat between people) it stays away until one joins or is asked.
   const aiHere = faces.filter((f) => f.family === "assistant" || f.family === "model").length;
@@ -358,10 +370,12 @@ export function ChatScreen(p: ChatScreenProps) {
   const sharedChat = Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1;
   // A chat between people: a message goes to the people and no AI answers unless one is asked for it (reply mode "mention", or no AI in the chat).
   const peopleChat = peopleOnly({ shared: sharedChat, replyMode: store.group.replyMode(), ais: faces.filter((f) => f.family === "assistant" || f.family === "model").length });
+  const startOthers = faces.filter((f) => f.id !== viewerId);
+  const startLone = startOthers.length === 1 ? startOthers[0] : null;
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
@@ -379,7 +393,16 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={() => { setPanelTab("details"); setPanel("root"); }} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+        menu={[
+          { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
+          { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
+          ...(faces.some((f) => f.family === "assistant" && f.id !== viewerId) ? [{ label: "Computer", onPress: () => { setPanelTab("computer"); setPanel("root"); } }] : []),
+          { label: "Move to a project", onPress: () => setPanel("project") },
+          { label: "Find in this conversation", onPress: () => setFindOpen(true) },
+          { label: pinned ? "Unpin" : "Pin", onPress: () => setPinned(!pinned) },
+          { label: muted ? "Unmute" : "Mute", onPress: () => setMuted(!muted) },
+        ]} />
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
@@ -415,11 +438,20 @@ export function ChatScreen(p: ChatScreenProps) {
             renderRow={renderRow}
             hasMore={false}
             onNearTop={() => {}}
-            head={<View>{sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
-          <Icon name="shield" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
-          <Text size="caption" tone="label" strong>Got it</Text>
-        </Pressable> : null}<View style={{ height: 12 }} /></View>}
+            head={<View style={{ width: "100%", maxWidth: 760, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24 }}>
+              {/* The start of the chat: who it is with, once, at the top of the history. */}
+              <View style={{ alignItems: "center", gap: 8, paddingTop: 32, paddingBottom: 16 }}>
+                {startLone ? <Face name={startLone.name} family={startLone.family === "assistant" ? "assistant" : startLone.family === "model" ? "model" : "person"} size={40} id={startLone.id} /> : null}
+                <Text medium>{head.title}</Text>
+                <Text size="caption" tone="label">{chatProject.current && chatProject.current.slug !== "general" ? chatProject.current.name : "The start of this chat"}</Text>
+              </View>
+              {sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 8, borderRadius: 12, backgroundColor: color["surface-3"] }}>
+                <Icon name="shield" />
+                <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
+                <Text size="caption" tone="label" medium>Got it</Text>
+              </Pressable> : null}
+              <View style={{ height: 8 }} />
+            </View>}
             jumpTo={jump}
             jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
@@ -427,24 +459,18 @@ export function ChatScreen(p: ChatScreenProps) {
       </View>
 
       {meta.queue.length ? (
-        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 12 : 20, gap: 4, paddingTop: 6 }}>
-          {meta.queue.map((q) => (
-            <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
-              <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>
-              <Text numberOfLines={1} style={{ flex: 1 }}>{q.text}</Text>
-              <Text size="caption" tone="label">waiting for the current reply</Text>
-            </View>
-          ))}
+        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 760, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24, gap: 4, paddingTop: 6, alignItems: "flex-start" }}>
+          {meta.queue.map((q) => <Chip key={q.key} icon="clock">{`Queued: ${q.text.length > 60 ? `${q.text.slice(0, 59)}…` : q.text}`}</Chip>)}
         </View>
       ) : null}
 
       {securing ? (
-        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Chip tone="ok" icon="shield">{`Securing your ${securing} in the Vault`}</Chip>
         </View>
       ) : null}
       {note ? (
-        <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+        <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Text size="caption" tone="muted">{note}</Text>
         </View>
       ) : null}
@@ -463,7 +489,7 @@ export function ChatScreen(p: ChatScreenProps) {
       />
 
       {replyTo ? (
-        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 860, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
+        <View accessibilityLabel="Replying to a message" style={{ width: "100%", maxWidth: 760, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: phone ? 16 : 24 }}>
           <Icon name="chat" />
           <View style={{ flex: 1, minWidth: 0, borderLeftWidth: 3, borderLeftColor: color.accent, paddingLeft: 8 }}><Text size="caption" strong tone="accent" numberOfLines={1}>{`Replying to ${replyTo.name}`}</Text>{replyTo.text ? <Text size="caption" tone="muted" numberOfLines={1}>{excerpt(replyTo.text)}</Text> : null}</View>
           <Pressable accessibilityRole="button" accessibilityLabel="Cancel reply" onPress={() => setReplyTo(null)} style={{ minHeight: phone ? 44 : 32, minWidth: 44, alignItems: "center", justifyContent: "center" }}><Icon name="x" /></Pressable>
@@ -471,7 +497,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {highlights.length ? (
-        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
           {highlights.map((h) => (
             <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <Icon name="chat" tone="label" />
@@ -498,6 +524,9 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          canStop={meta.canStop}
+          stopping={meta.stopping}
+          onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
           onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}

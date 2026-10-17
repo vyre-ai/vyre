@@ -108,6 +108,25 @@ test("edit level: a person with Edit and rotate reads, changes and rotates, and 
   for (const a of ["vault.edit", "vault.rotate", "vault.reveal"]) assert.notEqual((await ask(gw, assistantOf(BOB), a, item())).effect, "allow", `an assistant acting for an editor still lacks ${a}`);
 });
 
+test("teams hold agents: a listed agent reaches the team's grant with use only, an unlisted one does not, an unknown one cannot be listed, and taking it out ends it", async () => {
+  const { gw, g } = await rig();
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  await g.addActor(owner(), actor("agent", "juno"), P.actor(actor("agent", "juno")));
+  await assert.rejects(() => g.teams.set(owner(), { name: "Ops", members: [], agents: ["nope"] }), { code: "bad_input" }, "an agent that is not the Space's cannot be listed");
+  const team = await g.teams.set(owner(), { name: "Ops", members: [ALICE], agents: ["kit"] });
+  assert.deepEqual([...team.agents], ["kit"]);
+  await give(g, { kind: "group", id: team.id }, "manage");
+  // the agent acts for the owner here, who holds everything: what limits it is the agent's own hop, which is the team's grant
+  const kit = assistantOf(OWNER, "kit"), juno = assistantOf(OWNER, "juno");
+  assert.equal((await ask(gw, kit, "vault.read", item())).effect, "allow", "the listed agent uses what the team holds");
+  for (const a of ["vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate"]) assert.notEqual((await ask(gw, kit, a, item())).effect, "allow", `${a} is never an agent's, even listed in a team that holds manage`);
+  assert.equal((await ask(gw, juno, "vault.read", item())).effect, "deny", "an agent the team does not list has nothing");
+  // listing again without the agents field keeps them; an empty list takes them out at once
+  assert.deepEqual([...(await g.teams.set(owner(), { id: team.id, name: "Ops2" })).agents], ["kit"]);
+  await g.teams.set(owner(), { id: team.id, agents: [] });
+  assert.equal((await ask(gw, kit, "vault.read", item())).effect, "deny");
+});
+
 test("an assistant is never given reveal, change, delete, share or rotate, whoever asks", async () => {
   const { g } = await rig();
   for (const level of ["reveal", "edit", "manage"]) {

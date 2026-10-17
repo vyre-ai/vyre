@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { AgentComputerPane, ConversationHeader, ConversationList, NewAgentDialog, convosFrom, ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -33,7 +33,7 @@ import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
 import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
-import { sampleChats } from "../screens/chats/chats-model.js";
+import { sampleChats, sampleConvoChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
@@ -159,6 +159,17 @@ function Sample({ name }: { name: string }) {
       site("menu", [dep("e", 1, "Draft")], "plain", "Draft"),
     ];
     return <SitesList rows={rows} onOpen={() => {}} />;
+  }
+  if (name === "conversation-list") {
+    const now = 1_700_000_000_000;
+    const items = convosFrom({ chats: sampleConvoChats(now), agents: [{ name: "rex", role: "Drafts the weekly report", projects: ["Northwind Bakery"], status: "Idle" }], people: [{ id: "per_sam", name: "Sam", role: "Paralegal" }] });
+    return <View className="gap-s3" style={{ maxWidth: 336 }}><ConversationHeader all={items} query="" onQuery={() => {}} project="all" onProject={() => {}} add={[{ label: "New chat", onPress: () => {} }]} /><ConversationList items={items} onOpen={() => {}} whenOf={(c) => (c.last ? `${Math.max(1, Math.round((now - c.last) / 60000))}m` : "")} /></View>;
+  }
+  if (name === "agent-computer") {
+    return <View style={{ maxWidth: 340 }}><AgentComputerPane name="ads" view={{ state: "live", lastActive: 0, thumbnail: "" }} onWake={() => {}} onSleep={() => {}} onOpen={() => {}} onDock={() => {}} /></View>;
+  }
+  if (name === "new-agent") {
+    return <NewAgentDialog open onClose={() => {}} values={{ name: "rex", shape: 2, color: 3, job: "", projects: [], runsOn: "subscription", budget: "" }} onChange={() => {}} projects={[{ slug: "northwind", name: "Northwind Bakery" }]} onCreate={() => {}} />;
   }
   if (name === "chats-list") {
     const now = 1_700_000_000_000;
@@ -318,12 +329,13 @@ function ComposerCompare() {
 function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
   const { color } = useUiTheme();
   const [page, setPage] = useState<PanelPage>(first);
+  const [tab, setTab] = useState<"details" | "library" | "computer">("details");
   const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
   const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
   const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];
   return (
     <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: color.edge, borderRadius: 12, width: phone ? 390 : undefined }}>
-      <ChatPanel open phone={false} page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
+      <ChatPanel open phone={false} tab={tab} onTab={setTab} title="Spring campaign" page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
         muted={false} pinned={false} onMute={() => {}} onPin={() => {}} onMove={() => {}} onLinkRecord={() => {}}
         project={{ current: cur, projects, move: async (to) => { setCur(projects.find((x) => x.slug === to) ?? null); return null; } }}
         thread="demo" chat="demo" shared replyMode="every" otherPlace="mac" />

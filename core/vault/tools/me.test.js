@@ -12,7 +12,7 @@ import { ConnectionTokens } from "../connection-token.js";
 import { openConnectionKey, wrapPath } from "../people-seal.js";
 import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
-import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
+import { register, ME_TOOLS, ME_MODULE_TOOLS, SHARED_ME_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
 
 const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
 const PW = "a long master password";
@@ -43,7 +43,7 @@ const conn = (/** @type {any} */ call, /** @type {string} */ name, /** @type {an
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
-  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS].sort());
+  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS].sort());
   for (const n of [...ME_TOOLS, ...ME_MODULE_TOOLS]) assert.ok(reg.has(n), `${n} is registered`);
 });
 
@@ -310,4 +310,71 @@ test("vault.me.who names the owner or the one member in the chain, to the mcp an
   assert.equal((await who(null)).error.code, "denied");
   assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("person", EVE)] })).error.code, "denied");
   assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+});
+
+test("the lend key: what a member lends to an agent sits in her own vault under a key of its own, the sealed key opens lent copies and nothing else, and unlending deletes the copy", async t => {
+  const sealRoot = fs.mkdtempSync(path.join(SCRATCH, "vyre-seal3-"));
+  t.after(() => fs.rmSync(sealRoot, { recursive: true, force: true }));
+  const { call, people } = rig(t, {}, { sealRoot });
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  await call("vault.me.put", { name: "bank", kind: "login", fields: { username: "bob", password: "PW-BANK-0001-abcdefghij" } }, BOB);
+  await conn(call, "clio", { auth_kind: "bearer", token: "CONN-TOKEN-0001-abcdefghij" }, BOB);
+  const lent = people.lent(BOB);
+  assert.deepEqual(await lent.put("bank", { kind: "login", fields: { username: "bob", password: "PW-BANK-0001-abcdefghij" } }), { name: "bank", created: true });
+  assert.deepEqual(await lent.put("bank", { kind: "login", fields: { username: "bob", password: "PW-BANK-0002-abcdefghij" } }), { name: "bank", created: false });
+  assert.deepEqual(await lent.names(), ["bank"]);
+  // her own tools never list a lent copy, and no vault.me tool reads one
+  assert.deepEqual((await call("vault.me.list", {}, BOB)).data.items.map((/** @type {any} */ i) => i.name).sort(), ["bank", "clio"]);
+  // the sealed lend key opens the lent copy and nothing else: not her ordinary login, not the connection, not the connection key file
+  const lk = openConnectionKey(sealRoot, BOB, "lend");
+  assert.ok(lk, "the server holds a lend key");
+  const folder = people.folder(BOB);
+  const files = (/** @type {string} */ d) => fs.readdirSync(d).filter(f => f.endsWith(".json"));
+  const open = (/** @type {any} */ k, /** @type {string} */ dir, /** @type {any} */ at, /** @type {string} */ f) => openItemV2(k, at(BOB, f.slice(0, -5)), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+  const [lentF] = files(people.lendDir(BOB)), [ordF] = files(people.itemDir(BOB)), [conF] = files(people.connDir(BOB));
+  assert.equal(open(lk, people.lendDir(BOB), people.atLend.bind(people), lentF).fields.password, "PW-BANK-0002-abcdefghij");
+  assert.throws(() => open(lk, people.itemDir(BOB), people.at.bind(people), ordF), "not her ordinary items");
+  assert.throws(() => open(lk, people.connDir(BOB), people.atConn.bind(people), conF), "not her connections");
+  assert.throws(() => openItemV2(lk, people.at(BOB, "lk"), JSON.parse(fs.readFileSync(path.join(folder, "lk.json"), "utf8"))), "not the file that holds the key");
+  // the connection key's seal does not open as a lend key, and Bob's lend wrap moved to Eve's place opens nothing
+  assert.notEqual(openConnectionKey(sealRoot, BOB), null);
+  const bobLend = wrapPath(sealRoot, BOB, "lend"), eveLend = wrapPath(sealRoot, EVE, "lend"), keep = fs.readFileSync(eveLend), keepBob = fs.readFileSync(bobLend);
+  fs.copyFileSync(bobLend, eveLend);
+  assert.equal(openConnectionKey(sealRoot, EVE, "lend"), null);
+  fs.writeFileSync(eveLend, keep);
+  fs.copyFileSync(wrapPath(sealRoot, BOB), bobLend);
+  assert.equal(openConnectionKey(sealRoot, BOB, "lend"), null, "a connection wrap is not a lend wrap");
+  fs.writeFileSync(bobLend, keepBob);
+  // served from the sealed copy while she is locked; a reset rotates the key
+  people.lock(BOB);
+  const afterLock = people.lent(BOB);
+  assert.equal((await afterLock.get("bank")).fields.password, "PW-BANK-0002-abcdefghij");
+  assert.equal((await call("vault.me.get", { name: "bank" }, BOB)).error.code, "locked", "her own vault still needs the master password");
+  await assert.rejects(() => people.lent(EVE).get("bank"), { code: "not_found" });
+  const made = await call("vault.me.account.status", {}, BOB);
+  assert.equal(made.data.unlocked, false);
+  // unlending deletes the copy
+  assert.deepEqual(await afterLock.remove("bank"), { removed: true });
+  assert.deepEqual(await afterLock.names(), []);
+  assert.deepEqual(await afterLock.remove("bank"), { removed: false });
+  // leaving removes both seals
+  people.destroy(BOB);
+  assert.equal(openConnectionKey(sealRoot, BOB, "lend"), null); assert.equal(openConnectionKey(sealRoot, BOB), null);
+  await assert.rejects(() => people.lent(BOB).get("bank"), { code: "locked" });
+});
+
+test("a reset rotates the lend key: the old sealed key opens nothing and the new one opens the copies", async t => {
+  const sealRoot = fs.mkdtempSync(path.join(SCRATCH, "vyre-seal4-"));
+  t.after(() => fs.rmSync(sealRoot, { recursive: true, force: true }));
+  const { call, people } = rig(t, {}, { sealRoot });
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await people.lent(BOB).put("bank", { kind: "login", fields: { password: "PW-BANK-0001-abcdefghij" } });
+  const old = openConnectionKey(sealRoot, BOB, "lend");
+  const [f] = fs.readdirSync(people.lendDir(BOB)).filter(x => x.endsWith(".json"));
+  const rd = (/** @type {any} */ k) => openItemV2(k, people.atLend(BOB, f.slice(0, -5)), JSON.parse(fs.readFileSync(path.join(people.lendDir(BOB), f), "utf8")));
+  assert.ok(rd(old));
+  people.rotateLendKey(BOB, people.slot(BOB));
+  assert.throws(() => rd(old), "the old key opens nothing now");
+  assert.equal(rd(openConnectionKey(sealRoot, BOB, "lend")).fields.password, "PW-BANK-0001-abcdefghij");
 });

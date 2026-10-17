@@ -356,6 +356,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.groups.list", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.groups.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.groups.remove", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.members.set-role", "outward": true, "effect": "write",
     "reach": "person"
    },

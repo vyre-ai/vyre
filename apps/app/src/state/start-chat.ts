@@ -1,3 +1,4 @@
+import { allowsMock } from "@vyre/ui";
 import { tool } from "../real/box";
 import { chatIdOf } from "./new-chat-model.js";
 import { ringForNewChat } from "./chat-start";
@@ -5,6 +6,8 @@ import { ensurePersistent } from "./persistent-chat";
 
 /** work.chat.create for these people and agents (the person is always in it); the new chat's id, or the line to show. */
 export async function startChat(sel: { people: string[]; agents: string[] }): Promise<{ chat: string } | { say: string }> {
+  // The sample world has no private ring to make: a chat with an agent opens its sample chat, one with a teammate the sample people chat.
+  if (allowsMock()) return { chat: sel.agents.length ? "demo-ads" : "demo-people" };
   const made = await ringForNewChat();
   if ("say" in made) return made;
   const id = chatIdOf(await tool("work.chat.create", { people: sel.people, agents: sel.agents, ...made }));

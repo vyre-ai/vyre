@@ -25,6 +25,8 @@ const MAX_VALUE = 64 * 1024, MAX_ITEMS = 500;
 const ITEMS = "me-items";
 const CONN_ITEMS = "conn-items";
 const CK_FILE = "ck.json";
+const LEND_ITEMS = "lend-items";
+const LK_FILE = "lk.json";
 /** The fields of a connection a person may see: what it connects to, never a token, a secret or a key. */
 const CONNECTION_PUBLIC = new Set(["auth_kind", "server_url", "catalog_id", "connected_by", "scope", "resource", "expires_at", "issuer"]);
 const KV = 1;
@@ -40,6 +42,7 @@ export class PeopleVaults {
     /** The Space's state folder, where the sealed server copies of members' keys are kept; null keeps none (tests, a build with no server). @type {string | null} */ this.sealRoot = sealRoot;
     this.dir = dir; this.config = config; this.emit = emit; this.log = log; this.testKdf = testKdf; this.clock = clock; this.idleMs = idleMs;
     /** @type {Map<string, { vault: Vault, db: any, last: number, sk: string | null, queue: Promise<any> }>} */ this.open = new Map();
+    /** Told when an item of a person's changes or goes (the shares of a login are refreshed or ended from it). Never throws into the change. @type {(id: string, name: string) => Promise<any>} */ this.onItem = async () => {};
   }
 
   /** Throws unless this is a person id; the id becomes a folder name. @param {string} id */
@@ -119,6 +122,7 @@ export class PeopleVaults {
         const r = await (/** @type {any} */ (s.vault)).resetAccount(input, "person:" + id);
         s.last = this.clock();
         this.rotateConnectionKey(id, s);
+        this.rotateLendKey(id, s);
         return r;
       } finally { s.sk = null; }
     });
@@ -139,7 +143,7 @@ export class PeopleVaults {
     const s = this.open.get(id);
     if (s) { try { s.vault.lockAccount("removed"); } catch {} try { s.db.close(); } catch {} this.open.delete(id); }
     fs.rmSync(f, { recursive: true, force: true });
-    if (this.sealRoot) forgetConnectionKey(this.sealRoot, id);
+    if (this.sealRoot) { forgetConnectionKey(this.sealRoot, id); forgetConnectionKey(this.sealRoot, id, "lend"); }
     return { removed: true };
   }
 
@@ -193,6 +197,7 @@ export class PeopleVaults {
   seal(id, s) {
     if (!this.sealRoot || !s.vault.pvk) return;
     try { sealConnectionKey(this.sealRoot, id, this.connectionKey(id, s.vault.pvk)); } catch (e) { this.log(`vault: could not seal the connection key of ${id}: ${/** @type {Error} */ (e).message}`); }
+    try { sealConnectionKey(this.sealRoot, id, this.lendKey(id, s.vault.pvk), "lend"); } catch (e) { this.log(`vault: could not seal the lend key of ${id}: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** A forgotten password was reset: the connection items get a new key and the server's seal follows. @param {string} id @param {{ vault: Vault }} s */
@@ -242,6 +247,108 @@ export class PeopleVaults {
         this.writeConnection(id, it.fileId, { name, kind: "connection", description: it.description, updated: this.clock() }, { ...it.fields, ...PeopleVaults.clean(fields) }, k);
       },
     };
+  }
+
+  // ---- the lend key ----
+  // What a member lends to an agent (a login for the agent's Chrome to fill while she is away) is a copy of that one item, kept in HER vault under a LEND KEY of its own, built exactly like the connection key:
+  // the key lives inside her vault (wrapped by the vault key, `lk.json`), and only it is sealed for the server (people-seal.js, purpose "lend"). The Space's vault tools never reach a member's vault, so the
+  // owner and the admins can neither list nor reveal a lent copy, and the sealed key opens lent copies and nothing else of hers: not her passwords, not her notes, not her connections.
+
+  /** @param {string} id @param {import("node:crypto").KeyObject} pvk */
+  lendKey(id, pvk) {
+    const file = path.join(this.folder(id), LK_FILE);
+    if (fs.existsSync(file)) {
+      const body = openItemV2(pvk, this.at(id, "lk"), JSON.parse(fs.readFileSync(file, "utf8")));
+      return keyObject(Buffer.from(body.fields.lk, "base64"));
+    }
+    const raw = crypto.randomBytes(32);
+    this.writeLk(id, pvk, raw);
+    return keyObject(raw);
+  }
+
+  /** @param {string} id @param {import("node:crypto").KeyObject} pvk @param {Buffer} raw */
+  writeLk(id, pvk, raw) {
+    const file = path.join(this.folder(id), LK_FILE), tmp = file + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(sealItemV2(pvk, this.at(id, "lk"), { meta: { name: "lk" }, fields: { lk: Buffer.from(raw).toString("base64") } })), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  }
+
+  /** A forgotten password was reset: the lent copies get a new key and the server's seal follows. @param {string} id @param {{ vault: Vault }} s */
+  rotateLendKey(id, s) {
+    const pvk = s.vault.pvk;
+    if (!pvk) return;
+    const items = this.allLent(id, this.lendKey(id, pvk));
+    const next = crypto.randomBytes(32);
+    const nextKey = keyObject(Buffer.from(next));
+    for (const it of items) this.writeLent(id, it.fileId, { name: it.name, kind: it.kind, description: it.description, updated: it.updated }, it.fields, nextKey);
+    this.writeLk(id, pvk, next);
+    this.seal(id, s);
+  }
+
+  /**
+   * The copies a member lent, for the agents' side (agentFill) and for the share tools: opened with the lend key, the vault's when she is unlocked, else the sealed server copy. It reads and writes lent
+   * copies and nothing else, by construction. Throws code "locked" when there is no seal and she is not unlocked. A copy is made while she is unlocked (the share tool reads her item first).
+   * @param {string} id
+   */
+  lent(id) {
+    PeopleVaults.check(id);
+    const key = () => {
+      const s = this.slot(id);
+      this.expire(s);
+      if (s.vault.pvk) return this.lendKey(id, s.vault.pvk);
+      const k = this.sealRoot ? openConnectionKey(this.sealRoot, id, "lend") : null;
+      if (!k) throw locked();
+      return k;
+    };
+    const find = (/** @type {string} */ name) => this.allLent(id, key()).find(i => i.name === name);
+    return {
+      has: async (/** @type {string} */ name) => Boolean(find(name)),
+      names: async () => this.allLent(id, key()).map(i => i.name),
+      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no lent item named ${name}`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
+      /** Keep a copy of one item (replacing an earlier copy of the same name). */
+      put: async (/** @type {string} */ name, /** @type {{ kind: string, description?: string, fields: any }} */ item) => {
+        if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
+        if (!KIND.test(String(item && item.kind))) throw new Error("a kind is lowercase letters, digits and dashes");
+        const k = key(), clean = PeopleVaults.clean(item.fields), it = this.allLent(id, k).find(i => i.name === name);
+        const meta = { name, kind: item.kind, description: String(item.description || "").slice(0, 500), updated: this.clock() };
+        if (it) { this.writeLent(id, it.fileId, meta, clean, k); return { name, created: false }; }
+        if (this.allLent(id, k).length >= MAX_ITEMS) throw new Error(`a vault lends up to ${MAX_ITEMS} items`);
+        this.writeLent(id, crypto.randomBytes(12).toString("hex"), meta, clean, k);
+        return { name, created: true };
+      },
+      /** Delete the copy (unshare, revoke): the file goes, and so does anything it held. */
+      remove: async (/** @type {string} */ name) => {
+        const it = find(name);
+        if (!it) return { removed: false };
+        fs.rmSync(path.join(this.lendDir(id), it.fileId + ".json"), { force: true });
+        return { removed: true };
+      },
+    };
+  }
+
+  lendDir(/** @type {string} */ id) { const d = path.join(this.folder(id), LEND_ITEMS); ensureDir(d); return d; }
+  atLend(/** @type {string} */ person, /** @type {string} */ fileId) { return { vault: "me-lend:" + person, kv: KV, id: fileId, ver: 1, name: fileId }; }
+
+  /** @param {string} id @param {import("node:crypto").KeyObject} lk */
+  allLent(id, lk) {
+    const dir = this.lendDir(id);
+    const out = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      const fileId = f.slice(0, -5);
+      try {
+        const body = openItemV2(lk, this.atLend(id, fileId), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+        out.push({ fileId, name: String(body.meta.name), kind: String(body.meta.kind), description: String(body.meta.description || ""), updated: Number(body.meta.updated), fields: body.fields });
+      } catch { /* not whole, or sealed under an older key: skipped */ }
+    }
+    return out;
+  }
+
+  writeLent(/** @type {string} */ id, /** @type {string} */ fileId, /** @type {any} */ meta, /** @type {any} */ fields, /** @type {import("node:crypto").KeyObject} */ lk) {
+    const file = path.join(this.lendDir(id), fileId + ".json");
+    const tmp = file + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(sealItemV2(lk, this.atLend(id, fileId), { meta, fields })), { mode: 0o600 });
+    fs.renameSync(tmp, file);
   }
 
   itemDir(/** @type {string} */ id) { const d = path.join(this.folder(id), ITEMS); ensureDir(d); return d; }
@@ -335,6 +442,7 @@ export class PeopleVaults {
     if (!it) throw new Error(`no item named ${name}`);
     const next = fields === undefined ? it.fields : { ...it.fields, ...PeopleVaults.clean(fields) };
     this.write(id, it.fileId, { name, kind: it.kind, description: description === undefined ? it.description : String(description).slice(0, 500), updated: this.clock() }, next);
+    await this.onItem(id, name);
     return { name, kind: it.kind, created: false };
   }
 
@@ -359,7 +467,7 @@ export class PeopleVaults {
   /** @param {string} id @param {{ name: string }} input */
   async remove(id, { name }) {
     const it = this.all(id).find(i => i.name === name);
-    if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); return { removed: name }; }
+    if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); await this.onItem(id, name); return { removed: name }; }
     const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
     if (!c) throw new Error(`no item named ${name}`);
     fs.rmSync(path.join(this.connDir(id), c.fileId + ".json"), { force: true });

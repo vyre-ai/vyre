@@ -206,6 +206,23 @@ What Vyre does with the account:
 - Each account is its own sender at the Gate, so you see which address a message would leave
   from.
 
+## Connect Microsoft 365 for the whole firm
+
+A firm that runs Microsoft 365 can give every member their own mail, calendar and OneDrive through one Azure app that the owner sets up once. The app acts as one mailbox at a time: the member's own work email, recorded by the owner. A member can never name another mailbox. Vyre reads mail, calendar and files. A member can also send an email or an invite from their own mailbox, and it goes out at once because it is their own send. When a member's agent sends or invites from that mailbox, the message is held at the member's own Gate, with the address it leaves from. Only that member sees it and approves it. The owner and the admins do not.
+
+The owner does this once, in Entra (entra.microsoft.com):
+
+1. **Register the app.** App registrations, New registration, a name such as `Vyre`, supported account types "this organization only". Note the application (client) ID and the directory (tenant) ID.
+2. **Create a secret.** Certificates and secrets, New client secret. Copy the secret value now. It is shown once, and it is the value, not the secret ID.
+3. **Grant permissions.** API permissions, Add a permission, Microsoft Graph, **Application permissions**: `Mail.Read`, `Calendars.Read` and `Files.Read.All`. To let members send and invite from their own mailbox, also add `Mail.Send` and `Calendars.ReadWrite`. Then choose **Grant admin consent** for the organization.
+4. **Limit the app to the staff group.** A Graph application permission reaches every mailbox in the tenant unless the tenant narrows it. Limit the app to the people who use Vyre with an ApplicationAccessPolicy (Exchange Online PowerShell: `New-ApplicationAccessPolicy` with the app ID, a mail-enabled security group, and `-AccessRight RestrictAccess`) or with RBAC for Applications. The change can take up to an hour.
+5. **Store the keys in the vault.** One item with the fields `tenant_id`, `client_id` and `client_secret`.
+6. **Add the app to Vyre.** `microsoft.add` with a name, the firm's email domain (for example `harlow.example`) and the vault item. Only the owner can.
+7. **Record each person's work email.** `microsoft.members.email` with the person and their address, which must be inside the firm's domain. Only the owner can.
+8. **Check it.** `microsoft.check` walks these steps in order and names the first one that is missing, in plain words. It makes one token request per app and reads one inbox folder per person. It never reads a message and never shows a secret. It does not test the send and calendar permissions: a missing one shows up as a refusal from Microsoft the first time someone sends. Run it again after each fix.
+
+If a person's mailbox is refused, the answer names the cause: Microsoft says the app was not granted the permission (step 3), the tenant's policy excludes that person (step 4), or the mailbox does not exist (step 7). A secret expires on the date you chose in step 2. When it does, `microsoft.check` stops at the sign-in step. Create a new secret and update the vault item.
+
 ## Connect GitHub
 
 A connected GitHub account lets Vyre clone your repos for a project, give each session its own

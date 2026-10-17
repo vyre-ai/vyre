@@ -20,7 +20,7 @@ function rig() {
   const kernel = { space: "spc_x", mint, chain: async () => ({ hops: [] }), grants: { members: { list: async () => [{ person: BOB, name: "Bob", role: "member" }] }, teams: { list: async () => [{ id: TEAM, name: "Billing" }] } } };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const audit = /** @type {any[]} */ ([]);
-  const ctx = { kernel, call: async (/** @type {string} */ t, /** @type {any} */ i) => (t === "agents.uid" && i.name === "kit" ? { data: { uid: KIT } } : { error: { code: "not_found" } }) };
+  const ctx = { kernel, call: async (/** @type {string} */ t, /** @type {any} */ i) => (t === "agents.uid" && i.name === "kit" ? { data: { uid: KIT } } : t === "agents.list" ? { data: [{ uid: KIT, name: "kit" }] } : { error: { code: "not_found" } }) };
   const vault = { row: (/** @type {string} */ n) => (n === "stripe" ? { name: n } : undefined), access: { urn: async (/** @type {string} */ n) => `vyre://spc_x/vault/v1/item/${n}` }, audit: (/** @type {any[]} */ ...a) => audit.push(a) };
   register({ ctx, vault: /** @type {any} */ (vault), tool: (n, callers, d, i, run) => reg.set(n, { callers, run }) });
   return { grants, reg, audit, call: (/** @type {string} */ n, /** @type {any} */ i) => reg.get(n).run(i, {}) };
@@ -43,6 +43,8 @@ test("share Fill in, then Read, then Edit and rotate, then take it away: one gra
   const got = await call("vault.access.get", { name: "stripe" });
   assert.deepEqual(got.access, [{ kind: "person", subject: BOB, level: "edit" }]);
   assert.equal(got.people[0].id, BOB); assert.deepEqual(got.levels, ["use", "reveal", "edit"]); assert.equal(got.teams[0].id, TEAM);
+  assert.deepEqual(got.agents, [{ id: KIT, name: "kit" }], "the agents of the Space, by stable id");
+  assert.deepEqual([got.teams[0].people, got.teams[0].agents], [[], []]);
   await call("vault.access.set", { name: "stripe", kind: "person", subject: BOB, level: null });
   assert.equal(grants.length, 0);
 });

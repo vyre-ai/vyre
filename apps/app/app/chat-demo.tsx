@@ -26,7 +26,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
   const n = Number(q.n) || 0;
   const at = Number(q.at) || 0;
   const source = useMemo(
-    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" ? "assistant" : activity ? "activity" : markdown ? "markdown" : steps ? "steps" : previews ? "previews" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
+    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" || sample === "demo-ads" ? "assistant" : sample === "demo-group" ? "group" : activity ? "activity" : markdown ? "markdown" : steps ? "steps" : previews ? "previews" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
     [n, at, q.tps, q.hold, group, activity, previews, markdown, steps, sample],
   );
   const router = useRouter();
@@ -39,7 +39,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
       <ChatScreen
         sessionId={sample ?? "demo"}
         onBack={() => router.back()}
-        title={sample === "demo-three" ? "Which term is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : group ? "Northwind supply contract, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}
+        title={sample === "demo-three" ? "Which term is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : sample === "demo-ads" ? "ads" : sample === "demo-group" ? "Spring campaign" : group ? "Northwind supply contract, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}
         about={group ? { record: { title: "Northwind Bakery, supplier dispute", type: "Project" }, space: "Juniper Studio", sealed: 2, runsOn: "server" } : undefined}
         initialAbout={q.about === "1"}
         showSealedNote={q.note === "0" ? false : undefined}

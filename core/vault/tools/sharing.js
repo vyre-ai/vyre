@@ -37,6 +37,8 @@ export function register({ ctx, vault, tool }) {
   const teams = async (/** @type {any} */ meta) => { try { const chain = await ctx.kernel.chain(meta); const ts = ctx.kernel.grants && ctx.kernel.grants.teams ? await ctx.kernel.grants.teams.list(chain) : null; return Array.isArray(ts) ? ts : null; } catch { return null; } };
   /** An agent's stable id, or null. @param {string} name */
   const agentUid = async name => { try { const r = await ctx.call("agents.uid", { name: String(name).toLowerCase() }); return r && r.data ? String(r.data.uid) : null; } catch { return null; } };
+  /** The agents of the Space, by stable id, for the share sheet (the owner may instruct every one). */
+  const agentList = async () => { try { const r = await ctx.call("agents.list", {}); const xs = r && Array.isArray(r.data) ? r.data : r && r.data && Array.isArray(r.data.agents) ? r.data.agents : []; return xs.filter((/** @type {any} */ a) => a && (a.uid || a.id) && a.name).map((/** @type {any} */ a) => ({ id: String(a.uid || a.id), name: String(a.name) })); } catch { return []; } };
   /** @param {string} name */
   const sharedWith = async name => {
     const gs = (await mint().list({ source: `vault:share:${name}:` })) || [];
@@ -60,7 +62,8 @@ export function register({ ctx, vault, tool }) {
         access: await sharedWith(String(name)),
         levels: [...SHARE_LEVELS],
         people: ms.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.display_name || m.person), role: String(m.role || "") })),
-        teams: ts.map((/** @type {any} */ t) => ({ id: String(t.id), name: String(t.name) })),
+        teams: ts.map((/** @type {any} */ t) => ({ id: String(t.id), name: String(t.name), people: [...(t.members || [])], agents: [...(t.agents || [])] })),
+        agents: await agentList(),
       };
     });
 

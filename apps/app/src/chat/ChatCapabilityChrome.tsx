@@ -88,7 +88,7 @@ export function useChatCapabilityChrome({
     ui: (
       <>
         {real && tasks.some((t) => t.live) ? (
-          <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 12, paddingTop: 6 }}>
+          <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 12, paddingTop: 6 }}>
             <BackgroundTasksCard tasks={tasks} onOpen={() => onOpenPanel("tasks")} onStop={(id) => { void chatTools.stopTask(chat, id).then(() => chatTools.tasks(chat).then((t) => setTasks(t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) }))))); }} />
           </View>
         ) : null}
@@ -103,7 +103,7 @@ export function LaterPlannerBar({ s, onClear }: { s: LaterPlannerState; onClear:
   const router = useRouter();
   if (!s || s.kind !== "scheduled") return null;
   return (
-    <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 16 }}>
+    <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 16 }}>
       <LaterPlannerNote s={s} onOpenPlanner={() => router.push("/u/planner" as never)} onClear={onClear} />
     </View>
   );

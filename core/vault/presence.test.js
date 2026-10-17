@@ -18,7 +18,7 @@ import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
   // mirror vault.account.reset, vault.put, vault.update and vault.delete
-  "vault.me.account.reset", "vault.me.put", "vault.me.update", "vault.me.remove",
+  "vault.me.account.reset", "vault.me.put", "vault.me.update", "vault.me.remove", "vault.me.share.agent",
   "vault.put", "vault.delete", "vault.provider.set", "vault.provider.remove", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.autobackup.enrol", "vault.autobackup.run", "vault.autobackup.drill", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
@@ -34,7 +34,7 @@ export const NEEDS_PRESENCE = [
 const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
   "vault.pass.list", "vault.pass.revoke", "vault.grants.status", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.me.account.unlock", // mirrors vault.account.unlock: the password and Secret Key are the proof
   // mirror their owner tools: lock, status, list and grants.status are reads; the store tools are module plumbing for member-mcp (the body refuses non-person callers)
-  "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
+  "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.unshare.agent", "vault.me.shares", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
   "vault.history",
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
@@ -59,7 +59,7 @@ test("presence: every value-out or access-giving tool declares it, with a summar
   }
   for (const n of NO_PRESENCE) assert.ok(!tools.get(n)?.presence, `${n} needs no person`);
   // vault.release is internal (modules only) and exempt; everything else registered is listed above.
-  const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.me.release" /* internal, modules only: mirrors vault.release */, "vault.connection.token" /* internal, the mcp module only */, "vault.me.connect.put" /* internal, the connectors module only */, "vault.me.who" /* internal, the mcp and connectors modules */, "vault.generate", "vault.match", "vault.relay",
+  const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.me.release" /* internal, modules only: mirrors vault.release */, "vault.connection.token" /* internal, the mcp module only */, "vault.connection.may" /* internal, the mcp module only */, "vault.connection.revoke" /* internal, the mcp module only */,  "vault.me.connect.put" /* internal, the connectors module only */, "vault.me.who" /* internal, the mcp and connectors modules */, "vault.generate", "vault.match", "vault.relay",
     // P17 and vault-routed API access: internal tools other modules call, and a request the Gate holds when nothing the person said covers it.
     "vault.said.record", "vault.said.add", "vault.env.scan", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
     // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
