@@ -16,7 +16,7 @@ import { runCases } from "./cases.js";
 import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
-import { linksFor, withLinks } from "./links.js";
+import { linksFor, withLinks, lesserRead, byPerson, starterOf } from "./links.js";
 import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
@@ -649,9 +649,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    // the person whose change fired the Flow (the event's verified actor), when there is one: a linked record is read only if they may read it too; a schedule or a web call has none
-    const by = typeof env.actor === "string" && env.actor.startsWith("person:") ? env.actor.slice(7) : null;
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...(by ? { by } : {}) }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor) }, env);
   }
 
   /**
@@ -781,9 +779,7 @@ export class FlowRunner {
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
     const byModel = (callerChain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
-    // who started it, from the verified chain: a linked record is read only if THEY may read it too (the lesser of the Flow's chain and theirs), so a member cannot see through a Flow what she could not open herself
-    const starter = (callerChain.hops || []).find((/** @type {any} */ h) => h.actor.kind === "person");
-    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {}, ...(starter ? { by: String(starter.actor.id) } : {}) }, { trust: byModel ? "external" : "member", data: input ?? {} });
+    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {}, ...starterOf(callerChain) }, { trust: byModel ? "external" : "member", data: input ?? {} });
   }
 
   /** Wait for every started run to reach a resting state. For tests and for shutdown. */
@@ -1152,15 +1148,7 @@ export class FlowRunner {
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
     const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
     const load = async () => {
-      // a linked record is read under the lesser of the Flow's chain and the chain of whoever started the run: both must be able to read it, else it reads as not readable (the step stops with the plain error)
-      const lesser = async (/** @type {string} */ type, /** @type {string} */ id) => {
-        const rec = await this.k.records.get(this.#chain(ctx), type, id);
-        const by = ctx.run.trigger && ctx.run.trigger.by;
-        if (!rec || !by || typeof this.ports.actorChain !== "function") return rec;
-        let theirs = null; try { theirs = await this.k.records.get(this.ports.actorChain(String(by)), type, id); } catch { theirs = null; }
-        return theirs ? rec : null;
-      };
-      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesser }); }
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.trigger && ctx.run.trigger.by) }); }
       catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
     };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());

@@ -108,3 +108,21 @@ export function withLinks(scope, overs) {
   for (const { at, over } of [...overs].sort((a, b) => a.at.length - b.at.length)) out = setAt(out, at, over);
   return out;
 }
+
+/** The person whose change fired a Flow (the event's verified actor), when there is one: a linked record is read only if they may read it too. A schedule or a web call has none. @param {unknown} actor */
+export const byPerson = (actor) => (typeof actor === "string" && actor.startsWith("person:") ? { by: actor.slice(7) } : {});
+
+/** Who started a run by hand, from the verified chain: a linked record is read only if THEY may read it too, so a member cannot see through a Flow what she could not open herself. @param {any} chain */
+export const starterOf = (chain) => { const h = ((chain && chain.hops) || []).find((/** @type {any} */ x) => x.actor.kind === "person"); return h ? { by: String(h.actor.id) } : {}; };
+
+/**
+ * A linked record is read under the lesser of the Flow's chain and the chain of whoever started the run (`by`, when there is one and the host can make their chain): both must be able to read it, else it reads
+ * as not readable (the step stops with the plain error).
+ * @param {{ get: Function }} records @param {any} flowChain @param {((id: string) => any) | undefined} actorChain @param {string | undefined} by @returns {(type: string, id: string) => Promise<any>}
+ */
+export const lesserRead = (records, flowChain, actorChain, by) => async (type, id) => {
+  const rec = await records.get(flowChain, type, id);
+  if (!rec || !by || typeof actorChain !== "function") return rec;
+  let seen = null; try { seen = await records.get(actorChain(String(by)), type, id); } catch { seen = null; }
+  return seen ? rec : null;
+};
