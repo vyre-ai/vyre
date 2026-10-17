@@ -10,7 +10,7 @@ import { tempHome } from "../../test/helpers.js";
 import { AgentUsers, MIGRATIONS } from "./agent-users.js";
 import { registerAgentTools } from "./agent-tools.js";
 
-function setup(t, { allow = new Set(["agents.used", "agents.docs.get"]) } = {}) {
+function setup(t, { level = "edit" } = {}) {
   const db = open(path.join(tempHome(t), "t.db"));
   t.after(() => db.close());
   migrate(db, "agentusers", MIGRATIONS);
@@ -25,7 +25,7 @@ function setup(t, { allow = new Set(["agents.used", "agents.docs.get"]) } = {}) 
   /** @type {string[]} */ const asked = [];
   let held = false;
   registerAgentTools({ tool: (name, _d, _i, run) => tools.set(name, run), users, callers: ["deck"], held: () => held,
-    call: async (tool, input) => { asked.push(`${tool} ${input.agent}`); return allow.has(tool) ? { data: {} } : { error: { code: "denied", message: "you cannot use that agent" } }; } });
+    call: async (tool, input) => { asked.push(`${tool} ${input.agent}`); return tool === "agents.level" ? { data: { agent: input.agent, level } } : { error: { code: "no_such_tool", message: tool } }; } });
   return { users, tools, ran, asked, hold: (/** @type {boolean} */ v) => { held = v; } };
 }
 const call = (w, name, input) => /** @type {any} */ (w.tools.get(name))(input, {});
@@ -41,7 +41,7 @@ test("status of an agent with no place yet says none; wake makes the place and o
 });
 
 test("a caller the agents module refuses gets its refusal, and nothing starts", async t => {
-  const w = setup(t, { allow: new Set() });
+  const w = setup(t, { level: "none" });
   for (const name of ["computers.agent.status", "computers.agent.wake", "computers.agent.sleep", "computers.agent.reset"]) {
     await assert.rejects(() => call(w, name, { agent: "ads" }), /cannot use that agent/, name);
   }
@@ -50,9 +50,9 @@ test("a caller the agents module refuses gets its refusal, and nothing starts", 
 });
 
 test("reset needs the right to edit, empties one home, and a user who may only use the agent cannot reset it", async t => {
-  const w = setup(t, { allow: new Set(["agents.used"]) });
+  const w = setup(t, { level: "use" });
   await call(w, "computers.agent.wake", { agent: "ads" });
-  await assert.rejects(() => call(w, "computers.agent.reset", { agent: "ads" }), /cannot use that agent/);
+  await assert.rejects(() => call(w, "computers.agent.reset", { agent: "ads" }), /cannot change that agent/);
   assert.ok(!w.ran.some(x => x.startsWith("wipe")));
   const e = setup(t);
   await call(e, "computers.agent.wake", { agent: "ads" }); await call(e, "computers.agent.wake", { agent: "kit" });
