@@ -49,6 +49,8 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  */
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
 let lastTrace = "";
+/** What a server answers when an act needs the person's own approval. */
+const PRESENCE_CODES = ["presence_required", "needs_presence", "on_phone", "software_key", "held"];
 const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; try { if (typeof console !== "undefined") console.info(`vyre:stage step ${line}`); } catch { /* no console */ } };
 
 export function createHost(o) {
@@ -68,7 +70,7 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
-  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null }>} */
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean }>} */
   const waits = new Map();
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
@@ -182,7 +184,10 @@ export function createHost(o) {
             try { await ports.call("vault.space.create", { space: w.space }, p.box); }
             catch (e) {
               const x = /** @type {any} */ (e);
-              if (!x || x.code !== "exists") {
+              // A server asks for the person's own approval before it makes a space vault, and a page with a software key has none to give yet: the space is still usable, the vault waits for an approval
+              // the person can give (the answer says so), and nothing is lost by making it later.
+              if (x && PRESENCE_CODES.includes(String(x.code))) { w.vaultPending = true; trace(`poll: the vault waits for an approval (${String(x.code)})`); }
+              else if (!x || x.code !== "exists") {
                 w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || "The space vault could not be made.").slice(0, 300) };
                 return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true };
               }
@@ -199,7 +204,7 @@ export function createHost(o) {
           w.saved = true;
         }
         const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
-        return { ...base, online: true, expired: false, space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
+        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";
