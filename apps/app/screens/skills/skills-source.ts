@@ -1,7 +1,9 @@
 // Skills library calls on a real vyred (skills.browse, skills.draft, skills.approve, skills.versions, skills.get).
 
-export type SkillRow = { id: string; name: string; level: string; scope?: string; description?: string; tokens?: number; kind?: string; harnesses?: string[]; declares?: { hooks?: unknown[]; mcp?: unknown[] }; ack?: string };
-export type SkillVersion = { name: string; level: string; scope?: string; version: number; state: string; kind?: string; proposer?: string; hash?: string; ack?: string; declares?: { hooks?: unknown[]; mcp?: unknown[] } };
+/** What a plugin declares beyond text (lib/skill-library.js declared()): the hosts each hook may reach and the MCP servers it adds. */
+export type Declares = { hooks?: { id: string; event: string; network?: string[] }[]; mcp?: { name: string; transport: string; command?: string; args?: string[]; url?: string }[] };
+export type SkillRow = { id: string; name: string; level: string; scope?: string; description?: string; tokens?: number; kind?: string; harnesses?: string[]; declares?: Declares; ack?: string };
+export type SkillVersion = { name: string; level: string; scope?: string; version: number; state: string; kind?: string; proposer?: string; hash?: string; ack?: string; declares?: Declares };
 export type BrowsePack = { skills: SkillRow[]; drafts?: SkillVersion[]; identityPersonal?: boolean; role?: string; can?: { draft?: Record<string, boolean>; approve?: Record<string, boolean>; plugin?: Record<string, boolean> }; levels?: Record<string, { view: boolean; draft: boolean; approve: boolean; plugin: boolean }> };
 
 type Call = (tool: string, input?: Record<string, unknown>) => Promise<unknown>;

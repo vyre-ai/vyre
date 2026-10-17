@@ -8,7 +8,7 @@ import { callT as call } from "../../src/real/call-tool";
 import { pickConnections } from "../connections/model";
 import { PluginDeclaresView, PluginEditor, type ConnectionPick } from "./PluginEditor";
 import { emptyPlugin, pluginBody, type PluginManifest } from "./plugin-model";
-import { AIS } from "../../../../lib/skill-library.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 
 const LEVELS = [
   { id: "personal", label: "Mine (identity)" },
