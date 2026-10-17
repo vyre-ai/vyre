@@ -109,8 +109,8 @@ async function macDriver() {
     text: () => need().text(),
     async waitFor(t, ms = 30_000) { return need().waitFor(t, ms); },
     async click(t) {
-      // A choice, a button or a switch is found by its own words; the first matching element is the one on screen.
-      await need().click(t, 20_000);
+      // A control with its own label (a switch: its words are beside it, the press is on the switch itself) is found by that label first; a choice or a button by its text.
+      try { await need().clickAria(t, 2_000); } catch { await need().click(t, 20_000); }
     },
     async fill(l, v) { await need().fill(l, v, 20_000); },
     async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
