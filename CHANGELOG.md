@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(kernel): a task-scoped lend (flows:task, vault:lease) holds nothing when the authorizer was built with no answer about the task: it fails closed. Test in core/vault/agent-api.test.js.
 - refactor(kernel): the forgetting of task words (`scrubTexts`) moves to `kernel/tasks/scrub.js`, outside the trusted base (it decides no grant). The deadline lines fit and the base cap goes down to 9819; nothing was raised.
 - test(vault): a task lease is refused at use once its task is withdrawn, before the lease is taken back (the kernel rig takes a `taskOpen`).
 - fix(flows): at an agent step's deadline, a one-tap card the session asked for (a device, an invite, a vault reveal) is cancelled with its outward cards, not only the held sends. The deadline tests now prove the stop uses the thread the wake recorded.

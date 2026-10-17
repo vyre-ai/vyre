@@ -12,7 +12,7 @@ import { AGENT_ACTIONS } from "../../kernel/seal/uses.js";
 
 export const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 
-/** `taskOpen` is the kernel's answer to whether a task is still open (kernel/tasks taskOpen): a lease or lend sourced from a task ends with it. @param {{ taskOpen?: (id: string) => boolean | Promise<boolean>, clock?: () => number, agents?: Record<string, string>, people?: string[], projects?: Record<string, string>, call?: (tool: string, input: any) => Promise<any> | any }} [o] */
+/** `taskOpen` (default: every task is open; false: not wired) is the kernel's answer to whether a task is still open (kernel/tasks taskOpen): a lease or lend sourced from a task ends with it. @param {{ taskOpen?: false | ((id: string) => boolean | Promise<boolean>), clock?: () => number, agents?: Record<string, string>, people?: string[], projects?: Record<string, string>, call?: (tool: string, input: any) => Promise<any> | any }} [o] */
 export async function kernelRig(o = {}) {
   let T = Date.now();
   const clock = o.clock || (() => ++T);
@@ -26,7 +26,7 @@ export async function kernelRig(o = {}) {
   const presence = { check: async () => null };
   const log = createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
-  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true, ...(o.taskOpen ? { taskOpen: o.taskOpen } : {}) });
+  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true, ...(o.taskOpen === false ? {} : { taskOpen: o.taskOpen || (() => true) }) });
   await gs.bootstrap({ owner: OWNER });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {

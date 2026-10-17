@@ -433,7 +433,7 @@ export function createAuthorizer(cfg) {
     if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
     // A grant lent for one task (a Flow's lend of the task to an agent, a vault lease for it) ends with the task: once the task is done, skipped or withdrawn it holds nothing, even before the lend is taken back.
     const lent = /^(?:flows:task|vault:lease):(.+)$/.exec(String(g.source || ""));
-    if (lent && typeof cfg.taskOpen === "function" && !(await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };
+    if (lent && !(typeof cfg.taskOpen === "function" && await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };   // no answer about the task counts as ended
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).
