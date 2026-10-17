@@ -226,3 +226,24 @@ test("sealed server copy: a connection keeps working while its owner is locked, 
   assert.equal(openMemberKey(sealRoot, BOB), null);
   await assert.rejects(() => tokens.token({ owner: BOB, connection: "clio" }, asBob), { code: "locked" });
 });
+
+test("vault.me.connect.put: the connectors module stores a sign-in in the signing-in member's own vault, labelled by the chain, never by the input", async t => {
+  const { call } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  const put = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.connect.put", input, who, { caller: "module:connectors", ...extra });
+  const f = { auth_kind: "oauth", server_url: "https://mcp.example.test/mcp", client_id: "c", refresh_token: "R1", token_uri: "https://auth.example.test/token" };
+  assert.equal((await put({ name: "clio", fields: { ...f, connected_by: EVE } }, BOB)).data.created, true);
+  const got = (await call("vault.me.get", { name: "clio" }, BOB)).data;
+  assert.equal(got.kind, "connection"); assert.equal(got.fields.connected_by, BOB, "connected_by is the chain's person, not the input's");
+  assert.equal((await call("vault.me.get", { name: "clio" }, EVE)).error.message, "no item named clio", "nothing lands in another person's vault");
+  assert.equal((await put({ name: "clio", fields: { ...f, refresh_token: "R2" } }, BOB)).data.created, false, "a second sign-in updates it");
+  assert.equal((await call("vault.me.get", { name: "clio" }, BOB)).data.fields.refresh_token, "R2");
+  for (const caller of ["module:mcp", "module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.connect.put", { name: "x", fields: f }, BOB, { caller })).error?.code, "denied", caller);
+  assert.equal((await put({ name: "x", fields: { ...f, auth_kind: "magic" } }, BOB)).error.code, "bad_input");
+  assert.equal((await put({ name: "x", fields: { ...f, server_url: "http://plain.example.test" } }, BOB)).error.code, "bad_input");
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
+  assert.equal((await put({ name: "claude", fields: f }, BOB)).error.code, "denied", "it never overwrites an item that is not a connection");
+  assert.equal((await put({ name: "clio", fields: f }, OWNER)).error.message, ME_REFUSAL, "the owner's connections stay in the owner's vault");
+  assert.equal((await put({ name: "clio", fields: f }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+});

@@ -40,7 +40,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
   "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.me.connect.put"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -105,6 +105,28 @@ export function register({ ctx, people, tool }) {
       return { person: id, value };
     },
   });
+  // The connectors module stores a finished sign-in as an item of kind "connection" in the vault of the person who signed in, never in the owner's and never for a person the input names. The person
+  // is the chain's; connected_by is set here from it, so a caller cannot label a connection as another person's. A new connection is made, an existing one of the same name is updated (a refresh).
+  const CONNECTION_KINDS = ["oauth", "bearer", "api_key"];
+  ctx.tool("vault.me.connect.put", {
+    internal: true,
+    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors module; the person is the call's chain.",
+    input: obj({ name: str, fields }, ["name", "fields"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:connectors") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const id = await memberOf(ctx.kernel, meta);
+      const f = input && input.fields;
+      if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });
+      if (typeof f.server_url !== "string" || !/^https:\/\//.test(f.server_url)) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
+      const fields = { ...f, connected_by: id };
+      const have = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === input.name);
+      if (!have) return people.put(id, { name: String(input.name), kind: "connection", description: `connection to ${new URL(f.server_url).host}`, fields });
+      const cur = await people.get(id, { name: String(input.name) });
+      if (cur.kind !== "connection" || (cur.fields.connected_by && cur.fields.connected_by !== id)) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+      return people.update(id, { name: String(input.name), fields });
+    },
+  });
+
   // A person's app connection, for the MCP hub only: an access token for one connection in the OWNER'S vault, named by the hub row (never by a model), after a second check of who is asking
   // (core/vault/connection-token.js). The refresh token stays here. The tool is not for a person's surface or a model.
   const tokens = new ConnectionTokens({ people, kernel: () => ctx.kernel });
