@@ -6,6 +6,9 @@
 // Two gates. The hub checks the grant first. This checks again, for the verified chain of the call: the owner's own person, with no assistant in the chain, uses their own connection; anyone else
 // (a colleague, an assistant) needs the kernel to allow `vault.read` (a read tool) or `vault.call` (any other) on the connection's address. No kernel answer means no.
 //
+// The level is the hub's discipline, not a limit on the token: `write` is chosen by the hub from its own classification of the tool, and the access token it returns is the same bearer for a read and a
+// write, so a grantee at Fill in is held to reads and held calls by the hub and the Gate, not by the token. Nothing here lets a caller widen that.
+//
 // What it does not do: reveal, list or change a connection (vault.me.* does, for the person alone), or serve the Space owner, whose connections are ordinary items of the owner's vault.
 
 import { Credentials } from "../../lib/connectors/auth.js";
