@@ -32,6 +32,7 @@ const server = /** @type {"installer" | "mac"} */ (take("--server", client === "
 const dist = path.resolve(take("--dist", ""));
 const appPath = take("--app", "/Applications/Vyre.app");
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `proof-first-run-${process.pid}`)));
+const NO_ED25519 = argv.includes("--no-ed25519"); // an old browser: WebCrypto without Ed25519 (the app's fallback must carry the identity); the walk stops at the space choice
 const PORTS = { names: Number(take("--names-port", "8787")), relay: Number(take("--relay-port", "8788")), page: Number(take("--page-port", "8789")) };
 if (!["browser", "mac-app"].includes(client) || !["installer", "mac"].includes(server)) { console.error("proof-first-run: --client browser|mac-app, --server installer|mac"); process.exit(64); }
 if (process.env.GITHUB_ACTIONS !== "true" && process.env.VYRE_ALLOW_LOCAL_RUN !== "1") { console.error("proof-first-run runs on CI only (the installers use fixed folders and system services)"); process.exit(2); }
@@ -53,7 +54,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -73,13 +74,26 @@ async function browserDriver() {
   await new Promise((r) => srv.once("listening", r));
   const browser = await chromium.launch({ args: [...CHROME_SAFE] });
   const ctx = await browser.newContext({ viewport: { width: 520, height: 1000 }, serviceWorkers: "block" });
+  // Chrome before 137 / Safari before 17 / Firefox before 129: the browser's WebCrypto refuses Ed25519, as the page sees it. The page's own fallback must take over.
+  if (NO_ED25519) await ctx.addInitScript(() => {
+    const s = crypto.subtle, refuse = () => Object.assign(new Error("Algorithm: Unrecognized name"), { name: "NotSupportedError" });
+    const isEd = (a) => String((a && a.name) || a).toUpperCase() === "ED25519";
+    for (const k of ["importKey", "generateKey", "verify", "sign"]) { const f = s[k].bind(s); s[k] = (...a) => (isEd(a[0]) || isEd(a[2]) ? Promise.reject(refuse()) : f(...a)); }
+  });
   /** @type {any} */ let page = null;
   const pageErrors = /** @type {string[]} */ ([]);
+  const consoleErrors = /** @type {string[]} */ ([]);
   const body = async () => (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
   const d = {
-    async open() { if (page) await page.close().catch(() => {}); page = await ctx.newPage(); page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200))); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
+    async open() {
+      if (page) await page.close().catch(() => {});
+      page = await ctx.newPage();
+      page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200)));
+      // A worker's error and a console error never reach pageerror: keep them, and print them when something fails.
+      page.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 300)); });
+      page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
-    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { throw new Error(`${e.message}. The screen says: ${(await body()).slice(0, 300)}`); }); return body(); },
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | and starts: ${b.slice(0, 120)}`); }); return body(); },
     async click(/** @type {string} */ t) {
       const el = page.getByRole("button", { name: t }).or(page.getByRole("radio", { name: t })).or(page.getByRole("switch", { name: t })).or(page.getByText(t, { exact: true })).first();
       await el.click({ timeout: 15_000 });
@@ -88,6 +102,8 @@ async function browserDriver() {
     async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
     // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
     async reopen() { await d.open(); },
+    /** Does this browser verify Ed25519 with WebCrypto? The identity chain does (kernel/identity/chain.js verifySig), and a browser that cannot answers "the first device signs its own genesis" at Create. */
+    async ed25519() { return page.evaluate(async () => { try { const k = await crypto.subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]); return Boolean(k); } catch { return false; } }); },
     errors: () => pageErrors.filter((e) => !/color scheme|dark mode/i.test(e)),
     // A browser on a static file server has no daemon of any kind: nothing answers /v1 here.
     async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
@@ -109,13 +125,14 @@ async function macDriver() {
     text: () => need().text(),
     async waitFor(t, ms = 30_000) { return need().waitFor(t, ms); },
     async click(t) {
-      // A choice, a button or a switch is found by its own words; the first matching element is the one on screen.
-      await need().click(t, 20_000);
+      // A control with its own label (a switch: its words are beside it, the press is on the switch itself) is found by that label first; a choice or a button by its text.
+      try { await need().clickAria(t, 2_000); } catch { await need().click(t, 20_000); }
     },
     async fill(l, v) { await need().fill(l, v, 20_000); },
     async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
     async reopen() { need().stop(); await wait(1500); await start(); },
     errors: () => [],
+    async ed25519() { return true; }, // the Mac app's window is WebKit, which verifies Ed25519
     // The app is pointed at a socket that does not exist and its own home holds none: no vyred is running for this app, so its window is the bundled app and the first run is the in-page host's. (The server the
     // Mac installer makes runs a vyred of its own under launchd; that is the other machine's, in its own home.)
     async noVyred() {
@@ -145,6 +162,9 @@ try {
     await drv.open();
     const t = await drv.waitFor("Get started", 60_000);
     if (!t.includes("Create an identity") || !t.includes("Sign in")) throw new Error(`the first screen does not offer both: ${t.slice(0, 200)}`);
+    const native = await drv.ed25519();
+    if (NO_ED25519 && native) throw new Error("the old-browser case did not remove Ed25519 from WebCrypto, so it proves nothing");
+    if (!NO_ED25519 && !native) throw new Error("this browser has no Ed25519 WebCrypto (Chromium before 137): use a newer pinned Playwright, or run the old-browser case with --no-ed25519");
     await drv.shot("01-get-started");
   });
 
@@ -157,7 +177,10 @@ try {
     await drv.fill("Master password", PASSWORD);
     await drv.fill("Confirm master password", PASSWORD);
     await drv.click("Create");
-    const t = await drv.waitFor("Save your recovery key", 120_000);
+    // Creating the identity stretches the master password with Argon2id (64 MiB, 3 passes) in the page: seconds on a fast machine, longer on a hosted runner. The step says how long it took.
+    const started = Date.now();
+    const t = await drv.waitFor("Save your recovery key", 400_000);
+    console.log(`  identity created in ${Math.round((Date.now() - started) / 1000)} s`);
     const m = /[A-Z2-7]{4}(?:-[A-Z2-7]{2,4}){6}/i.exec(t);
     if (!m) throw new Error(`no recovery key on the screen: ${t.slice(0, 200)}`);
     recoveryKey = m[0];
@@ -174,10 +197,19 @@ try {
     return `${USERNAME} ${personId}`;
   }, { needs: [S("the first screen offers Create an identity and Sign in")] });
 
+  if (NO_ED25519) {
+    // The old-browser case ends here: the identity was made and checked with the page's own Ed25519, which is what it proves.
+    await run.step(S("no page error during the old-browser run"), async () => { const e = drv.errors(); if (e.length) throw new Error(e.slice(0, 3).join(" | ")); });
+    code = run.finish();
+    for (const c of cleanups.reverse()) { try { await c(); } catch { /* best effort */ } }
+    process.exit(code);
+  }
+
   await run.step(S("create a space: the screen shows one install command with a one-time code"), async () => {
     await drv.click("Create a space");
     await drv.waitFor("Where should it run?");
     await drv.click(server === "mac" ? "Always-on Mac" : "Linux server");
+    await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
     await drv.click("Show the command");
     const t = await drv.waitFor("Waiting for it to come online", 90_000);
     const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(t);

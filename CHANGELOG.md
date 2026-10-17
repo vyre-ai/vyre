@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(app): the web app creates and signs in an identity on a browser whose WebCrypto has no Ed25519 (Chrome before 137, Safari before 17, Firefox before 129). `webcrypto.ts` wraps `importKey` and `verify` for Ed25519 only: the browser's own answers when it can, and the same strict @noble verify the phone uses answers when it cannot. A browser that can do neither is told "This browser is too old for Vyre. Update it, or use the Vyre app." instead of the chain's "the first device signs its own genesis". Tested with a browser that refuses Ed25519 (unit, through the real chain) and by an old-browser case in the first-run proof.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).

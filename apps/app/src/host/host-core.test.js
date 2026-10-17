@@ -269,3 +269,17 @@ test("a space that does not say which space it is gets no row, and nothing is ke
   await assert.rejects(() => two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_space");
   assert.equal(await store.load(), null);
 });
+
+test("a browser with no Ed25519 and no fallback is told in plain words, not given the chain's sentence", async (t) => {
+  const d = directory(t);
+  const real = (await import("node:crypto")).webcrypto;
+  const refuse = () => Object.assign(new Error("Algorithm: Unrecognized name"), { name: "NotSupportedError" });
+  const before = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  const subtle = { digest: (...a) => real.subtle.digest(...a), importKey: async (f, data, algo, ...r) => { if (String(algo.name || algo).toUpperCase() === "ED25519") throw refuse(); return real.subtle.importKey(f, data, algo, ...r); }, verify: async () => { throw refuse(); } };
+  Object.defineProperty(globalThis, "crypto", { value: { subtle, getRandomValues: (a) => real.getRandomValues(a) }, configurable: true });
+  try {
+    const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+    await assert.rejects(() => host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD }), (e) => e.code === "browser_too_old" && e.message === "This browser is too old for Vyre. Update it, or use the Vyre app.");
+    await assert.rejects(() => host.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "browser_too_old");
+  } finally { if (before) Object.defineProperty(globalThis, "crypto", before); }
+});
