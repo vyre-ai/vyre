@@ -98,9 +98,7 @@ test("an agent's send with a file in a member's turn is held with the file by re
 test("the held agent send is checked again when the Gate releases it: it goes out with the file's bytes if the asker may still read it and the file is the same; not if access was lost or the bytes changed", async t => {
   const s = await setup(t);
   const hold = async () => { const out = await s.run("google.mail.send", { ...MAIL, attachments: [{ path: "Clients/refund.pdf", name: "refund.pdf" }] }, ["p-alice", "agent:kit"]); return { id: out.held, item: s.gate[s.gate.length - 1] }; };
-  const release = ({ id, item }) => s.run("google.release", { id, to: item.to, content: item.content }, ["p-alice"]).catch(e => { throw e; });
   const asGate = (h) => s.tools.get("google.release").run({ id: h.id, to: h.item.to, content: h.item.content }, { caller: "module:gate", token: "t", hops: ["p-alice"] });
-  void release;
   // released as approved: the bytes are read (the stored item's `by`, not the caller) and sent from Alice's mailbox
   const a = await hold();
   await asGate(a);
