@@ -2,7 +2,8 @@
 // agentd-relay: the way a viewer reaches ONE agent's screen. An agent's screen is a unix socket in that agent's own 0700 folder, so only that uid can open it. The relay listens on one
 // TCP port inside the computer; a connection says nothing but a ticket, and the ticket (which vyred registered through the authenticated agentd channel, single use, short life) names the
 // agent. The relay then starts agentd-pipe.py AS that agent's uid, which opens that uid's own socket and nothing else, and joins the connection to it. A connection with no good ticket within
-// a few seconds is closed without a byte; the ticket, once spent, is gone.
+// a few seconds is closed without a byte; the ticket, once spent, is gone. Only vyred's address (the pin computerd keeps) may connect at all. A computer is never published to the host
+// (driver/policy.js refuses PortBindings), so this port is reachable on the computers' own network only. With the pin an agent cannot even connect, so it cannot hold the 16 pending slots; if the pin were ever wrong, the worst a holder does is deny viewers for 3 s at a time, never gain access.
 
 import net from "node:net";
 import crypto from "node:crypto";

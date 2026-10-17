@@ -389,3 +389,13 @@ test("every deviation from agentd's token tar is refused: another name, owner, m
   for (const [what, buf] of /** @type {Array<[string, Buffer]>} */ (cases)) assert.equal(allowAgentdTokenTar(buf).ok, false, what);
   assert.equal(allowBootTar(tar).ok, false, ".boot's check refuses the agentd tar too");
 });
+
+test("policy: no computer is ever published to the host or any other network, so the screen relay's port is reachable only on the computers' own network", async t => {
+  const body = await realBody(t);
+  assert.deepEqual(body.HostConfig.PortBindings, {}, "the driver publishes nothing");
+  for (const bindings of [{ "5910/tcp": [{ HostPort: "5910" }] }, { "5910/tcp": [{ HostIp: "0.0.0.0", HostPort: "5910" }] }]) {
+    assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, PortBindings: bindings } }, CONFIG).ok, false);
+  }
+  assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, PublishAllPorts: true } }, CONFIG).ok, false, "not by publishing every exposed port either");
+  assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, NetworkMode: "host" } }, CONFIG).ok, false, "nor by the host's network");
+});
