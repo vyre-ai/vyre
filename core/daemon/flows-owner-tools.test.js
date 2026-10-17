@@ -15,8 +15,10 @@ process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; proc
 const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
-/** The code a refused call carries, or "" when it went through. @param {any} r */
-const refusedCode = r => (r && r.error ? String(r.error.code || r.error.message || "") : "");
+/** The code a refused call carries, or "" when it went through. Only the code: the words change, the code is the contract. @param {any} r */
+const refusedCode = r => (r && r.error ? String(r.error.code || "") : "");
+/** The card the registry made when an assistant's call needs the person's tap, or null. @param {any} r */
+const heldFor = r => (r && r.error && r.error.code === "held_for_approval" && r.error.approval ? r.error.approval : null);
 
 test("an assistant's session cannot advance a stage gate or set the AI budget, even on the owner's chain; the owner's own session still can; a member reads the budget", { timeout: 150_000 }, async t => {
   const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
@@ -31,9 +33,13 @@ test("an assistant's session cannot advance a stage gate or set the AI budget, e
   const asBen = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "mcp", await tokenOf(benChain));
 
   // the assistant's advance and budget set are refused at the registry; the owner's own token is not refused for who it is
-  assert.notEqual(refusedCode(await asAssistant("flows.advance", { run: "no-such-run", reason: "x" })), "", "an assistant cannot advance a stage gate");
+  // the refusal is the reach rule's: the owner's own call with the same missing run fails for the run, with a different code
+  const aAdvance = await asAssistant("flows.advance", { run: "no-such-run", reason: "x" });
+  assert.match(refusedCode(aAdvance), /denied|person_only/, `an assistant cannot advance a stage gate: ${JSON.stringify(aAdvance)}`);
+  const oAdvance = await asOwner("flows.advance", { run: "no-such-run", reason: "x" });
+  assert.ok(refusedCode(oAdvance) && !/denied|person_only/.test(refusedCode(oAdvance)), `the owner's advance reaches the stage check, not the reach rule: ${JSON.stringify(oAdvance)}`);
   const aBudget = await asAssistant("flows.budget.set", { tokens_per_day: 999999 });
-  assert.notEqual(refusedCode(aBudget), "", "an assistant cannot set the AI budget, even on the owner's chain");
+  assert.match(refusedCode(aBudget), /denied|person_only/, "an assistant cannot set the AI budget, even on the owner's chain");
   const before = await asOwner("flows.budget", {});
   assert.ok(before.data && typeof before.data.tokens_per_day === "number", JSON.stringify(before));
   assert.notEqual(before.data.tokens_per_day, 999999, "the refused set changed nothing");
@@ -45,7 +51,7 @@ test("an assistant's session cannot advance a stage gate or set the AI budget, e
   // a member reads the budget; setting it is refused to her
   const benRead = await asBen("flows.budget", {});
   assert.ok(benRead.data && typeof benRead.data.tokens_per_day === "number", `a member reads the budget: ${JSON.stringify(benRead)}`);
-  assert.notEqual(refusedCode(await asBen("flows.budget.set", { tokens_per_day: 1 })), "", "a member cannot set the budget");
+  assert.match(refusedCode(await asBen("flows.budget.set", { tokens_per_day: 1 })), /denied|not_allowed|person_only/, "a member cannot set the budget");
 });
 
 test("an assistant's settle is held for the person's tap, not run; the owner's settle still reaches the runner", { timeout: 150_000 }, async t => {
@@ -57,13 +63,19 @@ test("an assistant's settle is held for the person's tap, not run; the owner's s
   const asOwner = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", await tokenOf(ownerChain));
   const asAssistant = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "mcp", await tokenOf(ownerChain, { agent: "kit", thread: "t-1" }));
 
+  // Settle is ASK_FIRST: each assistant answer makes one Needs-you card and the call waits for the person's tap. The advance refusal inside
+  // settle (an agent hop reaching the flows.settle handler with action advance) is NOT proven here: a held call never reaches the handler.
+  // It needs a unit test of the handler; until one exists this test proves the hold only.
   for (const action of ["retry", "advance"]) {
     const r = await asAssistant("flows.settle", { run: "no-such-run", action, reason: "x" });
-    assert.ok(r.data && r.data.held_for_approval, `an assistant's settle ${action} is held for the person's tap: ${JSON.stringify(r)}`);
+    const card = heldFor(r);
+    assert.ok(card, `an assistant's settle ${action} is held for the person's tap: ${JSON.stringify(r)}`);
+    const pending = (await d.registry.call("approvals.pending", {}, "cli", await tokenOf(ownerChain))).data || {};
+    assert.ok((pending.approvals || []).some(a => a.id === card), `the held settle ${action} has its card in the approvals queue`);
   }
-  // the owner's own settle is not held: it reaches the runner (which says the run is not there)
+  // the owner's own settle is not held by the assistant rule
   const own = await asOwner("flows.settle", { run: "no-such-run", action: "retry" });
-  assert.ok(!(own.data && own.data.held_for_approval), "the owner's settle is not held by the assistant rule");
+  assert.equal(heldFor(own), null, "the owner's settle is not held");
 });
 
 test("a Kit proposal installs nothing until the approver says yes", { timeout: 180_000 }, async t => {
