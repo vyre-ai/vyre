@@ -294,6 +294,11 @@ try {
     const ai = await drv.waitFor("Sign in to an AI", 30_000);
     if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
     await drv.shot("04b-ai-signin");
+    // Continue with nothing signed in does not leave the step (it starts the sign-in on the paired server and shows what came back, or says why not); only Skip for now goes on.
+    await drv.click("Continue");
+    await new Promise((r) => setTimeout(r, 5000));
+    const still = await drv.text();
+    if (/You're in/.test(still) || !/Sign in to an AI/.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
     await drv.click("Skip for now");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
