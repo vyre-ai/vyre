@@ -117,6 +117,7 @@ async function engine(t) {
     let got = head.toString("utf8");
     tunneled.push(`${req.method} ${req.url} content-length=${req.headers["content-length"]}`);
     sock.write("HTTP/1.1 101 UPGRADED\r\nContent-Type: application/vnd.docker.raw-stream\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n");
+    sock.on("error", () => {});   // the proxy ends an oversized tunnel; the stand-in's answer then has nobody to go to
     sock.on("data", c => { got += c; });
     sock.on("end", () => {
       tunneled.push(got);
