@@ -254,15 +254,19 @@ test("bridges: copy to my space keeps provenance, empties sealed fields and carr
   assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "harlow" })).error?.code, "wrong_space");
 });
 
-test("bridges: a model chain is held for a copy and refused for sealed values", async t => {
+test("bridges: a model's copy is held by the registry (ask first) and nothing is written for it, sealed values included", async t => {
   const h = await boxRegistry(t);
+  // bridges.copy is ASK_FIRST in core/modules/agent-reach.js: the registry holds a model's call for the person's tap before the tool runs. This rig has no approvals module to take the card, so the hold itself
+  // answers held_unavailable; with one it is held_for_approval. Either way nothing runs, which is what these assertions pin. The lib's own refusals for a model chain (held, sealed) are tested in lib/spaces/bridges.test.js.
   const held = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind" }, "mcp:agent:juno");
-  assert.equal(held.error?.code, "held", JSON.stringify(held));
+  assert.equal(held.error?.code, "held_unavailable", JSON.stringify(held));
   assert.equal(h.w.records.northwind.client, undefined, "nothing was written");
+  // a model asking for sealed values, even with the person's proof beside it, is stopped by the same hold: no card is needed to know it can never copy them
   const sealed = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp:agent:juno", ME);
-  assert.equal(sealed.error?.code, "sealed");
-  // a bare model session ("mcp") is no more the person than a named agent: it is nobody, and is refused before anything is judged (BR-1)
-  assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME)).error?.code, "forbidden");
+  assert.equal(sealed.error?.code, "held_unavailable", JSON.stringify(sealed));
+  // a bare model session ("mcp") is no more the person than a named agent: it is held like any model
+  assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME)).error?.code, "held_unavailable");
+  assert.equal(h.w.records.northwind.client, undefined, "still nothing was written");
   // the person alone, with presence: off by default, so still not copied
   const own = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "deck");
   assert.equal(own.error?.code, "needs_presence");
@@ -303,7 +307,7 @@ test("bridges: continue in another Space makes a task there that points back by 
   assert.deepEqual(out.refs, ["vyre://harlow/client/c1"]);
   assert.equal((await h.call("bridges.continue", { person: "alex", fromSpace: "harlow", toSpace: "northwind", summaryRefs: ["vyre://northwind/client/z"] })).error?.code, "bad_input");
   assert.equal((await h.call("bridges.continue", { person: "sam", fromSpace: "harlow", toSpace: "northwind", summaryRefs: ["vyre://harlow/client/c1"] })).error?.code, "forbidden", "not a member of the destination");
-  assert.equal((await h.call("bridges.continue", { person: "alex", fromSpace: "harlow", toSpace: "northwind", summaryRefs: ["vyre://harlow/client/c1"] }, "mcp:agent:juno")).error?.code, "held", "a model's hand-off waits for a person");
+  assert.equal((await h.call("bridges.continue", { person: "alex", fromSpace: "harlow", toSpace: "northwind", summaryRefs: ["vyre://harlow/client/c1"] }, "mcp:agent:juno")).error?.code, "held_unavailable", "a model's hand-off waits for a person: bridges.continue is ASK_FIRST, held by the registry before the tool runs (this rig has no approvals module to take the card)");
   assert.ok(h.all().some(e => e.type === "task.continued" && e.payload.space === "harlow"));
 });
 
