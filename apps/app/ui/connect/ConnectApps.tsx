@@ -2,30 +2,34 @@
 // A connected app's button opens its own menu (Share with..., Disconnect). It draws what connect-model.js shapes and calls nothing itself: the screen owns the data and what a tap does. `ShareSheet` shares an
 // app at a Vault level (a person at Fill in, Read or Edit and rotate; an agent only at Fill in); `SetupSheet` asks for what a row that needs setup needs first.
 
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { markRef } from "../marks/useMark";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
-import { FilterPills } from "../components/FilterPills";
+import { Chip } from "../components/Chip";
 import { Menu, type MenuItem } from "../components/Menu";
 import { Row } from "../components/Row";
-import { SectionLabel } from "../components/SectionLabel";
 import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
 import { EmptyState } from "../components/States";
 import { Text } from "../components/Text";
-import { CATEGORIES, LEVEL_HELP, buttonOf, countLine, levelsFor, setupLine, shareLine, viewOf, withShare, withoutShare } from "./connect-model.js";
+import { CATEGORIES, LEVEL_HELP, buttonOf, countLine, levelsFor, setupLine, shareLine, sharedLine, viewOf, withShare, withoutShare } from "./connect-model.js";
 
 export type App = { id: string; name: string; vendor?: string; blurb: string; category: string; state: "connected" | "one-tap" | "setup"; setup?: "token" | "app"; recommended?: boolean; busy?: boolean; shares: Share[] };
 export type Share = { who: string; kind: "person" | "agent"; level: string };
+
+/** A group's label: sentence case, 12 and muted, as the sidebar's. */
+function GroupLabel({ children, first }: { children: string; first?: boolean }) {
+  return <Text accessibilityRole="header" size="caption" medium tone="label" style={{ fontSize: 12, lineHeight: 16, paddingTop: first ? 0 : 12, paddingBottom: 4 }}>{children}</Text>;
+}
 
 function AppRow({ app, menu, onAdd }: { app: App; menu: MenuItem[]; onAdd: (a: App) => void }) {
   const action = app.state === "connected"
     ? <Menu align="end" trigger={<Button size="sm" kind="secondary" label="Connected" icon="check" accessibilityLabel={`${app.name} is connected. More`} />} items={menu} />
     : <Button size="sm" kind={app.state === "one-tap" ? "primary" : "secondary"} label={app.busy ? "Adding" : buttonOf(app)} loading={app.busy} disabled={app.busy} onPress={() => onAdd(app)} accessibilityLabel={`${buttonOf(app)} ${app.name}`} />;
-  const sub = app.state === "connected" ? shareLine(app.shares) : app.state === "setup" ? setupLine(app) : app.blurb;
-  return <Row dense lead={<Avatar of={markRef("project", app.name)} size={40} />} title={app.name} sub={app.state === "connected" ? `${app.blurb}. ${sub}` : sub} end={action} />;
+  const sub = app.state === "connected" ? sharedLine(app.shares) : app.state === "setup" ? setupLine(app) : app.blurb;
+  return <Row dense lead={<Avatar of={markRef("project", app.name)} size={40} />} title={app.name} sub={sub} end={action} />;
 }
 
 export function ConnectApps({ apps, query, onQuery, category, onCategory, onAdd, menuOf, onClose }: {
@@ -45,16 +49,19 @@ export function ConnectApps({ apps, query, onQuery, category, onCategory, onAdd,
         </View>
       </View>
       <Field name="Search apps" value={query} onChangeText={onQuery} placeholder="Search apps" onKey={(k) => { if (k === "Escape") onQuery(""); }} />
-      <FilterPills label="Categories" options={CATEGORIES.map(([id, l]) => [id, l] as [string, string])} value={category} onChange={onCategory} />
+      {/* One row that scrolls sideways, so the chips never wrap onto a second line. */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="radiogroup" accessibilityLabel="Categories" contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+        {CATEGORIES.map(([id, l]) => <Chip key={id} selected={id === category} onPress={() => onCategory(id)}>{l}</Chip>)}
+      </ScrollView>
       {v.recommended.length ? (
         <View>
-          <SectionLabel first>Recommended for you</SectionLabel>
+          <GroupLabel first>Recommended for you</GroupLabel>
           {v.recommended.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}
         </View>
       ) : null}
       {v.list.length ? (
         <View>
-          {v.recommended.length ? <SectionLabel>All apps</SectionLabel> : null}
+          {v.recommended.length ? <GroupLabel>All apps</GroupLabel> : null}
           {v.list.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}
         </View>
       ) : null}

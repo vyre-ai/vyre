@@ -3,7 +3,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CATEGORIES, LEVELS, buttonOf, chipOf, countLine, levelsFor, sampleApps, setupLine, shareLine, viewOf, withShare, withoutShare } from "./connect-model.js";
+import { CATEGORIES, LEVELS, buttonOf, chipOf, countLine, levelsFor, sampleApps, setupLine, shareLine, sharedLine, viewOf, withShare, withoutShare } from "./connect-model.js";
 
 test("the chips are the ones the owner named, and every sample app lands under one of them", () => {
   assert.deepEqual(CATEGORIES.map(([id]) => id), ["all", "productivity", "communication", "design", "code", "data", "more"]);
@@ -81,4 +81,12 @@ test("sharing again changes the level instead of adding a second line, a person 
 test("the share line says who and at what, or that it is only you", () => {
   assert.equal(shareLine([]), "Only you");
   assert.equal(shareLine([{ who: "alex", level: "edit" }, { who: "juno", level: "fill" }]), "Shared with alex (Edit and rotate), juno (Fill in)");
+});
+
+test("the short shared line counts people and agents and leaves the names to Share with", () => {
+  assert.equal(sharedLine([]), "Only you");
+  assert.equal(sharedLine([{ who: "alex", kind: "person", level: "read" }]), "Shared with 1 person");
+  assert.equal(sharedLine([{ who: "alex", kind: "person", level: "read" }, { who: "sam", kind: "person", level: "fill" }]), "Shared with 2 people");
+  assert.equal(sharedLine([{ who: "juno", kind: "agent", level: "fill" }, { who: "kit", kind: "agent", level: "fill" }]), "Shared with 2 agents");
+  assert.equal(sharedLine([{ who: "alex", kind: "person", level: "edit" }, { who: "juno", kind: "agent", level: "fill" }]), "Shared with 1 person and 1 agent");
 });

@@ -83,6 +83,14 @@ export function shareLine(shares) {
   return `Shared with ${shares.map((s) => `${s.who} (${word(s.level)})`).join(", ")}`;
 }
 
+/** The short line on a connected row: who it is shared with, as counts ("Shared with 1 person and 2 agents"); the names and levels are in Share with.... @param {{ kind: string }[]} shares */
+export function sharedLine(shares) {
+  if (!shares.length) return "Only you";
+  const n = (/** @type {string} */ k) => shares.filter((s) => s.kind === k).length;
+  const part = (/** @type {number} */ c, /** @type {string} */ one, /** @type {string} */ many) => (c === 0 ? "" : c === 1 ? `1 ${one}` : `${c} ${many}`);
+  return `Shared with ${[part(n("person"), "person", "people"), part(n("agent"), "agent", "agents")].filter(Boolean).join(" and ")}`;
+}
+
 /** The sample world for the preview and the gallery: apps in each state, one already shared. @returns {any[]} */
 export function sampleApps() {
   const a = (/** @type {string} */ id, /** @type {string} */ name, /** @type {string} */ blurb, /** @type {string} */ category, /** @type {string} */ state, /** @type {any} */ more = {}) => ({ id, name, vendor: name, blurb, category, state, shares: [], ...more });
