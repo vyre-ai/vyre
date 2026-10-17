@@ -42,7 +42,7 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
       {agents.length > 1 ? <View accessibilityLabel="Whose computer" style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>{agents.map((a) => <Chip key={a} selected={a === who} onPress={() => setWho(a)}>{a}</Chip>)}</View> : null}
       {!view && !problem ? <LoadingState rows={2} /> : (
         <AgentComputerPane name={who} view={view} busy={busy} problem={problem}
-          onWake={() => void act(() => agentComputer.wake(who), true)} onSleep={() => void act(() => agentComputer.sleep(who))} onOpen={() => leave()} onDock={(id) => leave(id)} />
+          onWake={() => void act(() => agentComputer.wake(who), true)} onSleep={() => void act(() => agentComputer.sleep(who))} onReset={() => void act(() => agentComputer.reset(who))} onOpen={() => leave()} onDock={(id) => leave(id)} />
       )}
     </View>
   );

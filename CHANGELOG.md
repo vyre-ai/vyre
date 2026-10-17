@@ -58,6 +58,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(vault): a vault wipe finds a sealing process from the folder's own record, not from a listing of processes: the process that spawns the sealer writes `<seal dir>/sealer.pid` at once and removes it when the sealer exits, and the wipe refuses while that pid is a live sealing process (a record whose process is gone is ignored). A sealer that has not appeared in `ps` yet can no longer slip past it. [kernel +4]
 ## Unreleased
 
+- feat(chat): the Computer tab can reset an agent's computer (`computers.agent.reset`, the right to edit the agent): it asks once more, then empties that agent's Chrome logins, files and terminal.
 - feat(agents): an agent keeps how it is drawn, `look` (a shape and a colour, like `s3~c5`). `agents.create` and `agents.update` take it, with the same say as any change to the agent (a model proposes, the owner approves), and `agents.list` returns it. The New agent dialog sends it, and an agent's page changes it by tapping its face. A new migration adds the column. An agent with no look is drawn from its name.
 - fix(chat): a participant that joined with a name is labelled by that name even when its id carries a prefix (`model:codex/gpt-5#1`).
 - feat(chat): Markdown takes a `size`: "body" (14/20, bold one weight lighter) is the chat's, "read" (15/23) stays the default elsewhere. A reply that has not said a word yet shows three quiet dots instead of an empty bubble.

@@ -12,6 +12,7 @@ const shape = (s: S) => ({ state: s.state, lastActive: s.last, display: s.state 
 export const mockComputerTools: Record<string, (i: any) => unknown> = {
   "computers.agent.status": (i) => shape(settle(String(i.agent))),
   "computers.agent.wake": (i) => { const s = settle(String(i.agent)); if (s.state === "asleep" || s.state === "none") { s.state = "waking"; s.since = now(); } s.last = now(); return shape(s); },
+  "computers.agent.reset": (i) => { const s = settle(String(i.agent)); s.state = "asleep"; return shape(s); },
   "computers.agent.sleep": (i) => { const s = settle(String(i.agent)); s.state = "asleep"; return shape(s); },
   "gate.standing.list": (i) => ({ permissions: String(i.agent) === "juno" ? [{ id: "g1", agent: "juno", resource: "vyre://spc/outbox/send/gmail", to: { patterns: ["*@northwind.example"] }, daily_cap: 20 }, { id: "g2", agent: "juno", resource: "vyre://spc/outbox/spend/meta", to: { patterns: ["Meta Ads"] }, max_amount: 200, daily_amount: 500 }].filter((p) => !gone.has(p.id)) : [] }),
   "gate.standing.revoke": (i) => { gone.add(String(i.id)); return { revoked: String(i.id) }; },
