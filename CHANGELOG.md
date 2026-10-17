@@ -58,6 +58,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(vault): a vault wipe finds a sealing process from the folder's own record, not from a listing of processes: the process that spawns the sealer writes `<seal dir>/sealer.pid` at once and removes it when the sealer exits, and the wipe refuses while that pid is a live sealing process (a record whose process is gone is ignored). A sealer that has not appeared in `ps` yet can no longer slip past it. [kernel +4]
 ## Unreleased
 
+- feat(chat): tagging one of your own logins that has several saved sites asks "Which site?" (the sites the Vault lists, names only). The site you pick is signed into your yes with the rest, and the agent signs in to that one.
 - feat(chat): tagging one of your own vault items in a chat asks for your yes once, at the tag (`src/chat/lend-yes.ts`): the app signs a yes over exactly `vault.me.mention.lend` for `{asker, id, thread, agent}` where the device can take a biometric, and the chip carries it with the message. Where it cannot (a browser), there is no yes and the chip only names the item.
 - feat(chat): in a chat with other people, the # picker says "Everyone in this chat sees what you pick.", because what an owner picks is put in front of the chat's agent and every participant reads its answer.
 - feat(chat): the Computer tab can reset an agent's computer (`computers.agent.reset`, the right to edit the agent): it asks once more, then empties that agent's Chrome logins, files and terminal.

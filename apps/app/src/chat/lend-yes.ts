@@ -55,3 +55,19 @@ export function lendSignerFor(o: { device: YesDevice; person: string; space: str
     return b64url(new TextEncoder().encode(JSON.stringify(proof)));
   };
 }
+
+/**
+ * Tagging a login that has several saved sites: she says which one. `sites` are the origins the Vault listed for the item (names only, no value); one site or none needs no choice (the Vault uses the one it
+ * has, or says "which site?"). The origin she picks must be one of the list, and it is signed into her yes with the rest: the Vault checks the same set. Returns the yes and the origin to carry on the chip,
+ * or null when she closed the picker or the prompt.
+ */
+export async function lendWithSite(f: Omit<LendFields, "origin">, sites: readonly string[], choose: (sites: readonly string[]) => Promise<string | null>): Promise<{ yes: string; origin?: string } | null> {
+  let origin: string | undefined;
+  if (sites.length > 1) {
+    const picked = await choose(sites);
+    if (!picked || !sites.includes(picked)) return null;
+    origin = picked;
+  }
+  const yes = await lendYes({ ...f, ...(origin ? { origin } : {}) });
+  return yes ? { yes, ...(origin ? { origin } : {}) } : null;
+}

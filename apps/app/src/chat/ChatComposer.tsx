@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { AiMark, AnsweringControl, Chip, ChipToken, Icon, PickerList, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
+import { AiMark, AnsweringControl, Chip, ChipToken, Icon, PickerList, Row, Sheet, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
 import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
 import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
 import { useMentionNodes } from "./useMentionNodes";
@@ -23,7 +23,7 @@ import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, se
 export type Person = { name: string; family: "person" | "assistant"; doing?: string };
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
 export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
-export type PickedMention = { kind: string; id: string; name: string; /** Her yes for lending a vault item to the chat's agent for this turn (src/chat/lend-yes.ts); only a vault chip has one. */ yes?: string };
+export type PickedMention = { kind: string; id: string; name: string; /** The site she picked for a login with several (signed into her yes). */ origin?: string; /** Her yes for lending a vault item to the chat's agent for this turn (src/chat/lend-yes.ts); only a vault chip has one. */ yes?: string };
 export type ModelChoice = { id: string; label: string; fit: number | null };
 export type ComposerProps = {
   state: string;
@@ -42,7 +42,7 @@ export type ComposerProps = {
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
   /** Asks for her yes when she picks one of her own vault items in a chat that has an agent and a thread: the platform prompt, then a signed yes over exactly that lend. Null: nothing is lent. */
-  onLendYes?: (item: string) => Promise<string | null>;
+  onLendYes?: (item: string, choose: (sites: readonly string[]) => Promise<string | null>) => Promise<{ yes: string; origin?: string } | null>;
   /** This device can sign her yes but the chat has no thread yet (its first message is not sent): a picked vault item is only named for now, and the composer says so. */
   lendLater?: boolean;
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
@@ -124,6 +124,8 @@ export function ChatComposer(p: ComposerProps) {
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
   const [lendNote, setLendNote] = useState(false);
+  // A login with several saved sites: which one the agent signs in to (the Vault's own list of origins, names only).
+  const [sitePick, setSitePick] = useState<{ sites: readonly string[]; resolve: (site: string | null) => void } | null>(null);
   const slots = p.slots ?? [];
   const input = useRef<TextInput>(null);
   const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);
@@ -276,7 +278,7 @@ export function ChatComposer(p: ComposerProps) {
     if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
     // Tagging one of her own vault items asks for her presence once, here, at the tag; the yes rides on the chip to the message.
     if (o.kind === "vault" && o.urn && !p.onLendYes && p.lendLater) setLendNote(true);
-    if (o.kind === "vault" && o.urn && p.onLendYes) { const item = o.urn, name = o.pick; void p.onLendYes(item).then((yes) => { const m = picked.current.get(name); if (yes && m && m.id === item) picked.current.set(name, withYes(m, yes)); }).catch(() => {}); }
+    if (o.kind === "vault" && o.urn && p.onLendYes) { const item = o.urn, name = o.pick; void p.onLendYes(item, (sites) => new Promise<string | null>((resolve) => setSitePick({ sites, resolve }))).then((r) => { const m = picked.current.get(name); if (r && m && m.id === item) picked.current.set(name, withYes({ ...m, ...(r.origin ? { origin: r.origin } : {}) }, r.yes)); }).catch(() => {}); }
     const r = pick(text, trig, o.pick);
     setText(r.text);
     setCaret(r.caret);
@@ -452,6 +454,11 @@ export function ChatComposer(p: ComposerProps) {
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
+        {sitePick ? (
+          <Sheet open onClose={() => { sitePick.resolve(null); setSitePick(null); }} title="Which site?">
+            {sitePick.sites.map((site) => <Row key={site} title={site} onPress={() => { sitePick.resolve(site); setSitePick(null); }} />)}
+          </Sheet>
+        ) : null}
         {lendNote ? <Text size="caption" tone="label">Send a message first to let the agent use this.</Text> : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Tip label="Add: files, commands, who answers" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: files, commands, who answers" onPress={() => openPop("plus")} /></Tip>

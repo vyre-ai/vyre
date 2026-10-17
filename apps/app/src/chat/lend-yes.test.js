@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lendYes, setLendSigner, withYes, lendSignerFor, LEND_OP } from "./lend-yes.ts";
+import { lendYes, setLendSigner, withYes, lendSignerFor, lendWithSite, LEND_OP } from "./lend-yes.ts";
 import { signOf } from "../../../../lib/one-yes-sign.js";
 
 const F = { asker: "per_" + "b".repeat(26), id: "clio", thread: "thr_1", agent: "kit" };
@@ -68,5 +68,31 @@ test("an origin is signed into her yes exactly when the tag names one, and a mal
   await lendYes(F);
   assert.deepEqual(seen, [{ ...F, origin: "https://app.clio.com" }, F]);
   assert.equal(await lendYes({ ...F, origin: "not a site" }), null);
+  setLendSigner(null);
+});
+
+test("a login with several sites: the origin signed is the one she picked, and a site that is not in the list is never signed", async () => {
+  const seen = [];
+  setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
+  const sites = ["https://app.clio.com", "https://eu.clio.com", "https://support.clio.com"];
+  const r = await lendWithSite(F, sites, async (list) => list[1]);
+  assert.deepEqual(r, { yes: "yes", origin: "https://eu.clio.com" });
+  assert.deepEqual(seen.at(-1), { ...F, origin: "https://eu.clio.com" });
+  seen.length = 0;
+  assert.equal(await lendWithSite(F, sites, async () => "https://evil.example"), null, "a site she was not offered");
+  assert.equal(await lendWithSite(F, sites, async () => null), null, "she closed the picker: nothing is signed");
+  assert.equal(seen.length, 0);
+  setLendSigner(null);
+});
+
+test("one site or none needs no choice and signs no origin: the Vault uses the address it has, or asks which site", async () => {
+  const seen = [];
+  setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
+  let asked = 0;
+  const choose = async () => { asked++; return null; };
+  assert.deepEqual(await lendWithSite(F, ["https://app.clio.com"], choose), { yes: "yes" });
+  assert.deepEqual(await lendWithSite(F, [], choose), { yes: "yes" });
+  assert.equal(asked, 0);
+  assert.deepEqual(seen, [F, F]);
   setLendSigner(null);
 });
