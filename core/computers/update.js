@@ -13,9 +13,10 @@
 
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { userNameOf } from "./agent-users.js";
+import { LAYOUT_VERSION } from "./driver/policy.js";
 
-/** The shape of the state volume this code expects. Raise it when the image starts expecting something new inside the volume, so a box on the old shape migrates once. */
-export const LAYOUT = 2;
+/** The shape of the state volume this code expects (driver/policy.js owns the number and the folders). A computer recorded with less has its folders put right once. */
+export const LAYOUT = LAYOUT_VERSION;
 
 export const MIGRATIONS = [
   `CREATE TABLE computers_update (
@@ -134,7 +135,14 @@ export class ComputerUpdater {
         await pool.ensure(SHARED_COMPUTER_ID);
       });
     }
-    else await pool.serial(SHARED_COMPUTER_ID, () => pool.ensure(SHARED_COMPUTER_ID));   // a frozen or stopped computer is started, so agentd can be asked
+    else {
+      // a frozen or stopped computer is started, so agentd can be asked; the folders an older volume lacks are put there (directories only, fixed owners: driver/policy.js layoutTar)
+      await pool.serial(SHARED_COMPUTER_ID, async () => {
+        await pool.ensure(SHARED_COMPUTER_ID);
+        const d = /** @type {any} */ (pool.driver);
+        if (typeof d.migrateLayout === "function") await d.migrateLayout(String(pool.row(SHARED_COMPUTER_ID).container));
+      });
+    }
     // What the new image expects in the volume, made true as each agent's own user (planCreate is safe to repeat).
     /** @type {Array<{ agent: string, why: string }>} */
     const failed = [];

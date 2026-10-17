@@ -102,7 +102,8 @@ test("an old-layout volume is migrated: every agent's folders are made ready aga
   const w = await world(t);
   const up = w.mk();
   up.noteCreated();
-  // the volume was last migrated under an older layout (homes not yet inside the state volume)
+  // the volume was made by an older image (agents' folders not yet in it), and was recorded under the older layout
+  w.driver.volumes.set("vyre-browser-browser-shared", { layout: 1 });
   w.db.prepare("UPDATE computers_update SET layout = ?").run(LAYOUT - 1);
   assert.equal(up.status().current, false);
   w.asked.length = 0;
@@ -112,6 +113,17 @@ test("an old-layout volume is migrated: every agent's folders are made ready aga
   assert.deepEqual(w.asked.filter(a => a[0] === "createUser").map(a => a[1]).sort(), ["ads", "intake"]);
   assert.equal(up.stamp().layout, LAYOUT);
   assert.equal(up.status().current, true);
+  assert.equal(w.driver.volumes.get("vyre-browser-browser-shared")?.layout, 2, "the old volume has the agents' folders now");
+});
+
+test("replacing the computer puts the agents' folders into an old state volume as the new one is made", async t => {
+  const w = await world(t, { image: "vyre/computer:0.5" });
+  w.mk({ version: "0.5.3" }).noteCreated();
+  w.driver.volumes.set("vyre-browser-browser-shared", { layout: 1 });
+  w.pool.opts.image = "vyre/computer:0.6";
+  const r = await w.mk({ version: "0.6.0" }).run();
+  assert.equal(r.replaced, true);
+  assert.equal(w.driver.volumes.get("vyre-browser-browser-shared")?.layout, 2);
 });
 
 test("a computer with no record of how it was made is replaced once, then recorded", async t => {
