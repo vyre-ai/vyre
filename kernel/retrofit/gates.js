@@ -44,8 +44,8 @@ export function parseCaller(caller, person, thread) {
 export function createLegacyGates(cfg) {
   const reg = cfg.registry;
   const chains = createLegacyChainBuilder({ space: SPACE });
-  const flags = (/** @type {string} */ tool, /** @type {any} */ def, /** @type {any} */ input) => {
-    const pr = reg.deps.presence ? Boolean(reg.deps.presence.required(tool, def, input)) : Boolean(def.presence);
+  const flags = (/** @type {string} */ tool, /** @type {any} */ def, /** @type {any} */ input, /** @type {any} */ who) => {
+    const pr = reg.deps.presence ? Boolean(reg.deps.presence.required(tool, def, input, who)) : Boolean(def.presence);
     return `pr=${pr ? 1 : 0};ms=${machineSelf(tool, input) ? 1 : 0}`;
   };
 
@@ -122,7 +122,7 @@ export function createLegacyGates(cfg) {
     /** Does this call need a presence proof checked by the registry? (Never for a module.) */
     async needsPresence(/** @type {{ tool: string, def: any, caller: string, meta: any, input: any }} */ q) {
       // Fail closed: the only answer that asks for no proof is an allow. A deny, a throw or a new reason means "needs one".
-      try { return (await ask("presence", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input))).effect !== "allow"; } catch { return true; }
+      try { return (await ask("presence", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input, { caller: q.caller, meta: q.meta }))).effect !== "allow"; } catch { return true; }
     },
     /** Does this call run only when the person's own words asked for it (the registry then checks the match)? */
     async needsAsk(/** @type {{ tool: string, def: any, caller: string, meta: any, input: any }} */ q) {

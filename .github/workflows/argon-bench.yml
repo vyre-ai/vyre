@@ -3,7 +3,7 @@ name: argon-bench
 on:
   workflow_dispatch:
   push:
-    branches: ["work/0.5.3/app53/host-core"]
+    branches: ["work/0.5.3/app53/host-core", "work/0.5.3/app53/first-run-fix"]
     paths: ["apps/app/scripts/argon-bench.mjs", ".github/workflows/argon-bench.yml"]
 permissions:
   contents: read
@@ -25,4 +25,7 @@ jobs:
       - name: Argon2id at the master password's cost, in a page
         env:
           PW_FROM: ${{ runner.temp }}/pw/
-        run: node apps/app/scripts/argon-bench.mjs | tee "$GITHUB_STEP_SUMMARY"
+        run: |
+          node apps/app/scripts/argon-bench.mjs 2>&1 | tee bench.txt
+          cat bench.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "BENCH RESULT:"; cat bench.txt

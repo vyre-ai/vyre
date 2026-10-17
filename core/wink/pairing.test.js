@@ -27,7 +27,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => { if (o.failEmit && o.failEmit === n) throw new Error(`${n} is not declared`); events.push([n, d]); } }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, ...(o.root ? { paths: { root: o.root } } : {}), config: { name: "alex" }, log() {}, events: { emit: (n, d) => { if (o.failEmit && o.failEmit === n) throw new Error(`${n} is not declared`); events.push([n, d]); } }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
   const directory = o.directory || { memberships: async id => id === ME ? [{ space: HARLOW, name: "Harlow Legal", role: "admin" }, { space: NORTHWIND, name: "Northwind Bakery", role: "member" }] : [] };
@@ -1395,4 +1395,20 @@ test("the setup offer is for the one person the server was paired to, and for no
   owner.p.meta.set("owner", { kind: "identity", id: ME, identity: ME });
   await assert.rejects(() => ask(owner), owned);
   await assert.rejects(() => lockedTo.tools.get("wink.server.setup-offer").run({ identity: ME }, { caller: "device:x" }), (/** @type {any} */ e) => e.code === "denied");
+});
+
+test("the first device an install-line server pairs is recorded for the vault's first-run window; a second device or a later pairing does not replace it", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-firstadopt-"));
+  const r = proofRig();
+  const w = world({ confirm: true, typedCode: false, identityEntry: r.identityEntry, root });
+  // what the install line's boot redeem leaves: an owner and the install as the adopter, before any device has paired
+  w.p.meta.set("owner", { kind: "identity", id: ME, identity: ME });
+  w.p.meta.set("adopter", "install");
+  w.p.meta.set("pair_to", ME);
+  await adoptAs(w, "device:app1", { ...ASKED, proof: r.proof("app1") });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, "identity", "first-adopt.json"), "utf8")), { v: 1, device: "device:app1", at: 1_000_000 });
+  // another device pairing afterwards neither replaces nor adds a record
+  w.p.meta.set("pair_to", ME);
+  await adoptAs(w, "device:app2", { ...ASKED, proof: r.proof("app2") }).catch(() => {});
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "identity", "first-adopt.json"), "utf8")).device, "device:app1");
 });
