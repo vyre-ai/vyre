@@ -102,10 +102,15 @@ export default {
       pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()),
       onHandback: (agent, t) => sealMemberBrowserOnHandback(handbackDeps, agent, { personId: String(t.personId), browserSnap: t.browserSnap }),
     });
-    const helperFor = agent => agentBrowser.helper(agent);
-    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
+    // With the space's computer up, an agent's Chrome is its own and the shield and the fill's window are kept by the Chrome link (cdp-adapter.js); otherwise the shared browser's computerd does it.
+    const helperFor = async agent => {
+      if (!agentdReady()) return agentBrowser.helper(agent);
+      await agentTools.place(agent); await agentUsers.wake(agent);
+      return cdpAdapter.endpoint(agent);
+    };
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => agentdReady() ? cdpAdapter.shield(agent, on, o) : tellComputerd(pool, agent, on,
       { ...o, computerRow: agentBrowser.computerRow(agent) }, a => helperFor(a)) });
-    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor });
+    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor, register: (agent, values) => cdpAdapter.register(agent, values) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -450,10 +455,10 @@ export default {
     };
 
     tool("computers.fill.begin", "Shield an agent's computer for a Vault fill: the agent's hands and CDP sockets are cut, and the vault gets a CDP address and a token for this fill only, good for 60 s.",
-      obj({ agent: str, origin: str }, ["agent", "origin"]), async (i, { caller }) => {
+      obj({ agent: str, origin: str, values: { type: "array", items: str } }, ["agent", "origin"]), async (i, { caller }) => {
         vaultOnly(caller);
         if (!AGENT.test(String(i.agent || ""))) throw new Error(`"${i.agent}" is not an agent name`);
-        return fills.begin(String(i.agent), String(i.origin || ""));
+        return fills.begin(String(i.agent), String(i.origin || ""), Array.isArray(i.values) ? i.values.filter(v => typeof v === "string") : []);
       }, { internal: true });
 
     tool("computers.fill.end", "End a Vault fill: its token and socket are dropped and the agent's computer is unshielded. target: the tab signed in, for the agent's hands.",

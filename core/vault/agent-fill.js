@@ -68,7 +68,8 @@ export async function agentFill(deps, q) {
   const secrets = [user, pass, code, String(f.totp || "")].filter(x => x.length >= 4);
   const clean = (/** @type {string} */ m) => scrub(String(m), secrets, { marker: "[value]", min: 4 });
 
-  const began = await call("computers.fill.begin", { agent: q.agent, origin });
+  // The values the fill will type go with the begin: the computer scrubs them (and the sign-in request's body) from everything the agent's DevTools return, in every form they take.
+  const began = await call("computers.fill.begin", { agent: q.agent, origin, values: secrets });
   if (began && began.error) return refuse(`computer: ${began.error.code || "failed"}`, clean(`${q.agent}'s computer could not be filled: ${began.error.message}`), began.error.code || "failed", origin);
   const { fill, cdpUrl, token } = began.data || began;
   const cdp = deps.makeCdp ? deps.makeCdp({ cdpUrl, token }) : new Cdp({ cdpUrl, token });
@@ -94,15 +95,24 @@ export async function agentFill(deps, q) {
 }
 
 /**
- * The browser side: one fresh context, up to STAGES pages. Returns what was filled by name only.
+ * The browser side: one NEW TAB in the agent's own browser profile (its cookie jar, so the sign-in carries over to the agent afterwards), up to STAGES pages. On any failure the tab is closed; on success every field typed is emptied and the tab is left for the agent. Returns what was filled by name only.
  * @param {any} cdp @param {{ origin: string, loginUrl: string, user: string, pass: string, code: string, clean: (m: string) => string, hasSeed: boolean }} s
  */
 async function drive(cdp, s) {
   const filled = [];
   await cdp.connect();
-  const { browserContextId } = await cdp.send("Target.createBrowserContext", { disposeOnDetach: false });
   const start = (() => { try { const u = new URL(s.loginUrl); return u.origin === s.origin ? u.href : s.origin + "/"; } catch { return s.origin + "/"; } })();
-  const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank", browserContextId });
+  const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+  try { return await signIn(cdp, targetId, s, filled, start); }
+  catch (e) {
+    // never leave a half-typed sign-in form open
+    await cdp.send("Target.closeTarget", { targetId }).catch(() => {});
+    throw e;
+  }
+}
+
+/** @param {any} cdp @param {string} targetId @param {any} s @param {string[]} filled @param {string} start */
+async function signIn(cdp, targetId, s, filled, start) {
   const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
   const send = (/** @type {string} */ m, /** @type {any} */ p = {}) => cdp.send(m, p, sessionId);
   await send("Page.enable");
@@ -121,9 +131,18 @@ async function drive(cdp, s) {
     const r = await send("Runtime.evaluate", { expression: `(() => { const r = ${FIND}; return r.${which}; })()`, returnByValue: false });
     return r.result && r.result.objectId ? r.result.objectId : null;
   };
+  // A form that submits by GET would put the password in the address. Only an explicit method="get" counts: a script-driven form with no method never navigates with its fields.
+  const refuseGet = async (/** @type {string} */ objectId) => {
+    const get = await send("Runtime.callFunctionOn", { objectId, functionDeclaration: "function(){ return !!(this.form && String(this.form.getAttribute('method') || '').toLowerCase() === 'get'); }", returnByValue: true });
+    if (get.result && get.result.value === true) throw fail("the sign-in form submits by GET, which would put the password in the address; nothing was typed", "get_form");
+  };
+  /** the fields this fill typed in, to be emptied before it ends */
+  const typed = [];
   const put = async (/** @type {string} */ which, /** @type {string} */ value, /** @type {string} */ name) => {
     const objectId = await field(which);
     if (!objectId) return false;
+    if (which === "pass") await refuseGet(objectId);
+    typed.push(objectId);
     await send("DOM.focus", { objectId });
     // Clear whatever the page prefilled, then insert; the value travels only in this one parameter.
     await send("Runtime.callFunctionOn", { objectId, functionDeclaration: "function(){ this.select && this.select(); }" });
@@ -142,6 +161,9 @@ async function drive(cdp, s) {
   /** @type {"code" | undefined} */ let needs;
   for (let stage = 0; stage < STAGES; stage++) {
     const had = filled.length;
+    // before anything is typed on a page that has the password field: refuse a GET form
+    const early = filled.includes("password") ? null : await field("pass");
+    if (early) await refuseGet(early);
     if (!filled.includes("username") && s.user) await put("user", s.user, "username");
     if (!filled.includes("password")) await put("pass", s.pass, "password");
     const wantsCode = await field("otp");
@@ -158,7 +180,8 @@ async function drive(cdp, s) {
     // Signed in when there is no password or code field left to fill.
     if (!(await field("pass")) && !(await field("otp"))) break;
   }
-  // Nothing sensitive is left in the DOM.
+  // Nothing typed is left in the page: every field this fill typed, and every password field, is emptied (a field the page replaced is gone with it).
+  for (const objectId of typed) await send("Runtime.callFunctionOn", { objectId, functionDeclaration: "function(){ this.value = ''; this.dispatchEvent(new Event('input', { bubbles: true })); }" }).catch(() => {});
   await send("Runtime.evaluate", { expression: `document.querySelectorAll('input[type=password]').forEach(e => { e.value = ""; })` }).catch(() => {});
   if (!filled.length) throw fail("no sign-in form was found on the page; nothing was filled", "no_form");
   return { filled, navigated, tab: targetId, needs };

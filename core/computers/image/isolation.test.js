@@ -466,7 +466,7 @@ test("isolation (static): Chrome keeps no passwords, addresses or sync, and its 
   assert.equal(json.AutofillCreditCardEnabled, false);
   assert.equal(json.SyncDisabled, true);
   assert.equal(json.BrowserSignin, 0);
-  for (const u of ["chrome://password-manager*", "chrome://settings/passwords*", "chrome://settings/autofill*"]) assert.ok(json.URLBlocklist.includes(u), u);
+  for (const u of ["chrome://password-manager", "chrome://settings/passwords", "chrome://settings/autofill", "chrome://settings/payments", "chrome://settings/addresses"]) assert.ok(json.URLBlocklist.includes(u), u);
   assert.ok(!json.URLBlocklist.includes("chrome://*") && !json.URLBlocklist.includes("view-source:*") && !json.URLBlocklist.includes("devtools://*"), "ordinary chrome:// pages and DevTools stay open to the agent");
   assert.equal(json.DeveloperToolsAvailability, undefined, "DevTools are not switched off");
   assert.equal(json.DownloadDirectory, undefined, "the downloads folder is the holder's, per agent");

@@ -16,7 +16,7 @@ import { tempHome } from "../../test/helpers.js";
 
 const AGENTS = [{ name: "kit", kind: "agent", computer: true }, { name: "pax", kind: "agent", computer: false }];
 
-function setup(t, { answers = true } = {}) {
+function setup(t, { answers = true, register = undefined } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
@@ -38,7 +38,7 @@ function setup(t, { answers = true } = {}) {
   const schedule = (fn, ms) => { const tm = { at: clock.t + ms, fn, dead: false }; timers.push(tm); return () => { tm.dead = true; }; };
   const due = () => { for (const tm of timers) if (!tm.dead && tm.at <= clock.t) { tm.dead = true; tm.fn(); } };
   const helper = async agent => { await pool.allowed(agent); await pool.ensure(agent); return { url: "http://computer-kit:7000/", token: "helper-token" }; };
-  const fills = new Fills({ pool, shield, keyboard, emit, on, helper, schedule });
+  const fills = new Fills({ pool, shield, keyboard, emit, on, helper, schedule, ...(register ? { register } : {}) });
   t.after(() => { fills.stop(); keyboard.stop(); shield.stop(); });
   return { pool, shield, keyboard, fills, clock, events, told, due, emit, types: () => events.map(e => e.type) };
 }
@@ -125,4 +125,16 @@ test("fill: a computerd that does not answer fails the fill and leaves no shield
 test("fill: an agent without a computer is no_computer", async t => {
   const { fills } = setup(t);
   await assert.rejects(fills.begin("pax", "https://a.test"), e => e.code === "no_computer");
+});
+
+test("fill: the values it will type are registered for scrubbing once the shield is up, and never when the shield could not be raised", async t => {
+  /** @type {Array<[string, string[]]>} */ const registered = [];
+  const ok = setup(t, { register: (agent, values) => registered.push([agent, values]) });
+  await ok.fills.begin("kit", "https://app.northwind.test", ["a-secret-value", "alice@example.com"]);
+  assert.deepEqual(registered, [["kit", ["a-secret-value", "alice@example.com"]]]);
+  assert.equal(ok.shield.reason("kit"), "fill", "registered while the window is open");
+  /** @type {Array<[string, string[]]>} */ const none = [];
+  const down = setup(t, { answers: false, register: (agent, values) => none.push([agent, values]) });
+  await assert.rejects(() => down.fills.begin("kit", "https://app.northwind.test", ["a-secret-value"]), /did not answer/);
+  assert.deepEqual(none, [], "no window, nothing to scrub");
 });

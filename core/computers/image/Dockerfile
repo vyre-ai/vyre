@@ -119,7 +119,7 @@ RUN groupadd -g 1000 agent \
 RUN mkdir -p /etc/chromium/policies/managed \
     && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false,' \
        ' "ExtensionInstallBlocklist": ["*"], "SyncDisabled": true, "BrowserSignin": 0, "PasswordLeakDetectionEnabled": false,' \
-       ' "URLBlocklist": ["file://*", "chrome-extension://*", "chrome://password-manager*", "chrome://settings/passwords*", "chrome://settings/autofill*", "chrome://settings/payments*", "chrome://settings/addresses*"],' \
+       ' "URLBlocklist": ["file://*", "chrome-extension://*", "chrome://password-manager", "chrome://settings/passwords", "chrome://settings/autofill", "chrome://settings/payments", "chrome://settings/addresses"],' \
        ' "PromptForDownloadLocation": false,' \
        ' "NewTabPageLocation": "about:blank", "HomepageLocation": "about:blank", "HomepageIsNewTabPage": false}' \
        > /etc/chromium/policies/managed/vyre.json \
