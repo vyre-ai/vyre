@@ -39,6 +39,8 @@ import { registerService } from "./service.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
+import { memberOf, MEMBER_SURFACES as SHARED_SURFACES } from "./tools/me.js";
+import { NAME as LENT } from "./member-credential.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
   readerMayRead, scopeAllows, modelMayRead,
@@ -152,7 +154,7 @@ export function httpsTransport({ url, address, method, headers, body, timeoutMs 
 /**
  * @typedef {{ lookup?: (hostname: string) => Promise<{ address: string, family: number }[]>, transport?: (s: Send) => Promise<Reply>,
  *   call?: (tool: string, input: any) => Promise<any>, said?: { match: (call: any, where?: any) => Promise<{ id: string } | null> },
- *   now?: () => number, log?: (m: string) => void }} RequestDeps
+ *   lentCreds?: import("./member-credential.js").MemberCredential, now?: () => number, log?: (m: string) => void }} RequestDeps
  */
 
 export class ApiRequests {
@@ -276,10 +278,10 @@ export class ApiRequests {
   /**
    * Check and classify a request. Throws with a reason a person can act on; touches no network
    * except the DNS lookup checkTarget does.
-   * @param {any} input @param {string} name the credential
+   * @param {any} input @param {string} name the credential @param {{ agent: string, thread?: string }} [lent] the agent and chat a lent copy is asked for (see cred)
    */
-  async plan(input, name) {
-    const { row, config, secret } = await this.vault.apiCredential(name);
+  async plan(input, name, lent) {
+    const { row, config, secret } = await this.cred(name, lent);
     const method = String(input.method || "").toUpperCase();
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
@@ -311,6 +313,19 @@ export class ApiRequests {
     return { name: row.name, ver: Number(row.ver || 0), config, secret, method, url, href, headers, body, kind: cls.kind, classified: cls, parsed, actingAs, hash,
       to: parsed.recipients.length ? parsed.recipients : [url.hostname],
       summary: cls.kind === "read" ? "" : summarize({ kind: cls.kind, method, url: href, actingAs, parsed }) };
+  }
+
+  /**
+   * The credential a request names: the Vault's own, or a copy a member lent to one chat's agent (a `lent-` name). A lent copy is served only when the call says which agent and chat it is for and the kernel's grant
+   * for exactly that agent and chat still holds; the forwarding route and a held call's release never name one, so a lent name is never served there.
+   * @param {string} name @param {{ agent: string, thread?: string }} [lent]
+   */
+  async cred(name, lent) {
+    const l = this.deps.lentCreds;
+    if (!LENT.test(name)) return this.vault.apiCredential(name);
+    const c = l && lent && lent.thread ? await l.credential(name) : null;
+    if (!c || !l || (await l.effect(name, lent.agent, "vault.read", lent.thread)) === "deny") throw bad(`${printable(name, 40)} is not available here`, "denied");
+    return c;
   }
 
   // ---- authentication ----
@@ -645,12 +660,21 @@ export class ApiRequests {
       try { reader = (((await this.vault.apiCredential(name)).config.readers) || []).some(x => x.module === mod); } catch { reader = false; }
     }
     if (mod && !reader) this.granted(name, mod, watcher, audit);
+    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
+    const isModel = caller === "mcp" || caller.startsWith("mcp:") || agentClaim(caller) !== null; // Claude, or any agent label on any surface (cli:agent:kit is the agent, not the person); the daemon's own pass route (runner:pass:) is neither
     let plan;
-    try { plan = await this.plan(input, name); }
+    try { plan = await this.plan(input, name, isModel && agentName ? { agent: String(agentName).toLowerCase(), ...(meta.thread ? { thread: meta.thread } : {}) } : undefined); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
     if (reader && !(plan.kind === "read" && readerMayRead(plan.config, String(mod), plan.url.pathname + plan.url.search))) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: ${mod} may only read the paths named for it`);
       throw bad(`${mod} may only read ${plan.config.readers.find(x => x.module === mod).paths.join(", ")} through ${name}`, "denied");
+    }
+
+    // A member using what the owner shared with her (vault.me.shared.request): the share decides, for the action this request is, before anything else runs. The check is handed in by that tool, from the
+    // registry's meta and never from an input, and the credential's own rules (hosts, methods, the Gate for an outward act) all still apply.
+    if (typeof meta.authorize === "function" && !(await meta.authorize(name, plan.kind === "read" ? "vault.read" : "vault.call"))) {
+      audit(false, `${plan.method} ${plan.url.hostname} refused: not shared for this`);
+      throw bad(`${name} is not shared with you for that: ${plan.kind === "read" ? "read" : "send, change or delete"} needs a share that allows it`, "denied");
     }
 
     // A thread the person tagged with #<this credential> uses it by right: note it quietly (vault.used), and the hosts the item has now must be the ones it had at the tag.
@@ -662,12 +686,11 @@ export class ApiRequests {
 
     // A model (an agent or the assistant) reaches a credential only through a kernel grant of its own: its project's linked vault, a vault shared with it, or a task lease (the kernel decides: access.js
     // effectFor). A read inside a grant runs with no prompt; anything outward is held for a person whatever the grant says. The person's own session and a thread the person tagged with this credential use it by right.
-    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
-    const isModel = caller === "mcp" || caller.startsWith("mcp:") || agentClaim(caller) !== null; // Claude, or any agent label on any surface (cli:agent:kit is the agent, not the person); the daemon's own pass route (runner:pass:) is neither
     const access = /** @type {any} */ (this.vault).access;
     if (isModel && !tagged && access && access.K) {
       const who = access.modelName(/** @type {any} */ (meta), caller);
-      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call")) === "deny") {
+      const action = plan.kind === "read" ? "vault.read" : "vault.call";
+      if ((LENT.test(name) && this.deps.lentCreds ? await this.deps.lentCreds.effect(name, who, action, meta.thread) : await access.effectFor(who, name, action, undefined, meta.thread)) === "deny") {
         audit(false, `${plan.method} ${plan.url.hostname} refused: no grant for ${who}`);
         throw bad(`${name} is not available to ${who === "assistant" ? "the assistant" : `the agent ${who}`}: it needs a grant (its project's vault, a vault shared with it, or a lease for the task)`, "denied");
       }
@@ -679,6 +702,10 @@ export class ApiRequests {
     }
 
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
+
+    // A member making an outward call herself, with a credential shared with her at a level that allows it (vault.me.shared.request: a lone person in the chain, checked there), is not held: the sends a
+    // person makes themselves are never held (owner's ruling). An agent acting for her still reaches the Gate below.
+    if (meta.byPerson === true) return { ...(await this.execute(plan, { who: caller })), kind: plan.kind };
 
     // A watcher has no card to wait behind: it runs reads and is refused anything outward.
     if (watcher) {
@@ -863,6 +890,60 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     obj({ credential: { type: "string", description: "name of an api-credential in the vault" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
       body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
+
+  // A member uses what the Space owner shared with her. The kernel is asked, for HER chain, on the item's address (one grant model): Fill in covers reads, and an outward act still waits at the Gate for a
+  // person. An item that is not shared answers exactly as one that does not exist. The key is added at the vault's home and never reaches her; the member gate lets exactly these two names through.
+  const asMember = async (/** @type {any} */ meta) => {
+    const K = /** @type {any} */ (vault).access && /** @type {any} */ (vault).access.K;
+    const person = await memberOf(K, meta);
+    const chain = await K.chain(meta);
+    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { return (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect === "allow"; } catch { return false; } };
+    return { person, may };
+  };
+  /** What she may do with an item: use it, show it (Read), change and rotate it (Edit and rotate). A credential is only ever used through Vyre. */
+  const canOf = async (/** @type {any} */ may, /** @type {any} */ it) => {
+    const can = [];
+    if (it.kind === "api-credential") return (await may(it.name, "vault.read")) ? ["use"] : [];
+    if (it.kind === "passkey") return [];
+    if (await may(it.name, "vault.fill") || await may(it.name, "vault.read")) can.push("use");
+    if (can.length && await may(it.name, "vault.reveal")) can.push("reveal");
+    if (can.includes("reveal") && await may(it.name, "vault.edit")) can.push("edit");
+    return can;
+  };
+  tool("vault.me.shared.list", SHARED_SURFACES, "The items the owner shared with you that you can use: name, kind, description, hosts and what you may do (use, reveal, edit), never a value.", obj({}), async (_input, meta) => {
+    const { may } = await asMember(meta);
+    const out = [];
+    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) }); }
+    return { items: out };
+  });
+  // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.
+  tool("vault.me.vaults", SHARED_SURFACES, "The vaults shared with you, and the credentials in each that you can use: names and kinds, never a value.", obj({}), async (_input, meta) => {
+    const { may } = await asMember(meta);
+    const K = /** @type {any} */ (vault).access.K, chain = await K.chain(meta);
+    const placed = /** @type {any[]} */ (/** @type {any} */ (vault).db.prepare("SELECT name, named FROM vault_items WHERE named IS NOT NULL").all());
+    const out = [];
+    for (const v of /** @type {any[]} */ (await K.grants.vaults.list(chain))) {
+      if (v.personal) continue;
+      const items = [];
+      for (const p of placed.filter(x => x.named === v.id)) {
+        const it = /** @type {any} */ (vault).row(p.name);
+        const can = it ? await canOf(may, it) : [];
+        if (it && can.length) items.push({ name: it.name, kind: it.kind, can });
+      }
+      out.push({ id: v.id, name: v.name, items });
+    }
+    return { vaults: out };
+  });
+  tool("vault.me.shared.request", SHARED_SURFACES, "HTTP call to a vendor API with a credential the owner shared with you; Vyre adds the key and you never see it. Reads and, when the share allows it, your own sends, changes and payments go out at once: they are yours.",
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, operation: str, input: { type: "object" } }, ["credential"]),
+    async (input, meta) => {
+      const { person, may } = await asMember(meta);
+      const name = String(input.credential || "");
+      // not shared = not there, whatever the name
+      if (!(await may(name, "vault.read"))) throw bad(`no credential named ${name.slice(0, 80)} is shared with you`, "not_found");
+      const { watcher: _w, ...rest } = input;
+      return api.request(rest, { caller: `member:${person}`, authorize: may, byPerson: true });
+    });
 
   internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
     obj({ url: str, max_bytes: { type: "integer" }, raw: { type: "boolean" } }, ["url"]),

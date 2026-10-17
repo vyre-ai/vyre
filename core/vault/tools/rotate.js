@@ -15,6 +15,7 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 
 /**
  * @param {{ vault: import("../vault.js").Vault, tool: Function, presence: Function, quoted: Function, call: Function, endpoints?: Record<string, string> }} deps
+ * @returns {{ rotateItem: (name: string, caller: string) => Promise<any> }}
  */
 export function register({ vault, tool, presence, quoted, call, endpoints }) {
   const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -26,8 +27,8 @@ export function register({ vault, tool, presence, quoted, call, endpoints }) {
       return how ?? { provider: null, auto: false, steps: `Say which service ${name} belongs to: vyre vault put ${name} --provider <name>, then rotate it.` };
     });
 
-  tool("vault.rotate", ["cli", "local", "deck", "capsule"], "Rotate an item at its provider: make the new credential with the current one, store it as a new version, then revoke the old one. For a provider without an API, returns its page and steps instead.",
-    obj({ name: { type: "string" } }, ["name"]), async ({ name }, { caller }) => {
+  /** Rotate one item as `caller` (a person's label): shared by the owner's tool and a member's, who holds Edit and rotate on it. */
+  const rotateItem = async (/** @type {string} */ name, /** @type {string} */ caller) => {
       await vault.key();
       const r = vault.mustRow(name);
       const item = { name: r.name, kind: r.kind, details: json(r.details, {}), fields: json(r.fields, []) };
@@ -44,5 +45,9 @@ export function register({ vault, tool, presence, quoted, call, endpoints }) {
       vault.audit("rotate", name, caller, true, `${how.provider}: new version stored, old ${gone.revoked ? "revoked" : "still live"}`);
       await settle(vault, call, name).catch(() => {});
       return { rotated: true, provider: how.provider, revoked: gone.revoked, ...(gone.reason ? { reason: gone.reason } : {}), ...(made.expires ? { expires: made.expires } : {}) };
-    }, presence("Rotate a credential", ({ name }) => `Make a new credential for ${quoted(name)} at its provider, store it, and revoke the old one`));
+  };
+
+  tool("vault.rotate", ["cli", "local", "deck", "capsule"], "Rotate an item at its provider: make the new credential with the current one, store it as a new version, then revoke the old one. For a provider without an API, returns its page and steps instead.",
+    obj({ name: { type: "string" } }, ["name"]), async ({ name }, { caller }) => rotateItem(name, String(caller)), presence("Rotate a credential", ({ name }) => `Make a new credential for ${quoted(name)} at its provider, store it, and revoke the old one`));
+  return { rotateItem };
 }

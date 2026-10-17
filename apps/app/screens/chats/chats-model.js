@@ -86,6 +86,16 @@ export function sampleChats(now) {
   ];
 }
 
+/** The sample world as the Chat list shows it: the viewer (alex) left out of each chat's people, plus a group chat and a chat with the ads agent, so the list has every kind of row. @param {number} now @returns {ChatRow[]} */
+export function sampleConvoChats(now) {
+  const mine = sampleChats(now).map((c) => ({ ...c, people: c.people.filter((p) => p !== "alex") }));
+  return [
+    { id: "demo-ads", title: "ads", project: "Northwind Bakery", people: [], agents: ["ads"], models: [], providers: ["claude"], status: "working", last: now - 2 * 60_000, line: "Paused two ad sets that overspent", asks: 1, unread: 0, open: true },
+    { id: "demo-group", title: "Spring campaign", project: "Northwind Bakery", people: ["Sam"], agents: ["ads"], models: [], providers: ["claude"], status: "idle", last: now - 40 * 60_000, line: "Sam: budget is approved", asks: 0, unread: 3, open: true },
+    ...mine,
+  ];
+}
+
 /** What the Chats screen says on a box that has no work.chat.list: the app and the box ship together, so there is one path. */
 /**
  * What the Chat page shows: its body and, beside the list, the one thing that is missing on this device (a Mac with no phone to approve, a phone with no Vyre). A person who already has chats sees them

@@ -44,7 +44,7 @@ import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
-import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
+import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION, NAMED_MIGRATION, macExtra } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION, GRANT_REQUEST_KIND_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Links } from "./links.js";
@@ -152,7 +152,7 @@ export const MIGRATIONS = [
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
-  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION,
+  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -618,7 +618,7 @@ export class Vault {
   macOf(table, r) {
     const f = {};
     for (const c of MACED[table]) f[c] = r[c] ?? null;
-    return rowMac(/** @type {any} */ (this.mkey), table, f);
+    return rowMac(/** @type {any} */ (this.mkey), table, { ...f, ...macExtra(table, r) });
   }
 
   /** Sign one row as it is now. Only code that just wrote it, or verified it, calls this. */

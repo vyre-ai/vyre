@@ -81,7 +81,7 @@ test("a member's named agent is door-refused on every owner-scoped group tool ex
 
 test("a member's named agent is not served the owner's memory, planner or vault", { timeout: 200_000 }, async t => {
   const { memberAgent } = await rig(t);
-  const ownerOnly = ["settings.set", "computers.list", "spend.raise", "artifacts.list", "github.accounts", "publish.create", "connectors.connect"];
+  const ownerOnly = ["settings.set", "computers.list", "spend.raise", "artifacts.list", "github.accounts", "publish.create", "connectors.scope"];
   for (const tool of ownerOnly) {
     assert.ok(OWNER_ONLY.has(tool), `${tool} is owner-only on the door lists`);
     const r = await memberAgent(tool, {});

@@ -70,7 +70,6 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.disable", resource_type: "rule", risk: "grant", label: "turn a standing rule off", gloss: "Stop a rule binding without deleting it." },
 ].map(a => Object.freeze(a)));
 
-
 /** The action a grant is gated under: an owner or an admin giving an assistant, a service or a surface access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
 export const grantActionOf = input => (input && !input.parent && input.subject && ((input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind)) || (input.subject.kind === "group" && String(input.subject.id).startsWith("surface:"))) ? "grants.member" : "grants.create");
 
@@ -264,9 +263,13 @@ export function createGrantsStore(cfg) {
       if (actor.kind === "agent") return m.agents.includes(actor.id);
       return false;
     }
+    // The Space-wide groups (K4): every person who is a member, and every agent of the Space. An agent through either holds use and nothing more (the authorizer's group rule).
+    if (id === "space:people") return Boolean(actor) && actor.kind === "person" && memberOk(actor);
+    if (id === "space:agents") return Boolean(actor) && actor.kind === "agent" && actor.space === cfg.space && actors.has(actorKey(actor));
     const t = teams.get(id);
     if (!t || !actor) return false;
     if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
+    if (actor.kind === "agent" && (t.agents || []).includes(actor.id)) return true;
     if (actor.kind === "agent" && chain && Array.isArray(chain.hops)) return chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person" && t.members.includes(x.actor.id) && memberOk(x.actor));
     return false;
   };
@@ -296,7 +299,7 @@ export function createGrantsStore(cfg) {
     // A named action must exist; a pattern is checked at use (it covers only what existed at action_set_version).
     for (const a of i.actions) if (!a.includes("*") && !reg().has(a)) throw new KernelError("bad_input", `${a} is not an action`);
     // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
-    if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
+    if (s.kind === "group" && !(teams.has(String(s.id)) || s.id === "space:people" || s.id === "space:agents" || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
     if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
     // A surface is some chain's way in, and `chat` and `agents` are the model's: a grant to a surface is use of a credential and no more, whoever makes it.
     if (s.kind === "group" && String(s.id).startsWith("surface:") && i.actions.some((/** @type {string} */ a) => !ACCESS_LEVELS.use.includes(a))) throw new KernelError("bad_input", "a grant to a surface is use of a credential and nothing more");
@@ -633,7 +636,6 @@ export function createGrantsStore(cfg) {
       return n;
     },
 
-
     /**
      * Lend one computer to this Space in ONE act (the first lend of a device, ruled 5 Oct): the Space's side (only when the caller is an owner or admin) and the member's own side, bound to the
      * computer's key, made under ONE presence proof that is bound to this compound input (member, device, key; the sides made follow from the caller's role). The proof covers nothing else and is spent
@@ -860,11 +862,11 @@ export function createGrantsStore(cfg) {
       const k = kernelChain(), made = [], pv = await personalOf(), home = urn("vault", pv.id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
       for (const r of rows) {
         const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass" || r.kind === "scope" || r.kind === "lease", grp = String(r.who).startsWith("project:"), actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
-        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (r.kind === "lease" && !/^[A-Za-z0-9_.-]{1,80}$/.test(String(r.task))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (r.kind === "lease" && !/^[A-Za-z0-9_.-]{1,80}$/.test(String(r.task))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason && (r.kind !== "lease" || g.status === "active")) || (r.sessions !== undefined && !(r.kind === "lease" && Array.isArray(r.sessions) && r.sessions.length === 1 && /^[A-Za-z0-9_.:-]{1,120}$/.test(String(r.sessions[0]))))) continue;
         if (!grp && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
         const resource = { prefix: r.kind === "lease" ? `${home}/connection/${r.item}` : rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
         const parent = pass && r.kind !== "lease" ? [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home) : null;
-        const g = freeze({ ...(r.kind === "lease" && r.approver ? { approver: String(r.approver) } : {}), id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: grp ? { kind: "group", id: String(r.who) } : { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(parent ? { parent: parent.id } : {}), source: rel ? `install:${r.who}:vault` : r.kind === "scope" ? "vault:scope" : r.kind === "lease" ? `vault:lease:${r.task}` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
+        const g = freeze({ ...(r.kind === "lease" && r.approver ? { approver: String(r.approver) } : {}), id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: grp ? { kind: "group", id: String(r.who) } : { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}), ...(r.sessions ? { where: { sessions: [String(r.sessions[0])] } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(parent ? { parent: parent.id } : {}), source: rel ? `install:${r.who}:vault` : r.kind === "scope" ? "vault:scope" : r.kind === "lease" ? `vault:lease:${r.task}` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
         grants.set(g.id, g); made.push(g.id);
         await note(k, "grant.created", urn("grant", g.id), { grant: g });
       }
@@ -1032,7 +1034,9 @@ export function createGrantsStore(cfg) {
       if (!Array.isArray(list) || list.length > 200 || list.some((/** @type {any} */ m) => typeof m !== "string" || !memberships.has(m))) throw new KernelError("bad_input", "a team holds up to 200 people, each a member of this Space");
       if ([...teams.values()].some(x => x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "a team with that name already exists");
       if (!prior && teams.size >= 200) throw new KernelError("bad_input", "a Space holds up to 200 teams");
-      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), by: issuer.id, at: clock() });
+      const ags = t.agents !== undefined ? t.agents : prior ? prior.agents || [] : [];
+      if (!Array.isArray(ags) || ags.length > 200 || ags.some((/** @type {any} */ a) => typeof a !== "string" || !actors.has(actorKey({ kind: "agent", id: a, space: cfg.space })))) throw new KernelError("bad_input", "a team holds up to 200 agents, each an agent of this Space");
+      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), agents: freeze([...new Set(ags)].sort()), by: issuer.id, at: clock() });
       teams.set(rec.id, rec);
       await note(chain, "team.set", urn("team", rec.id), { team: rec }, d.decision);
       return rec;

@@ -32,7 +32,7 @@ export function ChatExtras({ thread, empty, busy }: { thread: string; empty: boo
   if (!real) return null;
   if (!cap && !names.length && !empty && !screens.length && !holds.length) return null;
   return (
-    <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 12, gap: 8, paddingTop: 6 }}>
+    <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 12, gap: 8, paddingTop: 6 }}>
       {empty ? <WelcomeCard /> : null}
       {names.map((n) => <WatcherCard key={n} name={n} />)}
       {screens.map((e) => <ShownScreen key={`${e.module}/${e.command}/${e.id ?? ""}`} entry={e} />)}

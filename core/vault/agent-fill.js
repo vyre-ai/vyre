@@ -44,7 +44,9 @@ const FIND = `(() => {
 export async function agentFill(deps, q) {
   const { vault, call } = deps, log = deps.log || (() => {});
   const who = `agent:${q.agent}`;
-  const row = vault.row(String(q.item || ""));
+  // A login a member shared with this agent is not an item of the Space's vault: it is a copy in its own store (member-copies.js) that only this function opens, named by an opaque reference.
+  const copy = vault.access && vault.access.copies ? vault.access.copies.find(String(q.item || "")) : null;
+  const row = copy ? { name: copy.ref, kind: "login", url: `${copy.origin}/`, hosts: JSON.stringify([copy.origin]) } : vault.row(String(q.item || ""));
   const refuse = (/** @type {string} */ why, /** @type {string} */ message, code = "denied", origin = null) => {
     vault.agents.recordUse({ action: "agent-fill", item: row ? row.name : null, who, ok: false, origin, surface: "computer", why: why.slice(0, 120) });
     throw fail(message, code);
@@ -56,12 +58,12 @@ export async function agentFill(deps, q) {
   if (!hosts.includes(origin)) return refuse("origin not on the login", `${row.name} is not for ${origin}; it is for ${hosts.join(", ") || "no site yet"}`, "denied", origin);
 
   // Lent to this agent at this origin: a grant, or a tag the person typed in this conversation.
-  let lent = vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(() => false) : false;
-  if (!lent && q.thread && deps.said) lent = Boolean(await deps.said.match({ kind: "use", to: [row.name], hosts: [origin] }, { thread: q.thread, lineage: q.lineage || [] }).catch(() => null));
+  let lent = copy ? copy.agent === q.agent && await vault.access.allowedCopy(copy, origin, q.thread).catch(() => false) : vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(() => false) : false;
+  if (!lent && !copy && q.thread && deps.said) lent = Boolean(await deps.said.match({ kind: "use", to: [row.name], hosts: [origin] }, { thread: q.thread, lineage: q.lineage || [] }).catch(() => null));
   if (!lent) return refuse("not lent", `${row.name} is not lent to ${q.agent} for ${origin} in this conversation: type # and pick the login, or the person lends it with vault.agent.grant`, "denied", origin);
 
   // Open the item here, in this process; the values live in this closure until the call ends.
-  const f = await vault.fields(row);
+  const f = copy ? await vault.access.copies.fields(copy.ref) : await vault.fields(row);
   const user = String(f.username || ""), pass = String(f.password || "");
   let code = "";
   if (f.totp) { try { code = totp(f.totp, { at: vault.clock() }).code; } catch { /* a bad seed must not block the password */ } }

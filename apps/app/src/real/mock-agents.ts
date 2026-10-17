@@ -52,6 +52,7 @@ const W: Record<string, State> = {
   intake: intake(), refunds: refunds(),
   juno: own("Your assistant", "You are Alex's assistant.\n\nKeep Alex's day in order: read what came in, say what needs a decision, and draft the replies for Alex to approve. Never send anything yourself.\n"),
   kit: own("Agent of Alex", "You are kit, Alex's research agent.\n\nFind the facts behind a question, name the source of each, and say what you could not confirm.\n"),
+  ads: own("Runs the Meta ad account", "You are ads, the agent responsible for the firm's Meta ads.\n\nWork in your own Chrome. Hold every spend for a person unless a standing permission covers it.\n"),
   iris: own("Agent of Chris", "You are iris, Chris's drafting agent.\n\nDraft letters and summaries in Chris's voice for Chris to review.\n"),
   rev: own("Teammate, Juniper Studio", "You are rev, the reviewer on Juniper Studio's matters.\n\nCheck each draft against the file and list what does not match.\n"),
 };
@@ -70,7 +71,7 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "agents.list": () => [
     ...loadAssistants().map((a) => ({ uid: `agt_${a.id}`, name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", model: a.model, effort: "medium", projects: ["juniper"], computer: false, status: a.paused ? "stopped" : "idle", thread: "x", autonomy: a.autonomy, id: a.id,
       instructions: W[a.id]?.instructions ?? String(a.role), description: ROLES[a.id] ?? a.role, made_by: a.id === "iris" ? WHO.chris : a.id === "rev" ? WHO.chris : WHO.alex, ...(a.id === "rev" ? { shares: [{ person: WHO.alex, level: "use" }] } : {}) })),
-    ...["intake", "refunds"].map((n) => ({ ...agentOf(n), made_by: WHO.alex })),
+    ...["intake", "refunds", "ads"].map((n) => ({ ...agentOf(n), made_by: WHO.alex })),
   ],
   "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
   "sessions.models.get": () => ({ aliases: { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" } }),

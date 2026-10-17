@@ -21,6 +21,7 @@
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
 import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
+import { personOnChain, mayHandle, fromModule } from "./requester.js";
 import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
@@ -30,14 +31,8 @@ const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "
 /** A model's call: Claude through MCP, in an agent's thread or not. */
 const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
 
-// Presence summaries (security, docs/adr/0004-presence.md): what the person sees on the
-// terminal or in the dialog before they prove they are there, so they never approve, revise or
-// discard blind. gate.get's own shape, not a made-up one: `to`, `draft`, `final`.
-const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
-const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
-// An MCP call held by the hub keeps its words in `arguments` (a Slack post's text or payload).
-const wordsOf = a => (a && typeof a === "object" ? a.text || a.payload || a.message || a.body || a.content : "") || "";
-const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments) || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+// Presence summaries (docs/adr/0004-presence.md): the line shown before the person proves they are there. Approving shows a fixed line and never an item's words, destination or kind: the prompt appears before
+// the call is checked, to whoever asked, so it must tell a caller who may not handle an item nothing about it. The words reach a person who may handle it in what the Gate returns.
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
@@ -55,6 +50,7 @@ export default {
     const approvers = Array.isArray(opts.approvers) ? opts.approvers.map(String) : ["chat"];
 
     const gate = new Gate({
+      get owner() { return ctx.kernel && typeof ctx.kernel.owner === "string" ? ctx.kernel.owner : undefined; },
       db: ctx.store.db,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       fetchCredential: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
@@ -70,6 +66,12 @@ export default {
       log: m => ctx.log(m),
     });
 
+    // A member who leaves takes their held items with them: no one else may answer a member's item, so none is left waiting for ever.
+    try {
+      const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { const who = personOf(e); if (who) gate.rejectAllOf(who, "the member left"); } catch { /* not a person id */ } });
+    } catch { /* a registry with no event bus */ }
+
     const stuck = gate.recover();
     if (stuck) ctx.log(`${stuck} item(s) were mid-send when vyred stopped; back to held, marked as possibly sent`);
 
@@ -81,6 +83,18 @@ export default {
       // A guest from another tailnet, and an agent's own node, are never the user.
       if (c.startsWith("tailnet-guest:") || c.startsWith("tailnet:agent:")) throw new Error("only the user approves what goes out, never a guest or an agent");
       throw new Error("only the user approves what goes out, never a model");
+    };
+
+    /**
+     * The item, if the person on this call may handle it. A member's item (its requester is a member, not the owner) is its requester's alone: anyone else, the owner and admins included, is told no such item,
+     * so its existence is not shown. The module whose sender holds an item may take its own item back whatever it is. An item with no requester, or the owner's own, is as before.
+     * @param {string} id @param {any} meta @param {{ ownSender?: boolean }} [o]
+     */
+    const handled = async (id, meta, o = {}) => {
+      const r = gate.row(id);
+      if (o.ownSender && String(meta && meta.caller || "").startsWith("module:") && r.sender_module === String(meta.caller).slice(7)) return r;
+      if (!mayHandle(r, await personOnChain(ctx.kernel, meta), ctx.kernel, fromModule(meta))) throw Object.assign(new Error(`nothing at the Gate has id ${id}: it may be answered or expired; read what is waiting at the Gate again`), { code: "not_found" });
+      return r;
     };
 
     /**
@@ -125,6 +139,8 @@ export default {
     /** The kernel's answer to "may this verified agent do this by itself": { grant } or null. A person's own call, a model slot and the default assistant never match. */
     const standingCover = async (input, meta, agentName) => {
       try {
+        // B8: a call that names no destination (an MCP tool with no recipient argument) never matches a standing permission.
+        if (input.unnamed === true) return null;
         if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
         let to = gate.recipients(input);
         if ((!to || !to.length) && String(input.kind) === "send") {
@@ -140,6 +156,7 @@ export default {
     };
     const said = async (input, thread, agent) => {
       try {
+        if (input.unnamed === true) return null;
         const to = gate.recipients(input);
         if (!to || !to.length) return null;
         let lineage = [];
@@ -163,7 +180,7 @@ export default {
         const { caller, thread, agent, firstParty } = meta0;
         const covered = meta0[COVERED];
         const filing = await filed(input, caller, thread);
-        const by = { agent: (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) || agent || agentOf(caller) };
+        const by = { agent: (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) || agent || agentOf(caller) , requester: await personOnChain(ctx.kernel, meta0) };
         // Asking is approving (P17): what the person's own words covered goes out now, with no
         // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
         // A person's own confirmation of exactly this send (Lumen or a Capsule form): from their surface, fresh, and the hash of what they saw.
@@ -208,14 +225,14 @@ export default {
       input: obj({ thread: str, project: str }),
       // Held drafts are the person's own words and recipients: the person's surfaces and modules, as gate.get.
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
-      run: (input, { peer }) => withPresence(gate.held(input), peer),
+      run: async (input, meta) => { const person = await personOnChain(ctx.kernel, meta); return withPresence(gate.held({ ...input, visible: r => mayHandle(r, person, ctx.kernel, fromModule(meta)) }), meta.peer); },
     });
 
     ctx.tool("gate.get", {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
-      run: async (input, { peer }) => (await withPresence([gate.get(input)], peer))[0],
+      run: async (input, meta) => { await handled(input.id, meta); return (await withPresence([gate.get(input)], meta.peer))[0]; },
     });
 
     // who approved, rejected, revised or settled is the caller (S3): the `by` a caller sends is not read
@@ -223,7 +240,7 @@ export default {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module", "tailnet", "device"],
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.revise({ ...input, by: c }); },
+      run: async (input, meta) => { const c = mayApprove(meta.caller); await handled(input.id, meta); return gate.revise({ ...input, by: c }); },
     });
 
     ctx.tool("gate.approve", {
@@ -234,16 +251,20 @@ export default {
         when: ({ id }) => needsProof(id),
         // One passkey or Touch ID opens a ~30 minute session on that device, and the sends after it ride it.
         session: ({ id }) => needsProof(id),
-        summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; },
+        // The prompt is shown before the call is checked, to whoever asked, so it says nothing of any item: not its words, not its destination, not whether the id exists. The words appear only to a person who may
+        // handle the item, in what the Gate returns.
+        summary: async () => "Approve something held at the Gate",
       },
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.approve({ ...input, by: c }); },
+      run: async (input, meta) => { const c = mayApprove(meta.caller); await handled(input.id, meta); return gate.approve({ ...input, by: c }); },
     });
 
     ctx.tool("gate.reject", {
       description: "The user discards a held item. Nothing is sent. The module that offered the item's sender may also take its own item back.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device"],
-      run: (input, { caller }) => {
+      run: async (input, meta) => {
+        const { caller } = meta;
+        await handled(input.id, meta, { ownSender: true });
         // Taking an item back sends nothing, so the module whose sender holds it may do so (an outside agent that was ended); any other module goes through the same rule as approving.
         const c = String(caller || "");
         const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : mayApprove(caller);
@@ -255,12 +276,25 @@ export default {
       description: "An approved item whose send failed with its answer lost, found to have gone out after all (the app shows the words): mark it sent with the evidence, so it is never sent twice. Only outcome \"sent\", only for an item that was approved and failed. A person, or the module that offered the item's sender.",
       input: obj({ id: str, outcome: { type: "string", enum: ["sent"] }, evidence: { type: "object" }, by: str }, ["id", "outcome"]),
       callers: ["cli", "local", "module", "deck", "capsule"],
-      run: (input, { caller }) => {
+      run: async (input, meta) => {
+        const { caller } = meta;
+        await handled(input.id, meta, { ownSender: true });
         const c = String(caller || "");
         // The item's own surface: the module whose sender holds it (mcp for a hub call). Any other
         // module, and every model or guest, goes through the same rule as approving.
         const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : mayApprove(caller);
         return gate.settle({ ...input, by: own });
+      },
+    });
+
+    ctx.tool("gate.held-of", {
+      internal: true,
+      description: "The held items of a sender this module offered, with who asked: { via } -> [{ id, requester }]. A module sees only its own sender's items, to take them back (gate.reject).",
+      input: obj({ via: str }, ["via"]),
+      run: (input, { caller }) => {
+        const c = String(caller || "");
+        if (!c.startsWith("module:")) throw Object.assign(new Error("only a module asks what is held for its own sender"), { code: "denied" });
+        return gate.heldOf(input.via, c.slice(7));
       },
     });
 
@@ -358,6 +392,8 @@ export default {
         // nobody grants a connection they do not have themselves
         const via = i.via ? String(i.via) : "";
         if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
+        // a member (not an owner or admin) gives one only for their own mailbox or a connection they hold, never for the Space's own sender or for "any"
+        if (!["owner", "admin"].includes(K.roleOf(person)) && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
         if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });

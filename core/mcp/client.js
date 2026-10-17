@@ -396,6 +396,8 @@ async function* sseEvents(body, { totalCap = Infinity, eventCap = MAX_RESPONSE }
 
 /** The server address is the person's own (a local or a remote MCP server), so the address rule is theirs; the answer may be an event stream, so it streams with a deadline for the headers only. */
 const streamFetch = guardedFetch({ allow: "any", stream: true, retries: 0 });
+/** A member's server is dialled by this box on her say-so, not on the owner's: every DNS answer must be a public address, and a redirect cannot leave public https (lib/http.js, which also drops the Authorization header when the origin changes). `lookup` is the test seam. @param {(host: string) => Promise<{ address: string }[]>} [lookup] */
+export const publicStreamFetch = lookup => guardedFetch({ allow: "public", stream: true, retries: 0, ...(lookup ? { lookup } : {}) });
 
 /** @param {{url: string}} spec @param {Options & {timeout: number}} opts */
 function httpChannel(spec, opts) {

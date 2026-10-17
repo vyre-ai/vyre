@@ -13,6 +13,11 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
 import { register } from "./request.js";
 import { kernelRig, SPACE } from "./kernel-rig.js";
+import { connectionUrn } from "./connection-token.js";
+import * as connectionMay from "./tools/connection-may.js";
+import { createGateway } from "../../kernel/gateway/index.js";
+import { createMemoryStore } from "../../kernel/store/memory.js";
+import { createEventLog } from "../../kernel/core/events.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -201,6 +206,107 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   for (let i = 0; i < 4000; i++) rig.clock();
   const real = v.clock; v.clock = () => real() + 10_000;
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
+});
+
+test("a connection may be used by the caller's own chain at the level the kernel gives it: read to see, call to send; another owner's address and bad input are no", async t => {
+  const { cred, give, v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  await cred("clio-token");
+  await v.access.convertScopes();
+  const ben = { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } };
+  const may = (who, level, over = {}) => v.access.mayUseConnection({ connection: "clio-token", level, ...over }, { chain: who });
+  assert.equal(await may(rig.owner(), "call"), true, "the owner of the vault holds their own item");
+  assert.equal(await may(rig.person("per_ben"), "read"), false, "a member with no grant holds nothing");
+  const g = await give("clio-token", ben, { actions: ["vault.read"] });
+  assert.equal(await may(rig.person("per_ben"), "read"), true, "read to see it");
+  assert.equal(await may(rig.person("per_ben"), "call"), false, "read does not reach an outward tool");
+  assert.equal(await may(rig.person("per_cy"), "read"), false, "another member is untouched");
+  await rig.gw.grants.revoke(rig.owner(), g.id, "no longer", { presence: { n: 1 } });
+  assert.equal(await may(rig.person("per_ben"), "read"), false, "revoked: the next question is no");
+  await give("clio-token", ben, { actions: ["vault.read", "vault.call"] });
+  assert.equal(await may(rig.person("per_ben"), "call"), true);
+  assert.equal(await may(rig.person("per_ben"), "admin"), false, "an unknown level is no");
+  assert.equal(await may(rig.person("per_ben"), "read", { connection: "../x" }), false, "a bad item name is no");
+  // a member's own connection: they alone use it; anyone else needs the kernel's allow on the connection's address
+  const theirs = (who, level) => may(who, level, { owner: "per_ben" });
+  assert.equal(await theirs(rig.person("per_ben"), "call"), true, "the member uses their own connection");
+  assert.equal(await theirs(rig.person("per_cy"), "read"), false, "a colleague with no grant does not");
+  assert.equal(await theirs(rig.owner(), "read"), false, "nor does the Space owner: it is not their item");
+  await rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "person", id: "per_cy", space: SPACE } }, actions: ["vault.read"], resource: { prefix: connectionUrn(SPACE, "per_ben", "clio-token") }, conditions: {}, source: "vault:share" }, { presence: { n: Math.random() } });
+  assert.equal(await theirs(rig.person("per_cy"), "read"), true, "a share at read reaches it");
+  assert.equal(await theirs(rig.person("per_cy"), "call"), false, "and not an outward tool");
+});
+
+test("vault.connection.may reads the CALLER's chain from the turn's token, never the hub module's own; only the mcp module may ask", async t => {
+  const { cred, give, v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  await cred("clio-token");
+  await v.access.convertScopes();
+  const tools = new Map();
+  connectionMay.register({ vault: v, internal: (name, _d, _i, run) => tools.set(name, { run }) });
+  const ben = { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } };
+  await give("clio-token", ben, { actions: ["vault.read", "vault.call"] });
+  // the kernel names the chain from the turn's token; a hop with no token of its own gets the service chain of a module, which holds no grant on anyone's item
+  const people = { tok_ben: "per_ben", tok_cy: "per_cy" };
+  rig.K.chain = async meta => (meta && people[meta.token] ? rig.person(people[meta.token]) : rig.person("per_module_service"));
+  const ask = (meta, level = "read", extra = {}) => tools.get("vault.connection.may").run({ connection: "clio-token", level, ...extra }, { caller: "module:mcp", ...meta });
+  assert.deepEqual(await ask({ token: "tok_ben" }), { allow: true }, "the turn's token names Ben, who holds the item");
+  assert.deepEqual(await ask({ token: "tok_ben" }, "call"), { allow: true });
+  assert.deepEqual(await ask({ token: "tok_cy" }), { allow: false }, "the turn's token names Cy, who holds nothing: the hub module's own standing does not stand in");
+  assert.deepEqual(await ask({}), { allow: false }, "a hop that lost the turn's token falls to the module's service chain and gets nothing");
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:kit", "module:gate"])
+    await assert.rejects(tools.get("vault.connection.may").run({ connection: "clio-token", level: "read" }, { caller, token: "tok_ben" }), e => e.code === "denied", caller);
+});
+
+test("only a connection's maker, alone in the chain, holds it at level own: not an assistant acting for them, not another member, not the owner, and not with a person named by `as`", async t => {
+  const { v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  const own = (chain, over = {}) => v.access.mayUseConnection({ owner: "per_ben", connection: "clio", level: "own", ...over }, { chain });
+  assert.equal(await own(rig.person("per_ben")), true, "Ben alone");
+  assert.equal(await own(rig.assistant("agt_kit", "per_ben")), false, "Ben's assistant: an agent hop is in the chain");
+  assert.equal(await own(rig.person("per_cy")), false, "another member");
+  assert.equal(await own(rig.owner()), false, "the Space owner is not the maker");
+  assert.equal(await own(rig.person("per_ben"), { as: "per_ben" }), false, "the level is about the caller, never a person named in the input");
+  assert.equal(await own(rig.person("per_ben"), { owner: undefined }), false, "a connection with no maker is nobody's to own");
+});
+
+test("a lease ends the moment the person who approved it no longer holds the Connection, before the task closes or the lease is taken back", async t => {
+  const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
+  const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  await cred("conn-cn1");
+  await v.access.convertScopes();
+  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
+  // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
+  const blind = createGateway({ space: SPACE, store: createMemoryStore({ clock: rig.clock }), log: createEventLog({ space: SPACE, clock: rig.clock }), chains: rig.chains, clock: rig.clock, grantsStore: rig.gs, presence: { check: async () => null }, owner: rig.K.owner, hasPresenceSession: () => true });
+  assert.notEqual((await blind.authorize({ chain: rig.assistant(rig.uid("kit")), action: "vault.call", resource: await v.access.urn("conn-cn1") })).effect, "allow", "a lease with nothing to ask is refused");
+  await rig.gw.grants.revoke(rig.owner(), share.id, "left the project", { presence: { n: 1 } });
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "Ben lost it: the lease he carried holds nothing, though the task is still open and the lease still stands");
+});
+
+test("a lease held to a job's thread works in that thread only: another session of the same agent, and a call that names no thread, hold nothing of it", async t => {
+  const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
+  const { cred, ask, GET, v, rig } = await mk(t, { call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  await cred("conn-cn1");
+  await v.access.convertScopes();
+  const until = rig.clock() + 3_600_000;
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" })).kind, "read", "before the job has a thread, the lease is the agent's in any session");
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "job-1" }), { lent: 1, already: 0 }, "held to the job's thread");
+  const live = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1" && g.status === "active");
+  assert.equal(live.length, 1, "the unbound lease ended in the same step the bound one began");
+  assert.deepEqual(live[0].conditions.where, { sessions: ["job-1"] });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "job-1" })).kind, "read", "the job's own thread uses it");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "another session of the same agent");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "a call that names no thread");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "a thread named in the input is ignored: only the registry's thread counts");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit"), /needs a grant/, "and with no registry thread, the input's name buys nothing");
+  assert.deepEqual((await v.access.listFor("kit", "job-1")).map(i => i.name), ["conn-cn1"], "the job's thread sees the connection it may use");
+  assert.deepEqual(await v.access.listFor("kit", "other"), [], "another session does not");
+  assert.deepEqual(await v.access.listFor("kit"), [], "nor a list that names no thread");
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "bad thread!" }), /thread/);
+  // the task ends: the bound lease goes with it, and a retry of the same task can be lent again
+  await v.access.leaseEnd({ task: "task-1" });
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "job-1" }), /needs a grant/);
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), { lent: 1, already: 0 }, "an ended lease is lent again for a retry, not skipped as already made");
 });
 
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {

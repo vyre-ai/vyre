@@ -10,6 +10,8 @@ import { asPerson, ensureAgent } from "../../lib/project-reach.js";
 import { exactOrigin } from "./agents.js";
 import { hostsOf } from "./native.js";
 import { credentialUrn } from "../../kernel/contracts/index.js";
+import { ConnectionTokens, connectionUrn } from "./connection-token.js";
+import { MemberShare } from "./member-share.js";
 
 /** Requests an assistant made, waiting for a person (vault.pending, vault.approve). Appended to the vault's MIGRATIONS. */
 export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
@@ -19,11 +21,16 @@ export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
 /** What was converted once, by key (a credential's scope): so a conversion is made and logged once. Appended to the vault's MIGRATIONS. */
 export const CONVERSIONS_MIGRATION = `CREATE TABLE vault_conversions (key TEXT PRIMARY KEY, at INTEGER NOT NULL, note TEXT);`;
 
+/** An item's place in a named vault (vault.named.*): the kernel vault's id, null for the Space's own. Appended to the vault's MIGRATIONS. */
+export const NAMED_MIGRATION = `ALTER TABLE vault_items ADD COLUMN named TEXT;`;
+/** The row signature covers the vault link only when there is one, so a row from before keeps its signature, and a link added, changed or removed by anything but the vault shows as tampering. */
+export const macExtra = (/** @type {string} */ table, /** @type {any} */ r) => (table === "vault_items" && r && r.named != null ? { named: String(r.named) } : {});
+
 const SOURCE = "vault:agent";
 
 export class Access {
   /** @param {import("./vault.js").Vault} vault @param {any} ctx the vault module's ctx */
-  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; /** @type {Promise<void> | null} */ this.converting = null; }
+  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; this.members = new MemberShare(this); /** @type {Promise<void> | null} */ this.converting = null; }
 
   /** The kernel's side of the vault, or null in a build with no kernel (then no login is lent to an agent). */
   get K() { const k = this.ctx && this.ctx.kernel; return k && k.grants && k.vault ? k : null; }
@@ -33,7 +40,38 @@ export class Access {
   async urn(/** @type {string} */ name) {
     const K = this.need();
     if (!this.vid) this.vid = await K.vault.personalVault();
-    return `vyre://${K.space}/vault/${this.vid}/item/${name}`;
+    // An item in a named vault is addressed under that vault, so one grant on the vault covers it.
+    const row = /** @type {any} */ (this.v.row(String(name)));
+    return `vyre://${K.space}/vault/${row && row.named ? row.named : this.vid}/item/${name}`;
+  }
+
+  /**
+   * Whether the verified caller of this turn may use a connection at a level (`vault.read` to see it and run read tools, `vault.call` for an outward tool): allow or not; an unknown item, a missing kernel or
+   * any error is not. The Space owner's own (no `owner`) is an item of the owner's vault, judged by the kernel on its address. A member's is judged by the one rule the token tool applies as its second gate
+   * (connection-token.js): the member alone in the chain, or the kernel's allow on the connection's address.
+   * With `as` (a person id), the question is asked of THAT person, not of the call's chain: the hub's re-check at release, for the requester stored on the held item, since the person who releases it is not
+   * always the one who asked. Their own connection is theirs; anything else is the kernel's answer for them (personMay).
+   * @param {{ owner?: string, connection: string, level: string, as?: string }} i @param {any} meta
+   */
+  async mayUseConnection({ owner, connection, level, as }, meta) {
+    try {
+      const K = this.need();
+      if ((level !== "read" && level !== "call" && level !== "own") || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return false;
+      if (level === "own") {
+        // the person who made it, alone in the chain (an assistant acting for them is not them): the one who may take the connection away
+        if (!owner || as !== undefined) return false;
+        const hops = ((await K.chain(meta)) || {}).hops;
+        return Array.isArray(hops) && hops.length > 0 && hops.every((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person" && String(h.actor.id) === String(owner));
+      }
+      if (as !== undefined) {
+        if (typeof as !== "string" || !as) return false;
+        if (owner && as === String(owner)) return true;
+        return Boolean(await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : await this.urn(String(connection))));
+      }
+      if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
+      const chain = await K.chain(meta);
+      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
+    } catch { return false; }
   }
 
   /** An agent's stable id (the kernel's grants name it, never the name), or null for an agent that does not exist. @param {string} name */
@@ -177,11 +215,13 @@ export class Access {
    * A task credential lease (team/BACKLOG.md): the doer agent may use named Connections for one task. Its authority is the person's yes when the Kit was installed, which listed those credentials, so it is
    * bound to exactly that: flows says (`flows.kit.credentials`) which approved Kit version the task is from and which credentials it names; a Connection that is not named there, or does not exist, is refused.
    * Use only (a read runs, anything outward is still held), until `until` or `leaseEnd`, idempotent per task, agent and Connection, so a restart does not double it. The grant records the Kit and its version.
-   * @param {{ task: string, agent: string, connections: string[], until: number }} i
+   * With a `thread`, the lease is held to that one job thread: the unbound lease of the task ends and a bound one begins in the same step, so no other session of the agent ever holds it.
+   * @param {{ task: string, agent: string, connections: string[], until: number, approver?: string, thread?: string }} i
    */
-  async leaseTask({ task, agent, connections, until, approver }) {
+  async leaseTask({ task, agent, connections, until, approver, thread }) {
     const K = this.need();
     if (!/^[A-Za-z0-9_.-]{1,80}$/.test(String(task))) throw new Error("name the task");
+    if (thread !== undefined && !/^[A-Za-z0-9_.:-]{1,120}$/.test(String(thread))) throw new Error("name the job's thread");
     if (!Array.isArray(connections) || !connections.length || connections.length > 20) throw new Error("name the Connections to lend, up to 20");
     if (!(Number(until) > this.v.clock())) throw new Error("a lease ends in the future");
     const uid = await this.uidOf(agent);
@@ -199,7 +239,8 @@ export class Access {
     const home = `vyre://${K.space}/vault/${await K.vault.personalVault()}`;
     for (const c of connections) if (!(await K.vault.personMay(approver, "vault.call", `${home}/connection/${c}`))) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not one you may use, so it cannot be lent to this task: ask an owner to share it with you first`), { code: "denied" });
     const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
-    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver) })));
+    if (thread !== undefined) await K.vault.takeBack({ source: `vault:lease:${String(task)}`, reason: "held to the job's thread" });
+    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}${thread !== undefined ? `:${thread}` : ""}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver), ...(thread !== undefined ? { sessions: [String(thread)] } : {}) })));
     this.v.audit("lease-lent", null, "module:flows", true, `task ${task} to ${agent}: ${connections.join(", ")} (${tag})`);
     this.v.emit("vault.lease-lent", { task, agent, connections, kit: kit.kit, version: kit.version });
     return { lent: made.length, already: connections.length - made.length };
@@ -222,7 +263,7 @@ export class Access {
   modelName(meta, caller) { return String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(); }
 
   /** The kernel's answer for a model to use a credential: "allow", "ask" (an outward act, held for a person) or "deny". An agent the Space does not know, or an unreachable kernel, is deny. */
-  async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin) {
+  async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin, /** @type {string} */ thread) {
     const K = this.K;
     if (!K || typeof K.agentMay !== "function") return "deny";
     try {
@@ -234,22 +275,24 @@ export class Access {
       const c = /^conn-([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(item);
       if (c) at.push(`${at[0].split("/item/")[0]}/connection/${c[1]}`);
       let best = "deny";
-      for (const res of at) { const e = String(await K.agentMay(uid, action, res, origin, true)); if (e === "allow") return e; if (e === "ask") best = e; }
+      for (const res of at) { const e = String(await K.agentMay(uid, action, res, origin, true, thread)); if (e === "allow") return e; if (e === "ask") best = e; }
       return best;
     } catch { return "deny"; }
   }
 
   /**
    * The items a model holds a grant for, of any kind, by the same check a call makes: an API credential it may read, a login lent to it at one of its sites, an item it may read or take a code from.
-   * Names and kinds (an API credential also its description and hosts), never a value. @param {string} name
+   * Names and kinds (an API credential also its description and hosts), never a value. The calling thread (from the registry, never from input) lets a lease held to that thread show. @param {string} name @param {string} [thread]
    */
-  async listFor(name) {
+  async listFor(name, thread) {
     const out = [];
     for (const it of this.v.list().items) {
-      let ok = (await this.effectFor(name, it.name, "vault.read")) !== "deny" || (await this.effectFor(name, it.name, "vault.totp")) !== "deny";
+      let ok = (await this.effectFor(name, it.name, "vault.read", undefined, thread)) !== "deny" || (await this.effectFor(name, it.name, "vault.totp", undefined, thread)) !== "deny";
       for (const h of ok ? [] : it.hosts || []) if ((await this.effectFor(name, it.name, "vault.fill", h)) !== "deny") { ok = true; break; }
       if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
     }
+    // The logins members shared with this agent: a reference to fill with and the label the member gave it, never a value. They are not items of the Space's vault, so the owner's lists never show them.
+    try { const uid = await this.uidOf(name); if (uid) for (const c of await this.copies.forAgent(uid, thread)) out.push({ name: c.ref, kind: "login", label: c.label, origin: c.origin }); } catch { /* the agents module is not running yet */ }
     return out;
   }
 
@@ -312,6 +355,11 @@ export class Access {
     const uid = await this.uidOf(agent);
     return uid ? K.agentMay(uid, "vault.fill", await this.urn(r.name), o) : false;
   }
+
+  /** The copies members shared with agents (member-copies.js): only agentFill and the member's own share tools open them. */
+  get copies() { return this.members.copies; }
+  /** May this agent sign in with this member's copy at this origin? The kernel's grant, asked every time. @param {any} copy @param {string} origin @param {string} [thread] */
+  allowedCopy(copy, origin, thread) { return this.members.allowedCopy(copy, origin, thread); }
 
   /**
    * Carry over the agent logins the vault stored itself before the one grant model: each row that passes its check becomes the kernel grant it always was (same agent, login, origin and expiry),

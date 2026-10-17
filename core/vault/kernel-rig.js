@@ -22,16 +22,19 @@ export async function kernelRig(o = {}) {
   const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
   const person = (/** @type {string} */ who) => chains.fromFacts({ kind: "device", device_key_id: `d-${who}`, person: who, path: "direct" });
   /** An agent acting for a person, as the kernel builds it for a session. */
-  const assistant = (/** @type {string} */ uid, who = OWNER) => chains.fromFacts({ kind: "agent_session", agent: uid, session: "s", thread: "t", vouched: true, person: who });
+  const assistant = (/** @type {string} */ uid, who = OWNER, thread = "t") => chains.fromFacts({ kind: "agent_session", agent: uid, session: "s", thread, vouched: true, person: who });
   const presence = { check: async () => null };
   const log = createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
-  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true, approverHolds: (/** @type {string} */ p, /** @type {string} */ a, /** @type {string} */ r) => K.vault.personMay(p, a, r) });
   await gs.bootstrap({ owner: OWNER });
+  // the vault module's right to make grants for others, as its manifest declares it (core/vault/module.json needs.kernel.mints)
+  await gs.installModule("vault", { actions: [], mints: [{ prefix: "vault", actions: ["vault.use", "vault.edit", "vault.fill"] }] });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {
     space: SPACE, owner: OWNER, grants: gw.grants, authorize: gw.authorize,
     chain: async (/** @type {any} */ meta) => (meta && meta.chain) || owner(),
+    mint: Object.freeze({ make: (/** @type {any} */ i) => gs.mint("vault", i), end: (/** @type {any} */ q) => gs.unmint("vault", q), list: async (/** @type {any} */ q) => gs.minted("vault", String((q && q.source) || "")) }),
     proofFrom: () => ({ presence: { n: Math.random() } }),
     vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p),
       // Mirror kernel/index.js vault.personMay (owner role only; no extra test-only shortcuts).
@@ -40,9 +43,9 @@ export async function kernelRig(o = {}) {
         try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
-    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
+    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { const e = (await gw.authorize({ chain: assistant(agent), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
+      try { const e = (await gw.authorize({ chain: assistant(agent, OWNER, thread || null), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {

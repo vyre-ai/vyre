@@ -16,6 +16,7 @@ import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
 import { modelMayRead } from "./api-request.js";
+import { MemberCredential } from "./member-credential.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
@@ -34,6 +35,11 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
+import * as connectionShareTools from "./tools/connection-share.js";
+import * as namedTools from "./tools/named.js";
+import * as provisionedTools from "./tools/provisioned.js";
+import * as readerTools from "./tools/reader.js";
+import * as meMentionTools from "./tools/me-mention.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -43,6 +49,7 @@ import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import * as agentFillTools from "./tools/agent-fill.js";
+import * as memberShareTools from "./tools/member-share.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
@@ -50,6 +57,7 @@ import * as requestTools from "./request.js";
 export { presence };
 import * as shareTools from "./tools/share.js";
 import * as mcpTools from "./tools/mcp.js";
+import * as connectionMay from "./tools/connection-may.js";
 import * as browserProfileTools from "./tools/browser-profile.js";
 import { PassMcp } from "./passmcp.js";
 import { listenMcp } from "./passmcp-listener.js";
@@ -241,13 +249,13 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
+      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind, thread }) => {
         const r = cli.list(vault.list(input), input);
         // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
         const model = isAsker(caller);   // the one predicate for "this caller is a model" (asker.js): list, item and the request cap agree
         if (!model || !r || !Array.isArray(r.items)) return r;
         if (vault.access && vault.access.K) {
-          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
+          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)), thread);
           return { ...r, items: mine };
         }
         // SHIM(no kernel): the older rule, an agent sees what is granted to its project.
@@ -520,13 +528,24 @@ export default {
 
     account.register({ ctx, vault, tool });
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
-    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
-    meTools.register({ ctx, people, tool });
+    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
+    const lentCreds = new MemberCredential(vault.access, people);
+    const connShare = connectionShareTools.register({ ctx, people, tool });
+    meTools.register({ ctx, people, tool, onRemoved: connShare.onRemoved });
+    meMentionTools.register({ ctx, people, lend: { connection: connShare, credential: lentCreds, ...(vault.access.members && typeof vault.access.members.shareAs === "function" && typeof vault.access.members.endFor === "function" ? { login: { shareAs: (/** @type {string} */ o, /** @type {any} */ i) => vault.access.members.shareAs(o, i), endFor: (/** @type {string} */ o, /** @type {string} */ t) => vault.access.members.endFor(o, t) } } : {}) }, internal: (/** @type {string} */ n, /** @type {string} */ d, /** @type {any} */ i, /** @type {Function} */ r) => ctx.tool(n, { internal: true, description: d, input: i, run: r }) });
+    // A login a member shares with an agent (member-share.js): their vault opens it, the share tools keep a copy for the agent's Chrome, and the copy follows the login: changed, removed or the member gone, it is refreshed or deleted.
+    vault.access.members.people = people;
+    people.onItem = async (id, name) => { try { await lentCreds.changed(id, name); await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
+    memberShareTools.register({ access: vault.access, tool });
+    setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
+    namedTools.register({ ctx, vault, tool });
+    provisionedTools.register({ ctx, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
-      ctx.events.on("member.removed", (/** @type {any} */ e) => { try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      ctx.events.on("member.removed", (/** @type {any} */ e) => { connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); lentCreds.gone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's lent keys were not all ended (${err.message})`)); try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); lentCreds.gone(personOf(e)).catch(err => ctx.log(`vault: a leaving member's lent keys were not ended (${err.message})`)); });
       for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
     } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.
@@ -549,7 +568,7 @@ export default {
     agentFillTools.register({ ctx, vault, said, tool });
     try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
-    const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
+    const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log, deps: { lentCreds } });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
@@ -559,6 +578,7 @@ export default {
     let mcpListener = null;
     vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
     mcpTools.register({ vault, tool, internal });
+    connectionMay.register({ vault, internal });
     browserProfileTools.register({ people, vault, internal });
     if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
       mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
@@ -579,7 +599,8 @@ export default {
     const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));
     tool("vault.remind.run", ["cli", "local", "deck"], "Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.",
       obj({}), async () => remindRun(vault, call));
-    rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    const rot = rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    readerTools.register({ ctx, vault, tool, rotateItem: rot.rotateItem });
     const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
       : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
         // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to
