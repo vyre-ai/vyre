@@ -24,10 +24,16 @@ export function setLendSigner(s: LendSigner | null): void { signer = s; }
 const PER = /^per_[A-Za-z0-9_-]{1,64}$/;
 const WORD = /^[A-Za-z0-9._:-]{1,120}$/;
 
+/** A bare https origin, exactly as the Vault checks it: equal to new URL(origin).origin, so no path, no trailing slash and no login in the address. */
+export function bareOrigin(o: unknown): o is string {
+  if (typeof o !== "string" || o.length > 253 || !o.startsWith("https://")) return false;
+  try { return new URL(o).origin === o; } catch { return false; }
+}
+
 /** Her yes for lending `id` to `agent` on `thread`, or null: no signer, a field that is not what the Vault will check, or the prompt closed. Never throws. */
 export async function lendYes(f: LendFields): Promise<string | null> {
   if (!signer) return null;
-  if (f.origin !== undefined && !(typeof f.origin === "string" && /^https?:\/\/[^\s/]{1,200}$/.test(f.origin))) return null;
+  if (f.origin !== undefined && !bareOrigin(f.origin)) return null;
   if (!PER.test(f.asker) || !f.id || f.id.length > 200 || !WORD.test(f.thread) || !/^[a-z][a-z0-9_-]{0,39}$/.test(f.agent)) return null;
   try {
     const yes = await signer(LEND_OP, { asker: f.asker, id: f.id, thread: f.thread, agent: f.agent, ...(f.origin ? { origin: f.origin } : {}) });

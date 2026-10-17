@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lendYes, setLendSigner, withYes, lendSignerFor, lendWithSite, LEND_OP } from "./lend-yes.ts";
+import { lendYes, setLendSigner, withYes, lendSignerFor, lendWithSite, bareOrigin, LEND_OP } from "./lend-yes.ts";
 import { signOf } from "../../../../lib/one-yes-sign.js";
 
 const F = { asker: "per_" + "b".repeat(26), id: "clio", thread: "thr_1", agent: "kit" };
@@ -101,6 +101,17 @@ test("a login with no saved site cannot be lent: nothing is signed, and the answ
   const seen = [];
   setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
   assert.deepEqual(await lendWithSite(F, [], async () => "https://x.example"), { needsSite: true });
+  assert.equal(seen.length, 0);
+  setLendSigner(null);
+});
+
+test("an origin is signed only when it is exactly a bare https origin, as the Vault checks it", async () => {
+  assert.equal(bareOrigin("https://app.clio.com"), true);
+  for (const bad of ["https://app.clio.com/", "https://app.clio.com/login", "https://user@app.clio.com", "https://user:pw@app.clio.com", "http://app.clio.com", "app.clio.com", "https://", "", 5, null]) assert.equal(bareOrigin(bad), false, String(bad));
+  const seen = [];
+  setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
+  assert.equal(await lendYes({ ...F, origin: "https://app.clio.com/" }), null, "a trailing slash is never signed");
+  assert.equal(await lendYes({ ...F, origin: "https://user@app.clio.com" }), null, "a login in the address is never signed");
   assert.equal(seen.length, 0);
   setLendSigner(null);
 });
