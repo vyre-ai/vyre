@@ -49,20 +49,21 @@ function seed(/** @type {Awaited<ReturnType<typeof world>>} */ w) {
 
 test("members list and see connected marks for their own connections only", { timeout: 150_000 }, async t => {
   const w = await world(t); seed(w);
-  const labels = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ c) => c.label).sort();
-  assert.deepEqual(await labels(await w.as("ben", "connectors.list")), ["ben's"], JSON.stringify((await w.as("ben", "connectors.list")).error));
-  assert.deepEqual(await labels(await w.as("cy", "connectors.list")), ["cy's", "cy's linear"]);
-  assert.deepEqual(await labels(await w.as("owner", "connectors.list")), ["owner's"], "the owner's list does not show a member's");
+  // the list names each connection by its short name and the app's label; which connection is whose is the name's and the person's
+  const labels = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ c) => c.name).sort();
+  assert.deepEqual(await labels(await w.as("ben", "connectors.list")), ["notion"], JSON.stringify((await w.as("ben", "connectors.list")).error));
+  assert.deepEqual(await labels(await w.as("cy", "connectors.list")), ["linear", "notion"]);
+  assert.deepEqual(await labels(await w.as("owner", "connectors.list")), ["notion"], "the owner's list does not show a member's");
   const marks = async (/** @type {any} */ r, /** @type {string} */ id) => ((r.data.presets.find((/** @type {any} */ p) => p.id === id) || {}).connected || []).map((/** @type {any} */ c) => c.label).sort();
   assert.deepEqual(await marks(await w.as("ben", "connectors.catalog"), "notion"), ["ben's"]);
-  assert.deepEqual(await marks(await w.as("cy", "connectors.catalog"), "notion"), ["cy's"]);
+  assert.deepEqual(await marks(await w.as("cy", "connectors.catalog"), "notion"), ["cy's", "cy's linear"], "(the seed records both of Cy's under the notion preset)");
   assert.deepEqual(await marks(await w.as("owner", "connectors.catalog"), "notion"), ["owner's"]);
 });
 
 test("a member's disconnect removes her connection and her hub row, and never the owner's or another member's of the same name", { timeout: 150_000 }, async t => {
   const w = await world(t); seed(w);
   const r = await w.as("ben", "connectors.disconnect", { name: "notion" });
-  assert.deepEqual(r.data, { name: "notion", removed: true }, JSON.stringify(r.error));
+  assert.deepEqual({ name: r.data?.name, removed: r.data?.removed, revoked: r.data?.revoked }, { name: "notion", removed: true, revoked: false }, JSON.stringify(r.error));   // no vault item behind this seeded row: the vendor could not be told, and the answer says so
   assert.deepEqual(w.connNames(), ["cy:linear", "cy:notion", "owner:notion"].map(x => x.replace(/^cy:/, `${CY}:`)).sort(), "only Ben's connection went");
   assert.deepEqual(w.hubNames(), ["notion", personKey("linear", CY), personKey("notion", CY)].sort(), "only Ben's hub row went: the owner's \"notion\" and Cy's stay");
   // Ben has nothing left to disconnect; the owner's connection of the same name is not his to remove
@@ -102,7 +103,7 @@ test("a forged token is refused on each of the six connect tools and never serve
 test("Ben's assistant reads Ben's list and cannot connect or disconnect", { timeout: 150_000 }, async t => {
   const w = await world(t); seed(w);
   const list = await w.kit("connectors.list");
-  assert.deepEqual((list.data || []).map((/** @type {any} */ c) => c.label), ["ben's"], JSON.stringify(list.error));
+  assert.deepEqual((list.data || []).map((/** @type {any} */ c) => c.name), ["notion"], JSON.stringify(list.error));
   const cat = await w.kit("connectors.catalog");
   assert.deepEqual(((cat.data?.presets || []).find((/** @type {any} */ p) => p.id === "notion") || {}).connected?.map((/** @type {any} */ c) => c.label), ["ben's"]);
   for (const tool of ["connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect"]) {

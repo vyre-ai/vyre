@@ -392,6 +392,9 @@ function normalizePolicy(t) {
 // ---- the hub ----
 
 const LEVEL = new AsyncLocalStorage();
+/** The member the tool that took this call named from the verified chain (who.me), for the Vault to answer about when the hub asks for her connection's token: the hop between has no person of its own. */
+export const ASKING = new AsyncLocalStorage();
+const meOf = async (/** @type {any} */ who) => (who && !who.agent && typeof who.me === "function" ? String(await Promise.resolve(who.me()).catch(() => "") || "") : "");
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
@@ -438,7 +441,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
  *   heldOf?: (via: string) => Promise<{ id: string, requester?: string | null }[]>, cancel?: (id: string, reason: string) => Promise<any>, revokeConnection?: (c: { owner: string, connection: string }) => Promise<any>,
- *   connectionToken?: (c: { owner: string, connection: string, write: boolean }) => Promise<{ access_token: string, token_type?: string }>,
+ *   connectionToken?: (c: { owner: string, connection: string, write: boolean, as?: string }) => Promise<{ access_token: string, token_type?: string }>,
  *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call"|"own", as?: string }, who: Who | null) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
@@ -566,7 +569,7 @@ export class Hub {
     // Fill the tool cache now, so the first session lists tools without a spawn. A server whose
     // vault grant does not exist yet fails here; that is expected (the CLI grants, then tests),
     // so it does not count against the restart budget and the add still stands.
-    const test = await this.test(n.name, { quiet: true });
+    const test = await ASKING.run(own ? { me: String(o.owner) } : undefined, () => this.test(n.name, { quiet: true }));   // a person's connection is first tried as that person
     return { ...this.view(this.must(n.name)), test };
   }
 
@@ -598,16 +601,16 @@ export class Hub {
     return this.view(this.must(n.name));
   }
 
-  async remove({ name }) {
+  async remove({ name }, who = null) {
     const row = this.must(name);
     /** @type {{ revoked: boolean, why: string } | null} */ let revoked = null;
     // A person's connection can be taken away only by the person who made it; what it was holding at the Gate, and the vendor's own token, go with it.
     if (row.owner) {
-      if (!(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
+      if (!(await this.mayUse(row, who, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
       await this.cancelHeld(row, () => true, "the connection was removed");
       revoked = { revoked: false, why: "the hub has no way to tell the vendor" };
       if (typeof this.deps.revokeConnection === "function") {
-        try { const r = await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); revoked = { revoked: Boolean(r && r.revoked === true), why: String((r && r.why) || "") }; }
+        try { const asMe = await meOf(who); const r = await this.deps.revokeConnection({ owner: row.owner, connection: row.connection, ...(asMe ? { as: asMe } : {}) }); revoked = { revoked: Boolean(r && r.revoked === true), why: String((r && r.why) || "") }; }
         catch (e) { revoked = { revoked: false, why: "the vendor could not be told" }; this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); }
       }
     }
@@ -648,7 +651,9 @@ export class Hub {
    * restart budget does not stop a test, and a passing test clears it.
    * @param {string} name @param {{ quiet?: boolean }} [o]
    */
-  async test(name, o = {}) {
+  async test(name, o = {}) { return o.who ? ASKING.run({ who: o.who }, () => this.testIn(name, o)) : this.testIn(name, o); }
+
+  async testIn(name, o = {}) {
     const r = this.must(name);
     const t0 = this.now();
     const s = this.state(name);
@@ -726,6 +731,12 @@ export class Hub {
    */
   async mayUse(r, who, level, as = undefined) {
     if (typeof this.deps.mayUseConnection !== "function") return false;
+    // The person on this call, named by the tool that took it from the verified chain (who.me), is who the Vault is asked about: a hop between the tool and the Vault carries no person of its own. Their own connection is theirs
+    // to use and to remove; one shared with them is answered by the Vault's own check of that person. An assistant (who.agent) or a call with no member is asked as before.
+    if (r.owner && as === undefined && who && !who.agent && typeof who.me === "function" && (level === "read" || level === "call" || level === "own")) {
+      const me = await Promise.resolve(who.me()).catch(() => "");
+      if (me) { if (level === "own") return me === r.owner; as = me; }
+    }
     try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level, ...(as !== undefined ? { as } : {}) }, who)) === true; } catch { return false; }
   }
 
@@ -779,7 +790,10 @@ export class Hub {
    * the person outside, whatever the tool's name or mode says.
    * @param {{ server?: string, tool?: string, name?: string, arguments?: any, hold?: boolean }} input @param {Who} who
    */
-  async call(input, who) {
+  async call(input, who) { return ASKING.run({ who }, () => this.callIn(input, who)); }
+
+  /** @param {any} input @param {Who} who */
+  async callIn(input, who) {
     let server = input.server, tool = input.tool;
     if (!server && input.name) { const i = String(input.name).indexOf("__"); if (i > 0) { server = input.name.slice(0, i); tool = input.name; } }
     if (!server || !tool) throw fail("bad_input", "say which tool: { server, tool } or { name: \"<server>__<tool>\" }");
@@ -837,7 +851,7 @@ export class Hub {
     const args = content.arguments ?? {};
     if (!isObj(args)) throw fail("bad_input", "the approved arguments are not an object");
     const final = this.retarget(args, to, it, server);
-    return this.run(server, t.tool, final, { agent: it.agent || null, released: id });
+    return ASKING.run({ me: String(it.requester || "") }, () => this.run(server, t.tool, final, { agent: it.agent || null, released: id }));
   }
 
   /**
@@ -980,7 +994,8 @@ export class Hub {
   async connectionHeaders(r) {
     if (typeof this.deps.connectionToken !== "function") throw fail("failed", "this hub has no way to reach a person's connection");
     let t;
-    try { t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write) }); }
+    const st = /** @type {any} */ (ASKING.getStore()), asMe = st ? (typeof st.me === "string" ? st.me : await meOf(st.who)) : "";
+    try { t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write), ...(asMe ? { as: asMe } : {}) }); }
     catch (e) {
       // the vendor no longer honours the sign-in: the connection waits for its person to sign in again, and calls stop (no retry loop) until they do
       if (/** @type {any} */ (e)?.code === "needs_reconnect") { const s = this.state(r.name); s.state = "needs_reconnect"; s.error = "sign in again to use this connection"; this.deps.emit("mcp.needs-reconnect", { name: r.name }); }

@@ -154,18 +154,27 @@ export function grant(dir, personId, pubB64) {
 }
 
 /**
+ * The checks a put makes on an item before anything is sealed: its id and name, its hosts, and that it has a value. Throws what put would throw.
+ * @param {{ id: string, name: string, value: string, hosts?: string[] }} item
+ */
+export function checkItem(item) {
+  const id = String(item.id || "");
+  const name = String(item.name || "").slice(0, 80);
+  if (!ITEM_RE.test(id) || !name) throw refuse("Give the item an id of letters, digits, dot, underscore or hyphen, and a name.", "bad_input");
+  const hosts = normalizeHostList(item.hosts, refuse);
+  if (!String(item.value ?? "").length) throw refuse("Give the item a value.", "bad_input");
+  return { id, name, hosts };
+}
+
+/**
  * Seal an item for the hosts it may be sent to. The value is not returned.
  * @param {string} dir @param {{ id: string, name: string, value: string, hosts?: string[] }} item
  */
 export function put(dir, item) {
   const generation = generationOf(dir);
   if (!generation) throw refuse("This space has no vault yet. Create one first.", "not_found");
-  const id = String(item.id || "");
-  const name = String(item.name || "").slice(0, 80);
-  if (!ITEM_RE.test(id) || !name) throw refuse("Give the item an id of letters, digits, dot, underscore or hyphen, and a name.", "bad_input");
-  const hosts = normalizeHostList(item.hosts, refuse);
+  const { id, name, hosts } = checkItem(item);
   const value = Buffer.from(String(item.value ?? ""), "utf8");
-  if (!value.length) throw refuse("Give the item a value.", "bad_input");
   const opened = serverSvk(dir, generation);
   const sealed = { ...sealItem(opened.svk, id, name, value, generation), hosts };
   opened.svk.fill(0);

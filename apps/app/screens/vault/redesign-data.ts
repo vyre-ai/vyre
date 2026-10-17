@@ -10,7 +10,7 @@ import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 
 export type Scope = "space" | "mine";
-export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
+export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean; /** Space only: the space's own vault key is not made yet (it is made the first time something is saved with approval). */ noSpaceVault?: boolean };
 /** What the Add sheet saves: the tool to call (vault.put, vault.me.put, or an SSH tool) and its input, built by add-model.js. */
 export type AddCall = { tool: string; input: Record<string, unknown> };
 
@@ -94,6 +94,17 @@ export function realData(call: Call): VaultData {
       shared: [],
     };
   };
+  /** The space's id when its own vault key is not made yet, else null. A server that cannot say leaves the screen as it was. */
+  async function spaceVaultId(): Promise<string | null> {
+    try {
+      const me = await ask<{ space?: string }>("records.me");
+      const space = String(me?.space ?? "");
+      if (!/^spc_[a-z2-7]{8,}$/.test(space)) return null;
+      const st = await ask<{ exists?: boolean }>("vault.space.status", { space });
+      if (st?.exists === false) return space;
+    } catch { /* leave it */ }
+    return null;
+  }
   const fieldsOf: Record<string, string[]> = {};
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
@@ -102,7 +113,7 @@ export function realData(call: Call): VaultData {
       if (scope === "space") {
         const r = await ask<{ items?: ListRow[]; locked?: boolean }>("vault.list");
         for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
-        return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked) };
+        return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked), ...((await spaceVaultId()) === null ? {} : { noSpaceVault: true }) };
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {

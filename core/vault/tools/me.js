@@ -3,10 +3,11 @@
 // Not for the owner, whose vault is the vault.* tools; not for a model, which sees names and kinds at most in a session (the values go to the person's surfaces and to the module that holds the sign-in).
 // The member gate lets these names through (MEMBER_ALLOWED) because each one resolves its person here and refuses anything but exactly one person who is not the owner.
 
+import { devSwitch } from "../../../kernel/devbuild.js";   // a development build only: a fake vendor on loopback (VYRE_SEAL_DEV=1); a packaged build ignores it
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
-import { ConnectionTokens } from "../connection-token.js";
+import { ConnectionTokens, revokeAllowed } from "../connection-token.js";
 import { normalize as normalizeApiCredential } from "../api-request.js";
 import { revokeAtVendor } from "../connection-revoke.js";
 
@@ -122,10 +123,10 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const person = await memberOf(ctx.kernel, meta);
       const row = await ctx.call("sessions.accounts.item", { account: String(input.account || ""), person });
       const acct = row && !row.error ? row.data : null;
-      if (!acct || typeof acct.item !== "string" || !AI_KINDS.includes(String(acct.kind || ""))) throw Object.assign(new Error("that account is not yours, or holds no key of yours"), { code: "denied" });
+      if (!acct || typeof acct.item !== "string" || !AI_KINDS.includes(String(acct.kind || ""))) throw Object.assign(new Error("that account is not yours, or holds no key of yours: pick one of your own AI accounts, or add your key to it first"), { code: "denied" });
       let it; try { it = await people.get(person, { name: acct.item }); } catch { throw Object.assign(new Error("unlock your own vault to use this account"), { code: "locked" }); }
       const value = it.fields[String(acct.field || "value")] ?? it.fields.key ?? it.fields.token;
-      if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty"), { code: "denied" });
+      if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty: add the key to the account in your vault, then try again"), { code: "denied" });
       people.emit("vault.me.lent", { person, account: String(input.account) });   // who and which account: never the value, and never the item's name (the member's own label for a secret)
       return { value };
     },
@@ -155,11 +156,11 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       if (!["module:mcp", "module:connectors"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const K = ctx.kernel;
       let c;
-      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read"), { code: "denied" }); }
+      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read: sign in again on this device, then try again"), { code: "denied" }); }
       const hops = c && Array.isArray(c.hops) ? c.hops : [];
       if (hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind !== "person")) throw Object.assign(new Error("an assistant is not a person: ask as yourself"), { code: "denied" });
       const ids = [...new Set(hops.filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)))];
-      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is"), { code: "denied" });
+      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is: ask from your own signed-in session, with no assistant between"), { code: "denied" });
       return String(K.owner) === ids[0] ? { kind: "owner" } : { kind: "member", person: ids[0] };
     },
   });
@@ -176,17 +177,17 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const id = await memberOf(ctx.kernel, meta);
       const f = input && input.fields;
       if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });
-      if (typeof f.server_url !== "string" || !/^https:\/\//.test(f.server_url)) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
+      if (typeof f.server_url !== "string" || !(/^https:\/\//.test(f.server_url) || (devSwitch(process.env.VYRE_SEAL_DEV) && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(f.server_url)))) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
       const fields = { ...f, connected_by: id };
       const svc = people.service(id), name = String(input.name);
       if (await svc.has(name)) {
         const cur = await svc.get(name);
-        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours: choose another name, or connect the app again under your own name"), { code: "denied" });
       } else {
         // A name an ordinary item of hers already has is refused (checked when her vault is open; a sealed-only call cannot see ordinary items, which the connection key does not open).
         let clash = false;
         try { clash = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === name); } catch (e) { if (/** @type {any} */ (e).code !== "locked") throw e; }
-        if (clash) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+        if (clash) throw Object.assign(new Error("that name is not a connection of yours: choose another name, or connect the app again under your own name"), { code: "denied" });
       }
       return svc.put(name, `connection to ${new URL(f.server_url).host}`, fields);
     },
@@ -198,7 +199,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   ctx.tool("vault.connection.token", {
     internal: true,
     description: "An access token for one person's app connection, for the MCP hub: { owner, connection, write? } -> { access_token, token_type, expires_at, resource }. Only the mcp module asks; the asker's chain is checked again.",
-    input: obj({ owner: str, connection: str, write: { type: "boolean" } }, ["owner", "connection"]),
+    input: obj({ owner: str, connection: str, write: { type: "boolean" }, as: str }, ["owner", "connection"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       return tokens.token(input || {}, meta);
@@ -208,12 +209,14 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   ctx.tool("vault.connection.revoke", {
     internal: true,
     description: "Tell the vendor to revoke a person's connection token (RFC 7009), if the connection names a revocation address: { owner, connection } -> { revoked, why }. Only the mcp module asks, after it checked the caller made the connection.",
-    input: obj({ owner: str, connection: str }, ["owner", "connection"]),
+    input: obj({ owner: str, connection: str, as: str }, ["owner", "connection"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const owner = String(input && input.owner || ""), name = String(input && input.connection || "");
+      if (!revokeAllowed(owner, input && input.as)) throw Object.assign(new Error("only the person who made a connection takes it away: ask them to remove it"), { code: "denied" });
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(owner) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
-      const out = await revokeAtVendor({ people }, { owner, connection: name });
+      // the connection's own fields (its revocation address and refresh token) are read the way the token tool reads them, by the connection key or the server's sealed copy; the person-facing get shows no secret and would never name the address
+      const out = await revokeAtVendor({ people: { get: (/** @type {string} */ id, /** @type {{ name: string }} */ q) => people.service(id).get(q.name) } }, { owner, connection: name });
       return out;
     },
   });

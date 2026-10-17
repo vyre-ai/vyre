@@ -234,7 +234,7 @@ export default {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
-      run: async (input, meta) => { await handled(input.id, meta); return (await withPresence([gate.get(input)], meta.peer))[0]; },
+      run: async (input, meta) => { await handled(input.id, meta, { ownSender: true }); return (await withPresence([gate.get(input)], meta.peer))[0]; },   // the module whose sender holds the item reads it to release it, as it may take it back
     });
 
     // who approved, rejected, revised or settled is the caller (S3): the `by` a caller sends is not read
@@ -446,7 +446,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission: ask the owner or an admin which one you mean, or take its id from the standing permissions on your Gate screen"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };

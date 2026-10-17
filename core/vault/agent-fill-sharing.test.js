@@ -25,18 +25,19 @@ async function world(t) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-sharing-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
-  const rig = await kernelRig({ agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst" } });
+  const rig = await kernelRig({ agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst", ghost: "agt_ghost" }, notActors: ["ghost"] });
   const events = /** @type {any[]} */ ([]);
+  const logs = /** @type {string[]} */ ([]);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file" } }, emit: (type, p) => events.push({ type, p }), log: () => {}, clock: rig.clock });
   v.access = new Access(v, rig.ctx);
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   await v.put({ name: "northwind-app", kind: "login", fields: { username: "alex@northwind.example", password: PASS }, url: `${ORIGIN}/login`, hosts: [ORIGIN] }, "cli");
-  await v.put({ name: "graph-api", kind: "api-credential", fields: { config: JSON.stringify({ hosts: ["https://graph.example.test"], auth: { type: "bearer" } }), secret: "fixture-secret-0123456789" } }, "cli");
+  await v.put({ name: "graph-api", kind: "api-credential", fields: { config: JSON.stringify({ hosts: ["graph.example.test"], auth: { type: "bearer" } }), secret: "fixture-secret-0123456789" } }, "cli");
   await v.access.convertScopes();
   const calls = /** @type {any[]} */ ([]);
   /** A stand-in for the browser: the connection opens and then stops, so a started fill shows as the stop and a refused one as a refusal. */
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
-  const d = { vault: v, said: new SaidIntents(v), log: () => {}, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
+  const d = { vault: v, said: new SaidIntents(v), log: (/** @type {string} */ m) => { logs.push(String(m)); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
     calls.push({ name, input });
     if (name === "computers.fill.begin") return { data: { fill: "fill-1", cdpUrl: "http://127.0.0.1:9", token: "" } };
     return { data: { agent: input.agent, ended: true } };
@@ -47,7 +48,7 @@ async function world(t) {
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
   const fill = (/** @type {string} */ agent, /** @type {any} */ extra = {}) => agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra });
   const began = () => calls.filter(c => c.name === "computers.fill.begin").length;
-  return { v, rig, db, events, calls, share, fill, began };
+  return { v, rig, db, events, logs, calls, share, fill, began };
 }
 
 const refused = (/** @type {Promise<any>} */ p, /** @type {RegExp} */ re = /is not lent to/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
@@ -76,12 +77,12 @@ test("only a level that includes Fill in lets an agent fill: Read-only or API us
   const lacking = await w.share("juno", ["vault.read", "vault.call"]);
   await refused(w.fill("juno"));
   await w.rig.gw.grants.revoke(w.rig.owner(), lacking.id, "wrong level", { presence: { n: 1 } });
-  for (const level of /** @type {const} */ (["use", "reveal", "edit"])) {
-    const g = await w.share("juno", /** @type {any} */ (ACCESS_LEVELS)[level] || ACCESS_LEVELS.reveal);
-    await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", `${level} lets it start`);
-    await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
-    await refused(w.fill("juno"));
-  }
+  // an agent holds the Fill in level (use) and nothing above it: the kernel refuses to give an assistant a credential to show, change, delete, share or rotate
+  const g = await w.share("juno", ACCESS_LEVELS.use);
+  await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", "use lets it start");
+  await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
+  await refused(w.fill("juno"));
+  for (const level of /** @type {const} */ (["reveal", "edit"])) await assert.rejects(w.share("juno", ACCESS_LEVELS[level]), /never to show, change, delete, share or rotate it/, `${level} cannot be given to an agent`);
 });
 
 test("a fill goes only where the login is for: another origin, a lookalike and no origin the login names are refused even with a share", async t => {
@@ -114,7 +115,19 @@ test("only a login can be filled; the value never reaches the agent: not in the 
   await assert.rejects(agentFill({ vault: w.v, said: new SaidIntents(w.v), log: () => {}, call: async () => ({ data: {} }) }, { agent: "juno", item: "graph-api" }), e => /** @type {any} */ (e).code === "not_found");
   let seen = "";
   try { await w.fill("juno"); } catch (e) { seen = String(/** @type {Error} */ (e).message); }
-  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls });
+  // the only place the values go is the computer's scrub list (computers.fill.begin registers them so the agent's own view of the page never shows them): not to the agent, not to a log
+  const begin = w.calls.find(c => c.name === "computers.fill.begin");
+  assert.ok(begin && begin.input.values.includes(PASS), "the exact values are registered for scrubbing");
+  const all = JSON.stringify({ seen, logs: w.logs, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls.filter(c => c.name !== "computers.fill.begin") });
   assert.ok(!all.includes(PASS), "the password is nowhere an agent or a log can read it");
   assert.ok(!all.includes("alex@northwind.example"), "nor the username");
+});
+
+test("an agent that resolves to a uid but is not a member of the Space is refused even with a matching share (the rig registering its agents does not hide the check)", async t => {
+  const w = await world(t);
+  await w.share("ghost");
+  await refused(w.fill("ghost"));
+  assert.equal(w.began(), 0, "the agent's computer was never touched");
+  await w.share("kit");
+  await assert.rejects(w.fill("kit"), e => /** @type {any} */ (e).code === "stand_in", "the same share on a member agent starts");
 });

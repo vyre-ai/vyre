@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { x25519Pair } from "../../kernel/identity/wrap.js";
 import { registerSpaceTools } from "./space-tools.js";
+import { noteFirstAdopt, FIRST_ADOPT_MS } from "../../lib/first-adopt.js";
 
 const SPACE = "spc_aaaaaaaaaa";
 const ALICE = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -31,7 +32,7 @@ function rig(o = {}) {
   };
   registerSpaceTools(ctx, o.fetch ? { fetch: o.fetch } : {});
   const call = (/** @type {string} */ name, /** @type {any} */ input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { call, tools, events, logs };
+  return { call, tools, events, logs, root };
 }
 
 test("the space vault key is shared only with a member of that space, and only one key per member", async () => {
@@ -99,4 +100,92 @@ test("a lent value never reaches the response, the audit line, the log or an err
   assert.equal(used[2][1].host, "evil.example");
   assert.equal(JSON.stringify(r.events).includes(SECRET), false, "no event carries the value");
   assert.equal(r.logs.join("\n").includes(SECRET), false, "no log line carries the value");
+});
+
+test("the first put in this server's own space makes the space's vault key in the same call; another space id, grant and use still say there is no vault yet", async () => {
+  const r = rig({ members: [ALICE] });
+  const item = { id: "stripe", name: "Stripe key", value: SECRET, hosts: ["api.stripe.com"] };
+  const put = await r.call("vault.space.put", { space: SPACE, ...item });
+  assert.ok(put);
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, true);
+  assert.deepEqual((await r.call("vault.space.list", { space: SPACE })).items.map((/** @type {any} */ i) => i.id), ["stripe"]);
+  assert.deepEqual(r.events.find((e) => e[0] === "vault.space-created")?.[1], { space: SPACE, by: "first put" });
+  assert.ok(!JSON.stringify([r.events, r.logs]).includes(SECRET), "no value in an event or a log line");
+  // Another space id makes nothing.
+  const other = "spc_bbbbbbbbbb";
+  await assert.rejects(() => r.call("vault.space.put", { space: other, ...item }), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
+  // Granting, rotating and using a space with no vault say so, and make nothing.
+  // (grant asks the kernel first: ALICE is a member of the home space only, so another space is refused as "not a member" before any vault is looked for)
+  await assert.rejects(() => r.call("vault.space.grant", { space: other, person: ALICE, pub: x25519Pair().pub }), (/** @type {any} */ e) => e.code === "denied");
+  await assert.rejects(() => r.call("vault.space.rotate", { space: other }), (/** @type {any} */ e) => e.code === "not_found");
+  await assert.rejects(() => r.call("vault.space.use", { space: other, id: "stripe", url: "https://api.stripe.com/v1" }), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
+  // A server that cannot say which space is its own makes no key.
+  const blind = rig({ noKernel: true });
+  await assert.rejects(() => blind.call("vault.space.put", { space: SPACE, ...item }), (/** @type {any} */ e) => e.code === "not_found");
+});
+
+test("vault.space.put always asks for the person's approval, so the key made by the first put is made only with it", () => {
+  const r = rig();
+  const p = r.tools.get("vault.space.put").presence;
+  assert.ok(p && typeof p.summary === "function" && typeof p.when !== "function");
+});
+
+const ADOPTER = "device:adopter1";
+/** Does the registry ask this caller for a fresh approval before vault.space.create? (The tool's own `when`, as presence.required calls it.) */
+const asks = (/** @type {any} */ r, /** @type {string} */ caller, /** @type {string} */ space = SPACE, /** @type {any} */ meta = {}) => Boolean(r.tools.get("vault.space.create").presence.when({ space }, { caller, meta }));
+
+test("the device that finished the first adoption makes this server's space vault without a fresh approval, once, and nothing else is opened up", async () => {
+  const r = rig();
+  noteFirstAdopt(r.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(r, ADOPTER), false, "the adopter, inside the window, for this server's own space, with no vault yet");
+  const made = await r.call("vault.space.create", { space: SPACE }, ADOPTER);
+  assert.equal(made.generation, 1);
+  assert.deepEqual(r.events.find((e) => e[0] === "vault.space-created")?.[1], { space: SPACE, device: ADOPTER, firstRun: true });
+  assert.ok(r.logs.some((l) => /space vault made for/.test(l) && !/key/i.test(l)), "an audit line, no key material");
+  assert.deepEqual((await r.call("vault.space.status", { space: SPACE })).members, [], "the new vault has no member grant");
+  // A second call needs the approval again, and the tool itself refuses a vault that is already there.
+  assert.equal(asks(r, ADOPTER), true);
+  await assert.rejects(() => r.call("vault.space.create", { space: SPACE }, ADOPTER), (/** @type {any} */ e) => e.code === "exists");
+  // Putting, granting and rotating are never narrowed: they declare presence with no `when`.
+  for (const n of ["vault.space.put", "vault.space.grant", "vault.space.rotate"]) {
+    const p = r.tools.get(n).presence;
+    assert.ok(p && typeof p.when !== "function", `${n} always asks`);
+  }
+});
+
+test("the exemption holds only inside its bounds: late, another device, an agent or MCP caller, another space, no record of an adoption", async () => {
+  const late = rig();
+  noteFirstAdopt(late.root, ADOPTER, Date.now() - FIRST_ADOPT_MS - 5000);
+  assert.equal(asks(late, ADOPTER), true, "after ten minutes");
+
+  const r = rig();
+  noteFirstAdopt(r.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(r, "device:someoneelse"), true, "another paired device");
+  assert.equal(asks(r, "cli"), true, "a local caller is not the adopter");
+  assert.equal(asks(r, "mcp:agent:kit"), true, "an agent");
+  assert.equal(asks(r, "mcp"), true, "an MCP caller");
+  assert.equal(asks(r, ADOPTER, SPACE, { agent: "kit" }), true, "the adopter's device acting for an agent");
+  assert.equal(asks(r, ADOPTER, "spc_bbbbbbbbbb"), true, "a space that is not this server's own");
+  assert.equal(asks(r, ADOPTER, "not-a-space"), true, "an id that is not a space id");
+  assert.equal(Boolean(r.tools.get("vault.space.create").presence.when({ space: SPACE })), true, "a caller the registry did not name");
+
+  const none = rig();
+  assert.equal(asks(none, ADOPTER), true, "no first adoption is on record");
+  const noKernel = rig({ noKernel: true });
+  noteFirstAdopt(noKernel.root, ADOPTER, Date.now() - 1000);
+  assert.equal(asks(noKernel, ADOPTER), true, "a server that cannot say which space is its own");
+});
+
+test("a put that is refused leaves no key behind, and a module-labelled put makes none", async () => {
+  const r = rig();
+  const ok = { id: "stripe", name: "Stripe key", value: SECRET, hosts: ["api.stripe.com"] };
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, id: "bad id!" }), (/** @type {any} */ e) => e.code === "bad_input");
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, value: "" }), (/** @type {any} */ e) => e.code === "bad_input");
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok, hosts: ["not a host!!"] }), (/** @type {any} */ e) => e.code === "bad_input" || e.code === "host_refused");
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, false, "no empty key from a refused put");
+  // A module caller is not asked for presence by the registry, so it may not make the key.
+  await assert.rejects(() => r.call("vault.space.put", { space: SPACE, ...ok }, "module:planner"), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, false);
 });

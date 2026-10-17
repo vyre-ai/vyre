@@ -110,7 +110,16 @@ jobs:
         if: ${{ inputs.app }}
         working-directory: relay/app
         run: |
-          "$W" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt; grep -E "app.vyre.run|vyre-app" /tmp/app-dry.txt
+          set -o pipefail
+          "$W" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt
+          # The redirect Worker has no bindings, so wrangler's dry-run output does not name it. What is deployed is read from relay/app/wrangler.toml; the output only has to show that wrangler bundled it and stopped before uploading.
+          name=$(sed -n 's/^name = "\(.*\)"$/\1/p' wrangler.toml)
+          route=$(sed -n 's/.*pattern = "\([^"]*\)".*/\1/p' wrangler.toml)
+          [ "$name" = vyre-app ] && [ "$route" = app.vyre.run ] || { echo "::error::relay/app/wrangler.toml names '$name' on '$route', not vyre-app on app.vyre.run"; exit 1; }
+          grep -Eq 'Total Upload:? +[0-9.]+ KiB' /tmp/app-dry.txt || { echo "::error::the dry run did not report an upload size"; exit 1; }
+          grep -Fq -- '--dry-run: exiting now' /tmp/app-dry.txt || { echo "::error::the dry run did not stop where wrangler stops a dry run"; exit 1; }
+          [ -n "$(ls -A /tmp/app-out-bundle 2>/dev/null)" ] || { echo "::error::nothing was bundled"; exit 1; }
+          echo "relay/app: $name on $route, bundled"
   deploy:
     name: deploy (waits for the deploy environment's reviewer)
     needs: dry-run

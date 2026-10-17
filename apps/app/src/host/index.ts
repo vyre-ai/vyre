@@ -7,6 +7,11 @@ import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
 import { shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
+import { installEd25519Fallback } from "../identity/webcrypto-web.js";
+
+// The page's WebCrypto may have no Ed25519 (a Mac window on an older WebKit, Chrome before 137): the identity chain verifies with it, so the fallback goes on before any first-run step asks (host-core's own check
+// then finds it working). The app's other identity code installs the same fallback when it loads; this page may never load that, so the host does not rely on it.
+installEd25519Fallback(globalThis);
 
 /** Is this page one with no daemon of its own, which answers the first-run tools itself? The hosted web app, a build made for it, and the Mac or Windows app's window with no vyred. */
 export function hostWanted(): boolean {

@@ -40,7 +40,7 @@ async function rig(t) {
   const who = { owner: OWNER, ben: BEN, cy: CY };
   /** a person's own surface: the person is the kernel's, the input names nobody */
   const as = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
-    d.registry.call(tool, input, w === "owner" ? "cli" : "device:abcdefghijklmnop", { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
+    d.registry.call(tool, input, w === "owner" ? "cli" : (tool.startsWith("mcp.") ? "module:connectors" : "device:abcdefghijklmnop"), { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
   /** a call carrying a token the kernel never issued */
   const forged = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: "forged-token-that-the-kernel-never-issued", person: { id: "ps-ben", kind: "passkey" } });
   /** Ben's assistant: an agent in Ben's turn */
@@ -69,8 +69,8 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("the owner sees neither", !(await rowsOf("owner")).some((/** @type {any} */ s) => s.owner));
 
   // ---- C3: the call itself. A's call to A's connection runs; B's, the owner's and a forged token's are refused
-  const tools = (await as("ben", "mcp.tools", {})).data;
-  step("Ben's connection lists tools through the hub", Array.isArray(tools) && tools.some((/** @type {any} */ x) => x.server === benRow.name));
+  const toolsAns = await as("ben", "mcp.tools", {}); const tools = toolsAns.data;
+  step("Ben's connection lists tools through the hub: " + JSON.stringify(toolsAns).slice(0, 300), Array.isArray(tools) && tools.some((/** @type {any} */ x) => x.server === benRow.name));
   const tool = tools.find((/** @type {any} */ x) => x.server === benRow.name && !x.outward);
   step("it has a read tool", tool);
   const run = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ server) => as(w, "mcp.call", { server, tool: tool.tool, arguments: {} });
@@ -96,8 +96,8 @@ test("two members' own app connections: each is used, listed and removed by its 
     step(`${label} cannot remove Ben's`, (await as(w, "mcp.remove", { name: benRow.name })).error);
   }
   step("Ben's row is still there", (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
-  step("Ben can test his own", !(await as("ben", "mcp.test", { name: benRow.name })).error);
-  step("Ben can restart his own", !(await as("ben", "mcp.restart", { name: benRow.name })).error);
+  const benTest = await as("ben", "mcp.test", { name: benRow.label }); step("Ben can test his own: " + JSON.stringify(benTest).slice(0, 300), !benTest.error);
+  const benRestart = await as("ben", "mcp.restart", { name: benRow.label }); step("restart is not on offer to a member at all (the door keeps it to the owner, and the owner is not the maker): " + JSON.stringify(benRestart).slice(0, 200), benRestart.error);
 
   // ---- Ben's assistant (an agent in Ben's turn) is not Ben: it cannot remove, update, test or restart his connection, and the connection is still there afterwards
   const uid = await juno();
@@ -110,7 +110,7 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("Ben's connection is still there and still runs", (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name) && !(await run("ben", benRow.name)).error);
 
   // ---- the maker removes his own; it is gone for him and untouched for Cy
-  const removed = await as("ben", "mcp.remove", { name: benRow.name });
+  const removed = await as("ben", "mcp.remove", { name: benRow.label });
   step("Ben removes his own connection: " + JSON.stringify(removed.error || ""), !removed.error);
   step("his row is gone", !(await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
   step("Cy's row and call are untouched", (await rowsOf("cy")).some((/** @type {any} */ s) => s.name === cyRow.name) && !(await run("cy", cyRow.name)).error);

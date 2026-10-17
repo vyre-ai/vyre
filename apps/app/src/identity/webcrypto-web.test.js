@@ -3,7 +3,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { BROWSER_TOO_OLD, ed25519Works, installEd25519Fallback } from "./webcrypto-web.js";
+import { BROWSER_TOO_OLD, ed25519Mode, ed25519Works, installEd25519Fallback } from "./webcrypto-web.js";
 import * as C from "../../../../kernel/identity/chain.js";
 
 /** A browser's WebCrypto with no Ed25519: importKey and verify refuse it the way Chrome 130 does, everything else works. */
@@ -88,4 +88,91 @@ test("a fallback key used with another algorithm is refused, not verified by nob
 
 test("the words for a browser that cannot be helped", () => {
   assert.equal(BROWSER_TOO_OLD, "This browser is too old for Vyre. Update it, or use the Vyre app.");
+});
+
+const edName = (algo) => String(algo && (algo.name || algo)).toUpperCase() === "ED25519";
+const real = crypto.webcrypto.subtle;
+
+test("a browser whose own Ed25519 answers false for a good signature is sent to the fallback after one recorded self-test, and the fallback answers right both ways", async () => {
+  const g = { crypto: { subtle: {
+    importKey: async (f, data, algo, ...r) => (edName(algo) ? { opaque: true } : real.importKey(f, data, algo, ...r)),
+    verify: async (algo, ...r) => (edName(algo) ? false : real.verify(algo, ...r)),
+    digest: (...a) => real.digest(...a),
+  } } };
+  assert.equal(await ed25519Works(g), false, "before: the browser's own answers false for the known good signature");
+  installEd25519Fallback(g);
+  assert.equal(ed25519Mode(g), "native ok", "nothing is decided before the check has run");
+  assert.equal(await ed25519Works(g), true, "after: the check finds the browser's answers wrong and the fallback answers");
+  assert.equal(ed25519Mode(g), "fallback chosen");
+  const { pub, sig } = sign(Buffer.from("trust the vector"));
+  const key = await g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("trust the vector")), true);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("trust the vectoR")), false);
+});
+
+test("a browser whose own Ed25519 passes the self-test keeps answering for itself, and one odd error from it is not sent to the fallback", async () => {
+  const used = [];
+  let breakOnce = false;
+  const g = { crypto: { subtle: {
+    importKey: async (...a) => { used.push("import"); return real.importKey(...a); },
+    verify: async (...a) => { used.push("verify"); if (breakOnce) { breakOnce = false; throw Object.assign(new Error("Invalid key data"), { name: "SyntaxError" }); } return real.verify(...a); },
+    digest: (...a) => real.digest(...a),
+  } } };
+  installEd25519Fallback(g);
+  assert.equal(await ed25519Works(g), true);
+  assert.equal(ed25519Mode(g), "native ok");
+  assert.ok(used.includes("import") && used.includes("verify"), "the browser's own answered");
+  const { pub, sig } = sign(Buffer.from("native"));
+  const key = await g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  assert.equal(key.type, "public", "a real CryptoKey of the browser");
+  breakOnce = true;
+  await assert.rejects(() => g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("native")), (e) => e.name === "SyntaxError", "an odd error from a browser that passed is its own error, not a reason for the fallback");
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("native")), true);
+});
+
+test("a verify that arrives while the self-test is pending waits for it, and is never answered by an unchecked native", async () => {
+  let release = () => {};
+  const gate = new Promise((r) => { release = r; });
+  const answered = [];
+  const g = { crypto: { subtle: {
+    importKey: async (...a) => real.importKey(...a),
+    verify: async (algo, key, sig, msg) => { if (msg.length === 0) await gate; answered.push(Buffer.from(msg).toString()); return real.verify(algo, key, sig, msg); },
+    digest: (...a) => real.digest(...a),
+  } } };
+  installEd25519Fallback(g);
+  const { pub, sig } = sign(Buffer.from("late"));
+  const keyReady = g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  const asked = keyReady.then((key) => g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("late")));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!answered.includes("late"), "nothing was answered while the self-test was held");
+  release();
+  assert.equal(await asked, true);
+  assert.ok(answered.indexOf("late") > answered.indexOf(""), "the self-test's own check came first");
+});
+
+test("each subtle runs its own self-test: one browser that fails does not send another that passes to the fallback", async () => {
+  const bad = { crypto: { subtle: { importKey: async (f, d, a, ...r) => (edName(a) ? { opaque: true } : real.importKey(f, d, a, ...r)), verify: async (a, ...r) => (edName(a) ? false : real.verify(a, ...r)), digest: (...a) => real.digest(...a) } } };
+  const good = { crypto: { subtle: { importKey: (...a) => real.importKey(...a), verify: (...a) => real.verify(...a), digest: (...a) => real.digest(...a) } } };
+  installEd25519Fallback(bad); installEd25519Fallback(good);
+  assert.equal(await ed25519Works(bad), true);
+  assert.equal(await ed25519Works(good), true);
+  assert.equal(ed25519Mode(bad), "fallback chosen");
+  assert.equal(ed25519Mode(good), "native ok");
+});
+
+test("the key bytes handed to the fallback are a copy: the caller overwriting its buffer, as an ArrayBuffer or a typed array, changes nothing", async () => {
+  const g = { crypto: { subtle: {
+    importKey: async (f, data, algo, ...r) => (edName(algo) ? { opaque: true } : real.importKey(f, data, algo, ...r)),
+    verify: async (algo, ...r) => (edName(algo) ? false : real.verify(algo, ...r)),
+    digest: (...a) => real.digest(...a),
+  } } };
+  installEd25519Fallback(g);
+  const { pub, sig } = sign(Buffer.from("copy me"));
+  for (const make of [() => { const ab = new ArrayBuffer(32); new Uint8Array(ab).set(pub); return { bytes: ab, wipe: () => new Uint8Array(ab).fill(0) }; }, () => { const u = new Uint8Array(40); u.set(pub, 4); return { bytes: u.subarray(4, 36), wipe: () => u.fill(0) }; }]) {
+    const m = make();
+    const key = await g.crypto.subtle.importKey("raw", m.bytes, { name: "Ed25519" }, false, ["verify"]);
+    m.wipe();
+    assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("copy me")), true, "the good signature still verifies after the caller's buffer was overwritten");
+    assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("copy mE")), false, "a tampered message still does not");
+  }
 });

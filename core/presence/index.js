@@ -578,11 +578,11 @@ export class Presence {
   }
 
   /** Does this tool need a person? The floor's list, or the tool's own declaration. */
-  required(tool, def, input) {
+  required(tool, def, input, ctx) {
     // A tool may ask only for some inputs (presence.when). Without the input (listing tools), it
     // counts as asking.
     const p = def && def.presence;
-    const when = p && typeof p.when === "function" && input !== undefined ? () => Boolean(p.when(input)) : null;
+    const when = p && typeof p.when === "function" && input !== undefined ? () => Boolean(p.when(input, ctx)) : null;
     if (HUMAN_ONLY.has(tool)) return NARROWABLE.has(tool) && when ? when() : true;
     return when ? when() : Boolean(p);
   }

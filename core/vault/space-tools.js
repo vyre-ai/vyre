@@ -2,10 +2,11 @@
 // Space vault tools. The personal vault's lending path is unchanged. These tools seal a space key that the server wrap can open while nobody is unlocked.
 
 import path from "node:path";
-import { isPerson } from "../../lib/caller.js";
+import { deviceIdOf, isPerson } from "../../lib/caller.js";
 import { httpFetch } from "../../lib/http.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import * as SV from "../../kernel/identity/space-vault.js";
+import { firstRunMayCreate } from "../../lib/first-adopt.js";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
@@ -19,11 +20,32 @@ export function registerSpaceTools(ctx, seam = {}) {
     if (!/^spc_[a-z2-7]{8,}$/.test(String(input.space || "")) && !/^spc_test_[a-z0-9_-]{1,40}$/.test(String(input.space || ""))) throw refuse("Name the space by its id.", "bad_input");
   };
 
+  // The one case that needs no fresh approval: the device that just completed this server's first adoption makes this server's own space vault key, once, within ten minutes. The key is only wrapped for the
+  // server (no member can open it and no secret is in it), and putting, granting, rotating and using still ask. All of it is decided here from the server's own records and the registry's verified caller.
+  const firstRun = (/** @type {any} */ input, /** @type {any} */ who) => {
+    try {
+      const space = String((input && input.space) || "");
+      // The cheap checks first, before anything touches the disk: this server's own space (so also a space id's shape), then the verified device caller with no agent.
+      if (!ctx.paths || !ctx.paths.root || !ctx.kernel || !space || space !== String(ctx.kernel.space || "") || !/^spc_[a-z2-7]{8,}$/.test(space)) return false;
+      const caller = String((who && who.caller) || "");
+      if (deviceIdOf(caller) === null || (who.meta && who.meta.agent)) return false;
+      if (SV.status(dirOf({ space })).exists !== false) return false;
+      return firstRunMayCreate({ root: ctx.paths.root, caller, space, ownSpace: String(ctx.kernel.space || "") });
+    } catch { return false; }
+  };
   ctx.tool("vault.space.create", {
     description: "Make a space vault key, wrapped for the server so agents work while you are away.",
     input: obj({ space: str }, ["space"]),
-    presence: { summary: (/** @type {any} */ i) => `Make a space vault for ${i && i.space}` },
-    run: async (input) => { spaceOk(input); return SV.create(dirOf(input)); },
+    presence: { summary: (/** @type {any} */ i) => `Make a space vault for ${i && i.space}`, when: (/** @type {any} */ input, /** @type {any} */ who) => !firstRun(input, who) },
+    run: async (input, meta) => {
+      spaceOk(input);
+      const first = firstRun(input, { caller: meta && meta.caller, meta });
+      const made = SV.create(dirOf(input));
+      const device = deviceIdOf(String((meta && meta.caller) || "")) !== null ? String(meta.caller) : "";
+      try { ctx.events.emit("vault.space-created", { space: String(input.space), device, firstRun: first }); } catch { /* an undeclared event: skipped */ }
+      ctx.log(`vault: space vault made for ${String(input.space)} (device ${device || "none"}, first run ${first ? "yes" : "no"})`);
+      return made;
+    },
   });
   ctx.tool("vault.space.status", {
     description: "Whether a space vault exists and which generation it is on. No key is returned.",
@@ -62,6 +84,14 @@ export function registerSpaceTools(ctx, seam = {}) {
       const caller = String((meta && meta.caller) || "");
       if (!isPerson(caller) && !caller.startsWith("module:")) throw refuse("Enter the value on your device. An agent cannot supply it.", "secret_refused");
       if (modelSuppliedSecret(caller, input)) throw refuse(SECRET_REFUSED, "secret_refused");
+      // The first thing stored in this server's own space: its vault key is made in the same call. The put is already presence-gated, so one approval covers both. Any other space id still answers "no vault yet".
+      // A person's put only (a module's call is not asked for presence by the registry), and only once the item itself is acceptable, so a refused put leaves no empty key behind.
+      if (isPerson(caller) && SV.status(dirOf(input)).exists === false && ctx.kernel && String(ctx.kernel.space || "") === String(input.space)) {
+        SV.checkItem({ id: input.id, name: input.name, value: input.value, hosts: input.hosts });
+        SV.create(dirOf(input));
+        try { ctx.events.emit("vault.space-created", { space: String(input.space), by: "first put" }); } catch { /* an undeclared event: skipped */ }
+        ctx.log(`vault: space vault made for ${String(input.space)} (by the first put)`);
+      }
       return SV.put(dirOf(input), { id: input.id, name: input.name, value: input.value, hosts: input.hosts });
     },
   });

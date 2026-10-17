@@ -56,7 +56,7 @@ export const LEVELS = /** @type {const} */ ([["fill", "Fill in"], ["read", "Read
 
 /** What each level lets the other side do, one plain line each. @type {Record<string, string>} */
 export const LEVEL_HELP = {
-  fill: "Uses the app as you. Anything that sends or changes data still waits for your yes.",
+  fill: "Uses the app as you, to the destinations you have set. An agent acting for them is still held at the Gate for your yes.",
   read: "Can also see what the connection holds, without changing it.",
   edit: "Can also change the connection and sign in again.",
 };

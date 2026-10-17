@@ -113,12 +113,13 @@ export default {
       // A send as a member from the firm key (ruling, 18 Oct 2026, from the owner's Option A of 17 Oct): the member's OWN send from their own mailbox is never held (see the tools: isOwnAct). A send their AGENT makes is held
       // here, at the Gate, as the member's own item: the Gate records the person on the verified chain as its requester, only that person sees and approves it (core/gate/requester.js), and the from-address
       // is in what they approve. The owner never approves a member's mail. A call with no person behind it has no mailbox to send from, so it is refused.
-      if (acct.member && !(await actingPerson(ctx.kernel, meta))) throw fail("there is no person behind this call, so there is no mailbox to send from", "denied");
+      const person = await actingPerson(ctx.kernel, meta);
+      if (acct.member && !person) throw fail("there is no person behind this call, so there is no mailbox to send from", "denied");
       if (acct.member) content = { from: acct.email, ...content };
       const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
       const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: acct.key ? `google-firm:${acct.key}` : `google:${acct.name}`, to, content,
-        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) });
+        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) }, person ? { relay: true } : undefined);   // a person is on the call: the Gate sees them (requester, standing permission); a Flow, a timer or the Space's own sender keeps the service path
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.state === "sent" ? { sent: true, by: r.data.by } : r.data.id;
     };
