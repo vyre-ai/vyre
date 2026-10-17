@@ -14,6 +14,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createRun } from "./lib/proof/run.mjs";
@@ -169,6 +170,20 @@ async function macDriver() {
   };
 }
 
+/** The server's own log for a failed wait: every warn line in full with the 20 lines before it, then the last 40 lines that mention the relay, the setup, the pairing, the owner or the directory (never a code: the server never logs one). */
+function serverLogForFailure() {
+  try {
+    let text = "";
+    if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "tail -n 800 ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8" }).stdout || "");
+    else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8").split("\n").slice(-800).join("\n") + "\n"; }
+    const all = text.split("\n").filter((l) => l.trim());
+    const out = /** @type {string[]} */ ([]);
+    all.forEach((l, i) => { if (/\bwarn:/.test(l) && /\[spaces\]/.test(l)) out.push(`-- warn at line ${i}`, ...all.slice(Math.max(0, i - 20), i + 1)); });
+    const rest = all.filter((l) => /wink|relay|pair|owner|adopt|setup|ticket|directory|confirm/i.test(l) && !/module .* running|apiVersion/.test(l)).slice(-40);
+    return [...out, "-- last pairing-related lines", ...rest].join("\n");
+  } catch (e) { return `no server log (${/** @type {Error} */ (e).message})`; }
+}
+
 const cleanups = /** @type {(() => Promise<any> | any)[]} */ ([]);
 let code = 1;
 try {
@@ -243,7 +258,9 @@ try {
   }, { needs: [S("create a space: the screen shows one install command with a one-time code")] });
 
   await run.step(S("the server pairs to the creator, the screen names it, and the app reaches Ready"), async () => {
-    const t = await drv.waitFor("Your space is online", 300_000);
+    /** @type {string} */ let t;
+    try { t = await drv.waitFor("Your space is online", 300_000); }
+    catch (e) { const lines = serverLogForFailure(); console.log(`  server log at the failed wait:\n${lines}`); throw new Error(`${/** @type {Error} */ (e).message} | server log: ${lines.split("\n").slice(-8).join(" || ")}`); }
     await drv.shot("04-space-online");
     if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
