@@ -543,7 +543,7 @@ test("taking a grant away cancels what its holder left waiting at the Gate; taki
   await hub.remove({ name: key });
   assert.deepEqual(cancelled.sort(), ["h1", "h2", "h3"], "the rest is cancelled with the connection");
   assert.deepEqual(revoked, [{ owner: A, connection: "clio-alice" }], "the vendor is asked to drop the token");
-  assert.equal(hub.row(key), null);
+  assert.ok(!hub.row(key), "the row is gone");
   assert.ok(events.some(e => e.type === "mcp.held-cancelled"), "and it is on the record");
 });
 
