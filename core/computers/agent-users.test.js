@@ -13,7 +13,7 @@ import { AgentUsers, MIGRATIONS, UID_BASE, DISPLAY_BASE, IDLE_SLEEP_MS, userName
 function setup(t, extra = {}) {
   const db = open(path.join(tempHome(t), "t.db"));
   t.after(() => db.close());
-  migrate(db, "agentusers", MIGRATIONS);
+  migrate(db, "computers", MIGRATIONS);
   const clock = { t: 1_000 };
   /** @type {string[]} */ const ran = [];
   const events = /** @type {string[]} */ ([]);
