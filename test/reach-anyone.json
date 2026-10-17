@@ -541,10 +541,6 @@
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
-  "flows.settle": {
-   "module": "flows",
-   "reason": "held at the Gate for an assistant (ASK_FIRST in agent-reach.js: one Needs-you card, answered by the person's tap) and run at once for a person; an assistant's advance of a stage gate is refused person_only inside the handler, and the handler needs the person's own chain"
-  },
   "flows.simulate": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
