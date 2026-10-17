@@ -66,6 +66,7 @@ export class Access {
       if (as !== undefined) {
         if (typeof as !== "string" || !as) return false;
         if (owner && as === String(owner)) return true;
+        { const rr = await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : "x"); console.error("DBG personMay", as, level, owner, connection, rr); }
         return Boolean(await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : await this.urn(String(connection))));
       }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
