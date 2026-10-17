@@ -70,7 +70,7 @@ export class RealKernel {
 
     this.chains = createChainBuilder({ space: this.space, owner: this.owner, owner_uid: 501, key: KEY, clock: this.clock, is_person: p => self.members.has(`person:${p}`) });
     this.actions = [...TASK_ACTIONS, ...FLOW_ACTIONS, ...Object.entries({ "email.send": { risk: "outward.send", label: "Send an email" }, ...(o.actions || {}) }).map(([action, d]) => ({ action, resource_type: "external", risk: d.risk, label: d.label || action, gloss: d.label || action }))];
-    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "tasks.withdraw", "flows.run", "kits.propose", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
+    this.grantActions = ["records.*", "records.define", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "flows.run", "kits.propose", "kits.install", "kits.remove", "model.call", "ask.request", "service.read", "service.call", "fn.run", ...this.actions.filter(a => /^outward\./.test(a.risk)).map(a => a.action)];
 
     this.store = createMemoryStore({ clock: this.clock });
     this.gw = createGateway({
@@ -165,6 +165,9 @@ export class RealKernel {
     this.sysChain = sysChain;
   }
 
+  /** The Flows service's own chain, with no person hop: the only chain that may withdraw a task at its due time (the real roles carry no tasks.withdraw; only the Flows service holds it). */
+  withdrawChain() { this.addActor({ kind: "service", id: "flows" }); return this.chains.appendService(undefined, "flows", true); }
+
   ownerActor() { return { kind: "person", id: this.owner, space: this.space }; }
 
   /** Register an actor as a member of the space with a grant broad enough for the tests (outward actions named, wildcards for read and write). @param {{ kind: string, id: string, space?: string }} a */
@@ -173,7 +176,7 @@ export class RealKernel {
     this.members.add(`${a.kind}:${a.id}`);
     const gid = `gr_${a.kind}_${a.id}`;
     if (!this.gatewayGrants.has(gid)) {
-      this.gatewayGrants.set(gid, { id: gid, space: this.space, subject: { kind: "actor", actor }, actions: this.grantActions, action_set_version: 9, resource: { prefix: `vyre://${this.space}/*/*` }, conditions: {}, issuer: this.ownerActor(), source: "test", status: "active", created_at: 0 });
+      this.gatewayGrants.set(gid, { id: gid, space: this.space, subject: { kind: "actor", actor }, actions: a.kind === "service" && a.id === "flows" ? [...this.grantActions, "tasks.withdraw"] : this.grantActions, action_set_version: 9, resource: { prefix: `vyre://${this.space}/*/*` }, conditions: {}, issuer: this.ownerActor(), source: "test", status: "active", created_at: 0 });
     }
     if (a.kind === "person" && !this.signers.has(a.id)) {
       const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });

@@ -46,7 +46,8 @@ test("a lend dies the moment its task is withdrawn, before anything takes the gr
   const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
   await flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: `flows:task:${task.id}`, reason: "the task" });
   assert.equal((await k.gateway.ask.get(asAgent(), task.id)).id, task.id, "the lend works while the task is open");
-  await k.gateway.ask.withdraw(k.chains.forModule({ module: "flows", approver: owner }), task.id, { reason: "due time" });
+  // the Flows service's own chain, no person hop (the runner builds it so; no role carries tasks.withdraw)
+  await k.gateway.ask.withdraw(k.chains.appendService(undefined, "flows", true), task.id, { reason: "due time" });
   // the grant is still there (nothing has taken it back yet) but it holds nothing
   assert.ok((await flows.mint.list({ source: `flows:task:${task.id}` })).length >= 1, "the lend has not been ended");
   assert.equal(await refusedRead(k.gateway.ask.get(asAgent(), task.id)), true, "reading the task with the lend is refused");
@@ -89,4 +90,20 @@ test("a lend held to one job thread: that thread starts the task, another sessio
   const started = await k.gateway.ask.start(asAgent("job-1"), task.id);
   assert.equal(started.state, "working");
   await assert.rejects(() => k.gateway.ask.complete(asAgent("job-2"), task.id, { note: "x", sources: [] }), /./, "and cannot hand it in");
+});
+
+test("a withdrawal on the approver's hop beside the Flows service is refused: a member holds no tasks.withdraw, and a person alone is refused too", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  k.kernelFor({ name: "flows", needs: { kernel: { actions: ["tasks.withdraw"], mints: [] } } });
+  const scribe = { kind: "agent", id: "scribe", space: S };
+  await k.gateway.grants.addActor(owner, scribe, {});
+  const member = { kind: "person", id: "per_member", space: S };
+  await k.gateway.grants.addActor(owner, member, {});
+  const asMember = k.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: "per_member", path: "direct", session: "s" });
+  const task = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
+  await assert.rejects(() => k.gateway.ask.withdraw(k.chains.forModule({ module: "flows", approver: asMember }), task.id, { reason: "due time" }), /./, "the approver hop holds no tasks.withdraw");
+  await assert.rejects(() => k.gateway.ask.withdraw(asMember, task.id, { reason: "due time" }), /./, "a person alone is refused");
+  await k.gateway.ask.withdraw(k.chains.appendService(undefined, "flows", true), task.id, { reason: "due time" });
+  await assert.rejects(() => k.gateway.ask.withdraw(k.chains.appendService(undefined, "flows", true), task.id, { reason: "again" }), e => /** @type {any} */ (e).code === "bad_state", "a repeat is refused as bad_state");
 });

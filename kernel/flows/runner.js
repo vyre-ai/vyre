@@ -1839,8 +1839,8 @@ export class FlowRunner {
    */
   async #withdraw(ctx, task, reason, stepId) {
     const run = ctx.run;
-    // under the Flows service's own chain: the kernel refuses a withdrawal from anything else
-    try { await this.k.ask.withdraw(this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); }
+    // under the Flows service's own chain, with no person hop (forWithdraw): the kernel refuses a withdrawal from anything else, and no role carries tasks.withdraw for a person hop
+    try { await this.k.ask.withdraw((this.chains.forWithdraw || this.chains.forDoer)({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }), task, { reason }); }
     catch (e) {
       // a task that already ended (answered in the last moment, or withdrawn before a crash) is as withdrawn as it will get; anything else means it may still be open, and the step must not report a clean timeout
       if (e && /** @type {any} */ (e).code === "bad_state") return;

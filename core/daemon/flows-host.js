@@ -126,6 +126,8 @@ export function createFlowsHost(o) {
       forModule: (/** @type {any} */ x) => k.chains.forModule({ ...x, approver: personChain(x.approver.id) }),
       // The Flows service as the doer of a task it puts in front of a person to check (a Kit's install card, an assistant's proposal, a held act): the approver, narrowed to service:flows.
       forDoer: (/** @type {any} */ x) => k.chains.forModule({ module: "flows", approver: personChain(x.approver.id) }),
+      // The due-time withdrawal of a task: the Flows service's own chain with no person hop (no role carries tasks.withdraw, so an approver hop would be refused).
+      forWithdraw: () => k.chains.appendService(undefined, "flows", true),
     };
     const catalog = async () => {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
