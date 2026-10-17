@@ -111,7 +111,7 @@ for (const name of ["dev", "sealed"]) {
     if (name === "sealed") assert.equal(crypto.createHash("sha256").update(raw).digest("hex"), fixture("tools-find-sealed.sha256").trim(), "the sealed set was edited; it may only be replaced by a new sealed set, said openly, with a new hash and a new baseline");
     const r = scoreSet(await agentCatalog(t), JSON.parse(raw));
     console.log(`tools_find ${name}: top-1 ${r.top1} of ${r.n} (${Math.round((100 * r.top1) / r.n)}%), top-3 ${r.top3} of ${r.n} (${Math.round((100 * r.top3) / r.n)}%)`);
-    if (process.env.FIND_MISSES) for (const m of r.misses) console.log(`  miss: ${m}`);
+    for (const m of r.misses) console.log(`  miss: ${m}`);
     const b = baseline[name];
     assert.ok(r.n >= b.n - 2, `only ${r.n} of ${b.n} asks are answerable now: a tool the labels name was renamed or removed`);
     assert.ok(r.top1 >= b.top1 - SLACK, `top-1 fell from ${b.top1} to ${r.top1} of ${r.n}`);
