@@ -11,15 +11,10 @@ export type PairedKey = {
   keep(route: string, token: string): Promise<void>;
 };
 
-/** The address this page is served from, as a URL the token store can take. A page on a custom scheme (the Mac app's vyreapp://box) has the opaque origin "null", which is not a URL, so its own address is used (its origin is "null" either way: one slot). */
-function pageAddress(): string {
-  try { new URL(location.origin); return location.origin; } catch { return location.href; }
-}
-
 export async function pairedKey(): Promise<PairedKey> {
   const k = await personKey();
   return {
     sign: async (m) => new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.privateKey, m as BufferSource)),
-    keep: (_route, token) => keepToken(pageAddress(), token),
+    keep: (_route, token) => keepToken(location.origin, token),
   };
 }

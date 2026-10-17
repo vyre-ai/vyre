@@ -1042,5 +1042,6 @@
  "apps/app/src/real/place-tag.test.js": 5,
  "test/finish-owner.test.js": 1,
  "core/vault/space-create-presence.test.js": 2,
- "test/first-adopt.test.js": 1
+ "test/first-adopt.test.js": 1,
+ "apps/app/src/auth/token-origin.test.js": 1
 }
