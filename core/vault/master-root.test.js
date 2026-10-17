@@ -37,7 +37,9 @@ function master(root, vaultKey) {
 test("the master key is the vault root, and lending still opens with nobody unlocked", async (t) => {
   const { root, vault } = home(t);
   const plain = path.join(root, "vault", "key");
-  // home() made a vault with its plaintext key file, the way a home from before the master password has one.
+  // A home from before the master password has a plaintext key file. A new vault no longer writes one, so the test makes the old home itself.
+  fs.mkdirSync(path.dirname(plain), { recursive: true });
+  fs.writeFileSync(plain, `${crypto.randomBytes(32).toString("hex")}\n`, { mode: 0o600 });
   const made = serverVaultKey(root);
   assert.ok(made && made.length === 32);
   const fileKey = readVaultKeyFile(plain);
