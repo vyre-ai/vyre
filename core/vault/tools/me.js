@@ -3,6 +3,7 @@
 // Not for the owner, whose vault is the vault.* tools; not for a model, which sees names and kinds at most in a session (the values go to the person's surfaces and to the module that holds the sign-in).
 // The member gate lets these names through (MEMBER_ALLOWED) because each one resolves its person here and refuses anything but exactly one person who is not the owner.
 
+import { devSwitch } from "../../../kernel/devbuild.js";   // a development build only: a fake vendor on loopback (VYRE_SEAL_DEV=1); a packaged build ignores it
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
@@ -176,7 +177,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const id = await memberOf(ctx.kernel, meta);
       const f = input && input.fields;
       if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });
-      if (typeof f.server_url !== "string" || !/^https:\/\//.test(f.server_url)) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
+      if (typeof f.server_url !== "string" || !(/^https:\/\//.test(f.server_url) || (devSwitch(process.env.VYRE_SEAL_DEV) && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(f.server_url)))) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
       const fields = { ...f, connected_by: id };
       const svc = people.service(id), name = String(input.name);
       if (await svc.has(name)) {

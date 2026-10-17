@@ -234,7 +234,7 @@ export default {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
-      run: async (input, meta) => { await handled(input.id, meta); return (await withPresence([gate.get(input)], meta.peer))[0]; },
+      run: async (input, meta) => { await handled(input.id, meta, { ownSender: true }); return (await withPresence([gate.get(input)], meta.peer))[0]; },   // the module whose sender holds the item reads it to release it, as it may take it back
     });
 
     // who approved, rejected, revised or settled is the caller (S3): the `by` a caller sends is not read

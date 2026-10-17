@@ -598,12 +598,12 @@ export class Hub {
     return this.view(this.must(n.name));
   }
 
-  async remove({ name }) {
+  async remove({ name }, who = null) {
     const row = this.must(name);
     /** @type {{ revoked: boolean, why: string } | null} */ let revoked = null;
     // A person's connection can be taken away only by the person who made it; what it was holding at the Gate, and the vendor's own token, go with it.
     if (row.owner) {
-      if (!(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
+      if (!(await this.mayUse(row, who, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
       await this.cancelHeld(row, () => true, "the connection was removed");
       revoked = { revoked: false, why: "the hub has no way to tell the vendor" };
       if (typeof this.deps.revokeConnection === "function") {
@@ -726,6 +726,8 @@ export class Hub {
    */
   async mayUse(r, who, level, as = undefined) {
     if (typeof this.deps.mayUseConnection !== "function") return false;
+    // The person who made the connection, alone on this call (no agent behind it), uses and removes it: the tool that took the call named them from the verified chain (who.me), so the answer does not depend on a hop that carries no person.
+    if (r.owner && as === undefined && who && !who.agent && typeof who.me === "function" && (level === "read" || level === "own")) { const me = await Promise.resolve(who.me()).catch(() => ""); if (me && me === r.owner) return true; }
     try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level, ...(as !== undefined ? { as } : {}) }, who)) === true; } catch { return false; }
   }
 
