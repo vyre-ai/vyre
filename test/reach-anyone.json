@@ -2624,6 +2624,14 @@
   "work.chat.prefs": {
    "module": "work",
    "reason": "read-only: chat preferences for the signed-in person; kernelOf refuses when no kernel is attached"
+  },
+  "microsoft.mail.send": {
+   "module": "microsoft",
+   "reason": "the caller's own mailbox only (a member's attested work email; no mailbox in the input): the person's own send goes out at once from it; an agent's send is held at the Gate for the person it acts for and nothing reaches Graph until they approve; a call with no person is refused"
+  },
+  "microsoft.calendar.create": {
+   "module": "microsoft",
+   "reason": "the caller's own mailbox only: the person's own invite goes out at once; an agent's invite with guests is held at the Gate for the person it acts for; an agent's event with no guests is refused, not held and not written; a call with no person is refused"
   }
  }
 }
