@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.5.5
+
+- fix(app): a pairing that ends without showing words (the server already knows its owner) no longer leaves ready() waiting forever: adding a server completes. A first adoption now has a 60 s deadline that fails with "The server did not answer the pairing", the app logs each step of the pairing stage, and the server logs when setup-offer is entered and how it ends. The first-run proof prints the steps when the pairing does not finish (work/0.5.4/app53/adopt-trace).
+- release: 0.5.5 carries all of 0.5.4 (release notes in release/notes/0.5.5.md).
+
 ## 0.5.4
 
 - ci(relay-deploy): the relay/app dry run no longer greps wrangler's output for the Worker's name (a redirect Worker with no bindings does not print it, which failed the 0.5.4 deploy). It reads the name and route from relay/app/wrangler.toml, requires the upload size and wrangler's "--dry-run: exiting now" line, and fails if wrangler itself failed (pipefail).
