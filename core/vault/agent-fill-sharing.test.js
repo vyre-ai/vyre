@@ -31,7 +31,7 @@ async function world(t) {
   v.access = new Access(v, rig.ctx);
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   await v.put({ name: "northwind-app", kind: "login", fields: { username: "alex@northwind.example", password: PASS }, url: `${ORIGIN}/login`, hosts: [ORIGIN] }, "cli");
-  await v.put({ name: "graph-api", kind: "api-credential", fields: { config: JSON.stringify({ hosts: ["https://graph.example.test"], auth: { type: "bearer" } }), secret: "fixture-secret-0123456789" } }, "cli");
+  await v.put({ name: "graph-api", kind: "api-credential", fields: { config: JSON.stringify({ hosts: ["graph.example.test"], auth: { type: "bearer" } }), secret: "fixture-secret-0123456789" } }, "cli");
   await v.access.convertScopes();
   const calls = /** @type {any[]} */ ([]);
   /** A stand-in for the browser: the connection opens and then stops, so a started fill shows as the stop and a refused one as a refusal. */

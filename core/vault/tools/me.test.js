@@ -9,6 +9,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
 import { ConnectionTokens } from "../connection-token.js";
+import { SHARE_TOOLS } from "./member-share.js";
 import { openConnectionKey, wrapPath } from "../people-seal.js";
 import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
@@ -21,11 +22,18 @@ const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: 
 function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}, /** @type {any} */ peopleExtra = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, ...peopleExtra });
+  /** What the vault announced (people.emit), and the member token accounts the sessions module would answer for (vault.me.lend asks sessions.accounts.item). */
+  const events = /** @type {{ type: string, p: any }[]} */ ([]), accounts = /** @type {Record<string, any>} */ ({});
+  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, emit: (/** @type {string} */ type, /** @type {any} */ p) => { events.push({ type, p }); }, ...peopleExtra });
   t.after(() => people.close());
   const kernel = { owner: OWNER, space: "spc_aaaaaaaaaaaa", hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => { if (m.gone) throw new Error("not a member of this Space"); return { hops: m.hops || [] }; }, ...kernelExtra };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = gateTools({ kernel, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
+  /** @type {any} */ (ctx).call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (tool !== "sessions.accounts.item") return { error: { code: "no_such_tool", message: tool } };
+    const a = accounts[String(input.account)];
+    return a && a.person === input.person ? { data: a } : { error: { code: "not_found", message: "no such account" } };
+  };
   register({ ctx, people, tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
   // a tool of the space (owner's) vault, as index.js registers it
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
@@ -34,7 +42,7 @@ function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} *
     const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
-  return { call, reg, people, home };
+  return { call, reg, people, home, accounts, events };
 }
 
 /** A connection made the one way it can be: the connectors module, for the person in the chain. */
@@ -43,7 +51,7 @@ const conn = (/** @type {any} */ call, /** @type {string} */ name, /** @type {an
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
-  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS].sort());
+  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS, ...SHARE_TOOLS].sort());
   for (const n of [...ME_TOOLS, ...ME_MODULE_TOOLS]) assert.ok(reg.has(n), `${n} is registered`);
 });
 

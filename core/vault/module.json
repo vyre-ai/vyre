@@ -239,6 +239,8 @@
       "vault.item-added",
       "vault.item-changed",
       "vault.item-deleted",
+      "vault.member-shared",
+      "vault.member-unshared",
       "vault.refused",
       "vault.granted",
       "vault.revoked",
