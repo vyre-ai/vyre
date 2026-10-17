@@ -260,3 +260,20 @@ test("microsoft.accounts as a member: only their own provisioned account, the ap
     await assert.rejects(s.tools.get("microsoft.accounts").run({}, { caller }), e => e.code === "denied", caller);
   }
 });
+
+test("microsoft.accounts is the owner's firm-app list or a member's own account alone: a bare call, a named agent with no person, and an added module are refused", async t => {
+  const s = await setup(t);
+  const accounts = (/** @type {any} */ meta) => s.tools.get("microsoft.accounts").run({}, meta);
+  const refused = (/** @type {any} */ e) => e.code === "denied";
+  s.people.chain = [];
+  await assert.rejects(accounts({ caller: "module:someadded" }), refused, "an added module's bare call has no person and no owner label");
+  await assert.rejects(accounts({ caller: "module:vault" }), refused, "a first-party module's bare call too: it must carry the person it serves");
+  await assert.rejects(accounts({ caller: "mcp:agent:kit" }), refused, "a named agent with no token and no person");
+  s.people.chain = ["agent:kit"];
+  await assert.rejects(accounts({ token: "t", caller: "mcp:agent:kit" }), refused, "an agent's chain with no person in it");
+  // the owner (a CLI call) still gets the firm app list, and a member only her own account, never the firm app
+  s.people.chain = [];
+  assert.ok(Array.isArray(await accounts({ caller: "cli" })));
+  const mine = await s.member("microsoft.accounts");
+  assert.ok(Array.isArray(mine) && mine.every((/** @type {any} */ a) => !("item" in a)), "a member's rows never name the firm app's vault item");
+});
