@@ -418,10 +418,12 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   t.after(() => d.stop());
   const read = async () => Object.fromEntries(await Promise.all((await d.registry.deps.dataStores()).map(async s => [s.name, await s.holds().catch(() => undefined)])));
   const fresh = await read();
-  assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh));
-  const rowsIn = async () => { try { const { DatabaseSync } = await import("node:sqlite"); const db = new DatabaseSync(path.join(root, "vyre.db"), { readOnly: true }); return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => [r.name, db.prepare(`SELECT count(*) AS n FROM "${r.name}"`).get().n]).filter(x => x[1]).map(x => x.join("=")).join(" "); } catch (e) { return String(e); } };
-  assert.equal(fresh["the modules' own data"], false, `${JSON.stringify(fresh)} tables with rows: ${await rowsIn()}`);
-  assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh));
+  const { BOOT_KERNEL_EVENTS, SYSTEM_FILES } = await import("../lib/data-stores.js");
+  const files = (dir, out = []) => { for (const f of fs.readdirSync(dir)) { const p = path.join(dir, f); fs.lstatSync(p).isDirectory() ? files(p, out) : out.push(path.relative(root, p)); } return out; };
+  const why = () => `events not boot: ${d.kernel.log.read().filter(e => !BOOT_KERNEL_EVENTS.has(e.type)).map(e => `${e.type}${e.data && e.data.legacy === 1 ? "(legacy)" : ""}<${e.actor}>`).join(" ")} | files: ${files(root).filter(f => !SYSTEM_FILES.has(f.split(path.sep).join("/"))).join(" ")}`;
+  assert.equal(fresh["the Space's records, events and grants"], false, `${JSON.stringify(fresh)} ${why()}`);
+  assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
+  assert.equal(fresh["the files in this server's home"], false, `${JSON.stringify(fresh)} ${why()}`);
   // The vault has a real read now (lib/vault-wipe.js): exactly `false` only when the home holds no item, shared record, key or sealed value of the person's (the sealer's own keys are not one); the folder's file is the sealer's.
   assert.equal(fresh["the vault and sealed values"], false, JSON.stringify(fresh));
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
