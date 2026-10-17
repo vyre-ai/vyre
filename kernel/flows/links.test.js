@@ -110,7 +110,7 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
   await w.runner.start(id, { kin: urn(sam) }, asBob);
   await settle(w);
   const runs = (await w.runner.listRuns()).sort((a, b) => (a.started_at ?? 0) - (b.started_at ?? 0));
-  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], `one run read it, the other did not: ${JSON.stringify(runs.map(r => ({ state: r.state, trigger: r.trigger, error: r.error })))}`);
+  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], `one run read it, the other did not: ${JSON.stringify(runs.map(r => ({ state: r.state, by: r.trigger && r.trigger.by, error: r.error })))}; bob's chain ${JSON.stringify(asBob.hops)}`);
   const failed = runs.find(r => r.state === "failed");
   assert.match(String(failed && failed.error.message), /not there, or is not yours to see/, "the starter could not read it, so neither can the Flow for them");
   assert.deepEqual(await payments(w, chain), ["Sam"], "only the run that Alex started wrote it");
