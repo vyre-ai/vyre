@@ -24,11 +24,11 @@ async function setup(t, { secret, staff } = {}) {
   const people = { chain: [] };
   const ctx = { store: { db, migrate: ms => { for (const m of ms) db.exec(m); } }, vault: { fetch: async (item, o) => ({ tenant_id: g.tenant, client_id: g.clientId, client_secret: secret ?? g.secret, token_uri: g.tokenUri })[o?.field] ?? "" },
     tool: (n, d) => tools.set(n, d), events: { emit: (...a) => events.push(a) }, log() {},
-    kernel: { owner: "p-owner", chain: async () => ({ hops: people.chain.map(id => ({ actor: { kind: "person", id } })) }) } };
+    kernel: { owner: "p-owner", chain: async () => ({ hops: people.chain.map(id => ({ actor: { kind: String(id).startsWith("agent:") ? "agent" : "person", id } })) }) } };
   await mod.start(ctx);
   const as = (hops, token = "t") => (name, input = {}) => { people.chain = hops; return tools.get(name).run(input, { token, caller: "mcp" }); };
   const cli = (name, input = {}) => { people.chain = []; return tools.get(name).run(input, { caller: "cli" }); };
-  return { g, db, tools, events, member: as(["p-alice"]), owner: as(["p-owner"]), cli };
+  return { g, db, tools, events, people, member: as(["p-alice"]), owner: as(["p-owner"]), cli };
 }
 const addFirm = (s) => s.cli("microsoft.add", { name: "firm", domain: "firm.test", item: "m365-key", base: s.g.origin });
 const attest = async (s) => { await s.cli("microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }); await s.cli("microsoft.members.email", { person: "p-owner", email: "owner@firm.test" }); };
@@ -96,8 +96,8 @@ test("a tenant that restricts the app answers 403: explained; and the secret is 
 test("nothing is written or sent: only GET reaches Graph", async t => {
   const s = await setup(t); await addFirm(s); await attest(s);
   await s.member("microsoft.mail.search", { q: "a" }); await s.member("microsoft.drive.search", { q: "a" });
-  assert.ok(s.g.requests.every(r => r.method === "GET"));
-  for (const n of s.tools.keys()) assert.ok(!/send|draft|create|update|delete/.test(n), n);
+  assert.ok(s.g.requests.every(r => r.method === "GET"), "the reads only read");
+  for (const n of s.tools.keys()) assert.ok(!/draft|update|delete/.test(n) && (!/send|create/.test(n) || ["microsoft.mail.send", "microsoft.calendar.create"].includes(n)), n);
 });
 
 test("microsoft.check names the first missing step, in order, and never reads a message or shows the secret", async t => {
@@ -132,4 +132,44 @@ test("microsoft.check: a wrong secret stops at the sign-in step and says how to 
 test("microsoft.check is the owner's alone", async t => {
   const s = await setup(t);
   await assert.rejects(s.member("microsoft.check"), e => e.code === "denied" && /owner/.test(e.message));
+});
+
+test("a member's own send and invite go out at once from their own mailbox, never held, and nothing in the input can name another mailbox", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  const out = await s.member("microsoft.mail.send", { to: ["Dana@Harlow.example"], cc: ["kit@harlow.example"], subject: "Refund R-9", body: "Hello Dana", from: "bob@firm.test", mailbox: "bob@firm.test" });
+  assert.deepEqual({ sent: out.sent, from: out.from, to: out.to }, { sent: true, from: "alice@firm.test", to: ["dana@harlow.example"] });
+  const post = s.g.requests.find(r => r.method === "POST");
+  assert.equal(post.path, "/v1.0/users/alice@firm.test/sendMail", "always the member's own mailbox, whatever the input says");
+  assert.equal(post.body.message.subject, "Refund R-9"); assert.equal(post.body.message.body.content, "Hello Dana");
+  assert.deepEqual(post.body.message.toRecipients, [{ emailAddress: { address: "dana@harlow.example" } }]);
+  assert.equal(post.body.saveToSentItems, true);
+  const ev = await s.member("microsoft.calendar.create", { title: "Call Dana", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", time_zone: "Europe/London", attendees: ["dana@harlow.example"] });
+  assert.equal(ev.created, true); assert.deepEqual(ev.attendees, ["dana@harlow.example"]);
+  const evPost = s.g.requests.filter(r => r.method === "POST").at(-1);
+  assert.equal(evPost.path, "/v1.0/users/alice@firm.test/events");
+  assert.equal(evPost.body.attendees[0].emailAddress.address, "dana@harlow.example");
+  assert.equal(evPost.body.start.timeZone, "Europe/London");
+  assert.ok(!JSON.stringify([out, ev, s.events]).includes(s.g.secret));
+});
+
+test("an agent in the chain cannot send or invite from a member's mailbox: refused in words, and nothing reaches Graph", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  // the chain holds Alice and an agent hop
+  const viaAgent = async (name, input) => { const before = s.g.requests.length; const k = s.tools.get(name); s.people.chain = ["p-alice", "agent:kit"]; try { await k.run(input, { token: "t", caller: "mcp:agent:kit" }); assert.fail("should refuse"); } catch (e) { assert.equal(e.code, "denied"); assert.match(e.message, /agent cannot send or invite/); } assert.equal(s.g.requests.length, before, "no request reached Graph"); };
+  await viaAgent("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" });
+  await viaAgent("microsoft.calendar.create", { title: "x", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", attendees: ["dana@harlow.example"] });
+  // a call whose chain holds no person is nobody's own act
+  await assert.rejects(s.cli("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" }), e => e.code === "denied");
+});
+
+test("send and invite check their input: addresses, a one-line subject, a body, a sane time range and zone", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  const bad = (name, input, re) => assert.rejects(s.member(name, input), e => e.code === "bad_input" && re.test(e.message), JSON.stringify(input).slice(0, 80));
+  await bad("microsoft.mail.send", { to: ["not-an-address"], subject: "x", body: "y" }, /email addresses/);
+  await bad("microsoft.mail.send", { to: [], subject: "x", body: "y" }, /at least one recipient/);
+  await bad("microsoft.mail.send", { to: ["a@b.example"], subject: "x\nBcc: z@z.example", body: "y" }, /one line/);
+  await bad("microsoft.mail.send", { to: ["a@b.example"], subject: "x", body: "" }, /body/);
+  await bad("microsoft.calendar.create", { title: "x", start: "2026-10-20T10:00:00", end: "2026-10-20T09:00:00" }, /end after the start/);
+  await bad("microsoft.calendar.create", { title: "x", start: "2026-10-20T09:00:00", end: "2026-10-20T10:00:00", time_zone: "Mars/Base" }, /IANA/);
+  assert.ok(s.g.requests.every(r => r.method === "GET"), "a refused input sends nothing");
 });

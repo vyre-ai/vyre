@@ -67,6 +67,16 @@
         "name": "microsoft.drive.read",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "microsoft.mail.send",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "microsoft.calendar.create",
+        "reach": "person",
+        "effect": "write"
       }
     ]
   },
