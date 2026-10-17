@@ -39,7 +39,6 @@ export function verifyEvents(/** @type {string} */ space, /** @type {readonly an
   return { ok: true, head: prev, seq: n };
 }
 
-
 const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
 const WINDOW = Object.freeze({ events: 2000, bytes: 4 * 1024 * 1024 });
 const BATCH = 500;
@@ -73,7 +72,7 @@ export function createEventLog(cfg) {
   }
   /** The seq of the first event kept in memory (everything before it is on disk). */
   const base = () => (log.length ? log[0].seq : count + 1);
-  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
+  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, drain?: Promise<void>, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
 
   /** One event by seq: from the window, else from the database. */
   function get(/** @type {number} */ seq) {
@@ -133,7 +132,6 @@ export function createEventLog(cfg) {
     queueMicrotask(() => pump(true));
     return e;
   }
-
 
   const matches = (/** @type {any} */ filter, /** @type {any} */ e) => {
     if (filter.since !== undefined && e.seq <= filter.since) return false;
@@ -242,9 +240,10 @@ export function createEventLog(cfg) {
   const MAX_ATTEMPTS = 8;
   const nextFor = (/** @type {any} */ c) => { for (const e of iterate({ since: c.cursor, ...(c.filter && c.filter.type ? { type: c.filter.type } : {}), limit: 1 })) return e; return undefined; };
   async function pump(/** @type {boolean} */ batched = false) {
+    let sliceFrom = Date.now();
     for (const [name, c] of consumers) {
-      if (c.busy) continue;
-      c.busy = true;
+      if (c.busy) { if (!batched && c.drain) await c.drain; continue; } // a caller who awaits pump() waits for the drain already running
+      c.busy = true; /** @type {any} */ let drained; c.drain = new Promise(r => { drained = r; });
       try {
         for (;;) {
           const upto = count;
@@ -254,10 +253,10 @@ export function createEventLog(cfg) {
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
           if (cfg.persist) { if (c.batch) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); } else cfg.persist.cursor(name, c.cursor); }
+          if (Date.now() - sliceFrom > 20) { await new Promise(r => setImmediate(r)); sliceFrom = Date.now(); if (consumers.get(name) !== c) break; } // a long backlog hands the loop back every 20 ms (timers and sockets stalled 1 to 2.5 s); stop if the consumer left meanwhile
         }
       } catch {
-        // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
-        // poison event cannot stall the consumer for ever (K1 item 9f).
+        // The cursor did not move: retry with a growing delay; after MAX_ATTEMPTS set the event aside (dead letter) so a poison event cannot stall the consumer (K1 item 9f).
         const next = nextFor(c);
         if (next) {
           c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
@@ -265,7 +264,7 @@ export function createEventLog(cfg) {
           else setTimeout(() => pump(true), Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
         }
       }
-      finally { c.busy = false; }
+      finally { c.busy = false; c.drain = undefined; drained(); }
     }
     if (!batched) flush(); // a caller who awaits pump() is told the consumers are caught up and stored
   }

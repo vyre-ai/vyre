@@ -441,6 +441,67 @@ test("events: a batch consumer's cursor is written once per burst, flush() write
   assert.equal(each.length, 5, "a consumer that did not ask for batching has its cursor written after every event, so a crash never repeats one");
 });
 
+test("events: a long backlog drained by handlers that answer at once hands the loop back (a timer is not starved), in order, with a cursor write after every event", async () => {
+  const writes = [], seen = [];
+  const l = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: (n, c) => writes.push([n, c]) } });
+  let timerFiredAt = -1;
+  l.subscribe("flows", { type: "contact.*" }, e => { seen.push(e.seq); const t = Date.now(); while (Date.now() - t < 3); });
+  for (let i = 0; i < 40; i++) l.append(person(), ev());
+  setTimeout(() => { timerFiredAt = seen.length; }, 0);
+  await l.pump();
+  assert.equal(seen.length, 40);
+  assert.ok(timerFiredAt > 0 && timerFiredAt < 40, `a timer set before the backlog ran after ${timerFiredAt} of 40 events: the pump held the loop for the whole backlog (about 120 ms of handlers here)`);
+  assert.deepEqual(seen, Array.from({ length: 40 }, (_, i) => i + 1), "in order, none skipped or repeated");
+  assert.deepEqual(writes.map(w => w[1]), seen, "the cursor is written after every event, as before");
+});
+
+test("events: a consumer that unsubscribes while the pump has handed the loop back gets no more events, and a handler that throws after such a hand-back is retried from the same event", async () => {
+  const seen = [];
+  const l = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: () => {} } });
+  let off = () => {};
+  off = l.subscribe("flows", { type: "contact.*" }, e => { seen.push(e.seq); if (e.seq === 1) setTimeout(() => off(), 0); const t = Date.now(); while (Date.now() - t < 3); });
+  for (let i = 0; i < 40; i++) l.append(person(), ev());
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(seen.length > 0 && seen.length < 40, `unsubscribed during the backlog, yet ${seen.length} of 40 events were delivered`);
+  const before = seen.length;
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(seen.length, before, "nothing after the unsubscribe");
+  const got = [];
+  const l2 = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: () => {} } });
+  let failed = false;
+  l2.subscribe("flows", { type: "contact.*" }, e => { const t = Date.now(); while (Date.now() - t < 3); if (e.seq === 30 && !failed) { failed = true; throw new Error("down"); } got.push(e.seq); });
+  for (let i = 0; i < 40; i++) l2.append(person(), ev());
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(failed, true);
+  assert.ok(!got.includes(30), "the failed event is not counted as handled");
+  assert.equal(l2.cursor("flows"), 29, "the cursor stays before the event that threw, as it does with no hand-back");
+  await l2.pump();
+  assert.deepEqual(got, Array.from({ length: 40 }, (_, i) => i + 1), "retried from the same event: none skipped, none repeated");
+});
+
+test("events: a caller who awaits pump() while another drain has handed the loop back waits for that drain, so it is never told the consumers are caught up too early", async () => {
+  const seen = [];
+  const l = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: () => {} } });
+  l.subscribe("flows", { type: "contact.*" }, e => { seen.push(e.seq); const t = Date.now(); while (Date.now() - t < 3); });
+  for (let i = 0; i < 40; i++) l.append(person(), ev());
+  const first = l.pump();
+  await new Promise(r => setImmediate(r));   // the first drain has run its slice and handed the loop back
+  assert.ok(seen.length > 0 && seen.length < 40, `the first drain is in flight (${seen.length} of 40 done)`);
+  await l.pump();
+  assert.equal(seen.length, 40, "the second pump returned only after the backlog was drained");
+  await first;
+  // events appended while it waited are drained before it returns, in order, none repeated
+  const more = [];
+  const l2 = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: () => {} } });
+  l2.subscribe("flows", { type: "contact.*" }, e => { more.push(e.seq); const t = Date.now(); while (Date.now() - t < 3); });
+  for (let i = 0; i < 30; i++) l2.append(person(), ev());
+  const a = l2.pump();
+  await new Promise(r => setImmediate(r));
+  for (let i = 0; i < 5; i++) l2.append(person(), ev());
+  await l2.pump(); await a;
+  assert.deepEqual(more, Array.from({ length: 35 }, (_, i) => i + 1));
+});
+
 // ---- K1 gate fixes (reviewer-2 probes) ----
 test("K1-1: a child grant dies when its adder is no longer a member, or is an expired temp member", async () => {
   const kit = actorOf("agent", "kit"), alice = actorOf("person", "per_alice");
