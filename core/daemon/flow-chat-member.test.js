@@ -93,13 +93,13 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   assert.ok(secret, "the owner's skill exists");
   // The control for the in-job read below: the same call, with the same shape, made outside the job. The owner's chain gets the skill (so the reference is a valid one), Ben's own chain gets nothing: it is the
   // permission, not a mistake in the call, that keeps the owner's private text from his job.
-  const urn = `vyre://${K.space}/skill/${secret.id}`;
+  const urn = `vyre://${K.id.space}/skill/${secret.id}`;
   const ownerRead = await asOwner("records.get", { urn });
   assert.ok(!ownerRead.error && JSON.stringify(ownerRead.data || {}).includes("OWNER-PRIVATE-TEXT"), `the owner reads the skill by its reference: ${JSON.stringify(ownerRead.error || ownerRead.data).slice(0, 300)}`);
   const benRead = await asBen("records.get", { urn });
   assert.ok(benRead.error || !benRead.data || !benRead.data.record, `Ben's own chain gets no record: ${JSON.stringify(benRead.data).slice(0, 200)}`);
   assert.ok(!JSON.stringify(benRead.data || {}).includes("OWNER-PRIVATE-TEXT"), "and none of its text");
-  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.list {"type":"contact","limit":3}\nvyre records.get {"urn":"vyre://${K.space}/skill/${secret.id}"}` });
+  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.list {"type":"contact","limit":3}\nvyre records.get {"urn":"vyre://${K.id.space}/skill/${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
   const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
     const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
