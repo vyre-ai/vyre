@@ -69,8 +69,8 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("the owner sees neither", !(await rowsOf("owner")).some((/** @type {any} */ s) => s.owner));
 
   // ---- C3: the call itself. A's call to A's connection runs; B's, the owner's and a forged token's are refused
-  const tools = (await as("ben", "mcp.tools", {})).data;
-  step("Ben's connection lists tools through the hub", Array.isArray(tools) && tools.some((/** @type {any} */ x) => x.server === benRow.name));
+  const toolsAns = await as("ben", "mcp.tools", {}); const tools = toolsAns.data;
+  step("Ben's connection lists tools through the hub: " + JSON.stringify(toolsAns).slice(0, 300), Array.isArray(tools) && tools.some((/** @type {any} */ x) => x.server === benRow.name));
   const tool = tools.find((/** @type {any} */ x) => x.server === benRow.name && !x.outward);
   step("it has a read tool", tool);
   const run = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ server) => as(w, "mcp.call", { server, tool: tool.tool, arguments: {} });

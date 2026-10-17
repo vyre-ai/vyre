@@ -393,7 +393,7 @@ function normalizePolicy(t) {
 
 const LEVEL = new AsyncLocalStorage();
 /** The member the tool that took this call named from the verified chain (who.me), for the Vault to answer about when the hub asks for her connection's token: the hop between has no person of its own. */
-const ASKING = new AsyncLocalStorage();
+export const ASKING = new AsyncLocalStorage();
 const meOf = async (/** @type {any} */ who) => (who && !who.agent && typeof who.me === "function" ? String(await Promise.resolve(who.me()).catch(() => "") || "") : "");
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
@@ -651,9 +651,10 @@ export class Hub {
    * restart budget does not stop a test, and a passing test clears it.
    * @param {string} name @param {{ quiet?: boolean }} [o]
    */
-  async test(name, o = {}) {
+  async test(name, o = {}) { return ASKING.run({ who: o.who }, () => this.testIn(name, o)); }
+
+  async testIn(name, o = {}) {
     const r = this.must(name);
-    if (r.owner && o.who) ASKING.enterWith(await meOf(o.who));
     const t0 = this.now();
     const s = this.state(name);
     try {
@@ -789,7 +790,10 @@ export class Hub {
    * the person outside, whatever the tool's name or mode says.
    * @param {{ server?: string, tool?: string, name?: string, arguments?: any, hold?: boolean }} input @param {Who} who
    */
-  async call(input, who) {
+  async call(input, who) { return ASKING.run({ who }, () => this.callIn(input, who)); }
+
+  /** @param {any} input @param {Who} who */
+  async callIn(input, who) {
     let server = input.server, tool = input.tool;
     if (!server && input.name) { const i = String(input.name).indexOf("__"); if (i > 0) { server = input.name.slice(0, i); tool = input.name; } }
     if (!server || !tool) throw fail("bad_input", "say which tool: { server, tool } or { name: \"<server>__<tool>\" }");
@@ -799,7 +803,6 @@ export class Hub {
     const memo = {};
     if (!r || !(await this.inScope(r, who, memo))) throw fail("denied", `no MCP server ${String(server).slice(0, 40)} that this ${who.agent ? `agent (${who.agent})` : "session"} may use`);
     if (r.pinSeen) throw this.changedError(r);
-    if (r.owner) ASKING.enterWith(await meOf(who));
     let t = r.cache ? this.findTool(r, tool) : null;
     const names = r.cache ? aggregate(r.name, r.cache.map(x => String(x.name))) : new Map();
     const cached = [...names].some(([raw, agg]) => raw === tool || agg === tool || agg === `${r.name}__${tool}`);
@@ -843,13 +846,12 @@ export class Hub {
     if (!r) throw fail("not_found", `the server ${server} was removed after this was held`);
     // A revoke between the ask and the yes wins: the person who ASKED (stored on the item, not whoever releases it) must still hold the connection at call level, or nothing is sent.
     if (r.owner && !(typeof it.requester === "string" && it.requester && await this.mayUse(r, null, "call", it.requester))) throw fail("denied", `the person who asked no longer holds ${server}, so this is not sent; ask again if it is still wanted`);
-    if (r.owner) ASKING.enterWith(String(it.requester));
     const t = this.findTool(r, content.tool);
     if (!t || t.tool !== content.tool) throw fail("denied", `${server} no longer has ${String(content.tool).slice(0, 80)} on`);
     const args = content.arguments ?? {};
     if (!isObj(args)) throw fail("bad_input", "the approved arguments are not an object");
     const final = this.retarget(args, to, it, server);
-    return this.run(server, t.tool, final, { agent: it.agent || null, released: id });
+    return ASKING.run({ me: String(it.requester || "") }, () => this.run(server, t.tool, final, { agent: it.agent || null, released: id }));
   }
 
   /**
@@ -992,7 +994,8 @@ export class Hub {
   async connectionHeaders(r) {
     if (typeof this.deps.connectionToken !== "function") throw fail("failed", "this hub has no way to reach a person's connection");
     let t;
-    try { t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write), ...(ASKING.getStore() ? { as: String(ASKING.getStore()) } : {}) }); }
+    const st = /** @type {any} */ (ASKING.getStore()), asMe = st ? (typeof st.me === "string" ? st.me : await meOf(st.who)) : "";
+    try { t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write), ...(asMe ? { as: asMe } : {}) }); }
     catch (e) {
       // the vendor no longer honours the sign-in: the connection waits for its person to sign in again, and calls stop (no retry loop) until they do
       if (/** @type {any} */ (e)?.code === "needs_reconnect") { const s = this.state(r.name); s.state = "needs_reconnect"; s.error = "sign in again to use this connection"; this.deps.emit("mcp.needs-reconnect", { name: r.name }); }
