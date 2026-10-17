@@ -73,7 +73,7 @@ export function RealInvite() {
     <Page title="Invite someone" sub={`To ${card.name}. They read one card and tap Join.`} back="/u/wink">
       {made ? (
         <View className="max-w-read gap-s3">
-          <InviteMade space={{ id: card.id, name: card.name }} who={to.trim().replace(/^@/, "") || "them"} role={roleLabel(role)} line={made.line.split(". ")[0].replace(/\.$/, "")} code={made.code ?? ""} link={made.link} />
+          <InviteMade space={{ id: card.id, name: card.name }} who={to.trim().replace(/^@/, "") || "them"} role={roleLabel(role)} line={made.line.split(". ")[0].replace(/\.$/, "")} code="" link={made.link} />
           {made.needsConfirm ? (
             <View className="gap-s2">
               <Banner><Text>This role needs your yes. When they open the link, their card shows four words of this Space. Ask them to read those words to you and type them here. The words show they are looking at this Space; they do not show who they are, so be sure it is the person you meant to invite.</Text></Banner>
