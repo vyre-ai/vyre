@@ -135,6 +135,7 @@ shardTest("a browser whose identity is a passkey pairs a fresh server: the owner
 shardTest("a pick with no deviceKind makes a device row named as given and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
   const f = await pairFreshServer(t, { kind: "" });
   const { w, done } = f;
+  console.log("PROBE-B status", JSON.stringify((await w.call("wink.server.status", {}, "cli", PROOF)).data), "done", JSON.stringify(done).slice(0,300), "access", JSON.stringify((await w.call("wink.access", {}, "cli", PROOF)).data.devices.map(d => ({id: d.id, name: d.name, kind: d.kind}))));
   assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "Alex's iPhone", "the device is recorded under the name it gave");
   assert.equal(await deviceRow(w, done.device), undefined, "no relay device row");
   const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
@@ -167,6 +168,7 @@ shardTest("a pick with deviceKind phone still records the phone by name (the kin
   assert.equal(st.device, "Alexs iPhone", "a phone pick records the device under its cleaned name (no apostrophe), as the line the server writes does");
   // the control for the kind-less test's "no presence key" assertion: a phone pick DOES put its device in the key list the person reads, so that assertion can fail
   const keys = (await f.w.d.registry.call("presence.keys", {}, "cli", PROOF)).data;
+  console.log("PROBE-C keys", JSON.stringify(keys), "done", JSON.stringify(f.done).slice(0,300), "rec", JSON.stringify((await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data));
   assert.ok(JSON.stringify(keys ?? null).includes(f.done.device), "a phone's key is in presence.keys, by its device id");
 });
 

@@ -402,7 +402,7 @@ export function createWink(inject = {}) {
       const g = await grants();
       const space = await spaceId();
       const person = `per_${base32(sha(`person\n${who.key}`), 26)}`;
-      const grant = await g.create({
+      console.log("PROBE-E before grant"); const grant = await g.create({
         subject: { kind: "actor", actor: { kind: "person", id: person, space } },
         actions: ["member.act"], resource: { prefix: `vyre://${space}/member/${person}` }, conditions: {},
         source: "wink:W5", reason: `${String(who.name || "someone")}, ${String(who.fingerprint || "")}, ${o.role}${(o.projects || []).length ? `, ${(o.projects || []).join(" ")}` : ""}`.trim(),
@@ -473,7 +473,7 @@ export function createWink(inject = {}) {
           if (ctx.kernel && !wd.nodeKey) throw fail("unavailable", "that computer has not given this server its key yet, so it cannot lend its compute; pair it again from the computer");
           const offerSpace = ctx.kernel && typeof ctx.kernel.space === "string" && ctx.kernel.space ? ctx.kernel.space : wd.identity;
           // The member's side is the person who is sharing, from the VERIFIED chain of this call: with a kernel no member is named here (the offers port takes it from the proven caller and refuses any other), and wink.share's own owner gate above still decides who may share. Without a kernel the identity is the member, as before.
-          await pairing.compute.set(offerSpace, wd.id, "member", true, { ...(ctx.kernel ? {} : { member: wd.identity }), device_key: wd.nodeKey || undefined, meta });
+          try { await pairing.compute.set(offerSpace, wd.id, "member", true, { ...(ctx.kernel ? {} : { member: wd.identity }), device_key: wd.nodeKey || undefined, meta }); } catch (e) { console.log("PROBE-E set member", e && e.code, e && e.message, e && e.stack); throw e; }
           allowed = await pairing.computeAllowed({ device: wd.id, space: offerSpace });
         }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });
