@@ -94,9 +94,12 @@ export class MemberShare {
     const o = exactOrigin(origin), K = this.access.K;
     if (!K || !o || o !== copy.origin) return false;
     try {
-      // The kernel's whole answer for this agent first (it is still a registered agent of the Space, no deny or freeze on it, the member-narrowing and group rules): the answer is yes only when it AND the share both say yes.
+      // The agent is still the one the share was made for: the name the copy keeps resolves to the same stable id today (an agent removed and made again under the same name is a different agent and inherits nothing).
+      if ((await this.access.uidOf(copy.agent)) !== copy.uid) return false;
+      // The kernel's whole answer for this agent first (it is still a registered agent of the Space, no deny or freeze on it, the member-narrowing and group rules), asked for the chain [the member, the agent]: the grant is the
+      // member's own (source vault:member-share:<ref>), so the member's side must hold it, not the Space owner's. The answer is yes only when it AND the share both say yes.
       // Where the kernel handle has no agentMay (a bare test rig) the share checks alone decide.
-      if (typeof K.agentMay === "function" && !(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o))) return false;
+      if (typeof K.agentMay === "function" && !(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o, false, undefined, copy.owner))) return false;
       // The share is the grant (no per-conversation lend): the copy is live (find() already drops an expired or removed one), and the grant the share made for exactly this agent and site has not been taken back or
       // run out (the vault module made it and lists it by its source; only active, unexpired grants are listed).
       const live = (await K.mint.list({ source: `${SOURCE}:${copy.ref}` })) || [];

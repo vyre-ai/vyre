@@ -49,12 +49,14 @@ async function world(t) {
   await v.key();
   const calls = /** @type {any[]} */ ([]);
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
-  const d = { vault: v, said: new SaidIntents(v), log: () => {}, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => { calls.push({ name, input }); return name === "computers.fill.begin" ? { data: { fill: "f1", cdpUrl: "http://127.0.0.1:9", token: "" } } : { data: { ended: true } }; } };
+  const logs = /** @type {string[]} */ ([]);
+  const d = { vault: v, said: new SaidIntents(v), log: (/** @type {string} */ m) => { logs.push(m); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => { calls.push({ name, input }); return name === "computers.fill.begin" ? { data: { fill: "f1", cdpUrl: "http://127.0.0.1:9", token: "" } } : { data: { ended: true } }; } };
   const as = (/** @type {string} */ p) => ({ chain: rig.person(p) });
   const asAgentOf = (/** @type {string} */ p, a = "juno") => ({ chain: rig.assistant(rig.uid(a), p) });
   const M = v.access.members;
   const share = (/** @type {any} */ over = {}, who = BEN) => M.share({ item: LABEL, agent: "juno", origin: ORIGIN, ...over }, as(who));
-  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN) => agentFill(d, { agent, item: ref, origin });
+  // a refusal prints the reasons agent-fill logged, so a copy that should fill and does not is told apart from one that should not
+  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN) => agentFill(d, { agent, item: ref, origin }).catch(e => { if (logs.length) console.error(`agent-fill said: ${logs.splice(0).join(" | ")}`); throw e; });
   const everything = () => JSON.stringify({ events, audit: db.prepare("SELECT * FROM vault_audit").all(), calls, items: v.list().items });
   return { v, rig, db, M, items, lentStore, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
 }
@@ -249,5 +251,16 @@ test("staff instruct every agent, so losing a share of an agent does not end an 
   K.membership = async () => "admin";
   assert.equal(await w.M.agentLost(BEN, "juno"), 0);
   delete K.membership;
+  await stops(w.fill(r.shared.ref));
+});
+
+test("the share is for the agent it was made for: the name resolving to a different stable id today (the agent was removed and made again) is refused", async t => {
+  const w = await world(t);
+  const r = await w.share();
+  await stops(w.fill(r.shared.ref));
+  const was = w.v.access.uidOf;
+  w.v.access.uidOf = async () => "agt_another";
+  await denied(w.fill(r.shared.ref));
+  w.v.access.uidOf = was;
   await stops(w.fill(r.shared.ref));
 });

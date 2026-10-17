@@ -87,3 +87,26 @@ test("vault.connections.lend and .end answer only the flows module and the Space
     }
   }
 });
+
+test("agentMay with a person: a member's agent holds the member's own grant on the member's own resource, and nothing else; a person who is not a member, or is the owner, gets no answer", { timeout: 120_000 }, async t => {
+  const d = await boot(tempHome(t), { kernelPresence: { check: async () => null } });
+  const K = d.kernel, h = K.kernelFor(VAULT), owner = K.id.owner, space = K.id.space;
+  const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", EVE = "per_" + "defghijklmnopqrstuvwxyzabc", ORIGIN = "https://bank.example.test";
+  const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-vault", person: owner, path: "direct", session: "s" });
+  const ok = () => ({ presence: { n: Math.random() } });
+  for (const p of [BEN, EVE]) await K.gateway.grants.setRole(ownerChain, { person: p, role: "member" }, ok());
+  await K.gateway.grants.addActor(ownerChain, { kind: "agent", id: "agt_kit", space }, ok());
+  const vid = await h.vault.personalVault();
+  const benRes = `vyre://${space}/vault/${BEN}/item/mc-1`, eveRes = `vyre://${space}/vault/${EVE}/item/mc-2`, ownerRes = `vyre://${space}/vault/${vid}/item/o`;
+  // the share's grant: the member's own, for this agent, on her own resource, at one origin
+  await h.grants.create(ownerChain, { subject: { kind: "actor", actor: { kind: "agent", id: "agt_kit", space } }, actions: ["vault.fill"], resource: { prefix: benRes }, conditions: { where: { origins: [ORIGIN] } }, source: "vault:member-share:mc-1" }, ok());
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN, false, undefined, BEN), true, "[the member, the agent] holds her grant on her resource");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN), false, "with no person it is the owner's chain, which holds nothing in her folder");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, "https://evil.test", false, undefined, BEN), false, "another origin");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", eveRes, ORIGIN, false, undefined, BEN), false, "another member's resource");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", eveRes, ORIGIN, false, undefined, EVE), false, "her own resource but no grant of the agent there");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", ownerRes, ORIGIN, false, undefined, BEN), false, "the owner's resource");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN, false, undefined, "per_nobody1234567890abcdefgh"), false, "a person who is not a member");
+  assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN, false, undefined, owner), false, "the owner passed as the person");
+  for (const bad of ["", "ben", "per_", "per_ben; drop", 7, null]) assert.equal(await h.agentMay("agt_kit", "vault.fill", benRes, ORIGIN, false, undefined, /** @type {any} */ (bad)), false, `a malformed person: ${String(bad)}`);
+});

@@ -58,7 +58,10 @@ export async function agentFill(deps, q) {
   if (!hosts.includes(origin)) return refuse("origin not on the login", `${row.name} is not for ${origin}; it is for ${hosts.join(", ") || "no site yet"}`, "denied", origin);
 
   // Lent to this agent at this origin: a grant, or a tag the person typed in this conversation.
-  let lent = copy ? copy.agent === q.agent && await vault.access.allowedCopy(copy, origin, q.thread).catch(() => false) : vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(() => false) : false;
+  // A login a member SHARED with this agent (one login, one agent, one site) is the grant itself: it needs no per-conversation lend, so the thread is not part of the question; the copy's own agent and site, its expiry and the kernel's grant
+  // (taken back, ended, or the member gone) decide. A refusal's reason is logged (never a value), so a copy that should fill and does not can be told from one that should not.
+  const noted = (/** @type {string} */ what) => (/** @type {any} */ e) => { log(`agent-fill: ${what} for ${q.agent} at ${origin} failed: ${String(e && e.message || e).slice(0, 160)}`); return false; };
+  let lent = copy ? copy.agent === q.agent && await vault.access.allowedCopy(copy, origin).catch(noted("the shared copy's grant check")) : vault.access ? await vault.access.allowed(q.agent, row.name, origin).catch(noted("the lent grant check")) : false;
   if (!lent && !copy && q.thread && deps.said) lent = Boolean(await deps.said.match({ kind: "use", to: [row.name], hosts: [origin] }, { thread: q.thread, lineage: q.lineage || [] }).catch(() => null));
   if (!lent) return refuse("not lent", `${row.name} is not lent to ${q.agent} for ${origin} in this conversation: type # and pick the login, or the person lends it with vault.agent.grant`, "denied", origin);
 
