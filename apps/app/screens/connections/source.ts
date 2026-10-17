@@ -86,6 +86,10 @@ export function connectionsSource(call: Call) {
     madeDecline: (proposal: string) => ask("connectors.connection.decline", { proposal }),
     madeCheck: (id: string) => ask<{ light: string; words: string }>("connectors.connection.check", { id }),
     madeDelete: (id: string) => ask("connectors.connection.delete", { id }),
+    // sharing a connection's vault item (V2): who holds it, and a change at one level; agents are listed to name the agent grants
+    shareGet: (name: string) => ask<unknown>("vault.access.get", { name }),
+    shareSet: (input: Record<string, unknown>) => ask("vault.access.set", input),
+    async agentList() { const r = await ask<unknown>("agents.list", {}); return (Array.isArray(r) ? r : []).filter((a): a is { name: string; uid?: string } => !!a && typeof (a as { name?: unknown }).name === "string"); },
     // vault: items, grants, connections by surface
     async vaultItems() { return pickItems(await ask("vault.list", {})); },
     /** Let a module read a vault item: a person's own act (the box asks for presence). */
