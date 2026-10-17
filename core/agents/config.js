@@ -293,7 +293,7 @@ export function register(ctx, h) {
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
     run: async ({ agent }, meta) => {
       if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module asks who can instruct an agent"), { code: "denied" });
-      const nope = () => Object.assign(new Error(`no agent named ${String(agent).slice(0, 60)}`), { code: "not_found" });
+      const nope = () => Object.assign(new Error(`no agent named ${String(agent).slice(0, 60)} (agents.list shows the agents you can instruct)`), { code: "not_found" });
       let a; try { a = h.must(agent); } catch { throw nope(); }
       const level = await levelOf(meta, a);
       if (level === "none") throw nope();
