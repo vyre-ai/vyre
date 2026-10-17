@@ -13,29 +13,30 @@ import { readJson, rmQuiet, writePrivate } from "../../kernel/identity/files.js"
 import { ensureKek, readKek } from "../../kernel/identity/sealed-key.js";
 import { keyObject } from "./crypto.js";
 
-const AAD = (/** @type {string} */ person) => `vyre:member-vault:server-wrap:v1:${person}`;
+/** What a sealed key is for. The connection key keeps its original wrap names; every other purpose is named in both the file and the wrap, so one purpose's wrap never opens as another's. */
+const AAD = (/** @type {string} */ person, /** @type {string} */ purpose) => purpose === "connection" ? `vyre:member-vault:server-wrap:v1:${person}` : `vyre:member-vault:server-wrap:v1:${purpose}:${person}`;
 const kekPath = (/** @type {string} */ root) => path.join(root, "identity", "seals", "member-vaults.kek");
-export const wrapPath = (/** @type {string} */ root, /** @type {string} */ person) =>
-  path.join(root, "vault-people", "wraps", crypto.createHash("sha256").update("vyre-member-wrap\0" + person).digest("hex").slice(0, 40) + ".json");
+export const wrapPath = (/** @type {string} */ root, /** @type {string} */ person, purpose = "connection") =>
+  path.join(root, "vault-people", "wraps", crypto.createHash("sha256").update((purpose === "connection" ? "vyre-member-wrap\0" : `vyre-member-wrap-${purpose}\0`) + person).digest("hex").slice(0, 40) + ".json");
 
-/** Seal a member's connection key. The key object is left intact. @param {string} root @param {string} person @param {import("node:crypto").KeyObject} key */
-export function sealConnectionKey(root, person, key) {
+/** Seal a member's connection key. The key object is left intact. @param {string} root @param {string} person @param {import("node:crypto").KeyObject} key @param {string} [purpose] "connection", or "lend" for the logins a member lends to an agent */
+export function sealConnectionKey(root, person, key, purpose = "connection") {
   const raw = key.export();
   const kek = ensureKek(kekPath(root));
-  try { writePrivate(wrapPath(root, person), JSON.stringify({ v: 1, ...aesWrap(kek, raw, AAD(person)) }) + "\n"); }
+  try { writePrivate(wrapPath(root, person, purpose), JSON.stringify({ v: 1, ...aesWrap(kek, raw, AAD(person, purpose)) }) + "\n"); }
   finally { kek.fill(0); raw.fill(0); }
 }
 
 /** The member's connection key, or null when there is no seal or it does not open (another person's wrap, a missing key-encryption key, damage). @param {string} root @param {string} person */
-export function openConnectionKey(root, person) {
-  const row = readJson(wrapPath(root, person));
+export function openConnectionKey(root, person, purpose = "connection") {
+  const row = readJson(wrapPath(root, person, purpose));
   if (!row || typeof row.ct !== "string") return null;
   const kek = readKek(kekPath(root));
   if (!kek) return null;
-  try { const raw = aesUnwrap(kek, row, AAD(person)); const k = keyObject(Buffer.from(raw)); raw.fill(0); return k; }
+  try { const raw = aesUnwrap(kek, row, AAD(person, purpose)); const k = keyObject(Buffer.from(raw)); raw.fill(0); return k; }
   catch { return null; }
   finally { kek.fill(0); }
 }
 
 /** Remove a member's seal (they left the Space). @param {string} root @param {string} person */
-export function forgetConnectionKey(root, person) { rmQuiet(wrapPath(root, person)); }
+export function forgetConnectionKey(root, person, purpose = "connection") { rmQuiet(wrapPath(root, person, purpose)); }

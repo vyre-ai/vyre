@@ -39,6 +39,7 @@ import { registerService } from "./service.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
+import { memberOf, MEMBER_SURFACES as SHARED_SURFACES } from "./tools/me.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
   readerMayRead, scopeAllows, modelMayRead,
@@ -653,6 +654,13 @@ export class ApiRequests {
       throw bad(`${mod} may only read ${plan.config.readers.find(x => x.module === mod).paths.join(", ")} through ${name}`, "denied");
     }
 
+    // A member using what the owner shared with her (vault.me.shared.request): the share decides, for the action this request is, before anything else runs. The check is handed in by that tool, from the
+    // registry's meta and never from an input, and the credential's own rules (hosts, methods, the Gate for an outward act) all still apply.
+    if (typeof meta.authorize === "function" && !(await meta.authorize(name, plan.kind === "read" ? "vault.read" : "vault.call"))) {
+      audit(false, `${plan.method} ${plan.url.hostname} refused: not shared for this`);
+      throw bad(`${name} is not shared with you for that: ${plan.kind === "read" ? "read" : "send, change or delete"} needs a share that allows it`, "denied");
+    }
+
     // A thread the person tagged with #<this credential> uses it by right: note it quietly (vault.used), and the hosts the item has now must be the ones it had at the tag.
     let tagged = false;
     if (meta.thread && this.deps.said && this.deps.call) {
@@ -679,6 +687,10 @@ export class ApiRequests {
     }
 
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
+
+    // A member making an outward call herself, with a credential shared with her at a level that allows it (vault.me.shared.request: a lone person in the chain, checked there), is not held: the sends a
+    // person makes themselves are never held (owner's ruling). An agent acting for her still reaches the Gate below.
+    if (meta.byPerson === true) return { ...(await this.execute(plan, { who: caller })), kind: plan.kind };
 
     // A watcher has no card to wait behind: it runs reads and is refused anything outward.
     if (watcher) {
@@ -863,6 +875,32 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     obj({ credential: { type: "string", description: "name of an api-credential in the vault" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
       body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
+
+  // A member uses what the Space owner shared with her. The kernel is asked, for HER chain, on the item's address (one grant model): Fill in covers reads, and an outward act still waits at the Gate for a
+  // person. An item that is not shared answers exactly as one that does not exist. The key is added at the vault's home and never reaches her; the member gate lets exactly these two names through.
+  const asMember = async (/** @type {any} */ meta) => {
+    const K = /** @type {any} */ (vault).access && /** @type {any} */ (vault).access.K;
+    const person = await memberOf(K, meta);
+    const chain = await K.chain(meta);
+    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { return (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect === "allow"; } catch { return false; } };
+    return { person, may };
+  };
+  tool("vault.me.shared.list", SHARED_SURFACES, "The credentials the owner shared with you that you can use: name, kind, description and hosts, never a value.", obj({}), async (_input, meta) => {
+    const { may } = await asMember(meta);
+    const out = [];
+    for (const it of /** @type {any} */ (vault).list().items) if (it.kind === "api-credential" && await may(it.name, "vault.read")) out.push({ name: it.name, kind: it.kind, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) });
+    return { items: out };
+  });
+  tool("vault.me.shared.request", SHARED_SURFACES, "HTTP call to a vendor API with a credential the owner shared with you; Vyre adds the key and you never see it. Reads and, when the share allows it, your own sends, changes and payments go out at once: they are yours.",
+    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, operation: str, input: { type: "object" } }, ["credential"]),
+    async (input, meta) => {
+      const { person, may } = await asMember(meta);
+      const name = String(input.credential || "");
+      // not shared = not there, whatever the name
+      if (!(await may(name, "vault.read"))) throw bad(`no credential named ${name.slice(0, 80)} is shared with you`, "not_found");
+      const { watcher: _w, ...rest } = input;
+      return api.request(rest, { caller: `member:${person}`, authorize: may, byPerson: true });
+    });
 
   internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
     obj({ url: str, max_bytes: { type: "integer" }, raw: { type: "boolean" } }, ["url"]),
