@@ -39,17 +39,17 @@ const PERSON_PROXY = new Set([
   "daemon:spaces.compute.status",
 ]);
 
-/** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */
+/** RELAY_ALLOWED in core/modules/relay-allowed.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */
 function relayAllowed() {
-  const src = fs.readFileSync(path.join(root, "core", "modules", "index.js"), "utf8");
-  const block = /const RELAY_ALLOWED = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(src);
   /** @type {Record<string, string[]>} */ const out = {};
   const read = (/** @type {string} */ text) => { for (const m of text.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...(out[m[1]] || []), ...[...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1])]; };
+  // the list lives in core/modules/relay-allowed.js (kept out of index.js for its line budget); its first-run entries are spread in from relay-context.js (...FIRST_RUN_RELAY)
+  const listSrc = fs.readFileSync(path.join(root, "core", "modules", "relay-allowed.js"), "utf8");
+  const block = /export const RELAY_ALLOWED = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(listSrc);
   if (block) read(block[1]);
-  // the first-run entries live in core/modules/relay-context.js and are spread into RELAY_ALLOWED (...FIRST_RUN_RELAY)
   const ctxSrc = fs.readFileSync(path.join(root, "core", "modules", "relay-context.js"), "utf8");
   const first = /export const FIRST_RUN_RELAY = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(ctxSrc);
-  if (first && /\.\.\.FIRST_RUN_RELAY/.test(src)) read(first[1]);
+  if (first && /\.\.\.FIRST_RUN_RELAY/.test(listSrc)) read(first[1]);
   return out;
 }
 const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ src, /** @type {number} */ at) =>
