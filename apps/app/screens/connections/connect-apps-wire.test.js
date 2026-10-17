@@ -51,6 +51,18 @@ test("a share change reaches vault.access.set with the kernel's level on the con
   ]);
 });
 
+test("a member's share reaches vault.me.connection.share on the connection's own name, never the owner's vault.access.set", { skip: !strip }, async () => {
+  const { connectionsSource } = await import("./source.ts");
+  const b = box();
+  const s = connectionsSource(b.call);
+  for (const input of shareChanges("github", [], [{ who: "kit", level: "fill" }], [{ who: "kit", subject: "kit", kind: "agent" }])) await s.memberShareSet(input);
+  await s.memberShareGet("github");
+  assert.deepEqual(b.seen, [
+    { tool: "vault.me.connection.share", input: { name: "github", kind: "agent", subject: "kit", level: "use" } },
+    { tool: "vault.me.connection.shares", input: { name: "github" } },
+  ]);
+});
+
 test("a connected row carries its connection name so Share and Disconnect act on it", () => {
   const a = appsOf([{ group: "work", presets: [{ id: "github", label: "GitHub", group: "work", who: "", note: "", setup: "token", via: "", connected: [{ name: "github-2" }] }] }]);
   assert.equal(a[0].connection, "github-2");

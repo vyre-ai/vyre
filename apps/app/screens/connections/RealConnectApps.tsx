@@ -6,7 +6,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, ConnectApps, ErrorState, Field, LoadingState, Sheet, ShareSheet, Text, showToast, type ConnectApp } from "@vyre/ui";
 import { connections } from "./source-real";
 import { scopeOf, words, type Preset, type Step } from "./model";
-import { appsOf, extraApps, granteesOf, inputOf, itemOfConnection, missing, shareChanges, sharesOf, sheetOf } from "./connect-apps-model.js";
+import { appsOf, extraApps, granteesOf, inputOf, itemOfConnection, missing, shareChanges, sharesOf, sheetOf, memberGrantees, memberSharesOf } from "./connect-apps-model.js";
 import { GuideView, openUrl, usePoll } from "./shared";
 
 type Flow = { app: ConnectApp; preset: Preset; step: Step | null; values: Record<string, string>; busy: boolean; error: string };
@@ -19,7 +19,7 @@ export default function RealConnectApps() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [flow, setFlow] = useState<Flow | null>(null);
-  const [sharing, setSharing] = useState<{ app: ConnectApp; item: string; grantees: Grantee[]; held: { subject: string }[] } | null>(null);
+  const [sharing, setSharing] = useState<{ app: ConnectApp; item: string; grantees: Grantee[]; held: { subject: string }[]; member: boolean } | null>(null);
   const [notice, setNotice] = useState("");
   const [entries, setEntries] = useState<unknown[]>([]);
   const load = useCallback(() => {
@@ -67,16 +67,24 @@ export default function RealConnectApps() {
     const conn = (a as ConnectApp & { connection?: string }).connection;
     if (!conn) return;
     const item = itemOfConnection({ name: conn });
-    Promise.all([connections.shareGet(item), connections.agentList()]).then(([got, agents]) => {
-      setShares((s) => ({ ...s, [conn]: sharesOf(got, agents) }));
-      setSharing({ app: a, item, grantees: granteesOf(got, agents), held: sharesOf(got, agents) });
+    // The owner shares the connection's Vault item; a member, who has no access to the owner's Vault, shares her own connection (Fill in only).
+    connections.agentList().catch(() => []).then(async (agents) => {
+      try {
+        const got = await connections.shareGet(item);
+        setShares((s) => ({ ...s, [conn]: sharesOf(got, agents) }));
+        setSharing({ app: a, item, grantees: granteesOf(got, agents), held: sharesOf(got, agents), member: false });
+      } catch {
+        const held = memberSharesOf(await connections.memberShareGet(conn), agents);
+        setShares((s) => ({ ...s, [conn]: held }));
+        setSharing({ app: a, item: conn, grantees: memberGrantees(held, agents), held, member: true });
+      }
     }).catch((e) => setNotice(words(e)));
   };
   const changeShares = async (next: ConnectApp["shares"]) => {
     if (!sharing) return;
     const conn = (sharing.app as ConnectApp & { connection?: string }).connection ?? "";
     try {
-      for (const input of shareChanges(sharing.item, shares[conn] ?? [], next, sharing.grantees)) await connections.shareSet(input);
+      for (const input of shareChanges(sharing.item, shares[conn] ?? [], next, sharing.grantees)) await (sharing.member ? connections.memberShareSet(input) : connections.shareSet(input));
       setShares((s) => ({ ...s, [conn]: next }));
     } catch (e) { setNotice(words(e)); startShare(sharing.app); }
   };
@@ -130,7 +138,7 @@ export default function RealConnectApps() {
           </View>
         ) : null}
       </Sheet>
-      <ShareSheet app={sharing?.app ?? null} grantees={sharing?.grantees ?? []} open={sharing !== null} onClose={() => setSharing(null)} onChange={(n) => void changeShares(n)} />
+      <ShareSheet app={sharing?.app ?? null} grantees={sharing?.grantees ?? []} open={sharing !== null} onClose={() => setSharing(null)} onChange={(n) => void changeShares(n)} fillOnly={sharing?.member} />
     </View>
   );
 }

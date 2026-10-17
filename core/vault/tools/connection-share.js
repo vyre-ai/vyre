@@ -52,6 +52,8 @@ export function register({ ctx, people, tool }) {
       if (kind === "person") who = { kind: "actor", actor: { kind: "person", id: subject, space: ctx.kernel.space } };
       if (kind === "team") who = { kind: "group", id: subject };
       if (kind === "agent") {
+        // Only an agent she may instruct herself (she made it, or was given Can use or Can edit): one that others also instruct would let them use her connection through it. Anything else is not found.
+        if (level) { const who = await ctx.call("agents.instructors", { agent: String(subject).toLowerCase() }); if (who.error || !who.data) throw Object.assign(new Error("no agent has that name"), { code: "not_found" }); }
         const uid = (await agentUid(subject)) || (level ? null : subject);
         if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" });
         key = uid; who = { kind: "actor", actor: { kind: "agent", id: uid, space: ctx.kernel.space } };
@@ -74,6 +76,24 @@ export function register({ ctx, people, tool }) {
       await own(id, name);
       const gs = (await mint().list({ source: prefixOf(id, name) })) || [];
       return { shares: gs.map((/** @type {any} */ g) => { const s = g.subject || {}; return s.kind === "group" ? { kind: "team", subject: String(s.id), level: "use" } : { kind: s.actor && s.actor.kind === "agent" ? "agent" : "person", subject: String(s.actor && s.actor.id), level: "use" }; }) };
+    });
+
+  tool("vault.me.connection.directory", MEMBER_SURFACES, "Who a connection can be shared with: the other members, the groups, and the agents you may instruct (each with who else instructs it). Names and ids, never a value.", obj({}),
+    async (_input, meta) => {
+      const id = await memberOf(ctx.kernel, meta);
+      const ms = (await members(meta)) || [], ts = (await teams(meta)) || [];
+      const listed = await ctx.call("agents.list", {}).catch(() => null);
+      const rows = listed && Array.isArray(listed.data) ? listed.data : listed && listed.data && Array.isArray(listed.data.agents) ? listed.data.agents : [];
+      const agents = [];
+      for (const a of rows) {
+        if (!a || !(a.uid || a.id) || !a.name) continue;
+        const who = await ctx.call("agents.instructors", { agent: String(a.name).toLowerCase() }).catch(() => null);
+        if (!who || who.error || !who.data) continue;
+        const others = [who.data.made_by, ...(Array.isArray(who.data.shares) ? who.data.shares : [])].filter((/** @type {any} */ x) => typeof x === "string" && x);
+        agents.push({ id: String(a.uid || a.id), name: String(a.name), instructors: [...new Set([id, ...others])] });
+      }
+      return { people: ms.filter((/** @type {any} */ m) => String(m.person) !== id).map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.display_name || m.person), role: String(m.role || "") })),
+        groups: ts.map((/** @type {any} */ t) => ({ id: String(t.id), name: String(t.name), people: [...(t.members || [])], agents: [...(t.agents || [])] })), agents };
     });
 
   return {

@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareChanges, shareInput, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
+import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareChanges, shareInput, memberSharesOf, memberGrantees, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
 
 const groups = [{ group: "work", presets: [
   { id: "linear", label: "Linear", group: "work", who: "", note: "Issues", setup: "none", via: "", connected: [] },
@@ -78,4 +78,10 @@ test("share changes: an added person at Read is reveal, a raised level is sent o
 test("an agent held by its id is named through agents.list", () => {
   const got = { people: [], access: [{ kind: "agent", subject: "uid-9", level: "use" }] };
   assert.equal(sharesOf(got, [{ uid: "uid-9", name: "kit" }])[0].who, "kit");
+});
+
+test("a member's connection shares are Fill in, agents named by id, and she can stop a person already holding it", () => {
+  const held = memberSharesOf({ shares: [{ kind: "person", subject: "p1", level: "use" }, { kind: "agent", subject: "uid-9", level: "use" }, { kind: "team", subject: "t" }] }, [{ uid: "uid-9", name: "kit" }]);
+  assert.deepEqual(held.map((h) => [h.who, h.kind, h.level]), [["p1", "person", "fill"], ["kit", "agent", "fill"]]);
+  assert.deepEqual(memberGrantees(held, [{ name: "juno" }]).map((g) => g.kind + ":" + g.subject), ["person:p1", "agent:juno"]);
 });

@@ -118,3 +118,16 @@ export function shareChanges(item, before, next, grantees) {
 export function shareInput(item, who, level) {
   return { name: item, kind: who.kind, subject: who.subject, level: level === null ? null : who.kind === "agent" ? "use" : levelToKernel(level) };
 }
+
+/** A member's own connection shares (vault.me.connection.shares): each is Fill in, named through the agents list when it is an agent held by id. @param {any} got @param {{ uid?: string, name: string }[]} [agents] */
+export function memberSharesOf(got, agents = []) {
+  const agentName = new Map(agents.filter((a) => a && a.uid).map((a) => [String(a.uid), String(a.name)]));
+  return (Array.isArray(got && got.shares) ? got.shares : []).filter((/** @type {any} */ s) => s && (s.kind === "person" || s.kind === "agent"))
+    .map((/** @type {any} */ s) => ({ who: s.kind === "agent" ? agentName.get(String(s.subject)) || String(s.subject) : String(s.subject), subject: String(s.subject), kind: s.kind, level: "fill" }));
+}
+
+/** Who a member may share a connection with from here: the agents, and the people already holding it (so a share can be stopped). A member has no list of the Space's people. @param {{ who: string, subject: string, kind: "person" | "agent" }[]} held @param {any[]} agents */
+export const memberGrantees = (held, agents) => [
+  ...held.filter((h) => h.kind === "person").map((h) => ({ who: h.who, subject: h.subject, kind: /** @type {"person"} */ ("person") })),
+  ...agents.map((a) => ({ who: String(a.name), subject: String(a.name), kind: /** @type {"agent"} */ ("agent") })),
+];
