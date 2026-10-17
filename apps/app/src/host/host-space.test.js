@@ -388,3 +388,14 @@ test("a slow claim is not started twice: polls that arrive while it runs share i
   } finally { clearTimeout(timer); release(); }
   assert.equal(pp.seen.claims.length, 1, "the name was claimed once");
 });
+
+test("a server that asks for the person's approval before it makes the space vault does not stop the space: it is online, and the answer says the vault is waiting", async (t) => {
+  const { pp, host } = await ready(t);
+  pp.call = async () => { throw Object.assign(new Error("Approve this."), { code: "presence_required" }); };
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  const done = await until(host, open.id, (r) => r.online || r.failed);
+  assert.equal(done.online, true);
+  assert.equal(done.vaultPending, true);
+  assert.equal((await host.call("onboard.space.list")).spaces.length, 1);
+});
