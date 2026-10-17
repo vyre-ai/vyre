@@ -23,6 +23,9 @@ export const MIGRATIONS = [`
   );
 `];
 
+/** A grant made in a chat is for the person who tagged it: their own turns may read the file, another member's turn in the same chat may not. Empty: tagged on a person's own surface, bound to no one. Appended at the END of the files list (migrations.js): a step's number is its place. */
+export const ASKER_MIGRATIONS = [`ALTER TABLE files_mention_grants ADD COLUMN asker TEXT`];
+
 const refuse = (message, code = "denied") => Object.assign(new Error(message), { code });
 const CALLERS = /^module:(sessions|assistant)$/;
 const THREAD = /^[A-Za-z0-9_-]{1,100}$/;
@@ -43,11 +46,16 @@ export function parseMentionId(id) {
 export function mentions(ctx, { folder, shares, resolveIn }) {
   const db = () => ctx.store.db;
 
-  /** What browse.js asks: the real path this thread was given for exactly this file, or null. */
-  const tagged = (thread, share, rel) => {
+  /** Who asked the turn running on a thread: the Switchboard knows (threads.turn-asker answers the vault and Files alone). No answer is no asker. */
+  const askerOf = async thread => { try { const r = await ctx.call("threads.turn-asker", { thread }); return r && r.data && typeof r.data.asker === "string" ? r.data.asker : null; } catch { return null; } };
+
+  /** What browse.js asks: the real path this thread was given for exactly this file, or null. A grant made by one person in a chat is for that person's turns only. */
+  const tagged = async (thread, share, rel) => {
     try {
-      const r = /** @type {any} */ (db().prepare("SELECT real FROM files_mention_grants WHERE thread = ? AND share = ? AND path = ?").get(thread, share, rel));
-      return r ? String(r.real) : null;
+      const r = /** @type {any} */ (db().prepare("SELECT real, asker FROM files_mention_grants WHERE thread = ? AND share = ? AND path = ?").get(thread, share, rel));
+      if (!r) return null;
+      if (r.asker && (await askerOf(thread)) !== String(r.asker)) return null;
+      return String(r.real);
     } catch { return null; }
   };
 
@@ -88,9 +96,9 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
 
   ctx.tool("files.mentions.resolve", {
     description: "Make a tagged file readable in the chat it was tagged in: records that thread and that one file, and tells the model how to read it. Only the sessions module or the assistant call it.",
-    input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
+    input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" }, asker: { type: "string" } } },
     callers: ["module"],
-    run: async ({ id, thread, said }, meta = {}) => {
+    run: async ({ id, thread, said, asker }, meta = {}) => {
       if (!CALLERS.test(String(meta && meta.caller))) throw refuse("only the chat itself resolves a tag: tag the file again with # in the chat", "denied");
       const m = parseMentionId(id);
       if (!m || !THREAD.test(String(thread))) throw refuse("that file is not available (tag it again with # in the chat)", "not_found");
@@ -100,8 +108,9 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
       try { st = fs.statSync(safe.real); } catch { throw refuse("that file is not available (tag it again with # in the chat)", "not_found"); }
       if (!st.isFile()) throw refuse("that is a folder, not a file (tag a file inside it)", "not_found");
       const rel = m.rel.replace(/^\/+/, "");
-      db().prepare("INSERT OR REPLACE INTO files_mention_grants (thread, share, path, real, said, at) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(String(thread), m.share, rel, safe.real, said ? String(said) : null, Date.now());
+      if (asker !== undefined && !/^per_[A-Za-z0-9_-]{1,64}$/.test(String(asker))) throw refuse("asker is a person id (per_...)", "bad_input");
+      db().prepare("INSERT OR REPLACE INTO files_mention_grants (thread, share, path, real, said, at, asker) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(String(thread), m.share, rel, safe.real, said ? String(said) : null, Date.now(), asker ? String(asker) : null);
       const name = path.basename(safe.path);
       return { name, hint: `${m.share}/${path.dirname(rel) === "." ? "" : path.dirname(rel)}`.replace(/\/$/, ""),
         note: `The person tagged the file "${rel}" in the share "${m.share}". Read it with files.drive.read {share: "${m.share}", path: "${rel}"}.`,

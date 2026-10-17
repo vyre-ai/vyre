@@ -42,7 +42,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     const scope = await reach(ctx, meta && meta.caller, meta);
     const raw = path.join(map[share], rel);
     // A file the person tagged in a chat is readable in that chat, one file and nothing around it.
-    const tag = !scope.all && file && meta && meta.thread ? tagged(String(meta.thread), String(share), rel.replace(/\/+$/, "")) : null;
+    const tag = !scope.all && file && meta && meta.thread ? await tagged(String(meta.thread), String(share), rel.replace(/\/+$/, "")) : null;
     if (!scope.all && !tag && !within(raw, scope.folders)) throw nope();
     let top;
     try { top = folder(map[share]); } catch { throw nope(); }

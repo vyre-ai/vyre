@@ -415,11 +415,12 @@ test("said: an ask recorded for the owner in a chat is not matched by a call who
   assert.equal((await reg("vault.said.match", { ...ask, asker: OWNER }, "module:gate")).data.matched, false, "a caller cannot name the asker itself");
 });
 
-test("threads.turn-asker answers the vault alone: any other module, an added one too, is refused", async t => {
+test("threads.turn-asker answers the vault and Files alone: any other module, an added one too, is refused", async t => {
   const { reg } = await daemon(t);
   const mine = await reg("threads.turn-asker", { thread: "t-none" }, "module:vault");
   assert.ok(mine.data && mine.data.asker === null, JSON.stringify(mine));
-  for (const caller of ["module:gate", "module:sessions", "ext:someone", "module:vault-evil", "cli", "mcp"]) {
+  assert.ok((await reg("threads.turn-asker", { thread: "t-none" }, "module:files")).data, "Files keeps a file tag for the person who made it, so it asks too");
+  for (const caller of ["module:gate", "module:sessions", "ext:someone", "module:vault-evil", "module:files-evil", "cli", "mcp"]) {
     const r = await reg("threads.turn-asker", { thread: "t-none" }, caller);
     assert.ok(r.error, `${caller} must be refused`);
   }
