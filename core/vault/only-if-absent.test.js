@@ -14,6 +14,7 @@ async function boot(t) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "local", vault: { keystore: "file" } }));
   const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());   // the daemon (and the sealing process it started) must end with the test, or the file never exits
   const call = (tool, input, caller, opts) => d.registry.call(tool, input, caller, opts);
   const item = async name => (await call("vault.list", {}, "cli")).data.items.find(i => i.name === name);
   const puts = async name => (await call("vault.audit", { name }, "cli")).data.entries.filter(e => e.action === "put" && e.ok).length;

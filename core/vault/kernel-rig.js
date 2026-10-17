@@ -40,14 +40,14 @@ export async function kernelRig(o = {}) {
     proofFrom: () => ({ presence: { n: Math.random() } }),
     vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p),
       // Mirror kernel/index.js vault.personMay (owner role only; no extra test-only shortcuts).
-      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource, /** @type {boolean} */ asks) => {
         if (gs.roleOf({ kind: "person", id: person, space: SPACE }) === "owner") return true;
-        try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+        try { const e = (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect; return e === "allow" || (asks === true && e === "ask"); } catch { return false; }
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { const who = person === undefined ? OWNER : (typeof person === "string" && person !== OWNER && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && gs.roleOf({ kind: "person", id: person, space: SPACE }) ? person : null); if (who === null) return false; const e = (await gw.authorize({ chain: assistant(agent, who, thread || "t"), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
+      try { const who = person === undefined ? OWNER : (typeof person === "string" && person !== OWNER && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && gs.roleOf({ kind: "person", id: person, space: SPACE }) ? person : null); if (who === null) return false; const e = (await gw.authorize({ chain: assistant(agent, who, thread || "t"), action, resource, ...(origin ? { origin } : {}), ...(thread ? { thread } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
