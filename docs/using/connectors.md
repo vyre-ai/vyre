@@ -75,7 +75,7 @@ Vyre keeps a fingerprint of the first tool list a server gives. When you add a s
 
 An entry the vendor published on its own domain, whose server a probe found registers a client by itself, can be connected from the catalog (an owner or an admin connects it for the Space; a member connects it for herself, into her own vault, and it is hers alone until she shares it): Vyre registers itself with the vendor's server as it signs you in, so there is no app of your own to make. The sign-in can only go to the server's own address; a vendor that signs in somewhere else is refused with the reason, and you can add it by its address instead. The sign-in is kept as one vault item that names the server, the catalog entry and who connected it. If the vendor later stops accepting it, the connection is marked, and its entry in `connectors.list` says it needs to be connected again.
 
-A member signs in the same way, but she finishes the sign-in with the address the browser lands on, and an app that needs the firm's own developer app stays with an owner or an admin.
+A member signs in the same way, but she finishes the sign-in with the address the browser lands on, and an app that needs your team's own developer app stays with an owner or an admin.
 
 This review applies to the servers in the Space's hub. The servers a member brings for her own account live in her own vault and run on her side, so they are not part of it.
 
