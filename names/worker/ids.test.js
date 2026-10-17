@@ -77,6 +77,22 @@ test("ids: one namespace with the names an older setup gave a server, one name p
   assert.equal(code(await other.claim("x")), "invalid");
 });
 
+test("ids: a person and a space never share a label: whichever claimed it first holds <label>.vyre.run, the other is refused", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
+  // The owner is "maple"; naming his space "maple" is refused, so <label>.vyre.run can never be both a person's old address and a space's.
+  data(await alex.claim("maple"));
+  const space = await identity(w, alex.first, { kind: "space", ctxFor });
+  await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Maple" }, alex.first.eid);
+  assert.equal(code(await space.claim("maple", "aG9tZQ", alex.first, alex.first.eid)), "taken", "a space cannot take a label a person holds");
+  // And the other way round: a space that holds a label keeps it, a person cannot claim it.
+  data(await space.claim("studio", "aG9tZQ", alex.first, alex.first.eid));
+  const bob = await person(w);
+  assert.equal(code(await bob.claim("studio")), "taken", "a person cannot take a label a space holds");
+  assert.equal(data(await alex.get("/v1/ids/resolve?name=studio")).kind, "space");
+});
+
 test("ids: a claim must carry a valid chain and a record an entry signed; a forged id or a borrowed signature is refused", async t => {
   const w = world(t);
   const alex = await person(w), mallory = await person(w);
