@@ -11,6 +11,7 @@ import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
+import { createScrub } from "./scrub.js";
 import { createIdem } from "../core/idem.js";
 import { TASK } from "../../records/core-types.js";
 
@@ -25,6 +26,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.read", resource_type: "task", risk: "read", label: "see tasks", gloss: "Open tasks." },
   { action: "tasks.work", resource_type: "task", risk: "write", label: "work on tasks", gloss: "Start, finish or flag a task you were given." },
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
+  { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
 const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
@@ -39,6 +41,10 @@ const DENIALS_TO_STUCK = 3;
 /** The kernel's own read of a record's stage tasks (the gateway's stage gate). Held beside the public api, not on it: a surface cannot reach it. */
 const VIEWS = new WeakMap();
 /** @param {any} api @param {string} record @param {string} stage @returns {{ title: string, state: string, required: boolean }[]} */
+/** Whether a task is still open (not done or skipped). A task the kernel does not hold counts as CLOSED: a grant lent for a task nobody can find holds nothing (fail closed). Held beside the public api like the stage view. */
+const LIVE = new WeakMap();
+/** @param {any} api @param {string} id */
+export const taskOpen = (api, id) => { const v = LIVE.get(api); return v ? v(id) : false; };
 export const stageTasks = (api, record, stage) => { const v = VIEWS.get(api); return v ? v(record, stage) : []; };
 
 const urnOf = (/** @type {string} */ space, /** @type {string} */ id) => `vyre://${space}/task/${id}`;
@@ -692,11 +698,31 @@ export function createTasks(cfg) {
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not reopened");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task reopens it");
       await ownsWrite(chain, t, {});
+      if (t.withdrawn) throw new KernelError("bad_state", "a task withdrawn at its due time is not reopened: make a new task");
       if (needsCheck(t)) throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
       if (!TASK_REOPENS.some(x => x.from === t.state && x.to === "ready")) throw new KernelError("bad_state", `a task that is ${t.state} is not reopened`);
       const { answer: _a, ...rest } = t;
       const n = stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
       note(chain, "task.reopened", n, {});
+      return n;
+    },
+
+    /**
+     * The Flows service ends a task its step gave once the step's due time has passed (R051-03). Only the Flows service may: its chain's acting hop is service `flows` and the grant `tasks.withdraw` is in its
+     * manifest, never in a role. The task ends as skipped with `withdrawn: { reason, at }` in ONE write, whatever state it is in (a doer working on it too), so every later start, hand-in, move or check by anyone
+     * is refused (bad_state); the lend of the task to an agent is then ended from the durable `task.withdrawn` event, and a repeat of the call is harmless (an ended task is refused, nothing else changes).
+     * A required stage task stays required: dependants that wait for it keep waiting (skipped and required does not release them).
+     */
+    async withdraw(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ reason?: string }} */ o = {}) {
+      await gate(chain, "tasks.withdraw", urnOf(cfg.space, id));
+      const a = acting(chain);
+      if (!a || a.kind !== "service" || a.id !== "flows") throw new KernelError("not_allowed", "only the Flows service withdraws a task");
+      const t = get_(id);
+      if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not withdrawn");
+      rule(t, "skipped", "flow_deadline");
+      const withdrawn = freeze({ reason: "timeout", at: clock() });
+      const n = put(t, { state: "skipped", withdrawn });
+      note(chain, "task.withdrawn", n, { reason: String((o && o.reason) || "the due time passed").slice(0, 200), withdrawn_reason: "timeout" });
       return n;
     },
 
@@ -798,63 +824,8 @@ export function createTasks(cfg) {
       return true;
     },
 
-    /**
-     * Take free text out of the task store (the lead's TR-1 ruling: the log holds only hashes, the store can forget). Called by the paths that forget a record or seal a field late, never by a surface.
-     * `values`: plain values (strings) that moved into a sealed field: every task whose stored text contains one, as a substring, loses its whole text. `record`: every task about that record loses its text.
-     * The task keeps its structure with a plain title, a task waiting for its check goes back to ready, and the log's `text_hash` no longer resolves to anything. @param {{ values?: string[], record?: string }} o @returns {{ cleared: number }}
-     */
-    async scrubTexts(o = {}) {
-      const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
-      let cleared = 0;
-      /** @type {Set<string>} */ const hit = new Set();
-      // Every task about one of these records loses its text, whatever it says: a person's name or number can be written in more ways than any comparison can know ("Ana M. Lopez", "LOPEZ, Ana").
-      const aboutRecs = new Set([...(typeof o.record === "string" && o.record ? [o.record] : []), ...(Array.isArray(o.records) ? o.records.filter((/** @type {any} */ r) => typeof r === "string") : [])]);
-      if (aboutRecs.size) for (const t of tasks.values()) if (t.record && aboutRecs.has(t.record)) hit.add(t.id);
-      if (values.length) {
-        // A value is looked for in the normalised text: compatibility-folded (NFKC), case-folded, without spaces (of any kind), punctuation or zero-width marks, so "123-45-6789", "123 45 6789",
-        // "ANA  MARIA" and a value split across two form fields (the leaves are joined) all match. Plain and JSON-escaped spellings are checked too.
-        const norm = (/** @type {string} */ x) => x.normalize("NFKC").toLowerCase().replace(/[\s\p{Z}\p{P}\p{Cf}]+/gu, "");
-        const wants = values.map((/** @type {string} */ v) => norm(v)).filter((/** @type {string} */ n) => n.length >= 3);
-        const leaves = (/** @type {any} */ x, /** @type {string[]} */ out) => { if (typeof x === "string") out.push(x); else if (Array.isArray(x)) for (const y of x) leaves(y, out); else if (x && typeof x === "object") for (const y of Object.values(x)) leaves(y, out); return out; };
-        const rows = typeof texts.all === "function" ? texts.all() : [...tasks.keys()].map(id => [id, texts.get(id)]);
-        for (const [id, x] of rows) {
-          let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; }
-          const flat = norm(leaves(x, []).join(""));
-          if (values.some((/** @type {string} */ v) => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1))) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(id));
-        }
-        // The words of a task are its record's: look there too, in every text field of the type (custom ones included).
-        const defs = await recs.types();
-        const names = (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name);
-        for (let cursor; ;) {
-          const page = await recs.query("task", { page: { limit: 200, ...(cursor ? { cursor } : {}) } });
-          for (const row of page.rows) {
-            const text = names.map((/** @type {string} */ n) => (typeof row.data[n] === "string" ? row.data[n] : "")).join("");
-            const flat = norm(text);
-            if (values.some((/** @type {string} */ v) => text.includes(v)) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(row.id));
-          }
-          cursor = page.next_cursor;
-          if (!cursor) break;
-        }
-      }
-      for (const id of hit) {
-        const t = tasks.get(id);
-        try { texts.drop(id); } catch { texts.set(id, undefined); }
-        bodies.delete(id);
-        if (t) {
-          const { payload, ...rest } = /** @type {any} */ (t);
-          const plain = withoutText(rest);
-          tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(t.state === "needs_check" ? { state: "ready" } : {}) }));
-        }
-        // and the words on its record go too: the title is replaced, the note and every other text field emptied
-        {
-          const defs = await recs.types();
-          const names = (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["title", "status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name);
-          try { await recUpdate(id, { title: "(the text of this task was removed)", ...Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) }); } catch { /* a record that is not there has nothing to clear */ }
-        }
-        cleared++;
-      }
-      return { cleared, ids: [...hit], fields: await (async () => { const defs = await recs.types(); return (((defs.find((/** @type {any} */ d) => d.name === "task") || {}).fields) || []).filter((/** @type {any} */ f) => ["text", "rich_text"].includes(f.kind) && !["status", "stage", "record", "parent", "project"].includes(f.name)).map((/** @type {any} */ f) => f.name); })() };
-    },
+    /** Take free text out of the task store (kernel/tasks/scrub.js). */
+    scrubTexts: createScrub({ tasks, bodies, texts, recs, recUpdate, withoutText, deepFreeze }),
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
     approved(/** @type {string} */ id, /** @type {string} */ payload_hash) {
       const t = tasks.get(id);
@@ -912,6 +883,7 @@ export function createTasks(cfg) {
   }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
+  LIVE.set(frozen, (/** @type {string} */ id) => { const t = tasks.get(id); return Boolean(t) && !["done", "skipped"].includes(t.state); });
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));
   return frozen;
 }

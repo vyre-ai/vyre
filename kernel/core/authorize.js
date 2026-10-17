@@ -431,6 +431,9 @@ export function createAuthorizer(cfg) {
     if (/^vault:lease:/.test(String(g.source || "")) && !(g.approver && typeof cfg.approverHolds === "function" && await cfg.approverHolds(String(g.approver), action, resource))) return { ok: false, reason: "expired" }; // a lease is carried by the person who approved it: it holds nothing once they no longer hold the credential, even before it is taken back
     // where the act may go: every recipient must match the grant's `to` (an act with no recipients, or one outside it, is not covered)
     if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
+    // A grant lent for one task (a Flow's lend of the task to an agent, a vault lease for it) ends with the task: once the task is done, skipped or withdrawn it holds nothing, even before the lend is taken back.
+    const lent = /^(?:flows:task|vault:lease):(.+)$/.exec(String(g.source || ""));
+    if (lent && !(typeof cfg.taskOpen === "function" && await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };   // no answer about the task counts as ended
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).

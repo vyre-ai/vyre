@@ -72,7 +72,8 @@ export function guardedFor(task, rule) {
 
 /** The one rule of the table that applies to this task and this move, or undefined. @param {Task} task @param {TaskState} to */
 export function ruleOf(task, to) {
-  const rules = rulesFor(task.state, to);
+  // (a withdrawal at a Flow's due time is the Flows service's, never a person's or an assistant's move: the table lists it, no button offers it)
+  const rules = rulesFor(task.state, to).filter(r => r.by !== "flow_deadline");
   return rules.find(r => r.guarded === undefined) || rules.find(r => r.guarded === guardedFor(task, r));
 }
 
