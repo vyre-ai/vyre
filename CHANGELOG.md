@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(agents): `agents.flow-say` has its reach-anyone reason, and a run that is not recent says how to pick one.
 - feat(flows): a person writing in a Flow's chat wakes the Flow's agent for them, as them, with the Flow and its recent runs as context (new tool `agents.flow-say`); the wake joins the chat as one more divider, and "Reply to this run" narrows it to that run. The three wakes of one Flow are one chat with three dividers.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).

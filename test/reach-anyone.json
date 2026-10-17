@@ -17,6 +17,10 @@
    "module": "agents",
    "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
   },
+  "agents.flow-say": {
+   "module": "agents",
+   "reason": "only a person writes: the handler refuses every non-person caller, reads the Flow and its runs through that person's own access (no access, no wake) and the job runs as them"
+  },
   "agents.history": {
    "module": "agents",
    "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"

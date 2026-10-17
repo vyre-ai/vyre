@@ -879,7 +879,7 @@ export default {
         const r = await ctx.call("flows.runs", { id: String(i.flow), limit: 100 }, as);
         if (r.error) throw Object.assign(new Error(r.error.message || "that Flow's runs cannot be read"), { code: r.error.code === "not_found" ? "not_found" : "denied" });
         const all = Array.isArray(r.data) ? r.data : [];
-        if (i.run && !all.some((/** @type {any} */ x) => x && String(x.id) === String(i.run))) throw Object.assign(new Error("that run is not a recent run of this Flow"), { code: "not_found" });
+        if (i.run && !all.some((/** @type {any} */ x) => x && String(x.id) === String(i.run))) throw Object.assign(new Error("that run is not a recent run of this Flow: leave run out to ask about the newest one, or pick one that flows.runs lists"), { code: "not_found" });
         const runs = all.slice(0, 5);
         const lines = (d.data && Array.isArray(d.data.lines) ? d.data.lines : []).map(String).slice(0, 40);
         const when = (/** @type {any} */ n) => (Number.isFinite(n) ? new Date(n).toISOString() : "?");
