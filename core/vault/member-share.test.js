@@ -26,7 +26,9 @@ async function world(t) {
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   // Who may Ben instruct: juno (he made it; Cy was given Can use) and kit (given Can use); not "team", an agent of others'
-  const instructors = (/** @type {string} */ tool, /** @type {any} */ i) => tool !== "agents.instructors" ? undefined
+  /** Who asked the turn now running on a chat (the Switchboard's threads.turn-asker), set by a test. */
+  const askers = new Map([["chat-1", BEN], ["chat-3", BEN]]);
+  const instructors = (/** @type {string} */ tool, /** @type {any} */ i) => tool === "threads.turn-asker" ? { data: { asker: askers.get(i.thread) || null } } : tool !== "agents.instructors" ? undefined
     : i.agent === "juno" ? { data: { level: "edit", made_by: BEN, shares: [CY] } } : i.agent === "kit" ? { data: { level: "use", made_by: "per_ada", shares: [BEN] } } : { error: { code: "not_found", message: "no agent" } };
   const rig = await kernelRig({ people: [BEN, CY], agents: { kit: "agt_kit", juno: "agt_juno", team: "agt_team", assistant: "agt_asst" }, call: instructors });
   const events = /** @type {any[]} */ ([]);
@@ -56,7 +58,7 @@ async function world(t) {
   const share = (/** @type {any} */ over = {}, who = BEN) => M.share({ item: LABEL, agent: "juno", origin: ORIGIN, ...over }, as(who));
   const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN, thread = undefined) => agentFill(d, { agent, item: ref, origin, ...(thread ? { thread } : {}) });
   const everything = () => JSON.stringify({ events, audit: db.prepare("SELECT * FROM vault_audit").all(), calls, items: v.list().items });
-  return { v, rig, db, M, items, lentStore, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
+  return { v, rig, db, M, items, lentStore, askers, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
 }
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
@@ -236,6 +238,14 @@ test("tagging a login in a chat lends it to that chat's agent for that chat only
   assert.deepEqual((await w.v.access.listFor("juno", "chat-1")).filter(x => x.kind === "login").map(x => x.name), [ref]);
   assert.deepEqual((await w.v.access.listFor("juno", "chat-2")).filter(x => x.kind === "login"), []);
   assert.deepEqual((await w.v.access.listFor("juno")).filter(x => x.kind === "login"), []);
+  // in a group chat the agent serves everyone: a turn that Cy asked, or the owner, or one with no asker, gets nothing of her login even in that very chat
+  for (const asker of [CY, "per_owner", "per_ada", null]) {
+    w.askers.set("chat-1", asker);
+    await denied(w.fill(ref, "juno", ORIGIN, "chat-1"));
+  }
+  w.askers.set("chat-1", BEN);
+  await stops(w.fill(ref, "juno", ORIGIN, "chat-1"));
+  assert.equal(w.calls.filter(c => c.name === "computers.fill.begin").length, 2, "only her own turns reached the computer");
   // her ordinary share of the same login is a different copy, and ending the turn leaves it
   const ordinary = (await w.share()).shared.ref;
   assert.notEqual(ordinary, ref);

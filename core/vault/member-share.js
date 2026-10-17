@@ -115,11 +115,16 @@ export class MemberShare {
     return { shares: await this.copies.ofOwner(owner), notice: NOTICE };
   }
 
-  /** May this agent sign in with this copy at this origin: the kernel's grant, asked every time. A loan to one chat matches that chat's running thread only, never another chat of the same agent. @param {{ ref: string, owner: string, uid: string, origin: string, thread?: string | null }} copy @param {string} origin @param {string} [thread] */
+  /** May this agent sign in with this copy at this origin: the kernel's grant, asked every time. A loan to one chat matches that chat's running thread only, never another chat of the same agent, and only a turn her own words asked. @param {{ ref: string, owner: string, uid: string, origin: string, thread?: string | null }} copy @param {string} origin @param {string} [thread] */
   async allowedCopy(copy, origin, thread) {
     const o = exactOrigin(origin), K = this.access.K;
     if (!K || !o || o !== copy.origin || typeof K.agentMay !== "function") return false;
     if (copy.thread && copy.thread !== thread) return false;
+    // A loan acts only on HER turns: in a chat the agent serves everyone, so the turn now running must have been asked by her. The Switchboard says who asked it (threads.turn-asker, modules only), never the caller's input.
+    if (copy.thread) {
+      const r = await this.access.ctx.call("threads.turn-asker", { thread }).catch(() => null);
+      if (!r || !r.data || r.data.asker !== copy.owner) return false;
+    }
     return Boolean(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o, false, copy.thread ? thread : undefined));
   }
 
