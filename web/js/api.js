@@ -14,7 +14,7 @@
 // and any string "$ago:<n><s|m|h|d>" becomes that long before now, in ms, so fixture times stay fresh.
 //
 // Resilience (docs/adr/0029-resilience.md) comes from core/resilience, imported as
-// ../../core/resilience/*.js: in a browser that is /core/resilience/*.js, which vyred serves
+// ../../core/resilience/<name>.js: in a browser that is /core/resilience/<name>.js, which vyred serves
 // (core/daemon), and in Node the repo's own files, so there is one copy.
 
 import { follow } from "../../core/resilience/stream.js";
