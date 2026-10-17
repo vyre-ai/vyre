@@ -23,7 +23,7 @@ test("a member's chip finds and resolves from HER vault: name, kind and a note, 
   const found = await ask("vault.me.mention.search", { asker: BOB, q: "pass" });
   assert.deepEqual(found.items.map((/** @type {any} */ i) => i.id), ["passport"]);
   assert.ok(!JSON.stringify(found).includes("password") || found.items[0].hint === "login · Passport portal", "kind and note only");
-  assert.deepEqual((await ask("vault.me.mention.search", { asker: BOB })).items.map((/** @type {any} */ i) => i.id), ["passport", "clio-conn"]);
+  assert.deepEqual((await ask("vault.me.mention.search", { asker: BOB })).items.map((/** @type {any} */ i) => i.id), ["passport", "clio-conn", "bobs-api", "key", "pk"], "all of HER items, in her vault's order: the picker lists what she can name, and a reference to a passkey or a connection is refused at the fill, not here");
   const r = await ask("vault.me.mention.resolve", { asker: BOB, id: "passport", thread: "t1", said: "s1" });
   assert.deepEqual([r.id, r.name, r.kind], ["passport", "passport", "login"]);
   assert.ok(!("value" in r) && !JSON.stringify(r).includes("secret"));

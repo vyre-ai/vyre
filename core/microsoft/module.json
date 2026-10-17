@@ -21,7 +21,7 @@
     "tools": [
       {
         "name": "microsoft.accounts",
-        "reach": "person",
+        "reach": "anyone",
         "effect": "read"
       },
       {

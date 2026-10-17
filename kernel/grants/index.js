@@ -263,9 +263,7 @@ export function createGrantsStore(cfg) {
       if (actor.kind === "agent") return m.agents.includes(actor.id);
       return false;
     }
-    // The Space-wide groups (K4): every person who is a member, and every agent of the Space. An agent through either holds use and nothing more (the authorizer's group rule).
-    if (id === "space:people") return Boolean(actor) && actor.kind === "person" && memberOk(actor);
-    if (id === "space:agents") return Boolean(actor) && actor.kind === "agent" && actor.space === cfg.space && actors.has(actorKey(actor));
+    if (id === "space:people" || id === "space:agents") return Boolean(actor) && (id === "space:people" ? actor.kind === "person" && memberOk(actor) : actor.kind === "agent" && actor.space === cfg.space && actors.has(actorKey(actor)));   // K4: every member, every agent of the Space (an agent holds use and nothing more)
     const t = teams.get(id);
     if (!t || !actor) return false;
     if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
@@ -1034,8 +1032,7 @@ export function createGrantsStore(cfg) {
       if (!Array.isArray(list) || list.length > 200 || list.some((/** @type {any} */ m) => typeof m !== "string" || !memberships.has(m))) throw new KernelError("bad_input", "a team holds up to 200 people, each a member of this Space");
       if ([...teams.values()].some(x => x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "a team with that name already exists");
       if (!prior && teams.size >= 200) throw new KernelError("bad_input", "a Space holds up to 200 teams");
-      const ags = t.agents !== undefined ? t.agents : prior ? prior.agents || [] : [];
-      if (!Array.isArray(ags) || ags.length > 200 || ags.some((/** @type {any} */ a) => typeof a !== "string" || !actors.has(actorKey({ kind: "agent", id: a, space: cfg.space })))) throw new KernelError("bad_input", "a team holds up to 200 agents, each an agent of this Space");
+      const ags = t.agents !== undefined ? t.agents : prior ? prior.agents || [] : []; if (!Array.isArray(ags) || ags.length > 200 || ags.some((/** @type {any} */ a) => typeof a !== "string" || !actors.has(actorKey({ kind: "agent", id: a, space: cfg.space })))) throw new KernelError("bad_input", "a team holds up to 200 agents, each an agent of this Space");
       const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), agents: freeze([...new Set(ags)].sort()), by: issuer.id, at: clock() });
       teams.set(rec.id, rec);
       await note(chain, "team.set", urn("team", rec.id), { team: rec }, d.decision);

@@ -115,10 +115,10 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   });
   ctx.tool("vault.me.lend", {
     internal: true,
-    description: "A member's own AI key or setup token for one of their accounts, to start their own turn: { account } -> { value }. Only the Switchboard asks, inside the member's own turn; the person is the one on the turn's verified chain, never named. Refused unless the account is theirs and their vault is unlocked.",
+    description: "A member's own AI key or setup token for one of their accounts, to start their own turn: { account } -> { value }. Only the chat module (threads) asks, inside the member's own turn; the person is the one on the turn's verified chain, never named. Refused unless the account is theirs and their vault is unlocked.",
     input: obj({ account: str }, ["account"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-      if (String((meta && meta.caller) || "") !== "module:switchboard") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      if (String((meta && meta.caller) || "") !== "module:threads") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });   // the Switchboard's module is named `threads`; its calls arrive with that label
       const person = await memberOf(ctx.kernel, meta);
       const row = await ctx.call("sessions.accounts.item", { account: String(input.account || ""), person });
       const acct = row && !row.error ? row.data : null;
