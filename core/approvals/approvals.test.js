@@ -88,6 +88,18 @@ test("approvals.withdraw-thread: what a session held for a yes is cancelled with
   assert.match(s.why, /due time|ran out of time/);
 });
 
+test("approvals.withdraw-thread: a one-tap card a session asked for (a device, an invite, a vault reveal) is cancelled with its outward cards", async () => {
+  const w = await world();
+  const f = { input_sha256: "d".repeat(32) };
+  const pair = await w.run("approvals.hold", { tool: "devices.add", fields: f, from: "mcp:agent:kit", thread: "thr-1", moment: "pair" }, { caller: "module:registry" });
+  const vault = await w.run("approvals.hold", { tool: "vault.reveal", fields: { input_sha256: "e".repeat(32) }, from: "mcp:agent:kit", thread: "thr-1", moment: "vault" }, { caller: "module:registry" });
+  const other = await w.run("approvals.hold", { tool: "devices.add", fields: { input_sha256: "f".repeat(32) }, from: "mcp:agent:kit", thread: "thr-2", moment: "pair" }, { caller: "module:registry" });
+  assert.deepEqual(await w.run("approvals.withdraw-thread", { thread: "thr-1" }, { caller: "module:vyred" }), { cancelled: 2 });
+  const ids = (await w.run("approvals.pending", {}, { caller: "device:phone" })).approvals.map(x => x.id);
+  assert.deepEqual(ids, [other.id], "only the other session's card still waits");
+  for (const c of [pair, vault]) assert.equal((await w.run("approvals.status", { id: c.id }, { caller: "mcp:agent:kit" })).state, "cancelled");
+});
+
 test("the calling device comes from the verified peer, not the caller label: a `device:` label alone is not a device, and a device peer's no is ignored without a real session", async () => {
   const w = await world();
   const card = async () => w.run("approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }, { caller: "deck" });

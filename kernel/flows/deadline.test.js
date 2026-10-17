@@ -135,18 +135,19 @@ test("the agent's session ends from the durable event, and a replay after a cras
   const { createAgentWake } = await import("../../core/daemon/agent-wake.js");
   const { w, run, pass } = await start([agent({ timeout_ms: HOUR })]);
   const task = taskOf(await run());
-  await w.kernel.tasksApi.edit(w.kernel.as(ALEX), task, { form: { thread: "thr-1" } }).catch(() => {});
+  // the thread the wake recorded is the one that ends; the doer's own edit of the task's form names another and is ignored
+  await w.kernel.tasksApi.edit(w.kernel.as(ALEX), task, { form: { thread: "thr-other" } }).catch(() => {});
   await pass(HOUR + 1000);
   const stopped = [], reclaimed = [];
   const onEvent = createAgentWake({ space: w.cat.space, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i) } }, chain: () => w.kernel.sysChain(), reclaim: async (id) => { reclaimed.push(id); },
-    clock: () => w.clock.t, callModule: async (tool, input) => { if (tool === "threads.stop") stopped.push(input.thread); return {}; }, log: () => {} });
+    clock: () => w.clock.t, log: () => {},
+    callModule: async (tool, input) => { if (tool === "agents.woken") return { task: input.task, thread: "thr-1" }; if (tool === "threads.stop") stopped.push(input.thread); return {}; } });
   const events = [...w.kernel.rawLog.read({ type: "task.withdrawn" })];
   assert.equal(events.length, 1, "one durable event says it");
   await onEvent(events[0]);
   await onEvent(events[0]);   // the host restarted before it was marked handled: the same event comes again
   assert.deepEqual(reclaimed, [task, task]);
-  assert.ok(stopped.every((t) => t === "thr-1"));
-  assert.ok(stopped.length >= 1);
+  assert.deepEqual(stopped, ["thr-1", "thr-1"], "the wake's own thread, each time, and never the one the form names");
 });
 
 test("a run that crashed after the withdrawal and before it failed the step ends up failed once, not twice", async () => {
