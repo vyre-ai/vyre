@@ -24,6 +24,10 @@ A member who has added her own AI account can't chat yet: her turn stops with a 
 
 A list or a search of a type whose rows are private by project looks through up to 20 pages of hidden rows before it gives up. If more than that lie between you and the next row you may read, the page comes back empty with no way to continue. Nothing hidden is shown; ask an owner or an admin, or filter the list.
 
+### An agent computer's workspace after its lease ends
+
+When an agent's computer lease ends, its workspace key is removed at once, but a process that still holds a file open can read that file until it exits. Normal sessions stop within a moment. A full fix that stops every holder before reporting the workspace locked comes in the next update.
+
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.

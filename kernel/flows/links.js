@@ -110,7 +110,25 @@ export function withLinks(scope, overs) {
 }
 
 /** The person whose change fired a Flow (the event's verified actor), when there is one: a linked record is read only if they may read it too. A schedule or a web call has none. @param {unknown} actor */
-export const byPerson = (actor) => (typeof actor === "string" && actor.startsWith("person:") ? { by: actor.slice(7) } : {});
+export const byPerson = (actor, chain) => {
+  if (typeof actor === "string" && actor.startsWith("person:")) return { by: actor.slice(7).split("@")[0] };   // the log writes a person as "person:<id>@<space>"
+  // an event the records or tasks service emitted for a person's change names the service as its last actor; the chain it came from still begins with that person (an assistant's change counts as theirs)
+  const first = Array.isArray(chain) && chain[0] && chain[0].actor && chain[0].actor.kind === "person" ? chain[0].actor : null;
+  return first ? { by: String(first.id) } : {};
+};
+
+/**
+ * Who started the run an event fires: the person whose change it was (byPerson); and for an event a Flow run wrote (its chain has an automation hop; the event's correlation is that run's id) the starter that
+ * run recorded, which each run stores from what it inherited, so a chain of Flows keeps the person who began it. A run with no starter (a schedule, a service's event) passes none, and the approver of the
+ * Flow that wrote the record is never mistaken for it.
+ * @param {any} env @param {(id: string) => Promise<any>} getRun
+ */
+export const starterOfEvent = async (env, getRun) => {
+  const hops = Array.isArray(env && env.chain) ? env.chain : [];
+  if (!hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind === "automation")) return byPerson(env && env.actor, hops);
+  const src = typeof env.corr === "string" && env.corr ? await getRun(env.corr).catch(() => null) : null;
+  return src && typeof src.started_by === "string" && src.started_by ? { by: src.started_by } : {};
+};
 
 /** Who started a run by hand, from the verified chain: a linked record is read only if THEY may read it too, so a member cannot see through a Flow what she could not open herself. @param {any} chain */
 export const starterOf = (chain) => { const h = ((chain && chain.hops) || []).find((/** @type {any} */ x) => x.actor.kind === "person"); return h ? { by: String(h.actor.id) } : {}; };
