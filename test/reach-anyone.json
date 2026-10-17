@@ -2589,10 +2589,6 @@
    "module": "onboard",
    "reason": "ownerWrite refuses mcp, agents and anonymous callers; presence when the server is owned"
   },
-  "onboard.computer.add": {
-   "module": "onboard",
-   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
-  },
   "onboard.first.progress": {
    "module": "onboard",
    "reason": "read-only: onboarding step progress for the setup page; ownerWrite refuses models"
@@ -2624,10 +2620,6 @@
   "onboard.person.status": {
    "module": "onboard",
    "reason": "read-only: whether this device already has an identity; ownerWrite refuses models"
-  },
-  "onboard.phone.add": {
-   "module": "onboard",
-   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
   },
   "onboard.space.current": {
    "module": "onboard",

@@ -1,8 +1,6 @@
 // The real PairingSession: the box's own wink tools behind the one interface the pairing screens already use.
 //  - serverSession: this app adds a SERVER or storage device. wink.pair.server with the code the server printed, then wink.pair.status
 //    until the three words show; the person says yes AT THE SERVER, so confirm() only waits for `done`.
-//  - phoneAnswerSession: this device shows a code for a phone or computer (wink.phone.open); when it asks (wink.phone.pairing) the person
-//    types the three words the new device shows and wink.phone.pair.answer checks them. No set of three is offered, so nothing is a pick.
 // The box is imported on first use so the pure parts stay runnable in Node.
 
 import type { PairingSession } from "../api/pairing-session";
@@ -13,7 +11,7 @@ import { withCoreProof } from "./core-proof.js";
 /** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */
 const macCapsuleSpki = async (): Promise<string | null> => { const k = await shell()?.presenceKey?.().catch(() => null); return k ? k.public_key : null; };
 import type { WinkCode } from "../api/wink-code";
-import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
+import { pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
 const box = () => import("./box");
 const POLL_MS = 2000;
@@ -74,24 +72,6 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     answer: async () => false,
     async confirm() { if (direct) return direct.confirm(); if (!finished) await until("done"); },
     reject() { stopped = true; if (direct) direct.reject(); },
-  };
-}
-
-/** The computer's side of adding a phone: the three words typed from the phone are the answer. */
-export function phoneAnswerSession(words: [string, string, string] | null): PairingSession {
-  let over = false;
-  return {
-    kind: "answer",
-    words: () => words ?? ["", "", ""],
-    choices: () => [],
-    async answer(given) {
-      const { tool } = await box();
-      const ok = added(await tool("wink.phone.pair.answer", { yes: true, words: given.join(" ") }));
-      over = true;
-      return ok;
-    },
-    confirm: () => (over ? Promise.resolve() : Promise.reject(new Error("rejected"))),
-    reject() { void box().then(({ tool }) => tool("wink.phone.pair.answer", { yes: false })).catch(() => {}); },
   };
 }
 

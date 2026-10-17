@@ -16,9 +16,8 @@ export const DEVICE_ADMIN = Object.freeze(new Set([
   "relay.devices.mark", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust", "relay.devices.ask-trust", "relay.devices.drop", "relay.devices.drop-server", "relay.devices.admit-server", "relay.devices.clear-leftover",
   "relay.enable", "relay.disable", "relay.join", "relay.web.pin", "relay.web.release",
   // Wink: pairing a phone, a computer or a server, confirming it, handing the server over
-  "wink.access", "wink.approve", "wink.cancel", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.device.key", "wink.pair.server",
-  "wink.phone.enrolled", "wink.phone.open", "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.scan",
-  "wink.server.adopt", "wink.server.code", "wink.server.confirm", "wink.server.handover", "wink.server.owner", "wink.server.pair.answer", "wink.server.pairing", "wink.server.release", "wink.server.reset.begin",
+  "wink.access", "wink.approve", "wink.cancel", "wink.device.key", "wink.pair.server",
+  "wink.server.adopt", "wink.server.code", "wink.server.handover", "wink.server.owner", "wink.server.pair.answer", "wink.server.pairing", "wink.server.release", "wink.server.reset.begin",
   "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer",
   // presence keys of other devices, and the codes that make them
   "presence.enroll", "presence.remove", "presence.keys", "presence.code", "presence.person.renew-allow", "presence.person.revoke", "presence.person.locked",
@@ -30,7 +29,7 @@ export const DEVICE_ADMIN = Object.freeze(new Set([
 export const DEVICE_OK = Object.freeze(new Set([
   // reads of devices and pairings
   "relay.devices.list", "relay.devices.path", "relay.devices.all", "relay.setup.status", "spaces.devices.list", "spaces.devices.spaces", "spaces.devices.lend.status",
-  "wink.card", "wink.code.status", "wink.pair.status", "wink.pair.targets", "wink.phone.wait", "wink.server.probe", "wink.server.status",
+  "wink.card", "wink.pair.status", "wink.pair.targets", "wink.server.probe", "wink.server.status",
   // this device's own session: sign in, a fresh challenge, renew its own secret (never another device's)
   "presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.rotate",
 ]));

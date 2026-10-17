@@ -145,7 +145,6 @@
   "identity.migrate": "an agent proposes wrapping an existing identity; the person enters the master password on their device",
   "identity.github.link": "an agent proposes linking GitHub; the person's tap applies it and the vault stays locked",
   "identity.discover": "an agent proposes listing the username; the person's tap applies it",
-  "devices.signin": "an agent proposes signing a computer in; the person enters the master password on their device",
   "spaces.owner.transfer": "an agent proposes handing a space to another member; the person's tap applies it",
   "spaces.create": "an agent proposes a new space; the person's tap applies it",
   "spaces.invites.create": "an agent proposes an invite; the person's tap applies it",

@@ -1,7 +1,6 @@
 // @ts-check
 // What the box answers, shaped for the Devices and pairing screens. Pure, so Node tests it with the answers
-// captured from a real vyred (relay.devices.list, spaces.list, wink.pair.targets, wink.phone.open,
-// wink.phone.pairing, wink.pair.status). No React, no calls.
+// captured from a real vyred (relay.devices.list, spaces.list, wink.pair.targets, wink.pair.status). No React, no calls.
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -97,17 +96,3 @@ export function wordsOf(w) {
   const a = Array.isArray(w) ? w.map(String) : typeof w === "string" ? w.trim().split(/\s+/) : [];
   return a.length === 3 && a.every(Boolean) ? /** @type {[string, string, string]} */ (a.map((x) => x.toLowerCase())) : null;
 }
-
-/**
- * wink.phone.pairing: is a new device asking now? { asking: false } or { asking: true, name, choices, until, line } (the server's answer: no `words`, the person types the three words the new
- * device shows, and the server checks them). `words`, when an answer carries them, are kept for a screen that shows them.
- * @param {any} r
- * @returns {{ asking: false } | { asking: true, name: string, words: [string, string, string] | null, line: string }}
- */
-export function phoneAsk(r) {
-  if (!r || r.asking !== true) return { asking: false };
-  return { asking: true, name: String(r.name || "A new device"), words: wordsOf(r.words), line: String(r.line || "") };
-}
-
-/** wink.phone.pair.answer answered { answered, yes } : was the device added? @param {any} r */
-export const added = (r) => Boolean(r && r.answered && r.yes);

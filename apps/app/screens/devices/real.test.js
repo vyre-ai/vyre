@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { added, agoOf, dayOf, deviceKind, deviceRows, deviceSpaces, pairPhase, payloadOf, phoneAsk, spaceNames, targetsOf, wordsOf } from "./real.js";
+import { agoOf, dayOf, deviceKind, deviceRows, deviceSpaces, pairPhase, payloadOf, spaceNames, targetsOf, wordsOf } from "./real.js";
 
 const NOW = Date.UTC(2026, 9, 4, 12, 0);
 
@@ -52,16 +52,7 @@ test("wink.pair.status maps to what the screen does", () => {
   assert.equal(pairPhase(null).phase, "wait");
 });
 
-test("wink.phone.pairing and the answer", () => {
-  assert.deepEqual(phoneAsk({ asking: false }), { asking: false });
-  const a = phoneAsk({ asking: true, name: "Alex's iPhone", words: "cedar harbor violet", until: 1, line: "Say yes only if the words match." });
-  assert.deepEqual([a.asking, a.name, a.words], [true, "Alex's iPhone", ["cedar", "harbor", "violet"]]);
-  // the server's own answer carries choices and no words: still a device asking
-  const b = phoneAsk({ asking: true, name: "Sam's phone", choices: ["a b c", "d e f", "g h i"], until: 1, line: "Is this the phone?" });
-  assert.deepEqual([b.asking, b.name, b.words, b.line], [true, "Sam's phone", null, "Is this the phone?"]);
-  assert.equal(phoneAsk({ asking: false, name: "x" }).asking, false);
-  assert.equal(added({ answered: true, yes: true, name: "x" }), true);
-  assert.equal(added({ answered: true, yes: false }), false);
-  assert.equal(added({ answered: false }), false);
+test("three words from an array or a spaced string, else nothing", () => {
+  assert.deepEqual(wordsOf("Cedar harbor VIOLET"), ["cedar", "harbor", "violet"]);
   assert.equal(wordsOf("a b"), null);
 });

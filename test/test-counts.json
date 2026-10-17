@@ -961,7 +961,7 @@
  "test/one-registry-b.test.js": 5,
  "test/one-role-list.test.js": 2,
  "test/owner-only.test.js": 5,
- "test/pair-fix.test.js": 15,
+ "test/pair-fix.test.js": 4,
  "test/patch-release.test.js": 5,
  "test/peer-live-mac.test.js": 1,
  "test/peer-race.test.js": 13,
