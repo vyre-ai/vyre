@@ -1,7 +1,13 @@
-# Idle CPU of vyred on a quiet hosted runner, three runs per Node major, for setting scripts/perf-check's budgets (#71). Dispatch only.
+# Idle CPU of vyred on a quiet hosted runner, three runs, for setting scripts/perf-check's budgets (#71) and for finding what makes vyred busier between two refs. Dispatch only.
+# `ref` is the tag, branch or commit to measure (default: the dispatched ref); the whole perf-check report is printed: the recurring timers under 60 s with their call sites, the settled heap, the CPU samples.
 name: perf-idle
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "The tag, branch or commit to measure (empty: the dispatched ref)"
+        required: false
+        default: ""
   push:
     branches: ["work/launch-perf-idle"]
 permissions:
@@ -15,13 +21,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Check the ref
+        env:
+          REF: ${{ inputs.ref }}
+        run: '[ -z "$REF" ] || printf "%s" "$REF" | grep -Eq "^[A-Za-z0-9._/-]{1,200}$" || { echo "::error::not a ref"; exit 1; }'
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}" }
       - run: npm ci --no-audit --no-fund
-      - name: three idle runs
+      - name: three idle runs, whole report
         run: |
+          git log -1 --format='measuring %h %s'
           for i in 1 2 3; do
-            echo "== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
-            node scripts/perf-check 2>&1 | grep -E "CPU \(|FAIL|host load" || true
+            echo "=================== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
+            node scripts/perf-check 2>&1 || true
           done
