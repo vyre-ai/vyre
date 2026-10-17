@@ -4,7 +4,8 @@
 // row opens "About this chat" (AboutSheet.tsx).
 
 import { Pressable, View, StyleSheet } from "react-native";
-import { Avatar, AvatarStack, Icon, Text, markRef, useUiTheme } from "@vyre/ui";
+import { AvatarStack, Icon, IconButton, Menu, Text, markRef, useUiTheme } from "@vyre/ui";
+import type { MenuItem } from "@vyre/ui";
 import { Face } from "./Face";
 import { avatarStack } from "./group.js";
 
@@ -45,46 +46,46 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, line, phone, onBack, onOpen, onTools, projectTile }: {
-  /** The project the chat is in: its tile shows before the quiet line. */
-  projectTile?: { slug: string; name: string } | null;
+export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project }: {
+  /** The project the chat is in; its name follows the title on the same line. */
+  project?: { slug: string; name: string } | null;
   title: string;
   participants: readonly Person[];
   viewer: string;
-  /** The one quiet line: the record and the space ("Northwind Bakery, lease dispute · Juniper Studio"). */
-  line?: string;
   phone: boolean;
   onBack?: () => void;
+  /** One tap on the header opens the side panel. */
   onOpen: () => void;
-  /** The chat tools sheet (fork, effort, mode, mention, context, transcript). */
-  onTools?: () => void;
+  /** The ... menu: everything that is not the name. */
+  menu?: MenuItem[];
 }) {
   const { color } = useUiTheme();
   const stack = avatarStack(participants, viewer, 3);
+  const lone = stack.shown.length === 1 ? stack.shown[0] : null;
   return (
-    <View style={[S.bar, { paddingHorizontal: phone ? 4 : 12, borderBottomWidth: 1, borderBottomColor: color.edge, backgroundColor: color["surface-1"], zIndex: 2 }]}>
-      {onBack ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to chats" onPress={onBack} style={S.back}>
-          <Icon name="chev-l" size={20} tone="text" />
+    <View style={[S.bar, { paddingHorizontal: phone ? 4 : 16, backgroundColor: color["surface-1"], zIndex: 2 }]}>
+      <View style={{ width: 88, flexDirection: "row", alignItems: "center" }}>
+        {phone && onBack ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to chats" onPress={onBack} style={S.back}>
+            <Icon name="chev-l" size={20} tone="text" />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={{ flex: 1, alignItems: "center", minWidth: 0 }}>
+        {/* One small centred chip: the face (or the group's stack), the name and, quieter, the project. A tap opens the side panel. */}
+        <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. Open details`} onPress={onOpen}
+          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
+          {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
+          <Text numberOfLines={1} style={{ flexShrink: 1 }}>
+            <Text medium>{title}</Text>
+            {project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
+          </Text>
         </Pressable>
-      ) : <View style={S.s1} />}
-      <Pressable accessibilityRole="button" accessibilityLabel={`In this chat: ${title}`} onPress={onOpen} style={S.open}>
-        <HeaderStack faces={stack.shown} more={stack.more} />
-        <View style={S.s2}>
-          <Text strong numberOfLines={1}>{title}</Text>
-          {line || projectTile ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              {projectTile ? <Avatar of={markRef("project", projectTile.name, projectTile.slug)} size={16} /> : null}
-              <Text size="caption" tone="label" numberOfLines={1} style={{ flexShrink: 1 }}>{line}</Text>
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
-      {onTools ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Chat tools" onPress={onTools} style={S.back}>
-          <Icon name="more" size={20} tone="text" />
-        </Pressable>
-      ) : null}
+      </View>
+      <View style={{ width: 88, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
+        {menu && menu.length ? <Menu align="end" trigger={<IconButton icon="more" label="More" kind="ghost" />} items={menu} /> : null}
+        {!phone && onBack ? <IconButton icon="x" label="Close this chat" kind="ghost" onPress={onBack} /> : null}
+      </View>
     </View>
   );
 }

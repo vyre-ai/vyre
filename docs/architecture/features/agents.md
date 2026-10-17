@@ -20,6 +20,7 @@ An agent is a named, persistent helper that people chat with, assign tasks to an
 - **Sharing** uses the access list (`apps/app/ui/components/AccessList.tsx`): **Can use** or **Can edit**, the same two words flows and the Vault use.
 - **What my assistant may do** (`AssistantAccess.tsx`): the person turns areas and tools off for their own assistant.
 - A task an agent failed to finish shows in Needs you as stuck, see [Tasks and Needs you](./tasks-and-needs-you.md).
+- **Look**: an agent is drawn from a shape and a colour you pick when you make it (the New agent dialog from the Chat list's + menu) and can change from its page (tap its face). The agent record keeps it as `look`, like `s3~c5` (shapes `s0` to `s7`, colours `c0` to `c7`). `agents.create` and `agents.update` take it with the same say as any change to the agent, and `agents.list` returns it. An agent with no look is drawn from its name.
 
 ## How it works
 

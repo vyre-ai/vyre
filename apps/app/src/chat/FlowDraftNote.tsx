@@ -35,7 +35,7 @@ export function FlowDraftNote({ s, onClear }: { s: S; onClear: () => void }) {
   const router = useRouter();
   if (!s) return null;
   return (
-    <View accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 16, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <View accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 16, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       {s.kind === "making" ? <Turning name="refresh" /> : <Icon name="flows" tone={s.kind === "ready" ? "accent" : "label"} />}
       <Text size="caption" tone="label" style={{ flexShrink: 1 }}>{draftWords(s)}</Text>
       {s.kind === "ready" ? <Button kind="secondary" label="Open it" onPress={() => { router.push(`/u/flows/${s.id}` as never); onClear(); }} /> : null}

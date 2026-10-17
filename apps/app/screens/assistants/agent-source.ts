@@ -37,6 +37,8 @@ export function agentSource(call: Call) {
       return ask<Computer>("computers.limits", { agent, ...l.input });
     },
     restart: (agent: string) => ask("computers.restart", { agent }),
+    /** How the agent is drawn (a shape and a colour, "s3~c5"): agents.update, the same say as any change to the agent. */
+    setLook: (name: string, look: string) => ask("agents.update", { name, look }),
     rename: (agent: string, name: string) => ask("computers.rename", { computer: agent, name }),
     /**
      * agents.create, then the computer: a box whose agents.create dropped `computer` made the agent without one,
