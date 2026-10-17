@@ -1,5 +1,5 @@
 // @ts-check
-// graph: one authenticated, read-only call to Microsoft Graph as the firm app, for one user's mailbox, and the shaping of what comes back for a model to read. The mailbox in the path is always
+// graph: one authenticated call to Microsoft Graph as the firm app (reads, and the two writes a member makes from their own mailbox: send and invite), for one user's mailbox, and the shaping of what comes back for a model to read. The mailbox in the path is always
 // the account's own (account.mailbox, set by member-account.js from the attested email), never an input. Redirects are refused (they would carry the bearer token to another host); a timeout on every
 // call; errors carry Graph's own message scrubbed of every value the credential library has touched, and never the request.
 import { httpFetch } from "../../lib/http.js";
@@ -16,15 +16,15 @@ export class GraphError extends Error {
 
 /** @param {{ creds: import("../../lib/connectors/auth.js").Credentials, fetch?: typeof fetch }} deps */
 export function graph({ creds, fetch: f = httpFetch }) {
-  /** @param {any} acct @param {{ path: string, query?: Record<string, string|number>, raw?: boolean, headers?: Record<string,string> }} req */
+  /** @param {any} acct @param {{ path: string, query?: Record<string, string|number>, raw?: boolean, headers?: Record<string,string>, method?: "GET"|"POST", body?: any }} req */
   async function request(acct, req) {
     if (!acct || !acct.mailbox) throw new GraphError("no mailbox to act as", { code: "denied" });
     const url = new URL((acct.base || DEFAULT_BASE).replace(/\/+$/, "") + `/v1.0/users/${encodeURIComponent(acct.mailbox)}` + req.path);
     for (const [k, v] of Object.entries(req.query || {})) url.searchParams.set(k, String(v));
     for (let attempt = 0; ; attempt++) {
-      const headers = { ...(await creds.headers(acct.auth, { scopes: [GRAPH_SCOPE] })), accept: req.raw ? "text/plain, */*" : "application/json", ...(req.headers || {}) };
+      const headers = { ...(await creds.headers(acct.auth, { scopes: [GRAPH_SCOPE] })), accept: req.raw ? "text/plain, */*" : "application/json", ...(req.body !== undefined ? { "content-type": "application/json" } : {}), ...(req.headers || {}) };
       let res;
-      try { res = await f(url, { method: "GET", headers, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) }); }
+      try { res = await f(url, { method: req.method || "GET", headers, ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}), redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) }); }
       catch (e) { throw new GraphError(`Microsoft Graph ${/** @type {any} */ (e)?.name === "TimeoutError" ? "did not answer in 30 s" : "could not be reached"}`, { code: "network" }); }
       const text = await readCapped(res);
       if (res.status === 401 && attempt === 0) { creds.invalidate(acct.auth, [GRAPH_SCOPE]); continue; }
@@ -83,6 +83,17 @@ export function tools({ request }) {
       if (isNaN(+f) || isNaN(+t) || +t < +f || +t - +f > 366 * 86_400_000) throw bad("from and to are ISO times at most a year apart");
       const r = await request(acct, { path: "/calendarView", query: { startDateTime: f.toISOString(), endDateTime: t.toISOString(), $top: limit, $orderby: "start/dateTime", $select: "id,subject,start,end,location,organizer,isAllDay,webLink" }, headers: { Prefer: 'outlook.timezone="UTC"' } });
       return (r.value || []).map(e => ({ account: acct.name, id: String(e.id), title: String(e.subject || "(no title)"), start: e.start && e.start.dateTime ? e.start.dateTime + "Z" : null, end: e.end && e.end.dateTime ? e.end.dateTime + "Z" : null, all_day: Boolean(e.isAllDay), where: e.location && e.location.displayName || "", organizer: addr(e.organizer), url: e.webLink || null }));
+    },
+    /** Send a message from the account's own mailbox. Only the member's own send reaches this: an agent's is refused before it gets here. @param {any} acct @param {{ to: string[], cc?: string[], subject: string, body: string }} m */
+    async mailSend(acct, { to, cc = [], subject, body }) {
+      const rcpt = list => list.map(a => ({ emailAddress: { address: a } }));
+      await request(acct, { path: "/sendMail", method: "POST", body: { message: { subject, body: { contentType: "Text", content: body }, toRecipients: rcpt(to), ...(cc.length ? { ccRecipients: rcpt(cc) } : {}) }, saveToSentItems: true } });
+      return { sent: true, from: acct.mailbox, to, subject };
+    },
+    /** Create an event on the account's own calendar; Graph mails the invite to each attendee. @param {any} acct @param {{ title: string, start: string, end: string, time_zone?: string, where?: string, attendees?: string[], description?: string }} e */
+    async eventCreate(acct, { title, start, end, time_zone = "UTC", where, attendees = [], description }) {
+      const r = await request(acct, { path: "/events", method: "POST", body: { subject: title, start: { dateTime: start, timeZone: time_zone }, end: { dateTime: end, timeZone: time_zone }, ...(where ? { location: { displayName: where } } : {}), ...(description ? { body: { contentType: "Text", content: description } } : {}), ...(attendees.length ? { attendees: attendees.map(a => ({ type: "required", emailAddress: { address: a } })) } : {}) } });
+      return { created: true, id: String(r.id || ""), url: r.webLink || null, attendees };
     },
     async driveSearch(acct, { q, limit = 10 }) {
       const term = String(q ?? "").trim();

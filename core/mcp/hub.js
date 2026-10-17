@@ -435,8 +435,9 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
+ *   heldOf?: (via: string) => Promise<{ id: string, requester?: string | null }[]>, cancel?: (id: string, reason: string) => Promise<any>, revokeConnection?: (c: { owner: string, connection: string }) => Promise<any>,
  *   connectionToken?: (c: { owner: string, connection: string, write: boolean }) => Promise<{ access_token: string, token_type?: string }>,
- *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call" }, who: Who) => Promise<boolean>,
+ *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call"|"own", as?: string }, who: Who | null) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
 
@@ -595,13 +596,43 @@ export class Hub {
     return this.view(this.must(n.name));
   }
 
-  async remove({ name }) {
-    this.must(name);
+  async remove({ name }, o = {}) {
+    const row = this.must(name);
+    // A person's connection can be taken away only by the person who made it; what it was holding at the Gate, and the vendor's own token, go with it.
+    if (row.owner) {
+      if (o.checked !== true && !(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
+      await this.cancelHeld(row, () => true, "the connection was removed");
+      if (typeof this.deps.revokeConnection === "function") { try { await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); } catch (e) { this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); } }
+    }
     await this.stopServer(name, "removed");
     this.db.prepare("DELETE FROM mcp_servers WHERE name = ?").run(name);
     this.live.delete(name);
     this.deps.emit("mcp.removed", { name });
     return { removed: name };
+  }
+
+  /**
+   * Reject what is held at the Gate for a person's connection, for each requester `drop(requester)` says to drop. Asks the Gate for the held items of this server's own sender, and rejects them as the module that owns the sender.
+   * @param {any} r the row @param {(requester: string) => boolean | Promise<boolean>} drop @param {string} reason @returns {Promise<number>}
+   */
+  async cancelHeld(r, drop, reason) {
+    if (typeof this.deps.heldOf !== "function" || typeof this.deps.cancel !== "function") return 0;
+    let n = 0;
+    for (const it of await this.deps.heldOf(`mcp:${r.name}`)) {
+      if (!it || typeof it.id !== "string") continue;
+      if (typeof it.requester === "string" && it.requester && !(await drop(it.requester))) continue;
+      try { await this.deps.cancel(it.id, reason); n++; } catch { /* answered meanwhile */ }
+    }
+    if (n) this.deps.emit("mcp.held-cancelled", { name: r.name, count: n });
+    return n;
+  }
+
+  /** After a share or grant on a person's connection ended: whoever asked for something held there and no longer holds the connection has it discarded. @param {string} name @returns {Promise<number>} */
+  async sweep(name) {
+    const r = this.row(name);
+    if (!r || !r.owner) return 0;
+    const memo = new Map();
+    return this.cancelHeld(r, async who => { if (!memo.has(who)) memo.set(who, !(await this.mayUse(r, null, "call", who))); return memo.get(who); }, "the connection was taken away from the person who asked");
   }
 
   /**
@@ -683,11 +714,11 @@ export class Hub {
   /**
    * Whether the verified caller holds a person's connection at this level: "read" (see it, run its read tools) or "call" (run an outward tool, which is still held at the Gate). The Vault answers from the kernel
    * with the call's own chain; no answer, an error or a hub with no way to ask is no.
-   * @param {any} r @param {Who} who @param {"read"|"call"} level
+   * @param {any} r @param {Who | null} who @param {"read"|"call"|"own"} level @param {string} [as] ask about this person (the requester of a held item) instead of the caller
    */
-  async mayUse(r, who, level) {
+  async mayUse(r, who, level, as = undefined) {
     if (typeof this.deps.mayUseConnection !== "function") return false;
-    try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level }, who)) === true; } catch { return false; }
+    try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level, ...(as !== undefined ? { as } : {}) }, who)) === true; } catch { return false; }
   }
 
   async projectOf(who, memo) {
@@ -791,6 +822,8 @@ export class Hub {
     if (!isObj(content) || content.server !== server) throw fail("bad_input", `the approved content names server ${content && content.server}, but the item was held for ${server}`);
     const r = this.row(server);
     if (!r) throw fail("not_found", `the server ${server} was removed after this was held`);
+    // A revoke between the ask and the yes wins: the person who ASKED (stored on the item, not whoever releases it) must still hold the connection at call level, or nothing is sent.
+    if (r.owner && !(typeof it.requester === "string" && it.requester && await this.mayUse(r, null, "call", it.requester))) throw fail("denied", `the person who asked no longer holds ${server}, so this is not sent; ask again if it is still wanted`);
     const t = this.findTool(r, content.tool);
     if (!t || t.tool !== content.tool) throw fail("denied", `${server} no longer has ${String(content.tool).slice(0, 80)} on`);
     const args = content.arguments ?? {};
@@ -936,7 +969,13 @@ export class Hub {
    */
   async connectionHeaders(r) {
     if (typeof this.deps.connectionToken !== "function") throw fail("failed", "this hub has no way to reach a person's connection");
-    const t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write) });
+    let t;
+    try { t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write) }); }
+    catch (e) {
+      // the vendor no longer honours the sign-in: the connection waits for its person to sign in again, and calls stop (no retry loop) until they do
+      if (/** @type {any} */ (e)?.code === "needs_reconnect") { const s = this.state(r.name); s.state = "needs_reconnect"; s.error = "sign in again to use this connection"; this.deps.emit("mcp.needs-reconnect", { name: r.name }); }
+      throw e;
+    }
     if (!t || typeof t.access_token !== "string" || !t.access_token) throw fail("unauthorized", "the connection gave no token; reconnect it");
     this.creds.track(t.access_token);
     return { authorization: `${t.token_type || "Bearer"} ${t.access_token}` };

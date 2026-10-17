@@ -6,7 +6,8 @@
     "local"
   ],
   "requires": [
-    "vault"
+    "vault",
+    "gate"
   ],
   "does": {
     "reads": [
@@ -39,6 +40,11 @@
         "effect": "write"
       },
       {
+        "name": "microsoft.check",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
         "name": "microsoft.mail.search",
         "reach": "anyone",
         "effect": "read"
@@ -62,6 +68,25 @@
         "name": "microsoft.drive.read",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "microsoft.mail.send",
+        "reach": "anyone",
+        "effect": "write",
+        "asks": true,
+        "outward": true
+      },
+      {
+        "name": "microsoft.calendar.create",
+        "reach": "anyone",
+        "effect": "write",
+        "asks": true,
+        "outward": true
+      },
+      {
+        "name": "microsoft.release",
+        "reach": "modules",
+        "effect": "write"
       }
     ]
   },

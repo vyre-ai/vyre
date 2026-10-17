@@ -41,12 +41,25 @@ export class Access {
    * Whether the verified caller of this turn may use a connection at a level (`vault.read` to see it and run read tools, `vault.call` for an outward tool): allow or not; an unknown item, a missing kernel or
    * any error is not. The Space owner's own (no `owner`) is an item of the owner's vault, judged by the kernel on its address. A member's is judged by the one rule the token tool applies as its second gate
    * (connection-token.js): the member alone in the chain, or the kernel's allow on the connection's address.
-   * @param {{ owner?: string, connection: string, level: string }} i @param {any} meta
+   * With `as` (a person id), the question is asked of THAT person, not of the call's chain: the hub's re-check at release, for the requester stored on the held item, since the person who releases it is not
+   * always the one who asked. Their own connection is theirs; anything else is the kernel's answer for them (personMay).
+   * @param {{ owner?: string, connection: string, level: string, as?: string }} i @param {any} meta
    */
-  async mayUseConnection({ owner, connection, level }, meta) {
+  async mayUseConnection({ owner, connection, level, as }, meta) {
     try {
       const K = this.need();
-      if ((level !== "read" && level !== "call") || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return false;
+      if ((level !== "read" && level !== "call" && level !== "own") || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return false;
+      if (level === "own") {
+        // the person who made it, alone in the chain (an assistant acting for them is not them): the one who may take the connection away
+        if (!owner || as !== undefined) return false;
+        const hops = ((await K.chain(meta)) || {}).hops;
+        return Array.isArray(hops) && hops.length > 0 && hops.every((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person" && String(h.actor.id) === String(owner));
+      }
+      if (as !== undefined) {
+        if (typeof as !== "string" || !as) return false;
+        if (owner && as === String(owner)) return true;
+        return Boolean(await K.vault.personMay(as, level === "read" ? "vault.read" : "vault.call", owner ? connectionUrn(K.space, String(owner), String(connection)) : await this.urn(String(connection))));
+      }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
       return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
