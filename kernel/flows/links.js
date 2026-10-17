@@ -111,7 +111,7 @@ export function withLinks(scope, overs) {
 
 /** The person whose change fired a Flow (the event's verified actor), when there is one: a linked record is read only if they may read it too. A schedule or a web call has none. @param {unknown} actor */
 export const byPerson = (actor, chain) => {
-  if (typeof actor === "string" && actor.startsWith("person:")) return { by: actor.slice(7) };
+  if (typeof actor === "string" && actor.startsWith("person:")) return { by: actor.slice(7).split("@")[0] };   // the log writes a person as "person:<id>@<space>"
   // an event the records or tasks service emitted for a person's change names the service as its last actor; the chain it came from still begins with that person (an assistant's change counts as theirs)
   const first = Array.isArray(chain) && chain[0] && chain[0].actor && chain[0].actor.kind === "person" ? chain[0].actor : null;
   return first ? { by: String(first.id) } : {};
