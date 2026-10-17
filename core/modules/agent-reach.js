@@ -292,6 +292,7 @@ export const PERSON_ONLY = new Map([
   ["computers.member.dispose", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.remove", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.rotate", "needs the person's Face ID or presence: who may use a computer"],
+  ["computers.exec", "runs a command as an agent's own Linux user on its computer: the person's own act, needing the right to edit the agent"],
   ["computers.update", "controls the person's own machine: replaces the agent computer with one on this version of Vyre, keeping the agents' files"],
   ["computers.update.status", "reads the person's own machine: whether the agent computer matches this version of Vyre"],
   ["computers.resume", "controls the person's own machine"],

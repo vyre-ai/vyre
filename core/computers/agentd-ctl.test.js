@@ -51,7 +51,8 @@ test("the VNC password reaches a helper that runs as the screen's owner (the bro
   const w = await world(t);
   await w.ctl.startScreen(U);
   const pw = vncPasswordFor("k".repeat(32), "ads");
-  assert.equal(w.files.stdin, pw);
+  const pass = w.ran.find(a => a.includes("/usr/local/bin/agentd-vncpass"));
+  assert.equal(/** @type {any} */ (pass).input, pw, "the password is the helper's standard input (the cookie step has input of its own, so the last input is not it)");
   assert.notEqual(pw, vncPasswordFor("k".repeat(32), "kit"), "every agent has its own");
   assert.ok(!w.ran.flat().join(" ").includes(pw), "never an argument");
   assert.ok(w.ran[0].join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && w.ran[0].includes("/usr/local/bin/agentd-vncpass") && w.ran[0].includes("/var/lib/vyre/browsers/agb21000/vnc.pass"), "run as the browser uid, before Xvnc starts, into its folder");
