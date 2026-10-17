@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: `test/named-imports-resolve.test.js` fails on any named import in core, lib or kernel that its target file does not export, the link error that once kept the vault and other modules from starting.
 - ci: golden-refresh also builds the generated docs on the CI platform and uploads them with the golden files, and runs on the self-hosted runners when CI_SELF_HOSTED is 1.
 - feat(identity): the relay's GitHub sign-in public key is pinned in lib/relay-keys.js (RELAY_ASSERT_KEY). Its private half is the deploy environment secret GH_ASSERT_KEY, set on the relay as GITHUB_ASSERT_KEY by relay-deploy.yml. `github.assertKey` in a box's config still replaces it for development and tests.
 - test: the golden decisions are re-recorded for the merged 0.5.3 work; the removed Mac egress and tailnet tools are gone from them.
