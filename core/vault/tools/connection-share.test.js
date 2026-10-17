@@ -21,7 +21,14 @@ function rig(over = {}) {
   const kernel = { space: "spc_x", owner: OWNER, mint, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }),
     grants: { members: { list: async () => [{ person: BOB, name: "Bob" }, { person: EVE, name: "Eve" }] }, teams: { list: async () => [{ id: TEAM, name: "Billing" }] } } };
   const reg = /** @type {Map<string, any>} */ (new Map());
-  const ctx = { kernel, log: () => {}, call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); if (t === "agents.uid") return i.name === "kit" ? { data: { uid: KIT } } : { error: { code: "not_found" } }; return { data: { cancelled: 0 } }; } };
+  const ctx = { kernel, log: () => {}, call: async (/** @type {string} */ t, /** @type {any} */ i) => {
+    calls.push([t, i]);
+    if (t === "agents.uid") return i.name === "kit" ? { data: { uid: KIT } } : { error: { code: "not_found" } };
+    if (t === "agents.list") return { data: [{ uid: KIT, name: "kit" }, { uid: "agt_atlas", name: "atlas" }] };
+    // the agents the caller may instruct: kit (made by Eve, shared with Bob), not atlas
+    if (t === "agents.instructors") return i.agent === "kit" ? { data: { level: "use", made_by: EVE, shares: [BOB, "per_dana"] } } : { error: { code: "not_found" } };
+    return { data: { cancelled: 0 } };
+  } };
   const people = { service: (/** @type {string} */ id) => ({ has: async (/** @type {string} */ n) => id === BOB && mine.has(n) }), ...over };
   const out = registerShare({ ctx, people: /** @type {any} */ (people), tool: (n, callers, d, i, run) => reg.set(n, { callers, run }) });
   const as = (/** @type {string} */ name, /** @type {any} */ input, /** @type {string | null} */ who = BOB, extra = {}) => reg.get(name).run(input, { caller: "device:abcdefghijklmnop", hops: who ? [{ actor: { kind: "person", id: who } }] : [], ...extra });
@@ -84,4 +91,22 @@ test("only her own connection, only a real grantee, only a person's own call", a
   await assert.rejects(as("vault.me.connection.share", { name: "clio", kind: "person", subject: EVE, level: "use" }, OWNER), /member's own vault|denied/, "the owner uses the owner's tools");
   await assert.rejects(as("vault.me.connection.share", { name: "clio", kind: "person", subject: EVE, level: "use" }, BOB, { hops: [{ actor: { kind: "person", id: BOB } }, { actor: { kind: "agent", id: "kit" } }] }), /member's own vault|denied/, "an agent acting for her cannot share her connection");
   assert.equal(grants.length, 0);
+});
+
+test("an agent she may not instruct is not offered and cannot be shared with: a connection filled by an agent others instruct is used by them", async () => {
+  const { as, grants } = rig();
+  await assert.rejects(as("vault.me.connection.share", { name: "clio", kind: "agent", subject: "atlas", level: "use" }), /no agent/, "not found, the same as an agent that does not exist");
+  assert.equal(grants.length, 0);
+  await as("vault.me.connection.share", { name: "clio", kind: "agent", subject: "kit", level: "use" });
+  assert.equal(grants.length, 1);
+});
+
+test("the directory: members, groups, and only the agents she may instruct, with who else instructs each", async () => {
+  const { as } = rig();
+  const d = await as("vault.me.connection.directory", {});
+  assert.deepEqual(d.people.map((/** @type {any} */ p) => p.id), [EVE], "the other members, not herself");
+  assert.deepEqual(d.groups.map((/** @type {any} */ g) => g.id), [TEAM]);
+  assert.deepEqual(d.agents.map((/** @type {any} */ a) => a.id), [KIT], "atlas is not offered");
+  assert.deepEqual([...d.agents[0].instructors].sort(), [BOB, EVE, "per_dana"].sort());
+  await assert.rejects(as("vault.me.connection.directory", {}, OWNER), /member's own vault|denied/);
 });

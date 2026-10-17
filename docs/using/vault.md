@@ -285,6 +285,16 @@ vyre vault agent revoke <id>
 
 The agent `kit` may sign in to that one site with that one login until the expiry, and never reads the login. It is a grant in your Space, the same kind as every other: the agent, the action (fill), the login, the exact origin and the expiry. Only you give it, on your own session. When Claude asks, the request waits and you approve it with `vyre vault approve <id>`. Taking it away needs no one, and deleting the login ends every grant on it.
 
+### Share a login from your own vault with an agent
+
+A member can let one agent sign in with one login from their own vault, on one site, until an expiry (up to a year; a week if you say nothing). Your agent can use this login while you're away. The agent never sees the login: its Chrome types it, and nothing returned to the agent or written to a log carries it.
+
+- You pick an agent you may instruct yourself: one you made, or one you were given Can use or Can edit on. The share sheet names who else can instruct that agent, because they can have it sign in with your login too. The owner and the admins can instruct every agent.
+- Sharing opens the login in your vault, so you must be unlocked. A copy of that one login is then kept in your own vault, in the folder of what you lend, sealed under a lend key. The lend key is the only part of your vault the server can open, so the server can use the logins you chose to lend and nothing else of yours. The copy is readable by the server process while the share lasts. A leaked state folder exposes the logins a member chose to lend, and nothing else of that member's.
+- The owner and the admins cannot list, read or copy it with any Vault tool.
+- The copy is deleted, and its grant ended, the moment the share ends: you unshare it, it expires, you change or remove the login, or you leave the Space. If the copy cannot be brought up to date after you change the login, it is deleted, not kept.
+- Tools: `vault.me.share.agent`, `vault.me.unshare.agent` and `vault.me.shares`. They are for the member alone, never for an assistant acting for them.
+
 ## Which agents can call an API credential
 
 An agent, or your assistant, calls an API credential only through a grant in your Space: its project's linked vault, a vault shared with it, or a lease for one task. Without one the call is refused (it is not held), and the agent's Vault list shows only the credentials it holds a grant for. A read inside a grant runs at once; anything that changes something at the service still waits for your yes, grant or not. You and a thread you tagged with the credential (`#name`) use it by right.

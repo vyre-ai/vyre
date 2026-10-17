@@ -641,3 +641,103 @@ test("B8: a destructive MCP call is held as a delete, which no standing permissi
   const r = await hub.call({ server: "web", tool: "archive_matter", arguments: { id: "m1" } }, person);
   assert.equal(held.get(r.held).kind, "delete");
 });
+
+test("hub pin: a person's own connection is approved by that person only, the Space owner's row by the owner only, and a missing row is not found", async () => {
+  const A = "per_alice", B = "per_bob", url = "https://mcp.example.test/mcp";
+  let live = [tool("list_issues", "Lists issues.", { annotations: { readOnlyHint: true } })];
+  const { hub } = fakeHub({ mayUseConnection: async () => true, connectionToken: async () => ({ access_token: "fixture-access-token-abcdef123456", token_type: "Bearer" }), behave: { tools: () => live } });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await hub.add({ name: "plain", transport: "http", url: "https://mcp.other.example/mcp" });
+  const key = personKey("clio", A);
+  live = [tool("list_issues", "Lists issues, then something else.")];
+  await hub.test(key); await hub.test("plain");
+  const held = hub.row(key), heldPlain = hub.row("plain");
+  assert.ok(held.pinSeen && heldPlain.pinSeen, "both rows are held");
+  // the Space owner (no owner given) is refused a person's row, and sees it unchanged
+  await assert.rejects(hub.repin({ name: key, seen: held.pinSeen }), e => e.code === "denied" && /they approve/.test(e.message));
+  // another person does not even find it
+  await assert.rejects(hub.repin({ name: key, seen: held.pinSeen }, { owner: B }), e => e.code === "not_found");
+  // a person is refused the Space owner's row
+  await assert.rejects(hub.repin({ name: "plain", seen: heldPlain.pinSeen }, { owner: A }), e => e.code === "not_found");
+  assert.ok(hub.row(key).pinSeen && hub.row("plain").pinSeen, "nothing was approved by the wrong person");
+  // each by the right one
+  assert.equal((await hub.repin({ name: key, seen: held.pinSeen }, { owner: A })).pin.state, "pinned");
+  assert.equal((await hub.repin({ name: "plain", seen: heldPlain.pinSeen })).pin.state, "pinned");
+  await hub.stop();
+});
+
+test("a revoke wins: the next call of a revoked grantee fails without asking the Vault for a token; a held outward call is re-checked against the person who ASKED when it is released", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp";
+  const holds = { alice: true, bob: true };   // who holds the connection at call level now
+  const asked = [], tokens = [];
+  const held = new Map();
+  const { hub, db } = fakeHub({
+    mayUseConnection: async (c, who) => { asked.push({ ...c, as: c.as }); const person = c.as ?? who?.thread; return holds[person] === true; },
+    connectionToken: async c => { tokens.push(c); return { access_token: "fixture-access-token-abcdef123456", token_type: "Bearer" }; },
+    item: async id => held.get(id) || null,
+  });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  const key = personKey("clio", A);
+  const as = person => ({ person: true, agent: null, thread: person });
+  assert.ok(await hub.call({ server: key, tool: "list_issues" }, as("bob")), "while Bob holds it, his read runs");
+  const before = tokens.length;
+  holds.bob = false;
+  await assert.rejects(hub.call({ server: key, tool: "list_issues" }, as("bob")), e => e.code === "denied");
+  assert.equal(tokens.length, before, "the Vault was not even asked for a token after the revoke");
+  // a held outward call, released after its requester lost the connection: refused; before, it runs
+  held.set("h1", { id: "h1", state: "sending", via: `mcp:${key}`, requester: "bob", agent: null, draft: { arguments: { to: "dana@harlowlegal.com" } } });
+  held.set("h2", { id: "h2", state: "sending", via: `mcp:${key}`, requester: "alice", agent: null, draft: { arguments: { to: "dana@harlowlegal.com" } } });
+  const content = { server: key, tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "hi" } };
+  await assert.rejects(hub.release({ id: "h1", to: ["dana@harlowlegal.com"], content }), e => e.code === "denied" && /no longer holds/.test(e.message));
+  const asAsker = asked.filter(a => a.level === "call" && a.as);
+  assert.ok(asAsker.some(a => a.as === "bob" && a.owner === A), "the question was asked about the requester, not the caller");
+  assert.ok(await hub.release({ id: "h2", to: ["dana@harlowlegal.com"], content }), "Alice, who still holds it, is released");
+  held.set("h3", { id: "h3", state: "sending", via: `mcp:${key}`, requester: null, agent: null, draft: { arguments: {} } });
+  await assert.rejects(hub.release({ id: "h3", to: ["dana@harlowlegal.com"], content }), e => e.code === "denied", "an item that does not say who asked is not released on a person's connection");
+  assert.ok(db);
+});
+
+test("taking a grant away cancels what its holder left waiting at the Gate; taking the connection away cancels all of it, tells the vendor, and only its maker may do it", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp";
+  const holds = { alice: true, bob: true }, cancelled = [], revoked = [], log = [];
+  let mine = true;
+  const waiting = [{ id: "h1", requester: "bob" }, { id: "h2", requester: "alice" }, { id: "h3", requester: "bob" }];
+  const { hub, events } = fakeHub({
+    mayUseConnection: async c => (c.level === "own" ? mine : holds[c.as] === true),
+    heldOf: async via => { log.push(via); return waiting.filter(w => !cancelled.includes(w.id)); },
+    cancel: async (id, reason) => { cancelled.push(id); assert.match(reason, /connection/); },
+    revokeConnection: async c => { revoked.push(c); return { revoked: true }; },
+  });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  const key = personKey("clio", A);
+  holds.bob = false;
+  assert.equal(await hub.sweep(key), 2, "Bob's two held items are discarded");
+  assert.deepEqual(cancelled.sort(), ["h1", "h3"]);
+  assert.deepEqual(log, [`mcp:${key}`], "only this server's own sender is looked at");
+  assert.equal(await hub.sweep("no-such"), 0);
+  mine = false;
+  await assert.rejects(hub.remove({ name: key }), e => e.code === "denied" && /only they can remove it/.test(e.message));
+  assert.ok(hub.row(key), "someone else cannot remove it");
+  mine = true;
+  await hub.remove({ name: key });
+  assert.deepEqual(cancelled.sort(), ["h1", "h2", "h3"], "the rest is cancelled with the connection");
+  assert.deepEqual(revoked, [{ owner: A, connection: "clio-alice" }], "the vendor is asked to drop the token");
+  assert.ok(!hub.row(key), "the row is gone");
+  assert.ok(events.some(e => e.type === "mcp.held-cancelled"), "and it is on the record");
+});
+
+test("a vendor that no longer honours the sign-in puts the connection in needs_reconnect, and calls stop with that code until the person signs in again", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp";
+  let n = 0;
+  const { hub, events } = fakeHub({
+    mayUseConnection: async () => true,
+    connectionToken: async () => { n++; throw Object.assign(new Error("sign in again"), { code: "needs_reconnect" }); },
+  });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  const key = personKey("clio", A);
+  await assert.rejects(hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), e => e.code === "needs_reconnect");
+  const seen = (await hub.servers({ person: true, agent: null, thread: "t" })).find(s => s.name === key);
+  assert.equal(seen.state, "needs_reconnect");
+  assert.ok(events.some(e => e.type === "mcp.needs-reconnect"));
+  assert.ok(n >= 1 && n <= 3, "a bounded number of tries, no loop: " + n);
+});

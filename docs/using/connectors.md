@@ -73,7 +73,9 @@ Vyre keeps a fingerprint of the first tool list a server gives. When you add a s
 
 `mcp.catalog` searches a reviewed list of hosted MCP servers by words or category, and says for each whether you are already connected. The list is a weekly snapshot of the official MCP registry and the Claude plugin repositories: a person reads every new entry in a pull request before it appears. An entry marked verified was published under its vendor's own domain: anyone who owns a domain counts as a vendor in that sense, so the weekly pull request is the human check, and the app's name for the entry shows whose server it is. The first catalog is 17 rows a person reviewed against each vendor's own documents; the weekly pull request adds to them, and a row a reviewer marked anything but one-click stays out of one-tap connect. Anything else is listed as inferred and does not get a one-click connect. The catalog's connected mark covers only the servers your own sessions may use.
 
-An entry the vendor published on its own domain, whose server a probe found registers a client by itself, can be connected from the catalog (for now by an owner or an admin; a member brings her own servers under Your accounts): Vyre registers itself with the vendor's server as it signs you in, so there is no app of your own to make. The sign-in can only go to the server's own address; a vendor that signs in somewhere else is refused with the reason, and you can add it by its address instead. The sign-in is kept as one vault item that names the server, the catalog entry and who connected it. If the vendor later stops accepting it, the connection is marked, and its entry in `connectors.list` says it needs to be connected again.
+An entry the vendor published on its own domain, whose server a probe found registers a client by itself, can be connected from the catalog (an owner or an admin connects it for the Space; a member connects it for herself, into her own vault, and it is hers alone until she shares it): Vyre registers itself with the vendor's server as it signs you in, so there is no app of your own to make. The sign-in can only go to the server's own address; a vendor that signs in somewhere else is refused with the reason, and you can add it by its address instead. The sign-in is kept as one vault item that names the server, the catalog entry and who connected it. If the vendor later stops accepting it, the connection is marked, and its entry in `connectors.list` says it needs to be connected again.
+
+A member signs in the same way, but she finishes the sign-in with the address the browser lands on, and an app that needs your team's own developer app stays with an owner or an admin.
 
 This review applies to the servers in the Space's hub. The servers a member brings for her own account live in her own vault and run on her side, so they are not part of it.
 
@@ -203,6 +205,23 @@ What Vyre does with the account:
   mails each of them an invite. A draft and an event with no attendees are written directly.
 - Each account is its own sender at the Gate, so you see which address a message would leave
   from.
+
+## Connect Microsoft 365 for the whole firm
+
+A firm that runs Microsoft 365 can give every member their own mail, calendar and OneDrive through one Azure app that the owner sets up once. The app acts as one mailbox at a time: the member's own work email, recorded by the owner. A member can never name another mailbox. Vyre reads mail, calendar and files. A member can also send an email or an invite from their own mailbox, and it goes out at once because it is their own send. When a member's agent sends or invites from that mailbox, the message is held at the member's own Gate, with the address it leaves from. Only that member sees it and approves it. The owner and the admins do not.
+
+The owner does this once, in Entra (entra.microsoft.com):
+
+1. **Register the app.** App registrations, New registration, a name such as `Vyre`, supported account types "this organization only". Note the application (client) ID and the directory (tenant) ID.
+2. **Create a secret.** Certificates and secrets, New client secret. Copy the secret value now. It is shown once, and it is the value, not the secret ID.
+3. **Grant permissions.** API permissions, Add a permission, Microsoft Graph, **Application permissions**: `Mail.Read`, `Calendars.Read` and `Files.Read.All`. To let members send and invite from their own mailbox, also add `Mail.Send` and `Calendars.ReadWrite`. Then choose **Grant admin consent** for the organization.
+4. **Limit the app to the staff group.** A Graph application permission reaches every mailbox in the tenant unless the tenant narrows it. Limit the app to the people who use Vyre with an ApplicationAccessPolicy (Exchange Online PowerShell: `New-ApplicationAccessPolicy` with the app ID, a mail-enabled security group, and `-AccessRight RestrictAccess`) or with RBAC for Applications. The change can take up to an hour.
+5. **Store the keys in the vault.** One item with the fields `tenant_id`, `client_id` and `client_secret`.
+6. **Add the app to Vyre.** `microsoft.add` with a name, the firm's email domain (for example `harlow.example`) and the vault item. Only the owner can.
+7. **Record each person's work email.** `microsoft.members.email` with the person and their address, which must be inside the firm's domain. Only the owner can.
+8. **Check it.** `microsoft.check` walks these steps in order and names the first one that is missing, in plain words. It makes one token request per app and reads one inbox folder per person. It never reads a message and never shows a secret. It does not test the send and calendar permissions: a missing one shows up as a refusal from Microsoft the first time someone sends. Run it again after each fix.
+
+If a person's mailbox is refused, the answer names the cause: Microsoft says the app was not granted the permission (step 3), the tenant's policy excludes that person (step 4), or the mailbox does not exist (step 7). A secret expires on the date you chose in step 2. When it does, `microsoft.check` stops at the sign-in step. Create a new secret and update the vault item.
 
 ## Connect GitHub
 

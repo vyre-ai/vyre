@@ -26,6 +26,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
+import { ownRow } from "../../lib/own-row.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey } from "./hub.js";
 
@@ -83,6 +84,11 @@ export default {
       // A person's connection is used by whoever the Vault says holds its item; the call inherits the turn's chain, so the Vault reads the caller from the kernel.
       // The access token for a person's connection, asked of the Vault at the moment of the request: the call inherits the turn, so the Vault checks the asker again. Only the short-lived token comes back.
       connectionToken: async c => { const r = await ctx.call("vault.connection.token", c); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      // What the Gate holds for this module's own sender, and the module taking its own items back: how a revoke cancels what is waiting.
+      heldOf: async via => { const r = await ctx.call("gate.held-of", { via }); return (r && r.data) || []; },
+      cancel: async (id, reason) => { const r = await ctx.call("gate.reject", { id, reason }); if (r && r.error) throw new Error(r.error.message); return r.data; },
+      // The vendor is told to drop the token too, where the connection names how; best effort, and the hub says when it was not.
+      revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
       mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
@@ -154,9 +160,9 @@ export default {
         // "connected" means a server this caller may use (the same scope as mcp.servers): a member does not learn which apps the owner connected beyond what her sessions can reach.
         const w = who(meta), memo = {}, connectedKeys = new Set();
         for (const r of hub.rows()) if (r.url && await hub.inScope(r, w, memo)) connectedKeys.add(urlKey(r.url));
-        const found = searchCatalog(snapshot.entries, input || {}, connectedKeys);
-        // The preset to connect with: the curated one when a curated preset already serves that address (it keeps its reviewed sign-in), else the one made from the entry.
+        // The preset to connect with: the curated one when a curated preset already serves that address (it keeps its own reviewed sign-in pin), else the one made from the entry.
         const served = new Map(curated.presets().filter(p => p.url).map(p => [urlKey(p.url), p.id]));
+        const found = searchCatalog(snapshot.entries, input || {}, connectedKeys, new Set(served.keys()));
         const entries = found.entries.map(e => (e.oneClick && served.has(urlKey(e.url)) ? { ...e, preset: served.get(urlKey(e.url)) } : e));
         return { ...found, entries, generated: snapshot.generated };
       },
@@ -185,16 +191,15 @@ export default {
 
     // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.
     // The Space owner, and a call with no claim (the home's own work), reach a row by its name as before.
-    const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => {
+    /** The member's person id when the call carries a claim the Vault names as a member's; "" for the owner and for home work with no claim. A claim the Vault cannot name is refused, never served as the owner's. */
+    const callerMember = async (/** @type {any} */ meta) => {
       const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
-      if (!claims) return name;
+      if (!claims) return "";
       const w = await ctx.call("vault.me.who", {}, { relay: true });
       if (w.error) throw Object.assign(new Error(w.error.message), { code: w.error.code || "denied" });
-      if (!w.data || w.data.kind !== "member") return name;
-      const key = personKey(String(name), w.data.person), r = hub.row(key);
-      if (!r || r.owner !== w.data.person) throw Object.assign(new Error(`you have no server named ${String(name).slice(0, 40)}`), { code: "not_found" });
-      return key;
+      return w.data && w.data.kind === "member" ? String(w.data.person) : "";
     };
+    const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => ownRow(hub, personKey, name, await callerMember(meta));
 
     ctx.tool("mcp.update", {
       effect: "write",
@@ -202,6 +207,19 @@ export default {
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
       run: async (input, meta) => { refuseNonPerson(meta, "changes an MCP server"); const name = await rowName(input.name, meta); refuseProcess(input, meta, (hub.row(name) || {}).transport); return hub.update({ ...input, name }); },
+    });
+
+    // The Vault tells the hub a share or grant on a person's connection ended: whoever asked for something held there and no longer holds the connection has it discarded.
+    ctx.tool("mcp.sweep", {
+      internal: true,
+      description: "A share or grant on a person's connection ended: discard what its requesters, who no longer hold it, left waiting at the Gate. { owner, connection } -> { cancelled }. Only the vault module asks.",
+      input: obj({ owner: str, connection: str }, ["connection"]),
+      run: async (input, meta) => {
+        if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module reports that a connection was shared out or taken back"), { code: "denied" });
+        let cancelled = 0;
+        for (const r of hub.rows()) if (r.owner && r.connection === String(input.connection) && (input.owner === undefined || r.owner === String(input.owner))) cancelled += await hub.sweep(r.name);
+        return { cancelled };
+      },
     });
 
     ctx.tool("mcp.remove", {
@@ -217,7 +235,12 @@ export default {
       description: "Approve the tool descriptions an MCP server changed since you reviewed them: { name, seen } where seen is the hash mcp.servers shows. Until then its tools are held.",
       input: obj({ name: str, seen: str }, ["name", "seen"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "approves changed MCP tool descriptions"); return hub.repin(input); },
+      run: async (input, meta) => {
+        refuseNonPerson(meta, "approves changed MCP tool descriptions");
+        // A member approves the change to her own connection only; the Space owner approves the Space's own rows and is refused a member's.
+        const person = await callerMember(meta);
+        return person ? hub.repin({ ...input, name: personKey(String(input.name), person) }, { owner: person }) : hub.repin(input);
+      },
     });
 
     ctx.tool("mcp.test", {

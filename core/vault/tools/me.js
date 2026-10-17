@@ -7,6 +7,7 @@ import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
 import { ConnectionTokens } from "../connection-token.js";
+import { revokeAtVendor } from "../connection-revoke.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
 const PERSON_SURFACES = [...THE_SURFACES, "device", "web"];
@@ -41,11 +42,11 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
 /** The two tools with which a member uses what the owner shared with her (registered in core/vault/request.js, beside vault.request, which they run through). */
-export const SHARED_ME_TOOLS = ["vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares"];
+export const SHARED_ME_TOOLS = ["vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.me.connect.put", "vault.me.who"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -167,6 +168,19 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       return tokens.token(input || {}, meta);
+    },
+  });
+  // The person took the connection away (the hub asks, after it checked they are the one who made it): tell the vendor to drop the token where the connection says how. Only the mcp module asks; nothing comes back but whether it was revoked.
+  ctx.tool("vault.connection.revoke", {
+    internal: true,
+    description: "Tell the vendor to revoke a person's connection token (RFC 7009), if the connection names a revocation address: { owner, connection } -> { revoked, why }. Only the mcp module asks, after it checked the caller made the connection.",
+    input: obj({ owner: str, connection: str }, ["owner", "connection"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const owner = String(input && input.owner || ""), name = String(input && input.connection || "");
+      if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(owner) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
+      const out = await revokeAtVendor({ people }, { owner, connection: name });
+      return out;
     },
   });
 }
