@@ -50,7 +50,7 @@ async function rig(t) {
 }
 
 test("two members' own app connections: each is used, listed and removed by its maker alone; the owner, the other member, an assistant and a forged token reach none of it", { timeout: 280_000 }, async t => {
-  const { d, K, mcp, as, forged, juno, chain, who } = await rig(t);
+  const { d, K, mcp, as, forged, juno, chain } = await rig(t);
   const step = (/** @type {string} */ name, /** @type {any} */ ok) => assert.ok(ok, name);
 
   // ---- each member makes their own vault and connects the same app with their own token
@@ -65,8 +65,6 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("Ben's list is his own one", names(await as("ben", "connectors.list")).join() === "tokvendor");
   step("Cy's list is her own one", names(await as("cy", "connectors.list")).join() === "tokvendor");
   step("the owner's list holds neither", !names(await as("owner", "connectors.list")).includes("tokvendor"));
-  const catalogOf = async (/** @type {"owner"|"ben"|"cy"} */ w) => (((await as(w, "connectors.catalog")).data || {}).presets || (await as(w, "connectors.catalog")).data || []);
-  void catalogOf;
 
   // ---- the hub rows: each is visible to its maker only (C3)
   const rowsOf = async (/** @type {"owner"|"ben"|"cy"} */ w) => ((await as(w, "mcp.servers")).data || []);
@@ -78,7 +76,6 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("the owner sees neither", !(await rowsOf("owner")).some((/** @type {any} */ s) => s.owner));
 
   // ---- C3: the call itself. A's call to A's connection runs; B's, the owner's and a forged token's are refused
-  const call = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ server) => as(w, "mcp.call", { server, tool: "echo", arguments: { text: "hi" } });
   const tools = (await as("ben", "mcp.tools", {})).data;
   step("Ben's connection lists tools through the hub", Array.isArray(tools) && tools.some((/** @type {any} */ x) => x.server === benRow.name));
   const tool = tools.find((/** @type {any} */ x) => x.server === benRow.name && !x.outward);
@@ -132,5 +129,4 @@ test("two members' own app connections: each is used, listed and removed by its 
   step("her hub row is gone", !(await rowsOf("cy")).some((/** @type {any} */ s) => s.owner === CY));
   step("Ben's connection and hub row are untouched", names(await as("ben", "connectors.list")).join() === "tokvendor" && (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
   step("and still run", !(await run("ben", benRow.name)).error);
-  void who; void d;
 });
