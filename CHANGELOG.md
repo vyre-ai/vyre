@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6
 
 - fix(train): `microsoft.check`, `vault.me.share.agent`, `vault.me.unshare.agent`, `vault.me.shares` and `mcp.repin` are classified person only (a person's own act, never an agent's); a Microsoft hold that could not go out at once carries the Gate's error in its answer; the member-accounts test expects a member's own send to go out (Option A); the Apps Script test compares plain data across the fake script's realm.
+- fix(modules): core/modules/relay-allowed.js imports FIRST_RUN_RELAY from relay-context.js. The relay table moved out of core/modules/index.js (to keep it under its line budget) spreads that list, and the move left the import behind, so the daemon and the docs harvest failed at load with a ReferenceError.
+
 - fix(memory): memory.heard reads the chat's thread only from meta.thread (the daemon's verified binding), never from a caller label, and files the agent's lesson only for a named agent; a plain session of no agent files nothing. core/memory/index.js.
 
 - refactor(sessions): the environment variable each provider's CLI reads for an account's key (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY, OPENAI_COMPAT_API_KEY) is one list in lib/credential-env.js, read by the Switchboard's accountEnv and by spawn.js, which removes every one of them from the environment it hands the lender, the sandbox spawner and a terminal. For the chat team: test/provider-adapters.allow.json lists lib/credential-env.js at 2 and core/switchboard/index.js at 41 (one line moved); the file is the single place to add a provider's key variable.
