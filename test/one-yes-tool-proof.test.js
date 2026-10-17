@@ -1,6 +1,6 @@
 import "../scripts/mac-test-guard.mjs";
 // @ts-check
-// One yes, the direct form (user ruling 5 Oct 2026): relay.enable and wink.phone.open are pairing-weight moments (relay.pair.start is gone, 13 Oct 2026), so they take a proof signed over the call itself through yes() in lib/one-yes.js
+// One yes, the direct form (user ruling 5 Oct 2026): relay.enable is a pairing-weight moment (relay.pair.start is gone, 13 Oct 2026), so it takes a proof signed over the call itself through yes() in lib/one-yes.js
 // (`x-vyre-presence: yes proof=<base64url>`), in the owner's chain, instead of widening the development stand-in. A software key stands on a development build only; a release build refuses it. The proof is signed
 // the way the walk does it: scripts/dev-enrol-software-key.mjs once, scripts/dev-sign-proof.mjs --yes per call. A real daemon on the real sealing process.
 import test from "node:test";
@@ -15,7 +15,7 @@ import { tempHome } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
-const TOOLS = ["relay.enable", "wink.phone.open", "wink.code.open"];
+const TOOLS = ["relay.enable"];
 
 /** @param {any} t @param {Record<string, string | undefined>} env */
 function withEnv(t, env) {
@@ -24,7 +24,7 @@ function withEnv(t, env) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 }
 
-test("a software-key proof over the call opens relay.enable and wink.phone.open on a development build, once and only for that call", { timeout: 120_000 }, async t => {
+test("a software-key proof over the call opens relay.enable on a development build, once and only for that call", { timeout: 120_000 }, async t => {
   withEnv(t, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1", VYRE_KERNEL_PATH_RULE: "1" });
   const root = tempHome(t);
   homeIdentity(root);
@@ -70,22 +70,4 @@ test("a release build refuses the software-key proof for the same tools", { time
     const r = await call(tool, {}, { root, caller: "cli", headers: { "x-vyre-presence": proofs[tool] } });
     assert.ok(["software_key", "presence_required"].includes(String(r.error?.code)), `${tool}: refused on a release build (${JSON.stringify(r.error || r.data)})`);
   }
-});
-
-test("typing the ack back (wink.code.ack) takes the owner's software yes on a development build, bound to its offer and typed code", { timeout: 120_000 }, async t => {
-  withEnv(t, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1", VYRE_KERNEL_PATH_RULE: "1" });
-  const root = tempHome(t);
-  homeIdentity(root);
-  assert.equal(run("dev-enrol-software-key.mjs", ["--home", root]).status, 0);
-  const d = await start({ root, log: () => {}, kernel: true });
-  t.after(() => d.stop());
-  await new Promise(r => setTimeout(r, 100));
-  const input = { offer: "of_notreal", typed: "WINK-AAAA-AAAA" };
-  /** @param {any} i */
-  const sign = i => { const r = run("dev-sign-proof.mjs", ["--home", root, "--yes", "pair", "--tool", "wink.code.ack", "--input", JSON.stringify(i), "--header"]); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); };
-  const at = (/** @type {any} */ i, /** @type {string} */ h) => call("wink.code.ack", i, { root, caller: "cli", ...(h ? { headers: { "x-vyre-presence": h } } : {}) });
-  assert.equal((await at(input)).error?.code, "presence_required", "no proof, no way in");
-  assert.equal((await at(input, sign({ ...input, typed: "WINK-BBBB-BBBB" }))).error?.code, "presence_required", "a proof for another typed code is not this call's");
-  const r = await at(input, sign(input));
-  assert.notEqual(r.error?.code, "presence_required", `the owner's software proof stands (${JSON.stringify(r.error)})`);
 });

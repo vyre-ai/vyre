@@ -21,9 +21,7 @@ const PASS = "correct horse battery";
 /** Minimal valid input per tool so validation reaches the outward hold. */
 const SAMPLE = {
   "onboard.person.create": { username: "alex", password: PASS, confirm: PASS },
-  "onboard.computer.add": { url: "https://juniper.vyre.run", username: "alex", password: PASS, name: "desk-mac", type: "computer", fingerprint: "abcd12345678" },
   "onboard.member.link": { role: "member", ttlDays: 7, space: "juniper" },
-  "onboard.phone.add": { space: "juniper", name: "iphone", type: "phone", fingerprint: "abcd12345678" },
   "onboard.space.join": { link: "https://vyre.run/i/abcdefghijk" },
   "onboard.space.open": { kind: "linux", name: "juniper" },
   "onboard.space.current": { space: "juniper" },

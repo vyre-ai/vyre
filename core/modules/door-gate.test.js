@@ -129,8 +129,8 @@ test("a device or node with no proof on a team server is a member's; the moment 
   assert.equal(tail.error && tail.error.message, refusal("mail.accounts"));
   const web = await d.registry.call("mail.accounts", {}, "web:b1", {});
   assert.equal(web.error && web.error.message, refusal("mail.accounts"), "a web page with no proof is a member's too: an owner tool is refused in words");
-  const own = await d.registry.call("wink.phone.wait", {}, "web:bcdefghijklmnopq", {});
-  assert.ok(!(own.error && own.error.message === refusal("wink.phone.wait")), "a web page still reaches its own short list (the pairing it is finishing)");
+  const own = await d.registry.call("relay.devices.list", {}, "web:bcdefghijklmnopq", {});
+  assert.ok(!(own.error && own.error.message === refusal("relay.devices.list")), "a web page still reaches its own short list (its own row)");
   const after = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
   assert.ok(!(after.error && after.error.message === refusal("mail.accounts")), "the owner is served after the second person joins");
 });
@@ -182,7 +182,7 @@ test("an outward tool is on a member's list only with a reason: whose yes her ac
   assert.deepEqual(stale, [], `named in MEMBER_OUTWARD but not an outward tool on MEMBER_MAY: ${stale.join(", ")}`);
 });
 
-const SIGN_IN = ["presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.status", "wink.server.adopt", "wink.server.pair.answer", "wink.phone.wait", "wink.phone.pair.answer", "wink.phone.pairing"];
+const SIGN_IN = ["presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.status", "wink.server.adopt", "wink.server.pair.answer"];
 const DEVICE = "device:bcdefghijklmnopq";
 const HEX64 = "b".repeat(64);
 
@@ -206,9 +206,6 @@ test("the sign-in and pairing tools on a member's list are reachable for a devic
     ["wink.server.adopt", { owner: { kind: "identity", id: OWNER } }, DEVICE, { peer }, ["denied_no_proof"]],
     ["wink.server.adopt", { owner: { kind: "identity", id: MEMBER }, pairing: { commit: HEX64 } }, DEVICE, { peer }, ["denied_no_proof"]],
     ["wink.server.pair.answer", { yes: true, pick: 1 }, DEVICE, {}, ["person_session_required"]],
-    ["wink.phone.wait", { commit: HEX64, name: "Ben's phone" }, DEVICE, { peer }, ["denied"]],
-    ["wink.phone.pair.answer", { yes: true, pick: 1 }, DEVICE, {}, ["person_session_required"]],
-    ["wink.phone.pair.answer", { yes: true, pick: 1 }, "deck", {}, ["presence_required"]],
   ]);
   for (const [tool, input, caller, extra, codes] of cases) {
     const r = await d.registry.call(tool, input, caller, { thread: "t1", ...extra });
@@ -219,7 +216,7 @@ test("the sign-in and pairing tools on a member's list are reachable for a devic
   // with no pairing waiting, a yes at the server answers nothing and opens nothing
   const idle = await d.registry.call("wink.server.pair.answer", { yes: true, pick: 1 }, "deck", { thread: "t1" });
   assert.deepEqual(idle, { data: { answered: false } });
-  for (const tool of ["presence.person.pair-challenge", "presence.person.status", "wink.phone.pairing"]) {
+  for (const tool of ["presence.person.pair-challenge", "presence.person.status"]) {
     const r = await as("member", tool, {}, DEVICE, "");
     assert.ok(!(r.error && r.error.message === refusal(tool)), `${tool}: reachable`);
     assert.ok(!(r.data && (r.data.token || r.data.challenge)), `${tool}: no token or challenge to a device with no grant`);

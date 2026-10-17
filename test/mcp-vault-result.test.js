@@ -33,7 +33,7 @@ test("scrubbing removes a vault value from an assistant result and leaves the pe
   assert.equal(lent.data.body, "ok");
 });
 
-test("no MCP tool result contains a vault value, and a device card names the device", async (t) => {
+test("no MCP tool result contains a vault value, and a device line names the device", async (t) => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -54,16 +54,6 @@ test("no MCP tool result contains a vault value, and a device card names the dev
     assert.equal(r.data, undefined, name);
     assert.equal(r.error && r.error.code, "denied", name);
   }
-  const facts = { url: "https://juniper.vyre.run", password: "correct horse battery", name: "Desk", type: "windows", fingerprint: "ab12cd34ef56" };
-  const held = await d.registry.call("onboard.computer.add", facts, "mcp");
-  assert.equal(held.error && held.error.code, "held_for_approval", JSON.stringify(held));
-  assert.match(held.error.line, /Desk/);
-  assert.match(held.error.line, /windows/);
-  assert.match(held.error.line, /ab12cd34ef56/);
-  assert.match(held.error.line, /assistant/i);
-  assert.doesNotMatch(held.error.line, /horse/);
-  const bare = await d.registry.call("onboard.computer.add", { url: "https://juniper.vyre.run", password: "correct horse battery" }, "mcp");
-  assert.equal(bare.error && bare.error.code, "bad_input");
   const line = lineOfOp("onboard.windows", { name: "Desk", type: "windows", fingerprint: "ab12cd34ef56", label: "Desk" }, "An assistant (mcp)");
   assert.match(line, /An assistant \(mcp\)/);
   assert.match(line, /Desk/);

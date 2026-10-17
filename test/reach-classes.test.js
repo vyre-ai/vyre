@@ -43,11 +43,10 @@ test("SETUP_REACH is the relay's setup gate plus the tools a module declares und
 });
 
 test("a browser reaches only WEB_REACH and a setup page only SETUP_REACH, whatever a tool's callers says", () => {
-  assert.equal(classReach(WEB, "wink.phone.wait"), true);
+  assert.equal(classReach(WEB, "wink.server.adopt"), true);
   assert.equal(classReach(WEB, "names.claim"), false);
   assert.equal(classReach(WEB, undefined), false);
   assert.equal(classReach(SETUP, "wink.server.setup-offer"), true);
-  assert.equal(classReach(SETUP, "wink.phone.wait"), false);
   assert.equal(classReach(SETUP, "vault.get"), false);
   assert.equal(callerAllowed(null, WEB, "memory.search"), false, "a tool open to anyone is still not open to a browser");
   assert.equal(callerAllowed(["web"], WEB, "memory.search"), false, "naming web is not enough, the class list decides");

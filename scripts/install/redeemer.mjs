@@ -37,7 +37,7 @@ const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) =
 };
 
 const PROBED = ["relay.devices.list", "wink.access", "relay.status", "system.info", "wink.pair.targets", "threads.list", "term.list", "vault.list", "presence.person.start", "presence.enroll", "relay.devices.remove", "relay.devices.drop", "relay.pair.pending.confirm",
-  "relay.pair.ticket", "relay.pair.window.open", "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.open", "wink.phone.wait", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
+  "relay.pair.ticket", "relay.pair.window.open", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
   "wink.offer.set", "wink.pair.server", "wink.storage.remove", "wink.device.key", "wink.relay.apply", "about.text", "identity.sign"];
 const bad = [];
 for (const tool of PROBED) { const o = await call(tool); out("probe", { tool, status: o.status }); if (![404, 403, 0].includes(o.status)) bad.push(`${tool}=${o.status}`); }

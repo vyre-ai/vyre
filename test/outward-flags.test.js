@@ -61,7 +61,6 @@ const NOT_OUTWARD = {
   "push.subscribe": "your own device subscribes",
   "push.test": "a test notification to your own devices",
   "push.unsubscribe": "your own device unsubscribes",
-  "relay.code.reply": "the box answers its own new server's pairing code",
   "spaces.code.submit": "the person's own new server sends the code its person typed",
   "spaces.merge-list": "merges the lists of your own spaces",
   "stream.send": "words in a group chat inside Vyre; a person or assistant in the space, not a service outside",
