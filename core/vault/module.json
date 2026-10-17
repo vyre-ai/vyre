@@ -140,6 +140,8 @@
       { "name": "vault.me.get", "effect": "read", "reach": "person" },
       { "name": "vault.me.list", "effect": "read", "reach": "person" },
       { "name": "vault.me.shared.list", "effect": "read", "reach": "person" },
+      { "name": "vault.me.connection.share", "effect": "write", "reach": "person" },
+      { "name": "vault.me.connection.shares", "effect": "read", "reach": "person" },
       { "name": "vault.me.shared.request", "effect": "write", "reach": "person" },
       { "name": "vault.me.update", "effect": "write", "reach": "person" },
       { "name": "vault.me.store.get", "effect": "read", "reach": "anyone" },
