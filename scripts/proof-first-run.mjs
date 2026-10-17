@@ -55,7 +55,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, fieldReady(l: string): Promise<boolean>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -117,6 +117,7 @@ async function browserDriver() {
       await until(async () => (await sw.getAttribute("aria-checked")) === "true", 5_000, `the switch "${label}" turning on`);
     },
     async fill(/** @type {string} */ l, /** @type {string} */ v) { await page.locator(`input[aria-label="${l}"], textarea[aria-label="${l}"]`).first().fill(v, { timeout: 15_000 }); },
+    async fieldReady(/** @type {string} */ l) { return Boolean(await page.evaluate(FIELD_READY, l).catch(() => false)); },
     async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
     // Coming back: a new page in the same browser profile (what is kept on the device stays; what was in the old page's memory does not).
     async reopen() { await d.open(); },
@@ -158,6 +159,7 @@ async function macDriver() {
       try { await need().clickAria(t, 2_000); } catch { await need().click(t, 20_000); }
     },
     async fill(l, v) { await need().fill(l, v, 20_000); },
+    async fieldReady(l) { return Boolean(await need().evaluate(FIELD_READY, l).catch(() => false)); },
     async turnOn(label) {
       const state = () => need().evaluate((/** @type {string} */ l) => { const e = document.querySelector(`[aria-label="${l.replace(/"/g, '\\"')}"]`); return e ? e.getAttribute("aria-checked") : null; }, label);
       if ((await state()) !== "true") await need().clickAria(label, 15_000);
@@ -198,6 +200,24 @@ function serverLogForFailure() {
     return [...out, "-- last pairing-related lines", ...rest].join("\n");
   } catch (e) { return `no server log (${/** @type {Error} */ (e).message})`; }
 }
+
+/**
+ * Is the field with this label drawn, and the topmost thing at its centre? (True only once the app's splash has lifted: the screen's words are in the page before that, and a click on the field's
+ * position under the splash focuses nothing.) Runs inside the page, so it is self-contained. @param {string} label
+ */
+const FIELD_READY = (label) => {
+  const inputs = [...document.querySelectorAll("input, textarea")];
+  let el = inputs.find((i) => i.getAttribute("placeholder") === label || i.getAttribute("aria-label") === label || i.getAttribute("name") === label) || null;
+  if (!el) {
+    const lab = [...document.querySelectorAll("*")].find((e) => !/^(input|textarea)$/i.test(e.tagName) && [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim() === label);
+    const box = lab && lab.closest("div");
+    el = box ? box.querySelector("input, textarea") : null;
+  }
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el;
+};
 
 const cleanups = /** @type {(() => Promise<any> | any)[]} */ ([]);
 let code = 1;
@@ -322,9 +342,10 @@ try {
   await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
     await drv.reopen();
     await drv.waitFor("Welcome back", 60_000);
+    // The screen's words are in the page while the app's splash is still drawn over it: type only once the password field is the topmost thing at its centre (the 06 picture is taken then).
+    await until(() => drv.fieldReady("Master password"), 60_000, "the master password field showing above the splash");
     await drv.shot("06-unlock");
-    // The unlock screen's words are in the page while the app's splash is still drawn over it (the 06 picture shows the splash on a slow machine): a field typed into under the splash takes nothing. So each
-    // attempt is tried again a few times (typing the same thing twice into a refused or empty field changes nothing), and only the last failure is reported.
+    // A backstop for anything else that could swallow a keystroke: each attempt is tried again a few times (typing the same thing twice into a refused or empty field changes nothing), and only the last failure is reported.
     let refused = false;
     for (let attempt = 0; attempt < 4 && !refused; attempt++) {
       await drv.fill("Master password", "zebra quartz mango pillow");
