@@ -1,4 +1,4 @@
-import { InstallScreen } from "../../../screens/install/InstallScreen";
+import { Redirect } from "expo-router";
 
-/** Set up My Cloud on the person's own server (SERVER_SETUP_ROUTE in screens/install/first-run.js): the question's second answer, and where "Add your own server" links to. */
-export default function SetupServer() { return <InstallScreen start="server" />; }
+/** Add a server is the first-run create path: a Linux server or an always-on Mac, then the one install command. */
+export default function SetupServer() { return <Redirect href={"/onboard?path=create" as never} />; }

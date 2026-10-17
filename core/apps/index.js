@@ -148,6 +148,24 @@ export default {
       run: async () => ({ cert_sha256: (await ownerKey()).cert_sha256, subject: `CN=Vyre ${box}` }),
     });
 
+    const MAC_SECRETS = ["APPLE_DEVELOPER_ID_P12", "APPLE_DEVELOPER_ID_P12_PASSWORD", "APPLE_DEVELOPER_ID_IDENTITY", "APPLE_NOTARY_KEY_P8", "APPLE_NOTARY_KEY_ID", "APPLE_NOTARY_ISSUER"];
+    const WIN_SECRETS = ["WINDOWS_AUTHENTICODE_PFX_B64", "WINDOWS_AUTHENTICODE_PFX_PASSWORD"];
+    const missingOf = (/** @type {string[]} */ names) => names.filter(n => !process.env[n]);
+    ctx.tool("releases.info", {
+      effect: "read",
+      description: "The version and how the Mac and Windows apps are signed, and the names of any signing secrets that are missing. No secret values.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const pkg = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+        const macMissing = missingOf(MAC_SECRETS), winMissing = missingOf(WIN_SECRETS);
+        return {
+          version: String(pkg.version || ""),
+          mac: { state: macMissing.length ? "unsigned" : "secrets-present", missing: macMissing, note: "A published Mac app is Developer ID signed and notarized only when the apple environment has these secrets." },
+          windows: { state: winMissing.length ? "unsigned" : "secrets-present", missing: winMissing, note: "A published Windows app is Authenticode signed only when the windows environment has these secrets." },
+        };
+      },
+    });
+
     ctx.tool("releases.sign", {
       description: "Sign the Android release now in the release folder (CI's unsigned APK named by android.json) with the owner's key, so the first download is instant. `vyre update` calls it after it places a new build. Idempotent.",
       callers: ["cli", "local", "module"],

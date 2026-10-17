@@ -10,7 +10,7 @@ import { readRoles, ROLE_TYPE } from "../../lib/roles/store.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 const TYPE = ROLE_TYPE;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 

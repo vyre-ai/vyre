@@ -149,12 +149,14 @@ function planDarwin(o) {
  */
 function planLinux(o) {
   const ws = real(o.workspace);
-  const node = o.node || process.execPath;
+  const node = real(o.node || process.execPath);
+  const nodeInSandbox = "/opt/vyre-node";
   const inner = o.innerPort || 18443;
   const sock = o.proxy.socket || "";
   const sys = d => ["/usr", "/bin", "/lib", "/lib64", "/etc"].includes(d) || d.startsWith("/usr/");
-  const ro = [...new Set([...(o.readOnly || []), path.dirname(node)].map(d => real(d)))].filter(d => !sys(d)).map(d => checkBind(d, o.home));
-  needTool(o.command, ro, ["/usr"]);
+  const ro = [...new Set((o.readOnly || []).map(d => real(d)))].filter(d => !sys(d)).map(d => checkBind(d, o.home));
+  if (real(o.command) !== node) needTool(o.command, ro, ["/usr"]);
+  else needTool(o.command, ro, ["/usr", path.dirname(node)]);
   const home = "/work/home";
   const base = proxyUrl(inner);
   const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet, "/opt/vyre-proxycmd.js"), ...(o.vyre ? { VYRE_SOCKET: "/run/vyre.sock" } : {}) };
@@ -162,15 +164,16 @@ function planLinux(o) {
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives",
-    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
+    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/home", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
     ...ro.flatMap(d => ["--ro-bind", d, d]),
+    "--ro-bind", node, nodeInSandbox,
     "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js", "--ro-bind", fakePasswd(home), "/etc/passwd",
     "--bind", ws, "/work", ...(o.folder ? ["--bind", checkBind(o.folder, o.home), "/work/files"] : []), "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...(o.vyre ? ["--ro-bind", o.vyre.socket, "/run/vyre.sock"] : []),
     ...(o.preview && o.preview.dir ? ["--bind", o.preview.dir, "/run/preview"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", ...(o.preview && o.preview.dir ? ["--preview", "/run/preview/p.sock"] : []), "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
+    nodeInSandbox, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", ...(o.preview && o.preview.dir ? ["--preview", "/run/preview/p.sock"] : []), "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', real(o.command) === node ? nodeInSandbox : o.command, ...(o.args || []),
   ];
   // The deny-list filter goes in over fd 3 (see launch()).
   const sc = seccompFilter();

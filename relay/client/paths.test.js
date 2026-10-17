@@ -56,7 +56,7 @@ function world(t) {
   const vis = visible();
   const moves = [];
   const paths = createPaths({
-    paths: [{ kind: "direct", base: "https://juno.example.ts.net" },
+    paths: [{ kind: "direct", base: "https://juno.example.wink.example" },
       { kind: "relay", relay: "ws://relay.test", route: ROUTE, box: base64url(relay.box.pub), keyStore: memoryKeyStore(), crypto, random: () => 0.5 }],
     fetch: /** @type {any} */ (direct.fetch), WebSocket: relay.WebSocket, visibility: vis, connect,
     onstate: s => moves.push(s.kind),

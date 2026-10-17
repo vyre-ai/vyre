@@ -334,6 +334,28 @@
       {
         "name": "wink.device.call",
         "reach": "modules"
+      },
+      {
+        "name": "wink.server.install-redeem",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "wink.install.issue",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.install.status",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "wink.install.complete",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
       }
     ]
   },

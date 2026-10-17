@@ -292,6 +292,26 @@ async function readJson(req) {
  */
 export function createFs(opts = {}) {
   const root = opts.root || process.env.COMPUTERD_FS_ROOT || "/home/agent";
+  // Chrome saves into $AGENT_HOME/Downloads (AGENT_DOWNLOADS); Glass Files lists it under home/Downloads.
+  const downloadsDir = (process.env.AGENT_DOWNLOADS || "").replace(/\/+$/, "");
+  const homeDownloads = downloadsDir && downloadsDir.startsWith(root.replace(/\/+$/, ""))
+    ? downloadsDir.slice(root.replace(/\/+$/, "").length).replace(/^\//, "").split("/")
+    : ["Downloads"];
+
+  /** @param {string} rel @returns {{ root: string, segments: string[] }} */
+  function pickRoot(rel) {
+    const segments = checkRel(rel);
+    return { root, segments };
+  }
+
+  const innerRel = (segments) => (segments.length ? segments.join("/") : "");
+
+  const isDownloadsPath = (segments) => segments.length >= homeDownloads.length
+    && homeDownloads.every((s, i) => segments[i] === s);
+
+  const refuseDownloadsWrite = (segments) => {
+    if (isDownloadsPath(segments)) throw fail(403, "denied", "Chrome downloads are read-only through Glass");
+  };
 
   const send = (res, status, body) => {
     const text = JSON.stringify(body);
@@ -300,7 +320,8 @@ export function createFs(opts = {}) {
   };
 
   async function list(rel) {
-    const { parentFd, name, segments } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    const { parentFd, name, segments } = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       let dirFd = parentFd, ownFd = false;
       if (name !== null) {
@@ -312,7 +333,7 @@ export function createFs(opts = {}) {
         }
       }
       try {
-        const realRoot = fs.realpathSync(root);
+        const realRoot = fs.realpathSync(picked.root);
         /** @type {any[]} */
         const entries = [];
         let truncated = false;
@@ -343,13 +364,15 @@ export function createFs(opts = {}) {
           entries.push({ name: d.name, kind, size: kind === "file" ? st.size : null, mtime: st.mtimeMs });
         }
         entries.sort((a, b) => Number(b.kind === "dir" || b.to === "dir") - Number(a.kind === "dir" || a.to === "dir") || a.name.localeCompare(b.name));
-        return { entries, truncated };
+        return { entries, truncated, root: picked.fsRoot };
       } finally { if (ownFd) fs.closeSync(dirFd); }
     } finally { fs.closeSync(parentFd); }
   }
 
   function stat(rel) {
-    const { parentFd, name, segments, realRoot } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    refuseDownloadsWrite(picked.segments);
+    const { parentFd, name, segments, realRoot } = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       const fd = name === null ? parentFd : openLeaf(realRoot, parentFd, name, O_RDONLY | O_NOFOLLOW, rel);
       try {
@@ -361,7 +384,8 @@ export function createFs(opts = {}) {
 
   /** @param {import("node:http").IncomingMessage} req @param {import("node:http").ServerResponse} res */
   async function read(rel, req, res) {
-    const { parentFd, name, realRoot } = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    const { parentFd, name, realRoot } = resolveOpen(picked.root, innerRel(picked.segments));
     let fd;
     try {
       if (name === null) throw fail(400, "not_a_file", `"${rel}" is not a file`);
@@ -392,7 +416,9 @@ export function createFs(opts = {}) {
 
   /** @param {import("node:http").IncomingMessage} body */
   async function write(rel, body, size, overwrite) {
-    const { parentFd, name } = resolveOpen(root, rel, { create: true });
+    const picked = pickRoot(rel);
+    refuseDownloadsWrite(picked.segments);
+    const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       // lstat, never following a final symlink: an existing entry there is exists/denied to us
       // whatever it is, the same way a plain file or folder would be. checked and used through
@@ -444,10 +470,14 @@ export function createFs(opts = {}) {
   }
 
   function move(from, to) {
-    const src = resolveOpen(root, from);
+    const fromP = pickRoot(from);
+    const toP = pickRoot(to);
+    refuseDownloadsWrite(fromP.segments);
+    refuseDownloadsWrite(toP.segments);
+    const src = resolveOpen(fromP.root, innerRel(fromP.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be moved");
-      const dst = resolveOpen(root, to, { create: true });
+      const dst = resolveOpen(toP.root, innerRel(toP.segments), { create: true });
       try {
         let dstExists = false;
         try { fs.lstatSync(fdPath(dst.parentFd, dst.name)); dstExists = true; }
@@ -470,7 +500,9 @@ export function createFs(opts = {}) {
   }
 
   function mkdir(rel) {
-    const { parentFd, name } = resolveOpen(root, rel, { create: true });
+    const picked = pickRoot(rel);
+    refuseDownloadsWrite(picked.segments);
+    const { parentFd, name } = resolveOpen(picked.root, innerRel(picked.segments), { create: true });
     try {
       try { fs.mkdirSync(fdPath(parentFd, name)); }
       catch (e) { throw /** @type {any} */ (e).code === "EEXIST" ? fail(409, "exists", `"${rel}" already exists`) : fail(500, "failed", `could not make "${rel}"`); }
@@ -479,12 +511,14 @@ export function createFs(opts = {}) {
   }
 
   function trash(rel) {
-    const src = resolveOpen(root, rel);
+    const picked = pickRoot(rel);
+    refuseDownloadsWrite(picked.segments);
+    const src = resolveOpen(picked.root, innerRel(picked.segments));
     try {
       if (src.name === null) throw fail(400, "bad_path", "the home folder cannot be trashed");
       if (src.segments[0] === TRASH) throw fail(400, "bad_path", "that is already in the trash");
       let realRoot;
-      try { realRoot = fs.realpathSync(root); } catch { throw fail(404, "missing", "the home folder is not there"); }
+      try { realRoot = fs.realpathSync(picked.root); } catch { throw fail(404, "missing", "the home folder is not there"); }
       const rootFd = fs.openSync(realRoot, O_DIRECTORY);
       try {
         fs.mkdirSync(fdPath(rootFd, TRASH), { recursive: true });

@@ -13,7 +13,7 @@ const hash = m => crypto.createHash("sha256").update(m.map(r => r.map(b => (b ? 
 
 test("qr: a box address matches the encoder this file was checked against, and a relay pair URL fits", () => {
   // The same matrix the previous, independently checked encoder gave for this address.
-  const short = qr("https://vyre.tail0000.ts.net/");
+  const short = qr("https://vyre.tail0000.wink.example/");
   assert.equal(short.length, 29, "version 3");
   assert.equal(hash(short), "523a8700eb6d9c56");
   // A pair URL with a 64-character box name is about 260 characters: past version 10's 213 bytes.

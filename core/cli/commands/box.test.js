@@ -77,7 +77,7 @@ case "$1" in
 esac
 `;
 
-const ADDRESS = "https://vyre.tail0000.ts.net";
+const ADDRESS = "https://vyre.tail0000.wink.example";
 const steps = (done) => Object.fromEntries(["you", "claude", "pair", "name", "history", "devices"].map((k, i) => [k, i < done ? "done" : "todo"]));
 const status = (done, extra = {}) => ({ address: done >= 4 ? ADDRESS : null, owner: "alex@example.com", assistant: "Juno", finished: false, steps: steps(done), ...extra });
 

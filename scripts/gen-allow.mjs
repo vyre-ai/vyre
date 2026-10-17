@@ -27,6 +27,10 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
   "update.whats-new": "reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words",
+  "identity.status": "reads whether a username exists and whether the directory may show it; no key and no password",
+  "identity.card": "reads the public card for the username; private unless the person opted in, and no key",
+  "vault.space.status": "reads whether a space vault exists and its generation; no key and no item value",
+  "vault.space.list": "lists space vault item names only; values stay sealed",
   "update.whats-new-seen": "marks the release notes of the running version as seen by this person; the only thing written is that mark",
   "flows.settle": "answers a run that needs attention (retry, skip, stop, or move a stage gate on early) under the person's own chain; a stage gate moves only for its owner or an admin, with a reason on the ledger, and a value for a skipped step stays the person's",
   "flows.advance": "moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger",
@@ -88,10 +92,8 @@ export const OPEN_NOTES = Object.freeze({
   "bridges.propose-view": "proposes a live read-only view to another Space, which the other side accepts before anything crosses",
   "chrome.plan.edit": "edits the words of a Chrome plan step that has not started; running and finished steps stay",
   "chrome.voice": "carries the person's live speech to the Chrome panel while an agent works",
-  "computers.egress.status": "reads whether computers' Chrome sends listed sites through the person's Mac",
   "computers.handback.status": "reads after how many idle minutes a take-over hands the keyboard back",
   "computers.rename": "renames an agent's computer, the person's own label for it",
-  "computers.tailnet.status": "reads whether computers join the tailnet as their own tagged nodes",
   "files.drive.address": "reads where one of the box's VyreDrive shares is reached on the tailnet",
   "files.drive.mount": "mounts one of the box's shares at ~/Vyre/Box on the person's Mac, a mount of what is already shared",
   "files.drive.open": "opens a mounted box share, or a file in it, in Finder",
@@ -170,6 +172,10 @@ export const OPEN_NOTES = Object.freeze({
   "wink.code.status": "reads the code that is showing now, if any",
   "wink.offers": "reads what is waiting on a person right now, with no secret",
   "wink.pair.status": "reads where a pairing is: waiting, confirm, done, failed or expired",
+  "wink.install.status": "reads whether an install line is outstanding and whether this server is owned",
+  "wink.install.issue": "issues the one install line; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "wink.install.complete": "finishes pairing after the server adopted the person; the outward flag holds the call at the Gate, and the signing key stays on this device",
+  "spaces.pair.install": "issues the one install line for creating a space; the outward flag holds the call at the Gate, and the signing key stays on this device",
   "wink.storage.card": "builds the words a person reads before adding storage, no secret",
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
@@ -335,6 +341,8 @@ export const DECLARED_SINCE = Object.freeze({
   "sidebar.pin": "2ee4e9077@9 Oct 2026",
   "sidebar.unpin": "2ee4e9077@9 Oct 2026",
   "skills.approve": "95132d453@9 Oct 2026",
+  "skills.browse": "c8601dbce@16 Oct 2026",
+  "skills.decline": "c8601dbce@16 Oct 2026",
   "skills.draft": "95132d453@9 Oct 2026",
   "skills.rollback": "95132d453@9 Oct 2026",
   "skills.versions": "95132d453@9 Oct 2026",
@@ -368,6 +376,12 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
+  "vault.space.use": "0.5.3@15 Oct 2026",
+  "releases.info": "510141976@15 Oct 2026",
+  "onboard.person.lookup": "d14c56ec8@16 Oct 2026",
+  "onboard.github.start": "d14c56ec8@16 Oct 2026",
+  "onboard.join.read": "d14c56ec8@16 Oct 2026",
+  "onboard.space.poll": "d14c56ec8@16 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -445,6 +459,11 @@ export const DECLARED_NOTES = Object.freeze({
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.pin": "admits a project agent under the module's own guard: its own project's memory only",
+  "releases.info": "reads the running app version and the names of unset Mac and Windows signing secrets, and never a secret value",
+  "onboard.person.lookup": "checks that a username has a valid form and returns the public page address, and reads nothing secret",
+  "onboard.github.start": "returns the address for Continue with GitHub, or says that step is not on this server, and reads nothing secret",
+  "onboard.join.read": "reads an invite link and says which space and role it opens, and names no secret",
+  "onboard.space.poll": "says whether the new space's computer is online yet, and reads nothing secret",
 });
 
 const DECLARED_REASONS = () => JSON.parse(fs.readFileSync(path.join(REPO, "test", "reach-anyone.json"), "utf8")).tools;
@@ -486,6 +505,7 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.connections": "lists, per Connection, the Flows that use it with their health lines: names and levels, no data",
   "flows.attention": "lists the runs that need a person, in plain words with the message redacted; no step data",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
+  "flows.actions": "lists module tools a Flow call step may name, with inputs and outputs; read it to pick a call-step action",
 });
 
 const FLOWS_REASON = "the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain";

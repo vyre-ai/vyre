@@ -63,6 +63,12 @@
         "reach": "modules"
       },
       {
+        "name": "runner.group-move",
+        "effect": "write",
+        "summary": "move a chat to the server before people are added to it: a chat with more than one person always runs on the server",
+        "reach": "modules"
+      },
+      {
         "name": "runner.offer-back",
         "effect": "write",
         "summary": "put a chat back on its own person's computer after another person's turn took it to the server",
@@ -231,6 +237,26 @@
       "help": "Off: a space's sessions run on its server. On: they may run here too, within the limits below, and move to the server when a limit is passed.",
       "type": "bool",
       "default": false,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "runner.mode",
+      "group": "devices",
+      "label": "When this computer is ready",
+      "help": "Always allow: new chats start here and a session that left comes back after this computer has stayed ready for a minute. Ask: only what you put on this computer runs here.",
+      "type": "enum",
+      "enum": [
+        "always",
+        "ask"
+      ],
+      "labels": {
+        "always": "Always allow",
+        "ask": "Ask"
+      },
+      "default": "always",
       "levels": [
         "account"
       ],

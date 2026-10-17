@@ -263,6 +263,14 @@ export class Gate {
     } catch { return null; }
   }
 
+  /** How often a standing permission (kernel grant id) let something go out, and the last few acts it allowed: names and times only, from the Gate's own rows. @param {string} grant @param {number} [limit] */
+  standingUse(grant, limit = 5) {
+    const by = `standing:${grant}`;
+    const count = /** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM gate_items WHERE by = ? AND state = 'sent'").get(by)).n;
+    const last = /** @type {any[]} */ (this.db.prepare("SELECT id, at, kind, via, dest, agent FROM gate_items WHERE by = ? AND state = 'sent' ORDER BY at DESC LIMIT ?").all(by, limit)).map(r => ({ id: r.id, at: r.at, kind: r.kind, via: r.via, to: (() => { try { return JSON.parse(r.dest); } catch { return []; } })(), agent: r.agent }));
+    return { count: Number(count), last };
+  }
+
   /** Held items, oldest first: what has waited longest should be answered first. */
   held({ thread, project } = {}) {
     let sql = "SELECT * FROM gate_items WHERE state = 'held'";

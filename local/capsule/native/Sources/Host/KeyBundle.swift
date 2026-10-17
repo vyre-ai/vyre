@@ -70,7 +70,7 @@ final class MemoryBundleBacking: KeyBundleBacking, @unchecked Sendable {
 final class KeyBundle: @unchecked Sendable {
     /// The four keys, by the name each has in the bundle.
     enum Slot: String, CaseIterable {
-        case seed, enclave, agree, presence
+        case seed, enclave, agree, presence, relay
     }
 
     /// One of the old separate items, read once to move it into the bundle and then taken away.
