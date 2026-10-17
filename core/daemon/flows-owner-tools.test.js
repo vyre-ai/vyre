@@ -54,7 +54,7 @@ test("an assistant's session cannot advance a stage gate or set the AI budget, e
   assert.match(refusedCode(await asBen("flows.budget.set", { tokens_per_day: 1 })), /denied|not_allowed|person_only/, "a member cannot set the budget");
 });
 
-test("an assistant's settle is held for the person's tap, not run; the owner's settle still reaches the runner", { timeout: 150_000 }, async t => {
+test("an assistant's settle is refused (a person retries, skips or stops a Flow step), and the owner's settle still reaches the runner", { timeout: 150_000 }, async t => {
   const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
@@ -63,19 +63,17 @@ test("an assistant's settle is held for the person's tap, not run; the owner's s
   const asOwner = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", await tokenOf(ownerChain));
   const asAssistant = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "mcp", await tokenOf(ownerChain, { agent: "kit", thread: "t-1" }));
 
-  // Settle is ASK_FIRST: each assistant answer makes one Needs-you card and the call waits for the person's tap. The advance refusal inside
-  // settle (an agent hop reaching the flows.settle handler with action advance) is NOT proven here: a held call never reaches the handler.
-  // It needs a unit test of the handler; until one exists this test proves the hold only.
-  for (const action of ["retry", "advance"]) {
+  // Settle is the person's own act in 0.6: an assistant is refused on each action and nothing reaches the runner. (Holding it for one tap and then running it as the approver is a later item.)
+  for (const action of ["retry", "skip", "stop", "advance"]) {
     const r = await asAssistant("flows.settle", { run: "no-such-run", action, reason: "x" });
-    const card = heldFor(r);
-    assert.ok(card, `an assistant's settle ${action} is held for the person's tap: ${JSON.stringify(r)}`);
-    const pending = (await d.registry.call("approvals.pending", {}, "cli", await tokenOf(ownerChain))).data || {};
-    assert.ok((pending.approvals || []).some(a => a.id === card), `the held settle ${action} has its card in the approvals queue`);
+    assert.ok(r.error, `an assistant's settle ${action} is refused: ${JSON.stringify(r)}`);
+    assert.ok(["denied", "person_only"].includes(r.error.code), `${action}: ${JSON.stringify(r.error)}`);
+    assert.equal(heldFor(r), null, `${action} is not held, there is nothing to tap`);
   }
-  // the owner's own settle is not held by the assistant rule
+  // the owner's own settle is not refused for who asks
   const own = await asOwner("flows.settle", { run: "no-such-run", action: "retry" });
   assert.equal(heldFor(own), null, "the owner's settle is not held");
+  assert.ok(!own.error || !["denied", "person_only"].includes(String(own.error.code)) || !/person|not available/.test(String(own.error.message)), `the owner's own settle is not refused for who asks: ${JSON.stringify(own.error)}`);
 });
 
 test("a Kit proposal installs nothing until the approver says yes", { timeout: 180_000 }, async t => {

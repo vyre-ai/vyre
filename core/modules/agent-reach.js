@@ -30,6 +30,7 @@ export const PERSON_ONLY = new Map([
   ["assistant.access.restore", "turns tools or areas back on for the person's own assistant: the person's own yes, never the assistant's (G23)"],
   ["work.project.level", "sets a person's level on a project (lead, contributor, viewer): a project Lead's or staff's own act on the team's seats, never an assistant's"],
   ["agents.flow-say", "writes in a Flow's chat as the person and wakes the Flow's agent for them, with the person's own grants: the person's own voice; an assistant that wants an agent to act gives it a task as itself"],
+  ["flows.settle", "retries, skips or stops a run that needs attention, in the person's own name: only a person does it, and an assistant tells them in the chat"],
   ["agents.docs.get", "reads another agent's instructions: the person's own view; an agent gets its own instructions and context at session start, never through a tool"],
   ["agents.docs.set", "writes an agent's instructions: the person's own act; an agent never edits any agent's words (a model proposes through flows.propose)"],
   ["agents.context.list", "lists an agent's context files and links: the person's own view; an agent gets its own context at session start"],
@@ -673,7 +674,6 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
-  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],

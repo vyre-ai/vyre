@@ -371,8 +371,8 @@ export function createFlows(o) {
     "flows.settle": async (chain, i) => {
       const run = need(i, "run", "the run's id (flows.attention)");
       const action = need(i, "action", "retry, skip, stop or advance");
-      // Said first, so an assistant on the person's chain is told the gate is the person's, not that its chain is not a lone person's.
-      if (action === "advance" && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
+      // Said first, so an assistant on the person's chain is told what to do next, not that its chain is not a lone person's.
+      if ((chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("Only a person can retry, skip or stop a Flow step. Ask them in this chat."), { code: "person_only" });
       const who = personOf(chain);
       if (action === "retry") { await runner.retry(run, { by: who.id }); return { ok: true, action }; }
       if (action === "skip") {

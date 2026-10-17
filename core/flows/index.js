@@ -40,7 +40,7 @@ const WHAT = {
   "flows.definitions.scan": "Internal: every stored Flow definition as text, for the Vault's scan for a secret value.",
   "flows.kit.credentials": "Internal: the vault asks which approved Kit version a task is from and which Connections that version names for it, before it lends them to the task's doer ({ task } -> { approved, kit, version, credentials }). Only the vault may ask.",
   "flows.attention": "Runs that need a person (failed, paused, stuck, or a stage gate held), newest first: the Flow, step, plain reason, and whether loud or quiet.",
-  "flows.settle": "Answer a run that needs attention: { run, action: retry | skip | stop | advance }. skip may carry `value` to use in place of the skipped step's output (a person's, not an assistant's); advance (a stage gate) takes `reason`. A person's own.",
+  "flows.settle": "Answer a run that needs attention: { run, action: retry | skip | stop | advance }. Only a person does it; an assistant asks them in the chat. skip may carry `value` to use in place of the skipped step's output (a person's, not an assistant's); advance (a stage gate) takes `reason`. A person's own.",
   "flows.advance": "Move a record on before its stage's tasks are done: { run (the stage gate), reason }. The stage's owner or an admin, in their own name; the reason is on the gate's ledger.",
   "flows.patch": "Edit a Flow with small named ops, stored as a new draft: { id, base (version read), ops: [{ op: set|insert|replace|remove|move|trigger|meta, ... }] }.",
   "flows.test.save": "Save a test case: { id, name, event | input, expect }, or { id, from_run } to baseline a run. Failing cases block approval.",
